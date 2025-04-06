@@ -1,0 +1,4 @@
+addresses:
+  - unix: /test1.sock
+  - unix: /test2.sock
+  - unix: /test3.sock

@@ -1,0 +1,3 @@
+addresses:
+  - http: test:1
+    unix: /test.sock

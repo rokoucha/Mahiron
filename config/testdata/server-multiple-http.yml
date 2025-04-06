@@ -1,0 +1,4 @@
+addresses:
+  - http: test:1
+  - http: test:2
+  - http: test:3
