@@ -2,26 +2,104 @@ package main
 
 import (
 	"bufio"
+	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"syscall"
+	"time"
 
+	"github.com/21S1298001/Mahiron5/config"
 	"github.com/21S1298001/Mahiron5/util/dynamicmultiwriter"
 	"github.com/asticode/go-astits"
 )
 
 func main() {
-	http.HandleFunc("/", stream)
-
-	slog.Info("start server", "url", "http://localhost:8080")
-	err := http.ListenAndServe(":8080", nil)
+	serverConfig, err := config.LoadAndParseServerConfig("server.yml")
 	if err != nil {
-		slog.Error("error", "err", err)
-		os.Exit(1)
+		slog.Error("failed to load config", "err", err)
 	}
+
+	level := slog.LevelInfo
+	switch serverConfig.LogLevel {
+	case "debug":
+		level = slog.LevelDebug
+	case "info":
+		level = slog.LevelInfo
+	case "warn":
+		level = slog.LevelWarn
+	case "error":
+		level = slog.LevelError
+	}
+	h := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level})
+	slog.SetDefault(slog.New(h))
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", stream)
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt, os.Kill)
+	defer stop()
+
+	servers := make([]*http.Server, len(serverConfig.Addresses))
+	for i, addr := range serverConfig.Addresses {
+		if addr.Http != "" {
+			srv := &http.Server{
+				Addr:    addr.Http,
+				Handler: mux,
+			}
+			servers[i] = srv
+			slog.Info("starting HTTP server", "address", addr.Http)
+			go func(srv *http.Server) {
+				err := srv.ListenAndServe()
+				if err != nil && !errors.Is(err, http.ErrServerClosed) {
+					slog.Error("failed to start HTTP server", "address", addr.Http, "err", err)
+					return
+				}
+			}(srv)
+		}
+
+		if addr.Unix != "" {
+			srv := &http.Server{
+				Handler: mux,
+			}
+			servers[i] = srv
+			slog.Info("starting Unix socket server", "address", addr.Unix)
+			go func(addr string) {
+				l, err := net.Listen("unix", addr)
+				if err != nil {
+					slog.Error("failed to listen UNIX domain socket", "address", addr, "err", err)
+					return
+				}
+				defer l.Close()
+
+				err = srv.Serve(l)
+				if err != nil && !errors.Is(err, http.ErrServerClosed) {
+					slog.Error("failed to start UNIX domain socket server", "address", addr, "err", err)
+					return
+				}
+			}(addr.Unix)
+		}
+	}
+
+	<-ctx.Done()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	slog.Info("shutting down servers")
+	for _, srv := range servers {
+		if srv != nil {
+			if err := srv.Shutdown(ctx); err != nil && !errors.Is(err, context.DeadlineExceeded) {
+				slog.Error("failed to shut down server gracefully", "address", srv.Addr, "err", err)
+			}
+		}
+	}
+	slog.Info("all servers shut down")
+	slog.Info("exiting")
+	os.Exit(0)
 }
 
 func stream(w http.ResponseWriter, r *http.Request) {
