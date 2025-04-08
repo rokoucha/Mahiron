@@ -122,20 +122,6 @@ paths:
           in: query
           schema:
             type: string
-            enum:
-              - GR
-              - BS
-              - CS
-              - SKY
-              - EXT1
-              - EXT2
-              - EXT3
-              - EXT4
-              - EXT5
-              - EXT6
-              - EXT7
-              - EXT8
-              - EXT9
         - name: channel.channel
           in: query
           schema:
@@ -356,20 +342,6 @@ paths:
           in: query
           schema:
             type: string
-            enum:
-              - GR
-              - BS
-              - CS
-              - SKY
-              - EXT1
-              - EXT2
-              - EXT3
-              - EXT4
-              - EXT5
-              - EXT6
-              - EXT7
-              - EXT8
-              - EXT9
         - name: channel
           in: query
           schema:
@@ -698,20 +670,6 @@ paths:
           required: true
           schema:
             type: string
-            enum:
-              - GR
-              - BS
-              - CS
-              - SKY
-              - EXT1
-              - EXT2
-              - EXT3
-              - EXT4
-              - EXT5
-              - EXT6
-              - EXT7
-              - EXT8
-              - EXT9
         - name: channel
           in: path
           required: true
@@ -758,20 +716,6 @@ paths:
           required: true
           schema:
             type: string
-            enum:
-              - GR
-              - BS
-              - CS
-              - SKY
-              - EXT1
-              - EXT2
-              - EXT3
-              - EXT4
-              - EXT5
-              - EXT6
-              - EXT7
-              - EXT8
-              - EXT9
         - name: channel
           in: path
           required: true
@@ -823,20 +767,6 @@ paths:
           required: true
           schema:
             type: string
-            enum:
-              - GR
-              - BS
-              - CS
-              - SKY
-              - EXT1
-              - EXT2
-              - EXT3
-              - EXT4
-              - EXT5
-              - EXT6
-              - EXT7
-              - EXT8
-              - EXT9
         - name: channel
           in: path
           required: true
@@ -875,20 +805,6 @@ paths:
           required: true
           schema:
             type: string
-            enum:
-              - GR
-              - BS
-              - CS
-              - SKY
-              - EXT1
-              - EXT2
-              - EXT3
-              - EXT4
-              - EXT5
-              - EXT6
-              - EXT7
-              - EXT8
-              - EXT9
         - name: channel
           in: path
           required: true
@@ -920,20 +836,6 @@ paths:
           required: true
           schema:
             type: string
-            enum:
-              - GR
-              - BS
-              - CS
-              - SKY
-              - EXT1
-              - EXT2
-              - EXT3
-              - EXT4
-              - EXT5
-              - EXT6
-              - EXT7
-              - EXT8
-              - EXT9
         - name: channel
           in: path
           required: true
@@ -969,20 +871,6 @@ paths:
           required: true
           schema:
             type: string
-            enum:
-              - GR
-              - BS
-              - CS
-              - SKY
-              - EXT1
-              - EXT2
-              - EXT3
-              - EXT4
-              - EXT5
-              - EXT6
-              - EXT7
-              - EXT8
-              - EXT9
         - name: channel
           in: query
           schema:
@@ -1055,7 +943,7 @@ components:
       type: object
       properties:
         type:
-          $ref: "#/components/schemas/ChannelType"
+          type: string
         channel:
           type: string
         name:
@@ -1077,22 +965,6 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Service"
-    ChannelType:
-      type: string
-      enum:
-        - GR
-        - BS
-        - CS
-        - SKY
-        - EXT1
-        - EXT2
-        - EXT3
-        - EXT4
-        - EXT5
-        - EXT6
-        - EXT7
-        - EXT8
-        - EXT9
     Service:
       required:
         - id
@@ -1306,7 +1178,7 @@ components:
         types:
           type: array
           items:
-            $ref: "#/components/schemas/ChannelType"
+            type: string
         command:
           type: string
         pid:
@@ -1326,7 +1198,7 @@ components:
         isFault:
           type: boolean
         currentChannelType:
-          $ref: "#/components/schemas/ChannelType"
+          type: string
         currentChannel:
           type: string
     TunerUser:
@@ -1475,7 +1347,7 @@ components:
         types:
           type: array
           items:
-            $ref: "#/components/schemas/ChannelType"
+            type: string
         command:
           type: string
         dvbDevicePath:
@@ -1504,7 +1376,7 @@ components:
         name:
           type: string
         type:
-          $ref: "#/components/schemas/ChannelType"
+          type: string
         channel:
           type: string
         serviceId:
