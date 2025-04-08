@@ -17,17 +17,6 @@ func (s *Channel) Validate() error {
 
 	var failures []validate.FieldError
 	if err := func() error {
-		if err := s.Type.Validate(); err != nil {
-			return err
-		}
-		return nil
-	}(); err != nil {
-		failures = append(failures, validate.FieldError{
-			Name:  "type",
-			Error: err,
-		})
-	}
-	if err := func() error {
 		if value, ok := s.Freq.Get(); ok {
 			if err := func() error {
 				if err := (validate.Float{}).Validate(float64(value)); err != nil {
@@ -105,102 +94,12 @@ func (s ChannelPolarity) Validate() error {
 	}
 }
 
-func (s ChannelScanScanMode) Validate() error {
-	switch s {
-	case "Channel":
-		return nil
-	case "Service":
-		return nil
-	default:
-		return errors.Errorf("invalid value: %v", s)
-	}
-}
-
-func (s ChannelScanType) Validate() error {
-	switch s {
-	case "GR":
-		return nil
-	case "BS":
-		return nil
-	case "CS":
-		return nil
-	default:
-		return errors.Errorf("invalid value: %v", s)
-	}
-}
-
-func (s ChannelType) Validate() error {
-	switch s {
-	case "GR":
-		return nil
-	case "BS":
-		return nil
-	case "CS":
-		return nil
-	case "SKY":
-		return nil
-	case "EXT1":
-		return nil
-	case "EXT2":
-		return nil
-	case "EXT3":
-		return nil
-	case "EXT4":
-		return nil
-	case "EXT5":
-		return nil
-	case "EXT6":
-		return nil
-	case "EXT7":
-		return nil
-	case "EXT8":
-		return nil
-	case "EXT9":
-		return nil
-	default:
-		return errors.Errorf("invalid value: %v", s)
-	}
-}
-
-func (s ConfigChannels) Validate() error {
-	alias := ([]ConfigChannelsItem)(s)
-	var failures []validate.FieldError
-	for i, elem := range alias {
-		if err := func() error {
-			if err := elem.Validate(); err != nil {
-				return err
-			}
-			return nil
-		}(); err != nil {
-			failures = append(failures, validate.FieldError{
-				Name:  fmt.Sprintf("[%d]", i),
-				Error: err,
-			})
-		}
-	}
-	if len(failures) > 0 {
-		return &validate.Error{Fields: failures}
-	}
-	return nil
-}
-
 func (s *ConfigChannelsItem) Validate() error {
 	if s == nil {
 		return validate.ErrNilPointer
 	}
 
 	var failures []validate.FieldError
-	if err := func() error {
-		if err := s.Type.Validate(); err != nil {
-			return err
-		}
-		return nil
-	}(); err != nil {
-		failures = append(failures, validate.FieldError{
-			Name:  "type",
-			Error: err,
-		})
-	}
 	if err := func() error {
 		if value, ok := s.ServiceId.Get(); ok {
 			if err := func() error {
@@ -270,188 +169,6 @@ func (s ConfigChannelsItemPolarity) Validate() error {
 	default:
 		return errors.Errorf("invalid value: %v", s)
 	}
-}
-
-func (s *ConfigServer) Validate() error {
-	if s == nil {
-		return validate.ErrNilPointer
-	}
-
-	var failures []validate.FieldError
-	if err := func() error {
-		if value, ok := s.Port.Get(); ok {
-			if err := func() error {
-				if err := (validate.Int{
-					MinSet:        true,
-					Min:           1,
-					MaxSet:        true,
-					Max:           65535,
-					MinExclusive:  false,
-					MaxExclusive:  false,
-					MultipleOfSet: false,
-					MultipleOf:    0,
-				}).Validate(int64(value)); err != nil {
-					return errors.Wrap(err, "int")
-				}
-				return nil
-			}(); err != nil {
-				return err
-			}
-		}
-		return nil
-	}(); err != nil {
-		failures = append(failures, validate.FieldError{
-			Name:  "port",
-			Error: err,
-		})
-	}
-	if err := func() error {
-		if value, ok := s.LogLevel.Get(); ok {
-			if err := func() error {
-				if err := (validate.Int{
-					MinSet:        true,
-					Min:           -1,
-					MaxSet:        true,
-					Max:           3,
-					MinExclusive:  false,
-					MaxExclusive:  false,
-					MultipleOfSet: false,
-					MultipleOf:    0,
-				}).Validate(int64(value)); err != nil {
-					return errors.Wrap(err, "int")
-				}
-				return nil
-			}(); err != nil {
-				return err
-			}
-		}
-		return nil
-	}(); err != nil {
-		failures = append(failures, validate.FieldError{
-			Name:  "logLevel",
-			Error: err,
-		})
-	}
-	if err := func() error {
-		if value, ok := s.MaxLogHistory.Get(); ok {
-			if err := func() error {
-				if err := (validate.Int{
-					MinSet:        true,
-					Min:           0,
-					MaxSet:        false,
-					Max:           0,
-					MinExclusive:  false,
-					MaxExclusive:  false,
-					MultipleOfSet: false,
-					MultipleOf:    0,
-				}).Validate(int64(value)); err != nil {
-					return errors.Wrap(err, "int")
-				}
-				return nil
-			}(); err != nil {
-				return err
-			}
-		}
-		return nil
-	}(); err != nil {
-		failures = append(failures, validate.FieldError{
-			Name:  "maxLogHistory",
-			Error: err,
-		})
-	}
-	if err := func() error {
-		if value, ok := s.EventEndTimeout.Get(); ok {
-			if err := func() error {
-				if err := (validate.Int{
-					MinSet:        true,
-					Min:           0,
-					MaxSet:        false,
-					Max:           0,
-					MinExclusive:  false,
-					MaxExclusive:  false,
-					MultipleOfSet: false,
-					MultipleOf:    0,
-				}).Validate(int64(value)); err != nil {
-					return errors.Wrap(err, "int")
-				}
-				return nil
-			}(); err != nil {
-				return err
-			}
-		}
-		return nil
-	}(); err != nil {
-		failures = append(failures, validate.FieldError{
-			Name:  "eventEndTimeout",
-			Error: err,
-		})
-	}
-	if len(failures) > 0 {
-		return &validate.Error{Fields: failures}
-	}
-	return nil
-}
-
-func (s ConfigTuners) Validate() error {
-	alias := ([]ConfigTunersItem)(s)
-	var failures []validate.FieldError
-	for i, elem := range alias {
-		if err := func() error {
-			if err := elem.Validate(); err != nil {
-				return err
-			}
-			return nil
-		}(); err != nil {
-			failures = append(failures, validate.FieldError{
-				Name:  fmt.Sprintf("[%d]", i),
-				Error: err,
-			})
-		}
-	}
-	if len(failures) > 0 {
-		return &validate.Error{Fields: failures}
-	}
-	return nil
-}
-
-func (s *ConfigTunersItem) Validate() error {
-	if s == nil {
-		return validate.ErrNilPointer
-	}
-
-	var failures []validate.FieldError
-	if err := func() error {
-		if s.Types == nil {
-			return errors.New("nil is invalid value")
-		}
-		var failures []validate.FieldError
-		for i, elem := range s.Types {
-			if err := func() error {
-				if err := elem.Validate(); err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				failures = append(failures, validate.FieldError{
-					Name:  fmt.Sprintf("[%d]", i),
-					Error: err,
-				})
-			}
-		}
-		if len(failures) > 0 {
-			return &validate.Error{Fields: failures}
-		}
-		return nil
-	}(); err != nil {
-		failures = append(failures, validate.FieldError{
-			Name:  "types",
-			Error: err,
-		})
-	}
-	if len(failures) > 0 {
-		return &validate.Error{Fields: failures}
-	}
-	return nil
 }
 
 func (s *Event) Validate() error {
@@ -531,72 +248,6 @@ func (s EventType) Validate() error {
 	}
 }
 
-func (s GetChannelStreamType) Validate() error {
-	switch s {
-	case "GR":
-		return nil
-	case "BS":
-		return nil
-	case "CS":
-		return nil
-	case "SKY":
-		return nil
-	case "EXT1":
-		return nil
-	case "EXT2":
-		return nil
-	case "EXT3":
-		return nil
-	case "EXT4":
-		return nil
-	case "EXT5":
-		return nil
-	case "EXT6":
-		return nil
-	case "EXT7":
-		return nil
-	case "EXT8":
-		return nil
-	case "EXT9":
-		return nil
-	default:
-		return errors.Errorf("invalid value: %v", s)
-	}
-}
-
-func (s GetChannelType) Validate() error {
-	switch s {
-	case "GR":
-		return nil
-	case "BS":
-		return nil
-	case "CS":
-		return nil
-	case "SKY":
-		return nil
-	case "EXT1":
-		return nil
-	case "EXT2":
-		return nil
-	case "EXT3":
-		return nil
-	case "EXT4":
-		return nil
-	case "EXT5":
-		return nil
-	case "EXT6":
-		return nil
-	case "EXT7":
-		return nil
-	case "EXT8":
-		return nil
-	case "EXT9":
-		return nil
-	default:
-		return errors.Errorf("invalid value: %v", s)
-	}
-}
-
 func (s GetChannelsByTypeOKApplicationJSON) Validate() error {
 	alias := ([]Channel)(s)
 	if alias == nil {
@@ -622,39 +273,6 @@ func (s GetChannelsByTypeOKApplicationJSON) Validate() error {
 	return nil
 }
 
-func (s GetChannelsByTypeType) Validate() error {
-	switch s {
-	case "GR":
-		return nil
-	case "BS":
-		return nil
-	case "CS":
-		return nil
-	case "SKY":
-		return nil
-	case "EXT1":
-		return nil
-	case "EXT2":
-		return nil
-	case "EXT3":
-		return nil
-	case "EXT4":
-		return nil
-	case "EXT5":
-		return nil
-	case "EXT6":
-		return nil
-	case "EXT7":
-		return nil
-	case "EXT8":
-		return nil
-	case "EXT9":
-		return nil
-	default:
-		return errors.Errorf("invalid value: %v", s)
-	}
-}
-
 func (s GetChannelsOKApplicationJSON) Validate() error {
 	alias := ([]Channel)(s)
 	if alias == nil {
@@ -678,39 +296,6 @@ func (s GetChannelsOKApplicationJSON) Validate() error {
 		return &validate.Error{Fields: failures}
 	}
 	return nil
-}
-
-func (s GetChannelsType) Validate() error {
-	switch s {
-	case "GR":
-		return nil
-	case "BS":
-		return nil
-	case "CS":
-		return nil
-	case "SKY":
-		return nil
-	case "EXT1":
-		return nil
-	case "EXT2":
-		return nil
-	case "EXT3":
-		return nil
-	case "EXT4":
-		return nil
-	case "EXT5":
-		return nil
-	case "EXT6":
-		return nil
-	case "EXT7":
-		return nil
-	case "EXT8":
-		return nil
-	case "EXT9":
-		return nil
-	default:
-		return errors.Errorf("invalid value: %v", s)
-	}
 }
 
 func (s GetEventsOKApplicationJSON) Validate() error {
@@ -839,39 +424,6 @@ func (s GetServiceByChannelOKApplicationJSON) Validate() error {
 	return nil
 }
 
-func (s GetServiceByChannelType) Validate() error {
-	switch s {
-	case "GR":
-		return nil
-	case "BS":
-		return nil
-	case "CS":
-		return nil
-	case "SKY":
-		return nil
-	case "EXT1":
-		return nil
-	case "EXT2":
-		return nil
-	case "EXT3":
-		return nil
-	case "EXT4":
-		return nil
-	case "EXT5":
-		return nil
-	case "EXT6":
-		return nil
-	case "EXT7":
-		return nil
-	case "EXT8":
-		return nil
-	case "EXT9":
-		return nil
-	default:
-		return errors.Errorf("invalid value: %v", s)
-	}
-}
-
 func (s GetServiceProgramsOKApplicationJSON) Validate() error {
 	alias := ([]Program)(s)
 	if alias == nil {
@@ -897,39 +449,6 @@ func (s GetServiceProgramsOKApplicationJSON) Validate() error {
 	return nil
 }
 
-func (s GetServiceStreamByChannelType) Validate() error {
-	switch s {
-	case "GR":
-		return nil
-	case "BS":
-		return nil
-	case "CS":
-		return nil
-	case "SKY":
-		return nil
-	case "EXT1":
-		return nil
-	case "EXT2":
-		return nil
-	case "EXT3":
-		return nil
-	case "EXT4":
-		return nil
-	case "EXT5":
-		return nil
-	case "EXT6":
-		return nil
-	case "EXT7":
-		return nil
-	case "EXT8":
-		return nil
-	case "EXT9":
-		return nil
-	default:
-		return errors.Errorf("invalid value: %v", s)
-	}
-}
-
 func (s GetServicesByChannelOKApplicationJSON) Validate() error {
 	alias := ([]Service)(s)
 	if alias == nil {
@@ -953,72 +472,6 @@ func (s GetServicesByChannelOKApplicationJSON) Validate() error {
 		return &validate.Error{Fields: failures}
 	}
 	return nil
-}
-
-func (s GetServicesByChannelType) Validate() error {
-	switch s {
-	case "GR":
-		return nil
-	case "BS":
-		return nil
-	case "CS":
-		return nil
-	case "SKY":
-		return nil
-	case "EXT1":
-		return nil
-	case "EXT2":
-		return nil
-	case "EXT3":
-		return nil
-	case "EXT4":
-		return nil
-	case "EXT5":
-		return nil
-	case "EXT6":
-		return nil
-	case "EXT7":
-		return nil
-	case "EXT8":
-		return nil
-	case "EXT9":
-		return nil
-	default:
-		return errors.Errorf("invalid value: %v", s)
-	}
-}
-
-func (s GetServicesChannelType) Validate() error {
-	switch s {
-	case "GR":
-		return nil
-	case "BS":
-		return nil
-	case "CS":
-		return nil
-	case "SKY":
-		return nil
-	case "EXT1":
-		return nil
-	case "EXT2":
-		return nil
-	case "EXT3":
-		return nil
-	case "EXT4":
-		return nil
-	case "EXT5":
-		return nil
-	case "EXT6":
-		return nil
-	case "EXT7":
-		return nil
-	case "EXT8":
-		return nil
-	case "EXT9":
-		return nil
-	default:
-		return errors.Errorf("invalid value: %v", s)
-	}
 }
 
 func (s GetServicesOKApplicationJSON) Validate() error {
@@ -2111,23 +1564,6 @@ func (s *TunerDevice) Validate() error {
 		if s.Types == nil {
 			return errors.New("nil is invalid value")
 		}
-		var failures []validate.FieldError
-		for i, elem := range s.Types {
-			if err := func() error {
-				if err := elem.Validate(); err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				failures = append(failures, validate.FieldError{
-					Name:  fmt.Sprintf("[%d]", i),
-					Error: err,
-				})
-			}
-		}
-		if len(failures) > 0 {
-			return &validate.Error{Fields: failures}
-		}
 		return nil
 	}(); err != nil {
 		failures = append(failures, validate.FieldError{
@@ -2160,24 +1596,6 @@ func (s *TunerDevice) Validate() error {
 	}(); err != nil {
 		failures = append(failures, validate.FieldError{
 			Name:  "users",
-			Error: err,
-		})
-	}
-	if err := func() error {
-		if value, ok := s.CurrentChannelType.Get(); ok {
-			if err := func() error {
-				if err := value.Validate(); err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return err
-			}
-		}
-		return nil
-	}(); err != nil {
-		failures = append(failures, validate.FieldError{
-			Name:  "currentChannelType",
 			Error: err,
 		})
 	}

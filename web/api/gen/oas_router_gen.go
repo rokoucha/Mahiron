@@ -61,30 +61,48 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				break
 			}
 			switch elem[0] {
-			case 'c': // Prefix: "c"
+			case 'c': // Prefix: "channels"
 
-				if l := len("c"); len(elem) >= l && elem[0:l] == "c" {
+				if l := len("channels"); len(elem) >= l && elem[0:l] == "channels" {
 					elem = elem[l:]
 				} else {
 					break
 				}
 
 				if len(elem) == 0 {
-					break
+					switch r.Method {
+					case "GET":
+						s.handleGetChannelsRequest([0]string{}, elemIsEscaped, w, r)
+					default:
+						s.notAllowed(w, r, "GET")
+					}
+
+					return
 				}
 				switch elem[0] {
-				case 'h': // Prefix: "hannels"
+				case '/': // Prefix: "/"
 
-					if l := len("hannels"); len(elem) >= l && elem[0:l] == "hannels" {
+					if l := len("/"); len(elem) >= l && elem[0:l] == "/" {
 						elem = elem[l:]
 					} else {
 						break
 					}
 
+					// Param: "type"
+					// Match until "/"
+					idx := strings.IndexByte(elem, '/')
+					if idx < 0 {
+						idx = len(elem)
+					}
+					args[0] = elem[:idx]
+					elem = elem[idx:]
+
 					if len(elem) == 0 {
 						switch r.Method {
 						case "GET":
-							s.handleGetChannelsRequest([0]string{}, elemIsEscaped, w, r)
+							s.handleGetChannelsByTypeRequest([1]string{
+								args[0],
+							}, elemIsEscaped, w, r)
 						default:
 							s.notAllowed(w, r, "GET")
 						}
@@ -100,20 +118,21 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 							break
 						}
 
-						// Param: "type"
+						// Param: "channel"
 						// Match until "/"
 						idx := strings.IndexByte(elem, '/')
 						if idx < 0 {
 							idx = len(elem)
 						}
-						args[0] = elem[:idx]
+						args[1] = elem[:idx]
 						elem = elem[idx:]
 
 						if len(elem) == 0 {
 							switch r.Method {
 							case "GET":
-								s.handleGetChannelsByTypeRequest([1]string{
+								s.handleGetChannelRequest([2]string{
 									args[0],
+									args[1],
 								}, elemIsEscaped, w, r)
 							default:
 								s.notAllowed(w, r, "GET")
@@ -122,63 +141,64 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 							return
 						}
 						switch elem[0] {
-						case '/': // Prefix: "/"
+						case '/': // Prefix: "/s"
 
-							if l := len("/"); len(elem) >= l && elem[0:l] == "/" {
+							if l := len("/s"); len(elem) >= l && elem[0:l] == "/s" {
 								elem = elem[l:]
 							} else {
 								break
 							}
 
-							// Param: "channel"
-							// Match until "/"
-							idx := strings.IndexByte(elem, '/')
-							if idx < 0 {
-								idx = len(elem)
-							}
-							args[1] = elem[:idx]
-							elem = elem[idx:]
-
 							if len(elem) == 0 {
-								switch r.Method {
-								case "GET":
-									s.handleGetChannelRequest([2]string{
-										args[0],
-										args[1],
-									}, elemIsEscaped, w, r)
-								default:
-									s.notAllowed(w, r, "GET")
-								}
-
-								return
+								break
 							}
 							switch elem[0] {
-							case '/': // Prefix: "/s"
+							case 'e': // Prefix: "ervices"
 
-								if l := len("/s"); len(elem) >= l && elem[0:l] == "/s" {
+								if l := len("ervices"); len(elem) >= l && elem[0:l] == "ervices" {
 									elem = elem[l:]
 								} else {
 									break
 								}
 
 								if len(elem) == 0 {
-									break
+									switch r.Method {
+									case "GET":
+										s.handleGetServicesByChannelRequest([2]string{
+											args[0],
+											args[1],
+										}, elemIsEscaped, w, r)
+									default:
+										s.notAllowed(w, r, "GET")
+									}
+
+									return
 								}
 								switch elem[0] {
-								case 'e': // Prefix: "ervices"
+								case '/': // Prefix: "/"
 
-									if l := len("ervices"); len(elem) >= l && elem[0:l] == "ervices" {
+									if l := len("/"); len(elem) >= l && elem[0:l] == "/" {
 										elem = elem[l:]
 									} else {
 										break
 									}
 
+									// Param: "id"
+									// Match until "/"
+									idx := strings.IndexByte(elem, '/')
+									if idx < 0 {
+										idx = len(elem)
+									}
+									args[2] = elem[:idx]
+									elem = elem[idx:]
+
 									if len(elem) == 0 {
 										switch r.Method {
 										case "GET":
-											s.handleGetServicesByChannelRequest([2]string{
+											s.handleGetServiceByChannelRequest([3]string{
 												args[0],
 												args[1],
+												args[2],
 											}, elemIsEscaped, w, r)
 										default:
 											s.notAllowed(w, r, "GET")
@@ -187,27 +207,19 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 										return
 									}
 									switch elem[0] {
-									case '/': // Prefix: "/"
+									case '/': // Prefix: "/stream"
 
-										if l := len("/"); len(elem) >= l && elem[0:l] == "/" {
+										if l := len("/stream"); len(elem) >= l && elem[0:l] == "/stream" {
 											elem = elem[l:]
 										} else {
 											break
 										}
 
-										// Param: "id"
-										// Match until "/"
-										idx := strings.IndexByte(elem, '/')
-										if idx < 0 {
-											idx = len(elem)
-										}
-										args[2] = elem[:idx]
-										elem = elem[idx:]
-
 										if len(elem) == 0 {
+											// Leaf node.
 											switch r.Method {
 											case "GET":
-												s.handleGetServiceByChannelRequest([3]string{
+												s.handleGetServiceStreamByChannelRequest([3]string{
 													args[0],
 													args[1],
 													args[2],
@@ -218,163 +230,36 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 											return
 										}
-										switch elem[0] {
-										case '/': // Prefix: "/stream"
 
-											if l := len("/stream"); len(elem) >= l && elem[0:l] == "/stream" {
-												elem = elem[l:]
-											} else {
-												break
-											}
-
-											if len(elem) == 0 {
-												// Leaf node.
-												switch r.Method {
-												case "GET":
-													s.handleGetServiceStreamByChannelRequest([3]string{
-														args[0],
-														args[1],
-														args[2],
-													}, elemIsEscaped, w, r)
-												default:
-													s.notAllowed(w, r, "GET")
-												}
-
-												return
-											}
-
-										}
-
-									}
-
-								case 't': // Prefix: "tream"
-
-									if l := len("tream"); len(elem) >= l && elem[0:l] == "tream" {
-										elem = elem[l:]
-									} else {
-										break
-									}
-
-									if len(elem) == 0 {
-										// Leaf node.
-										switch r.Method {
-										case "GET":
-											s.handleGetChannelStreamRequest([2]string{
-												args[0],
-												args[1],
-											}, elemIsEscaped, w, r)
-										default:
-											s.notAllowed(w, r, "GET")
-										}
-
-										return
 									}
 
 								}
 
-							}
+							case 't': // Prefix: "tream"
 
-						}
-
-					}
-
-				case 'o': // Prefix: "onfig/"
-
-					if l := len("onfig/"); len(elem) >= l && elem[0:l] == "onfig/" {
-						elem = elem[l:]
-					} else {
-						break
-					}
-
-					if len(elem) == 0 {
-						break
-					}
-					switch elem[0] {
-					case 'c': // Prefix: "channels"
-
-						if l := len("channels"); len(elem) >= l && elem[0:l] == "channels" {
-							elem = elem[l:]
-						} else {
-							break
-						}
-
-						if len(elem) == 0 {
-							switch r.Method {
-							case "GET":
-								s.handleGetChannelsConfigRequest([0]string{}, elemIsEscaped, w, r)
-							case "PUT":
-								s.handleUpdateChannelsConfigRequest([0]string{}, elemIsEscaped, w, r)
-							default:
-								s.notAllowed(w, r, "GET,PUT")
-							}
-
-							return
-						}
-						switch elem[0] {
-						case '/': // Prefix: "/scan"
-
-							if l := len("/scan"); len(elem) >= l && elem[0:l] == "/scan" {
-								elem = elem[l:]
-							} else {
-								break
-							}
-
-							if len(elem) == 0 {
-								// Leaf node.
-								switch r.Method {
-								case "PUT":
-									s.handleChannelScanRequest([0]string{}, elemIsEscaped, w, r)
-								default:
-									s.notAllowed(w, r, "PUT")
+								if l := len("tream"); len(elem) >= l && elem[0:l] == "tream" {
+									elem = elem[l:]
+								} else {
+									break
 								}
 
-								return
+								if len(elem) == 0 {
+									// Leaf node.
+									switch r.Method {
+									case "GET":
+										s.handleGetChannelStreamRequest([2]string{
+											args[0],
+											args[1],
+										}, elemIsEscaped, w, r)
+									default:
+										s.notAllowed(w, r, "GET")
+									}
+
+									return
+								}
+
 							}
 
-						}
-
-					case 's': // Prefix: "server"
-
-						if l := len("server"); len(elem) >= l && elem[0:l] == "server" {
-							elem = elem[l:]
-						} else {
-							break
-						}
-
-						if len(elem) == 0 {
-							// Leaf node.
-							switch r.Method {
-							case "GET":
-								s.handleGetServerConfigRequest([0]string{}, elemIsEscaped, w, r)
-							case "PUT":
-								s.handleUpdateServerConfigRequest([0]string{}, elemIsEscaped, w, r)
-							default:
-								s.notAllowed(w, r, "GET,PUT")
-							}
-
-							return
-						}
-
-					case 't': // Prefix: "tuners"
-
-						if l := len("tuners"); len(elem) >= l && elem[0:l] == "tuners" {
-							elem = elem[l:]
-						} else {
-							break
-						}
-
-						if len(elem) == 0 {
-							// Leaf node.
-							switch r.Method {
-							case "GET":
-								s.handleGetTunersConfigRequest([0]string{}, elemIsEscaped, w, r)
-							case "PUT":
-								s.handleUpdateTunersConfigRequest([0]string{}, elemIsEscaped, w, r)
-							default:
-								s.notAllowed(w, r, "GET,PUT")
-							}
-
-							return
 						}
 
 					}
@@ -986,35 +871,55 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 				break
 			}
 			switch elem[0] {
-			case 'c': // Prefix: "c"
+			case 'c': // Prefix: "channels"
 
-				if l := len("c"); len(elem) >= l && elem[0:l] == "c" {
+				if l := len("channels"); len(elem) >= l && elem[0:l] == "channels" {
 					elem = elem[l:]
 				} else {
 					break
 				}
 
 				if len(elem) == 0 {
-					break
+					switch method {
+					case "GET":
+						r.name = GetChannelsOperation
+						r.summary = ""
+						r.operationID = "getChannels"
+						r.pathPattern = "/channels"
+						r.args = args
+						r.count = 0
+						return r, true
+					default:
+						return
+					}
 				}
 				switch elem[0] {
-				case 'h': // Prefix: "hannels"
+				case '/': // Prefix: "/"
 
-					if l := len("hannels"); len(elem) >= l && elem[0:l] == "hannels" {
+					if l := len("/"); len(elem) >= l && elem[0:l] == "/" {
 						elem = elem[l:]
 					} else {
 						break
 					}
 
+					// Param: "type"
+					// Match until "/"
+					idx := strings.IndexByte(elem, '/')
+					if idx < 0 {
+						idx = len(elem)
+					}
+					args[0] = elem[:idx]
+					elem = elem[idx:]
+
 					if len(elem) == 0 {
 						switch method {
 						case "GET":
-							r.name = GetChannelsOperation
+							r.name = GetChannelsByTypeOperation
 							r.summary = ""
-							r.operationID = "getChannels"
-							r.pathPattern = "/channels"
+							r.operationID = "getChannelsByType"
+							r.pathPattern = "/channels/{type}"
 							r.args = args
-							r.count = 0
+							r.count = 1
 							return r, true
 						default:
 							return
@@ -1029,121 +934,113 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 							break
 						}
 
-						// Param: "type"
+						// Param: "channel"
 						// Match until "/"
 						idx := strings.IndexByte(elem, '/')
 						if idx < 0 {
 							idx = len(elem)
 						}
-						args[0] = elem[:idx]
+						args[1] = elem[:idx]
 						elem = elem[idx:]
 
 						if len(elem) == 0 {
 							switch method {
 							case "GET":
-								r.name = GetChannelsByTypeOperation
+								r.name = GetChannelOperation
 								r.summary = ""
-								r.operationID = "getChannelsByType"
-								r.pathPattern = "/channels/{type}"
+								r.operationID = "getChannel"
+								r.pathPattern = "/channels/{type}/{channel}"
 								r.args = args
-								r.count = 1
+								r.count = 2
 								return r, true
 							default:
 								return
 							}
 						}
 						switch elem[0] {
-						case '/': // Prefix: "/"
+						case '/': // Prefix: "/s"
 
-							if l := len("/"); len(elem) >= l && elem[0:l] == "/" {
+							if l := len("/s"); len(elem) >= l && elem[0:l] == "/s" {
 								elem = elem[l:]
 							} else {
 								break
 							}
 
-							// Param: "channel"
-							// Match until "/"
-							idx := strings.IndexByte(elem, '/')
-							if idx < 0 {
-								idx = len(elem)
-							}
-							args[1] = elem[:idx]
-							elem = elem[idx:]
-
 							if len(elem) == 0 {
-								switch method {
-								case "GET":
-									r.name = GetChannelOperation
-									r.summary = ""
-									r.operationID = "getChannel"
-									r.pathPattern = "/channels/{type}/{channel}"
-									r.args = args
-									r.count = 2
-									return r, true
-								default:
-									return
-								}
+								break
 							}
 							switch elem[0] {
-							case '/': // Prefix: "/s"
+							case 'e': // Prefix: "ervices"
 
-								if l := len("/s"); len(elem) >= l && elem[0:l] == "/s" {
+								if l := len("ervices"); len(elem) >= l && elem[0:l] == "ervices" {
 									elem = elem[l:]
 								} else {
 									break
 								}
 
 								if len(elem) == 0 {
-									break
+									switch method {
+									case "GET":
+										r.name = GetServicesByChannelOperation
+										r.summary = ""
+										r.operationID = "getServicesByChannel"
+										r.pathPattern = "/channels/{type}/{channel}/services"
+										r.args = args
+										r.count = 2
+										return r, true
+									default:
+										return
+									}
 								}
 								switch elem[0] {
-								case 'e': // Prefix: "ervices"
+								case '/': // Prefix: "/"
 
-									if l := len("ervices"); len(elem) >= l && elem[0:l] == "ervices" {
+									if l := len("/"); len(elem) >= l && elem[0:l] == "/" {
 										elem = elem[l:]
 									} else {
 										break
 									}
 
+									// Param: "id"
+									// Match until "/"
+									idx := strings.IndexByte(elem, '/')
+									if idx < 0 {
+										idx = len(elem)
+									}
+									args[2] = elem[:idx]
+									elem = elem[idx:]
+
 									if len(elem) == 0 {
 										switch method {
 										case "GET":
-											r.name = GetServicesByChannelOperation
+											r.name = GetServiceByChannelOperation
 											r.summary = ""
-											r.operationID = "getServicesByChannel"
-											r.pathPattern = "/channels/{type}/{channel}/services"
+											r.operationID = "getServiceByChannel"
+											r.pathPattern = "/channels/{type}/{channel}/services/{id}"
 											r.args = args
-											r.count = 2
+											r.count = 3
 											return r, true
 										default:
 											return
 										}
 									}
 									switch elem[0] {
-									case '/': // Prefix: "/"
+									case '/': // Prefix: "/stream"
 
-										if l := len("/"); len(elem) >= l && elem[0:l] == "/" {
+										if l := len("/stream"); len(elem) >= l && elem[0:l] == "/stream" {
 											elem = elem[l:]
 										} else {
 											break
 										}
 
-										// Param: "id"
-										// Match until "/"
-										idx := strings.IndexByte(elem, '/')
-										if idx < 0 {
-											idx = len(elem)
-										}
-										args[2] = elem[:idx]
-										elem = elem[idx:]
-
 										if len(elem) == 0 {
+											// Leaf node.
 											switch method {
 											case "GET":
-												r.name = GetServiceByChannelOperation
+												r.name = GetServiceStreamByChannelOperation
 												r.summary = ""
-												r.operationID = "getServiceByChannel"
-												r.pathPattern = "/channels/{type}/{channel}/services/{id}"
+												r.operationID = "getServiceStreamByChannel"
+												r.pathPattern = "/channels/{type}/{channel}/services/{id}/stream"
 												r.args = args
 												r.count = 3
 												return r, true
@@ -1151,198 +1048,37 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 												return
 											}
 										}
-										switch elem[0] {
-										case '/': // Prefix: "/stream"
 
-											if l := len("/stream"); len(elem) >= l && elem[0:l] == "/stream" {
-												elem = elem[l:]
-											} else {
-												break
-											}
-
-											if len(elem) == 0 {
-												// Leaf node.
-												switch method {
-												case "GET":
-													r.name = GetServiceStreamByChannelOperation
-													r.summary = ""
-													r.operationID = "getServiceStreamByChannel"
-													r.pathPattern = "/channels/{type}/{channel}/services/{id}/stream"
-													r.args = args
-													r.count = 3
-													return r, true
-												default:
-													return
-												}
-											}
-
-										}
-
-									}
-
-								case 't': // Prefix: "tream"
-
-									if l := len("tream"); len(elem) >= l && elem[0:l] == "tream" {
-										elem = elem[l:]
-									} else {
-										break
-									}
-
-									if len(elem) == 0 {
-										// Leaf node.
-										switch method {
-										case "GET":
-											r.name = GetChannelStreamOperation
-											r.summary = ""
-											r.operationID = "getChannelStream"
-											r.pathPattern = "/channels/{type}/{channel}/stream"
-											r.args = args
-											r.count = 2
-											return r, true
-										default:
-											return
-										}
 									}
 
 								}
 
-							}
+							case 't': // Prefix: "tream"
 
-						}
-
-					}
-
-				case 'o': // Prefix: "onfig/"
-
-					if l := len("onfig/"); len(elem) >= l && elem[0:l] == "onfig/" {
-						elem = elem[l:]
-					} else {
-						break
-					}
-
-					if len(elem) == 0 {
-						break
-					}
-					switch elem[0] {
-					case 'c': // Prefix: "channels"
-
-						if l := len("channels"); len(elem) >= l && elem[0:l] == "channels" {
-							elem = elem[l:]
-						} else {
-							break
-						}
-
-						if len(elem) == 0 {
-							switch method {
-							case "GET":
-								r.name = GetChannelsConfigOperation
-								r.summary = ""
-								r.operationID = "getChannelsConfig"
-								r.pathPattern = "/config/channels"
-								r.args = args
-								r.count = 0
-								return r, true
-							case "PUT":
-								r.name = UpdateChannelsConfigOperation
-								r.summary = ""
-								r.operationID = "updateChannelsConfig"
-								r.pathPattern = "/config/channels"
-								r.args = args
-								r.count = 0
-								return r, true
-							default:
-								return
-							}
-						}
-						switch elem[0] {
-						case '/': // Prefix: "/scan"
-
-							if l := len("/scan"); len(elem) >= l && elem[0:l] == "/scan" {
-								elem = elem[l:]
-							} else {
-								break
-							}
-
-							if len(elem) == 0 {
-								// Leaf node.
-								switch method {
-								case "PUT":
-									r.name = ChannelScanOperation
-									r.summary = "Channel Scan"
-									r.operationID = "channelScan"
-									r.pathPattern = "/config/channels/scan"
-									r.args = args
-									r.count = 0
-									return r, true
-								default:
-									return
+								if l := len("tream"); len(elem) >= l && elem[0:l] == "tream" {
+									elem = elem[l:]
+								} else {
+									break
 								}
+
+								if len(elem) == 0 {
+									// Leaf node.
+									switch method {
+									case "GET":
+										r.name = GetChannelStreamOperation
+										r.summary = ""
+										r.operationID = "getChannelStream"
+										r.pathPattern = "/channels/{type}/{channel}/stream"
+										r.args = args
+										r.count = 2
+										return r, true
+									default:
+										return
+									}
+								}
+
 							}
 
-						}
-
-					case 's': // Prefix: "server"
-
-						if l := len("server"); len(elem) >= l && elem[0:l] == "server" {
-							elem = elem[l:]
-						} else {
-							break
-						}
-
-						if len(elem) == 0 {
-							// Leaf node.
-							switch method {
-							case "GET":
-								r.name = GetServerConfigOperation
-								r.summary = ""
-								r.operationID = "getServerConfig"
-								r.pathPattern = "/config/server"
-								r.args = args
-								r.count = 0
-								return r, true
-							case "PUT":
-								r.name = UpdateServerConfigOperation
-								r.summary = ""
-								r.operationID = "updateServerConfig"
-								r.pathPattern = "/config/server"
-								r.args = args
-								r.count = 0
-								return r, true
-							default:
-								return
-							}
-						}
-
-					case 't': // Prefix: "tuners"
-
-						if l := len("tuners"); len(elem) >= l && elem[0:l] == "tuners" {
-							elem = elem[l:]
-						} else {
-							break
-						}
-
-						if len(elem) == 0 {
-							// Leaf node.
-							switch method {
-							case "GET":
-								r.name = GetTunersConfigOperation
-								r.summary = ""
-								r.operationID = "getTunersConfig"
-								r.pathPattern = "/config/tuners"
-								r.args = args
-								r.count = 0
-								return r, true
-							case "PUT":
-								r.name = UpdateTunersConfigOperation
-								r.summary = ""
-								r.operationID = "updateTunersConfig"
-								r.pathPattern = "/config/tuners"
-								r.args = args
-								r.count = 0
-								return r, true
-							default:
-								return
-							}
 						}
 
 					}

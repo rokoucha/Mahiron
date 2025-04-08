@@ -8,32 +8,6 @@ import (
 
 // Handler handles operations described by OpenAPI v3 specification.
 type Handler interface {
-	// ChannelScan implements channelScan operation.
-	//
-	// Entry rewriting specifications:
-	// - The scan is performed on a range of channels of the specified type and the entries for those
-	// channels, if any, are saved in the configuration file.
-	// - If the channel to be scanned is described in the configuration file and is enabled, the scan
-	// will not be performed for that channel and the entries described will remain intact. If you do not
-	// want to keep the entries, use the `refresh` option.
-	// - All entries outside the channel range of the specified type will be deleted.
-	// - All entries of a type other than the specified type will remain.
-	// About BS Subchannel Style:
-	// - Only when scanning BS, you can specify the channel number in the subchannel style (e.g. BS01_0).
-	// To specify the channel number, use minSubCh and maxSubCh in addition to minCh and maxCh.
-	// - The subchannel number parameters (minSubCh, maxSubCh) are used only if the type is BS and are
-	// ignored otherwise.
-	// - Subchannel style scans scan in the following range:
-	// From `BS${minCh}_${minSubCh}` to `BS${maxCh}_${maxSubCh}`
-	// - In the subchannel style, minCh and maxCh are zero padded to two digits. minSubCh and maxSubCh
-	// are not padded.
-	// - BS "non" subchannel style scans and GR scans are basically the same. Note that if you scan the
-	// wrong channel range, the GR channel will be registered as BS and the BS channel will be registered
-	// as GR. This problem does not occur because CS scan uses a character string with `CS` added as a
-	// channel number prefix.
-	//
-	// PUT /config/channels/scan
-	ChannelScan(ctx context.Context, params ChannelScanParams) (ChannelScanRes, error)
 	// CheckVersion implements checkVersion operation.
 	//
 	// GET /version
@@ -54,10 +28,6 @@ type Handler interface {
 	//
 	// GET /channels/{type}
 	GetChannelsByType(ctx context.Context, params GetChannelsByTypeParams) (GetChannelsByTypeRes, error)
-	// GetChannelsConfig implements getChannelsConfig operation.
-	//
-	// GET /config/channels
-	GetChannelsConfig(ctx context.Context) (GetChannelsConfigRes, error)
 	// GetEvents implements getEvents operation.
 	//
 	// GET /events
@@ -90,10 +60,6 @@ type Handler interface {
 	//
 	// GET /programs
 	GetPrograms(ctx context.Context, params GetProgramsParams) (GetProgramsRes, error)
-	// GetServerConfig implements getServerConfig operation.
-	//
-	// GET /config/server
-	GetServerConfig(ctx context.Context) (GetServerConfigRes, error)
 	// GetService implements getService operation.
 	//
 	// GET /services/{id}
@@ -142,10 +108,6 @@ type Handler interface {
 	//
 	// GET /tuners
 	GetTuners(ctx context.Context) (GetTunersRes, error)
-	// GetTunersConfig implements getTunersConfig operation.
-	//
-	// GET /config/tuners
-	GetTunersConfig(ctx context.Context) (GetTunersConfigRes, error)
 	// IptvDiscoverJSONGet implements GET /iptv/discover.json operation.
 	//
 	// IPTV - Media Server Support.
@@ -170,18 +132,6 @@ type Handler interface {
 	//
 	// DELETE /tuners/{index}/process
 	KillTunerProcess(ctx context.Context, params KillTunerProcessParams) (KillTunerProcessRes, error)
-	// UpdateChannelsConfig implements updateChannelsConfig operation.
-	//
-	// PUT /config/channels
-	UpdateChannelsConfig(ctx context.Context, req ConfigChannels) (UpdateChannelsConfigRes, error)
-	// UpdateServerConfig implements updateServerConfig operation.
-	//
-	// PUT /config/server
-	UpdateServerConfig(ctx context.Context, req OptConfigServer) (UpdateServerConfigRes, error)
-	// UpdateTunersConfig implements updateTunersConfig operation.
-	//
-	// PUT /config/tuners
-	UpdateTunersConfig(ctx context.Context, req ConfigTuners) (UpdateTunersConfigRes, error)
 }
 
 // Server implements http server based on OpenAPI v3 specification and

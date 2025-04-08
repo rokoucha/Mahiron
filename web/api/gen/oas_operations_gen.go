@@ -6,13 +6,11 @@ package apigen
 type OperationName = string
 
 const (
-	ChannelScanOperation               OperationName = "ChannelScan"
 	CheckVersionOperation              OperationName = "CheckVersion"
 	GetChannelOperation                OperationName = "GetChannel"
 	GetChannelStreamOperation          OperationName = "GetChannelStream"
 	GetChannelsOperation               OperationName = "GetChannels"
 	GetChannelsByTypeOperation         OperationName = "GetChannelsByType"
-	GetChannelsConfigOperation         OperationName = "GetChannelsConfig"
 	GetEventsOperation                 OperationName = "GetEvents"
 	GetEventsStreamOperation           OperationName = "GetEventsStream"
 	GetLogOperation                    OperationName = "GetLog"
@@ -21,7 +19,6 @@ const (
 	GetProgramOperation                OperationName = "GetProgram"
 	GetProgramStreamOperation          OperationName = "GetProgramStream"
 	GetProgramsOperation               OperationName = "GetPrograms"
-	GetServerConfigOperation           OperationName = "GetServerConfig"
 	GetServiceOperation                OperationName = "GetService"
 	GetServiceByChannelOperation       OperationName = "GetServiceByChannel"
 	GetServiceProgramsOperation        OperationName = "GetServicePrograms"
@@ -33,12 +30,8 @@ const (
 	GetTunerOperation                  OperationName = "GetTuner"
 	GetTunerProcessOperation           OperationName = "GetTunerProcess"
 	GetTunersOperation                 OperationName = "GetTuners"
-	GetTunersConfigOperation           OperationName = "GetTunersConfig"
 	IptvDiscoverJSONGetOperation       OperationName = "IptvDiscoverJSONGet"
 	IptvLineupJSONGetOperation         OperationName = "IptvLineupJSONGet"
 	IptvLineupStatusJSONGetOperation   OperationName = "IptvLineupStatusJSONGet"
 	KillTunerProcessOperation          OperationName = "KillTunerProcess"
-	UpdateChannelsConfigOperation      OperationName = "UpdateChannelsConfig"
-	UpdateServerConfigOperation        OperationName = "UpdateServerConfig"
-	UpdateTunersConfigOperation        OperationName = "UpdateTunersConfig"
 )

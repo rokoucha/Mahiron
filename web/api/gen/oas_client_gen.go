@@ -28,32 +28,6 @@ func trimTrailingSlashes(u *url.URL) {
 
 // Invoker invokes operations described by OpenAPI v3 specification.
 type Invoker interface {
-	// ChannelScan invokes channelScan operation.
-	//
-	// Entry rewriting specifications:
-	// - The scan is performed on a range of channels of the specified type and the entries for those
-	// channels, if any, are saved in the configuration file.
-	// - If the channel to be scanned is described in the configuration file and is enabled, the scan
-	// will not be performed for that channel and the entries described will remain intact. If you do not
-	// want to keep the entries, use the `refresh` option.
-	// - All entries outside the channel range of the specified type will be deleted.
-	// - All entries of a type other than the specified type will remain.
-	// About BS Subchannel Style:
-	// - Only when scanning BS, you can specify the channel number in the subchannel style (e.g. BS01_0).
-	// To specify the channel number, use minSubCh and maxSubCh in addition to minCh and maxCh.
-	// - The subchannel number parameters (minSubCh, maxSubCh) are used only if the type is BS and are
-	// ignored otherwise.
-	// - Subchannel style scans scan in the following range:
-	// From `BS${minCh}_${minSubCh}` to `BS${maxCh}_${maxSubCh}`
-	// - In the subchannel style, minCh and maxCh are zero padded to two digits. minSubCh and maxSubCh
-	// are not padded.
-	// - BS "non" subchannel style scans and GR scans are basically the same. Note that if you scan the
-	// wrong channel range, the GR channel will be registered as BS and the BS channel will be registered
-	// as GR. This problem does not occur because CS scan uses a character string with `CS` added as a
-	// channel number prefix.
-	//
-	// PUT /config/channels/scan
-	ChannelScan(ctx context.Context, params ChannelScanParams) (ChannelScanRes, error)
 	// CheckVersion invokes checkVersion operation.
 	//
 	// GET /version
@@ -74,10 +48,6 @@ type Invoker interface {
 	//
 	// GET /channels/{type}
 	GetChannelsByType(ctx context.Context, params GetChannelsByTypeParams) (GetChannelsByTypeRes, error)
-	// GetChannelsConfig invokes getChannelsConfig operation.
-	//
-	// GET /config/channels
-	GetChannelsConfig(ctx context.Context) (GetChannelsConfigRes, error)
 	// GetEvents invokes getEvents operation.
 	//
 	// GET /events
@@ -110,10 +80,6 @@ type Invoker interface {
 	//
 	// GET /programs
 	GetPrograms(ctx context.Context, params GetProgramsParams) (GetProgramsRes, error)
-	// GetServerConfig invokes getServerConfig operation.
-	//
-	// GET /config/server
-	GetServerConfig(ctx context.Context) (GetServerConfigRes, error)
 	// GetService invokes getService operation.
 	//
 	// GET /services/{id}
@@ -162,10 +128,6 @@ type Invoker interface {
 	//
 	// GET /tuners
 	GetTuners(ctx context.Context) (GetTunersRes, error)
-	// GetTunersConfig invokes getTunersConfig operation.
-	//
-	// GET /config/tuners
-	GetTunersConfig(ctx context.Context) (GetTunersConfigRes, error)
 	// IptvDiscoverJSONGet invokes GET /iptv/discover.json operation.
 	//
 	// IPTV - Media Server Support.
@@ -190,18 +152,6 @@ type Invoker interface {
 	//
 	// DELETE /tuners/{index}/process
 	KillTunerProcess(ctx context.Context, params KillTunerProcessParams) (KillTunerProcessRes, error)
-	// UpdateChannelsConfig invokes updateChannelsConfig operation.
-	//
-	// PUT /config/channels
-	UpdateChannelsConfig(ctx context.Context, request ConfigChannels) (UpdateChannelsConfigRes, error)
-	// UpdateServerConfig invokes updateServerConfig operation.
-	//
-	// PUT /config/server
-	UpdateServerConfig(ctx context.Context, request OptConfigServer) (UpdateServerConfigRes, error)
-	// UpdateTunersConfig invokes updateTunersConfig operation.
-	//
-	// PUT /config/tuners
-	UpdateTunersConfig(ctx context.Context, request ConfigTuners) (UpdateTunersConfigRes, error)
 }
 
 // Client implements OAS client.
@@ -245,272 +195,6 @@ func (c *Client) requestURL(ctx context.Context) *url.URL {
 		return c.serverURL
 	}
 	return u
-}
-
-// ChannelScan invokes channelScan operation.
-//
-// Entry rewriting specifications:
-// - The scan is performed on a range of channels of the specified type and the entries for those
-// channels, if any, are saved in the configuration file.
-// - If the channel to be scanned is described in the configuration file and is enabled, the scan
-// will not be performed for that channel and the entries described will remain intact. If you do not
-// want to keep the entries, use the `refresh` option.
-// - All entries outside the channel range of the specified type will be deleted.
-// - All entries of a type other than the specified type will remain.
-// About BS Subchannel Style:
-// - Only when scanning BS, you can specify the channel number in the subchannel style (e.g. BS01_0).
-// To specify the channel number, use minSubCh and maxSubCh in addition to minCh and maxCh.
-// - The subchannel number parameters (minSubCh, maxSubCh) are used only if the type is BS and are
-// ignored otherwise.
-// - Subchannel style scans scan in the following range:
-// From `BS${minCh}_${minSubCh}` to `BS${maxCh}_${maxSubCh}`
-// - In the subchannel style, minCh and maxCh are zero padded to two digits. minSubCh and maxSubCh
-// are not padded.
-// - BS "non" subchannel style scans and GR scans are basically the same. Note that if you scan the
-// wrong channel range, the GR channel will be registered as BS and the BS channel will be registered
-// as GR. This problem does not occur because CS scan uses a character string with `CS` added as a
-// channel number prefix.
-//
-// PUT /config/channels/scan
-func (c *Client) ChannelScan(ctx context.Context, params ChannelScanParams) (ChannelScanRes, error) {
-	res, err := c.sendChannelScan(ctx, params)
-	return res, err
-}
-
-func (c *Client) sendChannelScan(ctx context.Context, params ChannelScanParams) (res ChannelScanRes, err error) {
-	otelAttrs := []attribute.KeyValue{
-		otelogen.OperationID("channelScan"),
-		semconv.HTTPRequestMethodKey.String("PUT"),
-		semconv.HTTPRouteKey.String("/config/channels/scan"),
-	}
-
-	// Run stopwatch.
-	startTime := time.Now()
-	defer func() {
-		// Use floating point division here for higher precision (instead of Millisecond method).
-		elapsedDuration := time.Since(startTime)
-		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
-	}()
-
-	// Increment request counter.
-	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
-
-	// Start a span for this request.
-	ctx, span := c.cfg.Tracer.Start(ctx, ChannelScanOperation,
-		trace.WithAttributes(otelAttrs...),
-		clientSpanKind,
-	)
-	// Track stage for error reporting.
-	var stage string
-	defer func() {
-		if err != nil {
-			span.RecordError(err)
-			span.SetStatus(codes.Error, stage)
-			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
-		}
-		span.End()
-	}()
-
-	stage = "BuildURL"
-	u := uri.Clone(c.requestURL(ctx))
-	var pathParts [1]string
-	pathParts[0] = "/config/channels/scan"
-	uri.AddPathParts(u, pathParts[:]...)
-
-	stage = "EncodeQueryParams"
-	q := uri.NewQueryEncoder()
-	{
-		// Encode "dryRun" parameter.
-		cfg := uri.QueryParameterEncodingConfig{
-			Name:    "dryRun",
-			Style:   uri.QueryStyleForm,
-			Explode: true,
-		}
-
-		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
-			if val, ok := params.DryRun.Get(); ok {
-				return e.EncodeValue(conv.BoolToString(val))
-			}
-			return nil
-		}); err != nil {
-			return res, errors.Wrap(err, "encode query")
-		}
-	}
-	{
-		// Encode "type" parameter.
-		cfg := uri.QueryParameterEncodingConfig{
-			Name:    "type",
-			Style:   uri.QueryStyleForm,
-			Explode: true,
-		}
-
-		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
-			if val, ok := params.Type.Get(); ok {
-				return e.EncodeValue(conv.StringToString(string(val)))
-			}
-			return nil
-		}); err != nil {
-			return res, errors.Wrap(err, "encode query")
-		}
-	}
-	{
-		// Encode "minCh" parameter.
-		cfg := uri.QueryParameterEncodingConfig{
-			Name:    "minCh",
-			Style:   uri.QueryStyleForm,
-			Explode: true,
-		}
-
-		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
-			if val, ok := params.MinCh.Get(); ok {
-				return e.EncodeValue(conv.IntToString(val))
-			}
-			return nil
-		}); err != nil {
-			return res, errors.Wrap(err, "encode query")
-		}
-	}
-	{
-		// Encode "maxCh" parameter.
-		cfg := uri.QueryParameterEncodingConfig{
-			Name:    "maxCh",
-			Style:   uri.QueryStyleForm,
-			Explode: true,
-		}
-
-		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
-			if val, ok := params.MaxCh.Get(); ok {
-				return e.EncodeValue(conv.IntToString(val))
-			}
-			return nil
-		}); err != nil {
-			return res, errors.Wrap(err, "encode query")
-		}
-	}
-	{
-		// Encode "minSubCh" parameter.
-		cfg := uri.QueryParameterEncodingConfig{
-			Name:    "minSubCh",
-			Style:   uri.QueryStyleForm,
-			Explode: true,
-		}
-
-		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
-			if val, ok := params.MinSubCh.Get(); ok {
-				return e.EncodeValue(conv.IntToString(val))
-			}
-			return nil
-		}); err != nil {
-			return res, errors.Wrap(err, "encode query")
-		}
-	}
-	{
-		// Encode "maxSubCh" parameter.
-		cfg := uri.QueryParameterEncodingConfig{
-			Name:    "maxSubCh",
-			Style:   uri.QueryStyleForm,
-			Explode: true,
-		}
-
-		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
-			if val, ok := params.MaxSubCh.Get(); ok {
-				return e.EncodeValue(conv.IntToString(val))
-			}
-			return nil
-		}); err != nil {
-			return res, errors.Wrap(err, "encode query")
-		}
-	}
-	{
-		// Encode "useSubCh" parameter.
-		cfg := uri.QueryParameterEncodingConfig{
-			Name:    "useSubCh",
-			Style:   uri.QueryStyleForm,
-			Explode: true,
-		}
-
-		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
-			if val, ok := params.UseSubCh.Get(); ok {
-				return e.EncodeValue(conv.BoolToString(val))
-			}
-			return nil
-		}); err != nil {
-			return res, errors.Wrap(err, "encode query")
-		}
-	}
-	{
-		// Encode "scanMode" parameter.
-		cfg := uri.QueryParameterEncodingConfig{
-			Name:    "scanMode",
-			Style:   uri.QueryStyleForm,
-			Explode: true,
-		}
-
-		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
-			if val, ok := params.ScanMode.Get(); ok {
-				return e.EncodeValue(conv.StringToString(string(val)))
-			}
-			return nil
-		}); err != nil {
-			return res, errors.Wrap(err, "encode query")
-		}
-	}
-	{
-		// Encode "setDisabledOnAdd" parameter.
-		cfg := uri.QueryParameterEncodingConfig{
-			Name:    "setDisabledOnAdd",
-			Style:   uri.QueryStyleForm,
-			Explode: true,
-		}
-
-		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
-			if val, ok := params.SetDisabledOnAdd.Get(); ok {
-				return e.EncodeValue(conv.BoolToString(val))
-			}
-			return nil
-		}); err != nil {
-			return res, errors.Wrap(err, "encode query")
-		}
-	}
-	{
-		// Encode "refresh" parameter.
-		cfg := uri.QueryParameterEncodingConfig{
-			Name:    "refresh",
-			Style:   uri.QueryStyleForm,
-			Explode: true,
-		}
-
-		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
-			if val, ok := params.Refresh.Get(); ok {
-				return e.EncodeValue(conv.BoolToString(val))
-			}
-			return nil
-		}); err != nil {
-			return res, errors.Wrap(err, "encode query")
-		}
-	}
-	u.RawQuery = q.Values().Encode()
-
-	stage = "EncodeRequest"
-	r, err := ht.NewRequest(ctx, "PUT", u)
-	if err != nil {
-		return res, errors.Wrap(err, "create request")
-	}
-
-	stage = "SendRequest"
-	resp, err := c.cfg.Client.Do(r)
-	if err != nil {
-		return res, errors.Wrap(err, "do request")
-	}
-	defer resp.Body.Close()
-
-	stage = "DecodeResponse"
-	result, err := decodeChannelScanResponse(resp)
-	if err != nil {
-		return res, errors.Wrap(err, "decode response")
-	}
-
-	return result, nil
 }
 
 // CheckVersion invokes checkVersion operation.
@@ -637,7 +321,7 @@ func (c *Client) sendGetChannel(ctx context.Context, params GetChannelParams) (r
 			Explode: false,
 		})
 		if err := func() error {
-			return e.EncodeValue(conv.StringToString(string(params.Type)))
+			return e.EncodeValue(conv.StringToString(params.Type))
 		}(); err != nil {
 			return res, errors.Wrap(err, "encode path")
 		}
@@ -744,7 +428,7 @@ func (c *Client) sendGetChannelStream(ctx context.Context, params GetChannelStre
 			Explode: false,
 		})
 		if err := func() error {
-			return e.EncodeValue(conv.StringToString(string(params.Type)))
+			return e.EncodeValue(conv.StringToString(params.Type))
 		}(); err != nil {
 			return res, errors.Wrap(err, "encode path")
 		}
@@ -896,7 +580,7 @@ func (c *Client) sendGetChannels(ctx context.Context, params GetChannelsParams) 
 
 		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
 			if val, ok := params.Type.Get(); ok {
-				return e.EncodeValue(conv.StringToString(string(val)))
+				return e.EncodeValue(conv.StringToString(val))
 			}
 			return nil
 		}); err != nil {
@@ -1015,7 +699,7 @@ func (c *Client) sendGetChannelsByType(ctx context.Context, params GetChannelsBy
 			Explode: false,
 		})
 		if err := func() error {
-			return e.EncodeValue(conv.StringToString(string(params.Type)))
+			return e.EncodeValue(conv.StringToString(params.Type))
 		}(); err != nil {
 			return res, errors.Wrap(err, "encode path")
 		}
@@ -1080,76 +764,6 @@ func (c *Client) sendGetChannelsByType(ctx context.Context, params GetChannelsBy
 
 	stage = "DecodeResponse"
 	result, err := decodeGetChannelsByTypeResponse(resp)
-	if err != nil {
-		return res, errors.Wrap(err, "decode response")
-	}
-
-	return result, nil
-}
-
-// GetChannelsConfig invokes getChannelsConfig operation.
-//
-// GET /config/channels
-func (c *Client) GetChannelsConfig(ctx context.Context) (GetChannelsConfigRes, error) {
-	res, err := c.sendGetChannelsConfig(ctx)
-	return res, err
-}
-
-func (c *Client) sendGetChannelsConfig(ctx context.Context) (res GetChannelsConfigRes, err error) {
-	otelAttrs := []attribute.KeyValue{
-		otelogen.OperationID("getChannelsConfig"),
-		semconv.HTTPRequestMethodKey.String("GET"),
-		semconv.HTTPRouteKey.String("/config/channels"),
-	}
-
-	// Run stopwatch.
-	startTime := time.Now()
-	defer func() {
-		// Use floating point division here for higher precision (instead of Millisecond method).
-		elapsedDuration := time.Since(startTime)
-		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
-	}()
-
-	// Increment request counter.
-	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
-
-	// Start a span for this request.
-	ctx, span := c.cfg.Tracer.Start(ctx, GetChannelsConfigOperation,
-		trace.WithAttributes(otelAttrs...),
-		clientSpanKind,
-	)
-	// Track stage for error reporting.
-	var stage string
-	defer func() {
-		if err != nil {
-			span.RecordError(err)
-			span.SetStatus(codes.Error, stage)
-			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
-		}
-		span.End()
-	}()
-
-	stage = "BuildURL"
-	u := uri.Clone(c.requestURL(ctx))
-	var pathParts [1]string
-	pathParts[0] = "/config/channels"
-	uri.AddPathParts(u, pathParts[:]...)
-
-	stage = "EncodeRequest"
-	r, err := ht.NewRequest(ctx, "GET", u)
-	if err != nil {
-		return res, errors.Wrap(err, "create request")
-	}
-
-	stage = "SendRequest"
-	resp, err := c.cfg.Client.Do(r)
-	if err != nil {
-		return res, errors.Wrap(err, "do request")
-	}
-	defer resp.Body.Close()
-
-	stage = "DecodeResponse"
-	result, err := decodeGetChannelsConfigResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -1904,76 +1518,6 @@ func (c *Client) sendGetPrograms(ctx context.Context, params GetProgramsParams) 
 	return result, nil
 }
 
-// GetServerConfig invokes getServerConfig operation.
-//
-// GET /config/server
-func (c *Client) GetServerConfig(ctx context.Context) (GetServerConfigRes, error) {
-	res, err := c.sendGetServerConfig(ctx)
-	return res, err
-}
-
-func (c *Client) sendGetServerConfig(ctx context.Context) (res GetServerConfigRes, err error) {
-	otelAttrs := []attribute.KeyValue{
-		otelogen.OperationID("getServerConfig"),
-		semconv.HTTPRequestMethodKey.String("GET"),
-		semconv.HTTPRouteKey.String("/config/server"),
-	}
-
-	// Run stopwatch.
-	startTime := time.Now()
-	defer func() {
-		// Use floating point division here for higher precision (instead of Millisecond method).
-		elapsedDuration := time.Since(startTime)
-		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
-	}()
-
-	// Increment request counter.
-	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
-
-	// Start a span for this request.
-	ctx, span := c.cfg.Tracer.Start(ctx, GetServerConfigOperation,
-		trace.WithAttributes(otelAttrs...),
-		clientSpanKind,
-	)
-	// Track stage for error reporting.
-	var stage string
-	defer func() {
-		if err != nil {
-			span.RecordError(err)
-			span.SetStatus(codes.Error, stage)
-			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
-		}
-		span.End()
-	}()
-
-	stage = "BuildURL"
-	u := uri.Clone(c.requestURL(ctx))
-	var pathParts [1]string
-	pathParts[0] = "/config/server"
-	uri.AddPathParts(u, pathParts[:]...)
-
-	stage = "EncodeRequest"
-	r, err := ht.NewRequest(ctx, "GET", u)
-	if err != nil {
-		return res, errors.Wrap(err, "create request")
-	}
-
-	stage = "SendRequest"
-	resp, err := c.cfg.Client.Do(r)
-	if err != nil {
-		return res, errors.Wrap(err, "do request")
-	}
-	defer resp.Body.Close()
-
-	stage = "DecodeResponse"
-	result, err := decodeGetServerConfigResponse(resp)
-	if err != nil {
-		return res, errors.Wrap(err, "decode response")
-	}
-
-	return result, nil
-}
-
 // GetService invokes getService operation.
 //
 // GET /services/{id}
@@ -2116,7 +1660,7 @@ func (c *Client) sendGetServiceByChannel(ctx context.Context, params GetServiceB
 			Explode: false,
 		})
 		if err := func() error {
-			return e.EncodeValue(conv.StringToString(string(params.Type)))
+			return e.EncodeValue(conv.StringToString(params.Type))
 		}(); err != nil {
 			return res, errors.Wrap(err, "encode path")
 		}
@@ -2458,7 +2002,7 @@ func (c *Client) sendGetServiceStreamByChannel(ctx context.Context, params GetSe
 			Explode: false,
 		})
 		if err := func() error {
-			return e.EncodeValue(conv.StringToString(string(params.Type)))
+			return e.EncodeValue(conv.StringToString(params.Type))
 		}(); err != nil {
 			return res, errors.Wrap(err, "encode path")
 		}
@@ -2697,7 +2241,7 @@ func (c *Client) sendGetServices(ctx context.Context, params GetServicesParams) 
 
 		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
 			if val, ok := params.ChannelType.Get(); ok {
-				return e.EncodeValue(conv.StringToString(string(val)))
+				return e.EncodeValue(conv.StringToString(val))
 			}
 			return nil
 		}); err != nil {
@@ -2799,7 +2343,7 @@ func (c *Client) sendGetServicesByChannel(ctx context.Context, params GetService
 			Explode: false,
 		})
 		if err := func() error {
-			return e.EncodeValue(conv.StringToString(string(params.Type)))
+			return e.EncodeValue(conv.StringToString(params.Type))
 		}(); err != nil {
 			return res, errors.Wrap(err, "encode path")
 		}
@@ -3174,76 +2718,6 @@ func (c *Client) sendGetTuners(ctx context.Context) (res GetTunersRes, err error
 	return result, nil
 }
 
-// GetTunersConfig invokes getTunersConfig operation.
-//
-// GET /config/tuners
-func (c *Client) GetTunersConfig(ctx context.Context) (GetTunersConfigRes, error) {
-	res, err := c.sendGetTunersConfig(ctx)
-	return res, err
-}
-
-func (c *Client) sendGetTunersConfig(ctx context.Context) (res GetTunersConfigRes, err error) {
-	otelAttrs := []attribute.KeyValue{
-		otelogen.OperationID("getTunersConfig"),
-		semconv.HTTPRequestMethodKey.String("GET"),
-		semconv.HTTPRouteKey.String("/config/tuners"),
-	}
-
-	// Run stopwatch.
-	startTime := time.Now()
-	defer func() {
-		// Use floating point division here for higher precision (instead of Millisecond method).
-		elapsedDuration := time.Since(startTime)
-		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
-	}()
-
-	// Increment request counter.
-	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
-
-	// Start a span for this request.
-	ctx, span := c.cfg.Tracer.Start(ctx, GetTunersConfigOperation,
-		trace.WithAttributes(otelAttrs...),
-		clientSpanKind,
-	)
-	// Track stage for error reporting.
-	var stage string
-	defer func() {
-		if err != nil {
-			span.RecordError(err)
-			span.SetStatus(codes.Error, stage)
-			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
-		}
-		span.End()
-	}()
-
-	stage = "BuildURL"
-	u := uri.Clone(c.requestURL(ctx))
-	var pathParts [1]string
-	pathParts[0] = "/config/tuners"
-	uri.AddPathParts(u, pathParts[:]...)
-
-	stage = "EncodeRequest"
-	r, err := ht.NewRequest(ctx, "GET", u)
-	if err != nil {
-		return res, errors.Wrap(err, "create request")
-	}
-
-	stage = "SendRequest"
-	resp, err := c.cfg.Client.Do(r)
-	if err != nil {
-		return res, errors.Wrap(err, "do request")
-	}
-	defer resp.Body.Close()
-
-	stage = "DecodeResponse"
-	result, err := decodeGetTunersConfigResponse(resp)
-	if err != nil {
-		return res, errors.Wrap(err, "decode response")
-	}
-
-	return result, nil
-}
-
 // IptvDiscoverJSONGet invokes GET /iptv/discover.json operation.
 //
 // IPTV - Media Server Support.
@@ -3541,225 +3015,6 @@ func (c *Client) sendKillTunerProcess(ctx context.Context, params KillTunerProce
 
 	stage = "DecodeResponse"
 	result, err := decodeKillTunerProcessResponse(resp)
-	if err != nil {
-		return res, errors.Wrap(err, "decode response")
-	}
-
-	return result, nil
-}
-
-// UpdateChannelsConfig invokes updateChannelsConfig operation.
-//
-// PUT /config/channels
-func (c *Client) UpdateChannelsConfig(ctx context.Context, request ConfigChannels) (UpdateChannelsConfigRes, error) {
-	res, err := c.sendUpdateChannelsConfig(ctx, request)
-	return res, err
-}
-
-func (c *Client) sendUpdateChannelsConfig(ctx context.Context, request ConfigChannels) (res UpdateChannelsConfigRes, err error) {
-	otelAttrs := []attribute.KeyValue{
-		otelogen.OperationID("updateChannelsConfig"),
-		semconv.HTTPRequestMethodKey.String("PUT"),
-		semconv.HTTPRouteKey.String("/config/channels"),
-	}
-
-	// Run stopwatch.
-	startTime := time.Now()
-	defer func() {
-		// Use floating point division here for higher precision (instead of Millisecond method).
-		elapsedDuration := time.Since(startTime)
-		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
-	}()
-
-	// Increment request counter.
-	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
-
-	// Start a span for this request.
-	ctx, span := c.cfg.Tracer.Start(ctx, UpdateChannelsConfigOperation,
-		trace.WithAttributes(otelAttrs...),
-		clientSpanKind,
-	)
-	// Track stage for error reporting.
-	var stage string
-	defer func() {
-		if err != nil {
-			span.RecordError(err)
-			span.SetStatus(codes.Error, stage)
-			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
-		}
-		span.End()
-	}()
-
-	stage = "BuildURL"
-	u := uri.Clone(c.requestURL(ctx))
-	var pathParts [1]string
-	pathParts[0] = "/config/channels"
-	uri.AddPathParts(u, pathParts[:]...)
-
-	stage = "EncodeRequest"
-	r, err := ht.NewRequest(ctx, "PUT", u)
-	if err != nil {
-		return res, errors.Wrap(err, "create request")
-	}
-	if err := encodeUpdateChannelsConfigRequest(request, r); err != nil {
-		return res, errors.Wrap(err, "encode request")
-	}
-
-	stage = "SendRequest"
-	resp, err := c.cfg.Client.Do(r)
-	if err != nil {
-		return res, errors.Wrap(err, "do request")
-	}
-	defer resp.Body.Close()
-
-	stage = "DecodeResponse"
-	result, err := decodeUpdateChannelsConfigResponse(resp)
-	if err != nil {
-		return res, errors.Wrap(err, "decode response")
-	}
-
-	return result, nil
-}
-
-// UpdateServerConfig invokes updateServerConfig operation.
-//
-// PUT /config/server
-func (c *Client) UpdateServerConfig(ctx context.Context, request OptConfigServer) (UpdateServerConfigRes, error) {
-	res, err := c.sendUpdateServerConfig(ctx, request)
-	return res, err
-}
-
-func (c *Client) sendUpdateServerConfig(ctx context.Context, request OptConfigServer) (res UpdateServerConfigRes, err error) {
-	otelAttrs := []attribute.KeyValue{
-		otelogen.OperationID("updateServerConfig"),
-		semconv.HTTPRequestMethodKey.String("PUT"),
-		semconv.HTTPRouteKey.String("/config/server"),
-	}
-
-	// Run stopwatch.
-	startTime := time.Now()
-	defer func() {
-		// Use floating point division here for higher precision (instead of Millisecond method).
-		elapsedDuration := time.Since(startTime)
-		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
-	}()
-
-	// Increment request counter.
-	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
-
-	// Start a span for this request.
-	ctx, span := c.cfg.Tracer.Start(ctx, UpdateServerConfigOperation,
-		trace.WithAttributes(otelAttrs...),
-		clientSpanKind,
-	)
-	// Track stage for error reporting.
-	var stage string
-	defer func() {
-		if err != nil {
-			span.RecordError(err)
-			span.SetStatus(codes.Error, stage)
-			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
-		}
-		span.End()
-	}()
-
-	stage = "BuildURL"
-	u := uri.Clone(c.requestURL(ctx))
-	var pathParts [1]string
-	pathParts[0] = "/config/server"
-	uri.AddPathParts(u, pathParts[:]...)
-
-	stage = "EncodeRequest"
-	r, err := ht.NewRequest(ctx, "PUT", u)
-	if err != nil {
-		return res, errors.Wrap(err, "create request")
-	}
-	if err := encodeUpdateServerConfigRequest(request, r); err != nil {
-		return res, errors.Wrap(err, "encode request")
-	}
-
-	stage = "SendRequest"
-	resp, err := c.cfg.Client.Do(r)
-	if err != nil {
-		return res, errors.Wrap(err, "do request")
-	}
-	defer resp.Body.Close()
-
-	stage = "DecodeResponse"
-	result, err := decodeUpdateServerConfigResponse(resp)
-	if err != nil {
-		return res, errors.Wrap(err, "decode response")
-	}
-
-	return result, nil
-}
-
-// UpdateTunersConfig invokes updateTunersConfig operation.
-//
-// PUT /config/tuners
-func (c *Client) UpdateTunersConfig(ctx context.Context, request ConfigTuners) (UpdateTunersConfigRes, error) {
-	res, err := c.sendUpdateTunersConfig(ctx, request)
-	return res, err
-}
-
-func (c *Client) sendUpdateTunersConfig(ctx context.Context, request ConfigTuners) (res UpdateTunersConfigRes, err error) {
-	otelAttrs := []attribute.KeyValue{
-		otelogen.OperationID("updateTunersConfig"),
-		semconv.HTTPRequestMethodKey.String("PUT"),
-		semconv.HTTPRouteKey.String("/config/tuners"),
-	}
-
-	// Run stopwatch.
-	startTime := time.Now()
-	defer func() {
-		// Use floating point division here for higher precision (instead of Millisecond method).
-		elapsedDuration := time.Since(startTime)
-		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
-	}()
-
-	// Increment request counter.
-	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
-
-	// Start a span for this request.
-	ctx, span := c.cfg.Tracer.Start(ctx, UpdateTunersConfigOperation,
-		trace.WithAttributes(otelAttrs...),
-		clientSpanKind,
-	)
-	// Track stage for error reporting.
-	var stage string
-	defer func() {
-		if err != nil {
-			span.RecordError(err)
-			span.SetStatus(codes.Error, stage)
-			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
-		}
-		span.End()
-	}()
-
-	stage = "BuildURL"
-	u := uri.Clone(c.requestURL(ctx))
-	var pathParts [1]string
-	pathParts[0] = "/config/tuners"
-	uri.AddPathParts(u, pathParts[:]...)
-
-	stage = "EncodeRequest"
-	r, err := ht.NewRequest(ctx, "PUT", u)
-	if err != nil {
-		return res, errors.Wrap(err, "create request")
-	}
-	if err := encodeUpdateTunersConfigRequest(request, r); err != nil {
-		return res, errors.Wrap(err, "encode request")
-	}
-
-	stage = "SendRequest"
-	resp, err := c.cfg.Client.Do(r)
-	if err != nil {
-		return res, errors.Wrap(err, "do request")
-	}
-	defer resp.Body.Close()
-
-	stage = "DecodeResponse"
-	result, err := decodeUpdateTunersConfigResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}

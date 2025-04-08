@@ -48,9 +48,7 @@ paths:
         "200":
           description: OK
           content:
-            application/json:
-              schema:
-                type: string
+            application/json: {}
         default:
           description: Unexpected Error
           content:

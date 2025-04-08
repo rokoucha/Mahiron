@@ -8,7 +8,7 @@ import (
 
 // Ref: #/components/schemas/Channel
 type Channel struct {
-	Type      ChannelType        `json:"type"`
+	Type      string             `json:"type"`
 	Channel   string             `json:"channel"`
 	Name      OptString          `json:"name"`
 	Satellite OptString          `json:"satellite"`
@@ -20,7 +20,7 @@ type Channel struct {
 }
 
 // GetType returns the value of Type.
-func (s *Channel) GetType() ChannelType {
+func (s *Channel) GetType() string {
 	return s.Type
 }
 
@@ -65,7 +65,7 @@ func (s *Channel) GetServices() []Service {
 }
 
 // SetType sets the value of Type.
-func (s *Channel) SetType(val ChannelType) {
+func (s *Channel) SetType(val string) {
 	s.Type = val
 }
 
@@ -152,228 +152,10 @@ func (s *ChannelPolarity) UnmarshalText(data []byte) error {
 	}
 }
 
-// ChannelScanOK is response for ChannelScan operation.
-type ChannelScanOK struct{}
-
-func (*ChannelScanOK) channelScanRes() {}
-
-type ChannelScanScanMode string
-
-const (
-	ChannelScanScanModeChannel ChannelScanScanMode = "Channel"
-	ChannelScanScanModeService ChannelScanScanMode = "Service"
-)
-
-// AllValues returns all ChannelScanScanMode values.
-func (ChannelScanScanMode) AllValues() []ChannelScanScanMode {
-	return []ChannelScanScanMode{
-		ChannelScanScanModeChannel,
-		ChannelScanScanModeService,
-	}
-}
-
-// MarshalText implements encoding.TextMarshaler.
-func (s ChannelScanScanMode) MarshalText() ([]byte, error) {
-	switch s {
-	case ChannelScanScanModeChannel:
-		return []byte(s), nil
-	case ChannelScanScanModeService:
-		return []byte(s), nil
-	default:
-		return nil, errors.Errorf("invalid value: %q", s)
-	}
-}
-
-// UnmarshalText implements encoding.TextUnmarshaler.
-func (s *ChannelScanScanMode) UnmarshalText(data []byte) error {
-	switch ChannelScanScanMode(data) {
-	case ChannelScanScanModeChannel:
-		*s = ChannelScanScanModeChannel
-		return nil
-	case ChannelScanScanModeService:
-		*s = ChannelScanScanModeService
-		return nil
-	default:
-		return errors.Errorf("invalid value: %q", data)
-	}
-}
-
-type ChannelScanType string
-
-const (
-	ChannelScanTypeGR ChannelScanType = "GR"
-	ChannelScanTypeBS ChannelScanType = "BS"
-	ChannelScanTypeCS ChannelScanType = "CS"
-)
-
-// AllValues returns all ChannelScanType values.
-func (ChannelScanType) AllValues() []ChannelScanType {
-	return []ChannelScanType{
-		ChannelScanTypeGR,
-		ChannelScanTypeBS,
-		ChannelScanTypeCS,
-	}
-}
-
-// MarshalText implements encoding.TextMarshaler.
-func (s ChannelScanType) MarshalText() ([]byte, error) {
-	switch s {
-	case ChannelScanTypeGR:
-		return []byte(s), nil
-	case ChannelScanTypeBS:
-		return []byte(s), nil
-	case ChannelScanTypeCS:
-		return []byte(s), nil
-	default:
-		return nil, errors.Errorf("invalid value: %q", s)
-	}
-}
-
-// UnmarshalText implements encoding.TextUnmarshaler.
-func (s *ChannelScanType) UnmarshalText(data []byte) error {
-	switch ChannelScanType(data) {
-	case ChannelScanTypeGR:
-		*s = ChannelScanTypeGR
-		return nil
-	case ChannelScanTypeBS:
-		*s = ChannelScanTypeBS
-		return nil
-	case ChannelScanTypeCS:
-		*s = ChannelScanTypeCS
-		return nil
-	default:
-		return errors.Errorf("invalid value: %q", data)
-	}
-}
-
-// Ref: #/components/schemas/ChannelType
-type ChannelType string
-
-const (
-	ChannelTypeGR   ChannelType = "GR"
-	ChannelTypeBS   ChannelType = "BS"
-	ChannelTypeCS   ChannelType = "CS"
-	ChannelTypeSKY  ChannelType = "SKY"
-	ChannelTypeEXT1 ChannelType = "EXT1"
-	ChannelTypeEXT2 ChannelType = "EXT2"
-	ChannelTypeEXT3 ChannelType = "EXT3"
-	ChannelTypeEXT4 ChannelType = "EXT4"
-	ChannelTypeEXT5 ChannelType = "EXT5"
-	ChannelTypeEXT6 ChannelType = "EXT6"
-	ChannelTypeEXT7 ChannelType = "EXT7"
-	ChannelTypeEXT8 ChannelType = "EXT8"
-	ChannelTypeEXT9 ChannelType = "EXT9"
-)
-
-// AllValues returns all ChannelType values.
-func (ChannelType) AllValues() []ChannelType {
-	return []ChannelType{
-		ChannelTypeGR,
-		ChannelTypeBS,
-		ChannelTypeCS,
-		ChannelTypeSKY,
-		ChannelTypeEXT1,
-		ChannelTypeEXT2,
-		ChannelTypeEXT3,
-		ChannelTypeEXT4,
-		ChannelTypeEXT5,
-		ChannelTypeEXT6,
-		ChannelTypeEXT7,
-		ChannelTypeEXT8,
-		ChannelTypeEXT9,
-	}
-}
-
-// MarshalText implements encoding.TextMarshaler.
-func (s ChannelType) MarshalText() ([]byte, error) {
-	switch s {
-	case ChannelTypeGR:
-		return []byte(s), nil
-	case ChannelTypeBS:
-		return []byte(s), nil
-	case ChannelTypeCS:
-		return []byte(s), nil
-	case ChannelTypeSKY:
-		return []byte(s), nil
-	case ChannelTypeEXT1:
-		return []byte(s), nil
-	case ChannelTypeEXT2:
-		return []byte(s), nil
-	case ChannelTypeEXT3:
-		return []byte(s), nil
-	case ChannelTypeEXT4:
-		return []byte(s), nil
-	case ChannelTypeEXT5:
-		return []byte(s), nil
-	case ChannelTypeEXT6:
-		return []byte(s), nil
-	case ChannelTypeEXT7:
-		return []byte(s), nil
-	case ChannelTypeEXT8:
-		return []byte(s), nil
-	case ChannelTypeEXT9:
-		return []byte(s), nil
-	default:
-		return nil, errors.Errorf("invalid value: %q", s)
-	}
-}
-
-// UnmarshalText implements encoding.TextUnmarshaler.
-func (s *ChannelType) UnmarshalText(data []byte) error {
-	switch ChannelType(data) {
-	case ChannelTypeGR:
-		*s = ChannelTypeGR
-		return nil
-	case ChannelTypeBS:
-		*s = ChannelTypeBS
-		return nil
-	case ChannelTypeCS:
-		*s = ChannelTypeCS
-		return nil
-	case ChannelTypeSKY:
-		*s = ChannelTypeSKY
-		return nil
-	case ChannelTypeEXT1:
-		*s = ChannelTypeEXT1
-		return nil
-	case ChannelTypeEXT2:
-		*s = ChannelTypeEXT2
-		return nil
-	case ChannelTypeEXT3:
-		*s = ChannelTypeEXT3
-		return nil
-	case ChannelTypeEXT4:
-		*s = ChannelTypeEXT4
-		return nil
-	case ChannelTypeEXT5:
-		*s = ChannelTypeEXT5
-		return nil
-	case ChannelTypeEXT6:
-		*s = ChannelTypeEXT6
-		return nil
-	case ChannelTypeEXT7:
-		*s = ChannelTypeEXT7
-		return nil
-	case ChannelTypeEXT8:
-		*s = ChannelTypeEXT8
-		return nil
-	case ChannelTypeEXT9:
-		*s = ChannelTypeEXT9
-		return nil
-	default:
-		return errors.Errorf("invalid value: %q", data)
-	}
-}
-
-type ConfigChannels []ConfigChannelsItem
-
-func (*ConfigChannels) getChannelsConfigRes()    {}
-func (*ConfigChannels) updateChannelsConfigRes() {}
-
 // Ref: #/components/schemas/ConfigChannelsItem
 type ConfigChannelsItem struct {
 	Name            string                        `json:"name"`
-	Type            ChannelType                   `json:"type"`
+	Type            string                        `json:"type"`
 	Channel         string                        `json:"channel"`
 	ServiceId       OptServiceId                  `json:"serviceId"`
 	Satellite       OptString                     `json:"satellite"`
@@ -391,7 +173,7 @@ func (s *ConfigChannelsItem) GetName() string {
 }
 
 // GetType returns the value of Type.
-func (s *ConfigChannelsItem) GetType() ChannelType {
+func (s *ConfigChannelsItem) GetType() string {
 	return s.Type
 }
 
@@ -446,7 +228,7 @@ func (s *ConfigChannelsItem) SetName(val string) {
 }
 
 // SetType sets the value of Type.
-func (s *ConfigChannelsItem) SetType(val ChannelType) {
+func (s *ConfigChannelsItem) SetType(val string) {
 	s.Type = val
 }
 
@@ -536,297 +318,6 @@ func (s *ConfigChannelsItemPolarity) UnmarshalText(data []byte) error {
 	}
 }
 
-// Ref: #/components/schemas/ConfigServer
-type ConfigServer struct {
-	Path                      OptString `json:"path"`
-	Port                      OptInt    `json:"port"`
-	Hostname                  OptString `json:"hostname"`
-	DisableIPv6               OptBool   `json:"disableIPv6"`
-	LogLevel                  OptInt    `json:"logLevel"`
-	MaxLogHistory             OptInt    `json:"maxLogHistory"`
-	MaxBufferBytesBeforeReady OptInt    `json:"maxBufferBytesBeforeReady"`
-	EventEndTimeout           OptInt    `json:"eventEndTimeout"`
-	ProgramGCInterval         OptInt    `json:"programGCInterval"`
-	EpgGatheringInterval      OptInt    `json:"epgGatheringInterval"`
-	EpgRetrievalTime          OptInt    `json:"epgRetrievalTime"`
-	LogoDataInterval          OptInt    `json:"logoDataInterval"`
-	DisableEITParsing         OptBool   `json:"disableEITParsing"`
-	DisableWebUI              OptBool   `json:"disableWebUI"`
-	AllowIPv4CidrRanges       []string  `json:"allowIPv4CidrRanges"`
-	AllowIPv6CidrRanges       []string  `json:"allowIPv6CidrRanges"`
-}
-
-// GetPath returns the value of Path.
-func (s *ConfigServer) GetPath() OptString {
-	return s.Path
-}
-
-// GetPort returns the value of Port.
-func (s *ConfigServer) GetPort() OptInt {
-	return s.Port
-}
-
-// GetHostname returns the value of Hostname.
-func (s *ConfigServer) GetHostname() OptString {
-	return s.Hostname
-}
-
-// GetDisableIPv6 returns the value of DisableIPv6.
-func (s *ConfigServer) GetDisableIPv6() OptBool {
-	return s.DisableIPv6
-}
-
-// GetLogLevel returns the value of LogLevel.
-func (s *ConfigServer) GetLogLevel() OptInt {
-	return s.LogLevel
-}
-
-// GetMaxLogHistory returns the value of MaxLogHistory.
-func (s *ConfigServer) GetMaxLogHistory() OptInt {
-	return s.MaxLogHistory
-}
-
-// GetMaxBufferBytesBeforeReady returns the value of MaxBufferBytesBeforeReady.
-func (s *ConfigServer) GetMaxBufferBytesBeforeReady() OptInt {
-	return s.MaxBufferBytesBeforeReady
-}
-
-// GetEventEndTimeout returns the value of EventEndTimeout.
-func (s *ConfigServer) GetEventEndTimeout() OptInt {
-	return s.EventEndTimeout
-}
-
-// GetProgramGCInterval returns the value of ProgramGCInterval.
-func (s *ConfigServer) GetProgramGCInterval() OptInt {
-	return s.ProgramGCInterval
-}
-
-// GetEpgGatheringInterval returns the value of EpgGatheringInterval.
-func (s *ConfigServer) GetEpgGatheringInterval() OptInt {
-	return s.EpgGatheringInterval
-}
-
-// GetEpgRetrievalTime returns the value of EpgRetrievalTime.
-func (s *ConfigServer) GetEpgRetrievalTime() OptInt {
-	return s.EpgRetrievalTime
-}
-
-// GetLogoDataInterval returns the value of LogoDataInterval.
-func (s *ConfigServer) GetLogoDataInterval() OptInt {
-	return s.LogoDataInterval
-}
-
-// GetDisableEITParsing returns the value of DisableEITParsing.
-func (s *ConfigServer) GetDisableEITParsing() OptBool {
-	return s.DisableEITParsing
-}
-
-// GetDisableWebUI returns the value of DisableWebUI.
-func (s *ConfigServer) GetDisableWebUI() OptBool {
-	return s.DisableWebUI
-}
-
-// GetAllowIPv4CidrRanges returns the value of AllowIPv4CidrRanges.
-func (s *ConfigServer) GetAllowIPv4CidrRanges() []string {
-	return s.AllowIPv4CidrRanges
-}
-
-// GetAllowIPv6CidrRanges returns the value of AllowIPv6CidrRanges.
-func (s *ConfigServer) GetAllowIPv6CidrRanges() []string {
-	return s.AllowIPv6CidrRanges
-}
-
-// SetPath sets the value of Path.
-func (s *ConfigServer) SetPath(val OptString) {
-	s.Path = val
-}
-
-// SetPort sets the value of Port.
-func (s *ConfigServer) SetPort(val OptInt) {
-	s.Port = val
-}
-
-// SetHostname sets the value of Hostname.
-func (s *ConfigServer) SetHostname(val OptString) {
-	s.Hostname = val
-}
-
-// SetDisableIPv6 sets the value of DisableIPv6.
-func (s *ConfigServer) SetDisableIPv6(val OptBool) {
-	s.DisableIPv6 = val
-}
-
-// SetLogLevel sets the value of LogLevel.
-func (s *ConfigServer) SetLogLevel(val OptInt) {
-	s.LogLevel = val
-}
-
-// SetMaxLogHistory sets the value of MaxLogHistory.
-func (s *ConfigServer) SetMaxLogHistory(val OptInt) {
-	s.MaxLogHistory = val
-}
-
-// SetMaxBufferBytesBeforeReady sets the value of MaxBufferBytesBeforeReady.
-func (s *ConfigServer) SetMaxBufferBytesBeforeReady(val OptInt) {
-	s.MaxBufferBytesBeforeReady = val
-}
-
-// SetEventEndTimeout sets the value of EventEndTimeout.
-func (s *ConfigServer) SetEventEndTimeout(val OptInt) {
-	s.EventEndTimeout = val
-}
-
-// SetProgramGCInterval sets the value of ProgramGCInterval.
-func (s *ConfigServer) SetProgramGCInterval(val OptInt) {
-	s.ProgramGCInterval = val
-}
-
-// SetEpgGatheringInterval sets the value of EpgGatheringInterval.
-func (s *ConfigServer) SetEpgGatheringInterval(val OptInt) {
-	s.EpgGatheringInterval = val
-}
-
-// SetEpgRetrievalTime sets the value of EpgRetrievalTime.
-func (s *ConfigServer) SetEpgRetrievalTime(val OptInt) {
-	s.EpgRetrievalTime = val
-}
-
-// SetLogoDataInterval sets the value of LogoDataInterval.
-func (s *ConfigServer) SetLogoDataInterval(val OptInt) {
-	s.LogoDataInterval = val
-}
-
-// SetDisableEITParsing sets the value of DisableEITParsing.
-func (s *ConfigServer) SetDisableEITParsing(val OptBool) {
-	s.DisableEITParsing = val
-}
-
-// SetDisableWebUI sets the value of DisableWebUI.
-func (s *ConfigServer) SetDisableWebUI(val OptBool) {
-	s.DisableWebUI = val
-}
-
-// SetAllowIPv4CidrRanges sets the value of AllowIPv4CidrRanges.
-func (s *ConfigServer) SetAllowIPv4CidrRanges(val []string) {
-	s.AllowIPv4CidrRanges = val
-}
-
-// SetAllowIPv6CidrRanges sets the value of AllowIPv6CidrRanges.
-func (s *ConfigServer) SetAllowIPv6CidrRanges(val []string) {
-	s.AllowIPv6CidrRanges = val
-}
-
-func (*ConfigServer) getServerConfigRes()    {}
-func (*ConfigServer) updateServerConfigRes() {}
-
-type ConfigTuners []ConfigTunersItem
-
-func (*ConfigTuners) getTunersConfigRes()    {}
-func (*ConfigTuners) updateTunersConfigRes() {}
-
-// Ref: #/components/schemas/ConfigTunersItem
-type ConfigTunersItem struct {
-	Name                   string        `json:"name"`
-	Types                  []ChannelType `json:"types"`
-	Command                OptString     `json:"command"`
-	DvbDevicePath          OptString     `json:"dvbDevicePath"`
-	RemoteMirakurunHost    OptString     `json:"remoteMirakurunHost"`
-	RemoteMirakurunPort    OptInt        `json:"remoteMirakurunPort"`
-	RemoteMirakurunDecoder OptBool       `json:"remoteMirakurunDecoder"`
-	Decoder                OptString     `json:"decoder"`
-	IsDisabled             OptBool       `json:"isDisabled"`
-}
-
-// GetName returns the value of Name.
-func (s *ConfigTunersItem) GetName() string {
-	return s.Name
-}
-
-// GetTypes returns the value of Types.
-func (s *ConfigTunersItem) GetTypes() []ChannelType {
-	return s.Types
-}
-
-// GetCommand returns the value of Command.
-func (s *ConfigTunersItem) GetCommand() OptString {
-	return s.Command
-}
-
-// GetDvbDevicePath returns the value of DvbDevicePath.
-func (s *ConfigTunersItem) GetDvbDevicePath() OptString {
-	return s.DvbDevicePath
-}
-
-// GetRemoteMirakurunHost returns the value of RemoteMirakurunHost.
-func (s *ConfigTunersItem) GetRemoteMirakurunHost() OptString {
-	return s.RemoteMirakurunHost
-}
-
-// GetRemoteMirakurunPort returns the value of RemoteMirakurunPort.
-func (s *ConfigTunersItem) GetRemoteMirakurunPort() OptInt {
-	return s.RemoteMirakurunPort
-}
-
-// GetRemoteMirakurunDecoder returns the value of RemoteMirakurunDecoder.
-func (s *ConfigTunersItem) GetRemoteMirakurunDecoder() OptBool {
-	return s.RemoteMirakurunDecoder
-}
-
-// GetDecoder returns the value of Decoder.
-func (s *ConfigTunersItem) GetDecoder() OptString {
-	return s.Decoder
-}
-
-// GetIsDisabled returns the value of IsDisabled.
-func (s *ConfigTunersItem) GetIsDisabled() OptBool {
-	return s.IsDisabled
-}
-
-// SetName sets the value of Name.
-func (s *ConfigTunersItem) SetName(val string) {
-	s.Name = val
-}
-
-// SetTypes sets the value of Types.
-func (s *ConfigTunersItem) SetTypes(val []ChannelType) {
-	s.Types = val
-}
-
-// SetCommand sets the value of Command.
-func (s *ConfigTunersItem) SetCommand(val OptString) {
-	s.Command = val
-}
-
-// SetDvbDevicePath sets the value of DvbDevicePath.
-func (s *ConfigTunersItem) SetDvbDevicePath(val OptString) {
-	s.DvbDevicePath = val
-}
-
-// SetRemoteMirakurunHost sets the value of RemoteMirakurunHost.
-func (s *ConfigTunersItem) SetRemoteMirakurunHost(val OptString) {
-	s.RemoteMirakurunHost = val
-}
-
-// SetRemoteMirakurunPort sets the value of RemoteMirakurunPort.
-func (s *ConfigTunersItem) SetRemoteMirakurunPort(val OptInt) {
-	s.RemoteMirakurunPort = val
-}
-
-// SetRemoteMirakurunDecoder sets the value of RemoteMirakurunDecoder.
-func (s *ConfigTunersItem) SetRemoteMirakurunDecoder(val OptBool) {
-	s.RemoteMirakurunDecoder = val
-}
-
-// SetDecoder sets the value of Decoder.
-func (s *ConfigTunersItem) SetDecoder(val OptString) {
-	s.Decoder = val
-}
-
-// SetIsDisabled sets the value of IsDisabled.
-func (s *ConfigTunersItem) SetIsDisabled(val OptBool) {
-	s.IsDisabled = val
-}
-
 // Ref: #/components/schemas/Error
 type Error struct {
 	Code   OptInt           `json:"code"`
@@ -864,7 +355,6 @@ func (s *Error) SetErrors(val []ErrorOfOpenAPI) {
 	s.Errors = val
 }
 
-func (*Error) channelScanRes()      {}
 func (*Error) getChannelRes()       {}
 func (*Error) getProgramRes()       {}
 func (*Error) getServiceRes()       {}
@@ -935,17 +425,14 @@ func (s *ErrorStatusCode) SetResponse(val Error) {
 	s.Response = val
 }
 
-func (*ErrorStatusCode) channelScanRes()             {}
 func (*ErrorStatusCode) checkVersionRes()            {}
 func (*ErrorStatusCode) getChannelRes()              {}
 func (*ErrorStatusCode) getChannelsByTypeRes()       {}
-func (*ErrorStatusCode) getChannelsConfigRes()       {}
 func (*ErrorStatusCode) getChannelsRes()             {}
 func (*ErrorStatusCode) getEventsRes()               {}
 func (*ErrorStatusCode) getEventsStreamRes()         {}
 func (*ErrorStatusCode) getProgramRes()              {}
 func (*ErrorStatusCode) getProgramsRes()             {}
-func (*ErrorStatusCode) getServerConfigRes()         {}
 func (*ErrorStatusCode) getServiceByChannelRes()     {}
 func (*ErrorStatusCode) getServiceProgramsRes()      {}
 func (*ErrorStatusCode) getServiceRes()              {}
@@ -954,15 +441,11 @@ func (*ErrorStatusCode) getServicesRes()             {}
 func (*ErrorStatusCode) getStatusRes()               {}
 func (*ErrorStatusCode) getTunerProcessRes()         {}
 func (*ErrorStatusCode) getTunerRes()                {}
-func (*ErrorStatusCode) getTunersConfigRes()         {}
 func (*ErrorStatusCode) getTunersRes()               {}
 func (*ErrorStatusCode) iptvDiscoverJSONGetRes()     {}
 func (*ErrorStatusCode) iptvLineupJSONGetRes()       {}
 func (*ErrorStatusCode) iptvLineupStatusJSONGetRes() {}
 func (*ErrorStatusCode) killTunerProcessRes()        {}
-func (*ErrorStatusCode) updateChannelsConfigRes()    {}
-func (*ErrorStatusCode) updateServerConfigRes()      {}
-func (*ErrorStatusCode) updateTunersConfigRes()      {}
 
 // Ref: #/components/schemas/Event
 type Event struct {
@@ -1158,485 +641,13 @@ type GetChannelStreamServiceUnavailable struct{}
 
 func (*GetChannelStreamServiceUnavailable) getChannelStreamRes() {}
 
-type GetChannelStreamType string
-
-const (
-	GetChannelStreamTypeGR   GetChannelStreamType = "GR"
-	GetChannelStreamTypeBS   GetChannelStreamType = "BS"
-	GetChannelStreamTypeCS   GetChannelStreamType = "CS"
-	GetChannelStreamTypeSKY  GetChannelStreamType = "SKY"
-	GetChannelStreamTypeEXT1 GetChannelStreamType = "EXT1"
-	GetChannelStreamTypeEXT2 GetChannelStreamType = "EXT2"
-	GetChannelStreamTypeEXT3 GetChannelStreamType = "EXT3"
-	GetChannelStreamTypeEXT4 GetChannelStreamType = "EXT4"
-	GetChannelStreamTypeEXT5 GetChannelStreamType = "EXT5"
-	GetChannelStreamTypeEXT6 GetChannelStreamType = "EXT6"
-	GetChannelStreamTypeEXT7 GetChannelStreamType = "EXT7"
-	GetChannelStreamTypeEXT8 GetChannelStreamType = "EXT8"
-	GetChannelStreamTypeEXT9 GetChannelStreamType = "EXT9"
-)
-
-// AllValues returns all GetChannelStreamType values.
-func (GetChannelStreamType) AllValues() []GetChannelStreamType {
-	return []GetChannelStreamType{
-		GetChannelStreamTypeGR,
-		GetChannelStreamTypeBS,
-		GetChannelStreamTypeCS,
-		GetChannelStreamTypeSKY,
-		GetChannelStreamTypeEXT1,
-		GetChannelStreamTypeEXT2,
-		GetChannelStreamTypeEXT3,
-		GetChannelStreamTypeEXT4,
-		GetChannelStreamTypeEXT5,
-		GetChannelStreamTypeEXT6,
-		GetChannelStreamTypeEXT7,
-		GetChannelStreamTypeEXT8,
-		GetChannelStreamTypeEXT9,
-	}
-}
-
-// MarshalText implements encoding.TextMarshaler.
-func (s GetChannelStreamType) MarshalText() ([]byte, error) {
-	switch s {
-	case GetChannelStreamTypeGR:
-		return []byte(s), nil
-	case GetChannelStreamTypeBS:
-		return []byte(s), nil
-	case GetChannelStreamTypeCS:
-		return []byte(s), nil
-	case GetChannelStreamTypeSKY:
-		return []byte(s), nil
-	case GetChannelStreamTypeEXT1:
-		return []byte(s), nil
-	case GetChannelStreamTypeEXT2:
-		return []byte(s), nil
-	case GetChannelStreamTypeEXT3:
-		return []byte(s), nil
-	case GetChannelStreamTypeEXT4:
-		return []byte(s), nil
-	case GetChannelStreamTypeEXT5:
-		return []byte(s), nil
-	case GetChannelStreamTypeEXT6:
-		return []byte(s), nil
-	case GetChannelStreamTypeEXT7:
-		return []byte(s), nil
-	case GetChannelStreamTypeEXT8:
-		return []byte(s), nil
-	case GetChannelStreamTypeEXT9:
-		return []byte(s), nil
-	default:
-		return nil, errors.Errorf("invalid value: %q", s)
-	}
-}
-
-// UnmarshalText implements encoding.TextUnmarshaler.
-func (s *GetChannelStreamType) UnmarshalText(data []byte) error {
-	switch GetChannelStreamType(data) {
-	case GetChannelStreamTypeGR:
-		*s = GetChannelStreamTypeGR
-		return nil
-	case GetChannelStreamTypeBS:
-		*s = GetChannelStreamTypeBS
-		return nil
-	case GetChannelStreamTypeCS:
-		*s = GetChannelStreamTypeCS
-		return nil
-	case GetChannelStreamTypeSKY:
-		*s = GetChannelStreamTypeSKY
-		return nil
-	case GetChannelStreamTypeEXT1:
-		*s = GetChannelStreamTypeEXT1
-		return nil
-	case GetChannelStreamTypeEXT2:
-		*s = GetChannelStreamTypeEXT2
-		return nil
-	case GetChannelStreamTypeEXT3:
-		*s = GetChannelStreamTypeEXT3
-		return nil
-	case GetChannelStreamTypeEXT4:
-		*s = GetChannelStreamTypeEXT4
-		return nil
-	case GetChannelStreamTypeEXT5:
-		*s = GetChannelStreamTypeEXT5
-		return nil
-	case GetChannelStreamTypeEXT6:
-		*s = GetChannelStreamTypeEXT6
-		return nil
-	case GetChannelStreamTypeEXT7:
-		*s = GetChannelStreamTypeEXT7
-		return nil
-	case GetChannelStreamTypeEXT8:
-		*s = GetChannelStreamTypeEXT8
-		return nil
-	case GetChannelStreamTypeEXT9:
-		*s = GetChannelStreamTypeEXT9
-		return nil
-	default:
-		return errors.Errorf("invalid value: %q", data)
-	}
-}
-
-type GetChannelType string
-
-const (
-	GetChannelTypeGR   GetChannelType = "GR"
-	GetChannelTypeBS   GetChannelType = "BS"
-	GetChannelTypeCS   GetChannelType = "CS"
-	GetChannelTypeSKY  GetChannelType = "SKY"
-	GetChannelTypeEXT1 GetChannelType = "EXT1"
-	GetChannelTypeEXT2 GetChannelType = "EXT2"
-	GetChannelTypeEXT3 GetChannelType = "EXT3"
-	GetChannelTypeEXT4 GetChannelType = "EXT4"
-	GetChannelTypeEXT5 GetChannelType = "EXT5"
-	GetChannelTypeEXT6 GetChannelType = "EXT6"
-	GetChannelTypeEXT7 GetChannelType = "EXT7"
-	GetChannelTypeEXT8 GetChannelType = "EXT8"
-	GetChannelTypeEXT9 GetChannelType = "EXT9"
-)
-
-// AllValues returns all GetChannelType values.
-func (GetChannelType) AllValues() []GetChannelType {
-	return []GetChannelType{
-		GetChannelTypeGR,
-		GetChannelTypeBS,
-		GetChannelTypeCS,
-		GetChannelTypeSKY,
-		GetChannelTypeEXT1,
-		GetChannelTypeEXT2,
-		GetChannelTypeEXT3,
-		GetChannelTypeEXT4,
-		GetChannelTypeEXT5,
-		GetChannelTypeEXT6,
-		GetChannelTypeEXT7,
-		GetChannelTypeEXT8,
-		GetChannelTypeEXT9,
-	}
-}
-
-// MarshalText implements encoding.TextMarshaler.
-func (s GetChannelType) MarshalText() ([]byte, error) {
-	switch s {
-	case GetChannelTypeGR:
-		return []byte(s), nil
-	case GetChannelTypeBS:
-		return []byte(s), nil
-	case GetChannelTypeCS:
-		return []byte(s), nil
-	case GetChannelTypeSKY:
-		return []byte(s), nil
-	case GetChannelTypeEXT1:
-		return []byte(s), nil
-	case GetChannelTypeEXT2:
-		return []byte(s), nil
-	case GetChannelTypeEXT3:
-		return []byte(s), nil
-	case GetChannelTypeEXT4:
-		return []byte(s), nil
-	case GetChannelTypeEXT5:
-		return []byte(s), nil
-	case GetChannelTypeEXT6:
-		return []byte(s), nil
-	case GetChannelTypeEXT7:
-		return []byte(s), nil
-	case GetChannelTypeEXT8:
-		return []byte(s), nil
-	case GetChannelTypeEXT9:
-		return []byte(s), nil
-	default:
-		return nil, errors.Errorf("invalid value: %q", s)
-	}
-}
-
-// UnmarshalText implements encoding.TextUnmarshaler.
-func (s *GetChannelType) UnmarshalText(data []byte) error {
-	switch GetChannelType(data) {
-	case GetChannelTypeGR:
-		*s = GetChannelTypeGR
-		return nil
-	case GetChannelTypeBS:
-		*s = GetChannelTypeBS
-		return nil
-	case GetChannelTypeCS:
-		*s = GetChannelTypeCS
-		return nil
-	case GetChannelTypeSKY:
-		*s = GetChannelTypeSKY
-		return nil
-	case GetChannelTypeEXT1:
-		*s = GetChannelTypeEXT1
-		return nil
-	case GetChannelTypeEXT2:
-		*s = GetChannelTypeEXT2
-		return nil
-	case GetChannelTypeEXT3:
-		*s = GetChannelTypeEXT3
-		return nil
-	case GetChannelTypeEXT4:
-		*s = GetChannelTypeEXT4
-		return nil
-	case GetChannelTypeEXT5:
-		*s = GetChannelTypeEXT5
-		return nil
-	case GetChannelTypeEXT6:
-		*s = GetChannelTypeEXT6
-		return nil
-	case GetChannelTypeEXT7:
-		*s = GetChannelTypeEXT7
-		return nil
-	case GetChannelTypeEXT8:
-		*s = GetChannelTypeEXT8
-		return nil
-	case GetChannelTypeEXT9:
-		*s = GetChannelTypeEXT9
-		return nil
-	default:
-		return errors.Errorf("invalid value: %q", data)
-	}
-}
-
 type GetChannelsByTypeOKApplicationJSON []Channel
 
 func (*GetChannelsByTypeOKApplicationJSON) getChannelsByTypeRes() {}
 
-type GetChannelsByTypeType string
-
-const (
-	GetChannelsByTypeTypeGR   GetChannelsByTypeType = "GR"
-	GetChannelsByTypeTypeBS   GetChannelsByTypeType = "BS"
-	GetChannelsByTypeTypeCS   GetChannelsByTypeType = "CS"
-	GetChannelsByTypeTypeSKY  GetChannelsByTypeType = "SKY"
-	GetChannelsByTypeTypeEXT1 GetChannelsByTypeType = "EXT1"
-	GetChannelsByTypeTypeEXT2 GetChannelsByTypeType = "EXT2"
-	GetChannelsByTypeTypeEXT3 GetChannelsByTypeType = "EXT3"
-	GetChannelsByTypeTypeEXT4 GetChannelsByTypeType = "EXT4"
-	GetChannelsByTypeTypeEXT5 GetChannelsByTypeType = "EXT5"
-	GetChannelsByTypeTypeEXT6 GetChannelsByTypeType = "EXT6"
-	GetChannelsByTypeTypeEXT7 GetChannelsByTypeType = "EXT7"
-	GetChannelsByTypeTypeEXT8 GetChannelsByTypeType = "EXT8"
-	GetChannelsByTypeTypeEXT9 GetChannelsByTypeType = "EXT9"
-)
-
-// AllValues returns all GetChannelsByTypeType values.
-func (GetChannelsByTypeType) AllValues() []GetChannelsByTypeType {
-	return []GetChannelsByTypeType{
-		GetChannelsByTypeTypeGR,
-		GetChannelsByTypeTypeBS,
-		GetChannelsByTypeTypeCS,
-		GetChannelsByTypeTypeSKY,
-		GetChannelsByTypeTypeEXT1,
-		GetChannelsByTypeTypeEXT2,
-		GetChannelsByTypeTypeEXT3,
-		GetChannelsByTypeTypeEXT4,
-		GetChannelsByTypeTypeEXT5,
-		GetChannelsByTypeTypeEXT6,
-		GetChannelsByTypeTypeEXT7,
-		GetChannelsByTypeTypeEXT8,
-		GetChannelsByTypeTypeEXT9,
-	}
-}
-
-// MarshalText implements encoding.TextMarshaler.
-func (s GetChannelsByTypeType) MarshalText() ([]byte, error) {
-	switch s {
-	case GetChannelsByTypeTypeGR:
-		return []byte(s), nil
-	case GetChannelsByTypeTypeBS:
-		return []byte(s), nil
-	case GetChannelsByTypeTypeCS:
-		return []byte(s), nil
-	case GetChannelsByTypeTypeSKY:
-		return []byte(s), nil
-	case GetChannelsByTypeTypeEXT1:
-		return []byte(s), nil
-	case GetChannelsByTypeTypeEXT2:
-		return []byte(s), nil
-	case GetChannelsByTypeTypeEXT3:
-		return []byte(s), nil
-	case GetChannelsByTypeTypeEXT4:
-		return []byte(s), nil
-	case GetChannelsByTypeTypeEXT5:
-		return []byte(s), nil
-	case GetChannelsByTypeTypeEXT6:
-		return []byte(s), nil
-	case GetChannelsByTypeTypeEXT7:
-		return []byte(s), nil
-	case GetChannelsByTypeTypeEXT8:
-		return []byte(s), nil
-	case GetChannelsByTypeTypeEXT9:
-		return []byte(s), nil
-	default:
-		return nil, errors.Errorf("invalid value: %q", s)
-	}
-}
-
-// UnmarshalText implements encoding.TextUnmarshaler.
-func (s *GetChannelsByTypeType) UnmarshalText(data []byte) error {
-	switch GetChannelsByTypeType(data) {
-	case GetChannelsByTypeTypeGR:
-		*s = GetChannelsByTypeTypeGR
-		return nil
-	case GetChannelsByTypeTypeBS:
-		*s = GetChannelsByTypeTypeBS
-		return nil
-	case GetChannelsByTypeTypeCS:
-		*s = GetChannelsByTypeTypeCS
-		return nil
-	case GetChannelsByTypeTypeSKY:
-		*s = GetChannelsByTypeTypeSKY
-		return nil
-	case GetChannelsByTypeTypeEXT1:
-		*s = GetChannelsByTypeTypeEXT1
-		return nil
-	case GetChannelsByTypeTypeEXT2:
-		*s = GetChannelsByTypeTypeEXT2
-		return nil
-	case GetChannelsByTypeTypeEXT3:
-		*s = GetChannelsByTypeTypeEXT3
-		return nil
-	case GetChannelsByTypeTypeEXT4:
-		*s = GetChannelsByTypeTypeEXT4
-		return nil
-	case GetChannelsByTypeTypeEXT5:
-		*s = GetChannelsByTypeTypeEXT5
-		return nil
-	case GetChannelsByTypeTypeEXT6:
-		*s = GetChannelsByTypeTypeEXT6
-		return nil
-	case GetChannelsByTypeTypeEXT7:
-		*s = GetChannelsByTypeTypeEXT7
-		return nil
-	case GetChannelsByTypeTypeEXT8:
-		*s = GetChannelsByTypeTypeEXT8
-		return nil
-	case GetChannelsByTypeTypeEXT9:
-		*s = GetChannelsByTypeTypeEXT9
-		return nil
-	default:
-		return errors.Errorf("invalid value: %q", data)
-	}
-}
-
 type GetChannelsOKApplicationJSON []Channel
 
 func (*GetChannelsOKApplicationJSON) getChannelsRes() {}
-
-type GetChannelsType string
-
-const (
-	GetChannelsTypeGR   GetChannelsType = "GR"
-	GetChannelsTypeBS   GetChannelsType = "BS"
-	GetChannelsTypeCS   GetChannelsType = "CS"
-	GetChannelsTypeSKY  GetChannelsType = "SKY"
-	GetChannelsTypeEXT1 GetChannelsType = "EXT1"
-	GetChannelsTypeEXT2 GetChannelsType = "EXT2"
-	GetChannelsTypeEXT3 GetChannelsType = "EXT3"
-	GetChannelsTypeEXT4 GetChannelsType = "EXT4"
-	GetChannelsTypeEXT5 GetChannelsType = "EXT5"
-	GetChannelsTypeEXT6 GetChannelsType = "EXT6"
-	GetChannelsTypeEXT7 GetChannelsType = "EXT7"
-	GetChannelsTypeEXT8 GetChannelsType = "EXT8"
-	GetChannelsTypeEXT9 GetChannelsType = "EXT9"
-)
-
-// AllValues returns all GetChannelsType values.
-func (GetChannelsType) AllValues() []GetChannelsType {
-	return []GetChannelsType{
-		GetChannelsTypeGR,
-		GetChannelsTypeBS,
-		GetChannelsTypeCS,
-		GetChannelsTypeSKY,
-		GetChannelsTypeEXT1,
-		GetChannelsTypeEXT2,
-		GetChannelsTypeEXT3,
-		GetChannelsTypeEXT4,
-		GetChannelsTypeEXT5,
-		GetChannelsTypeEXT6,
-		GetChannelsTypeEXT7,
-		GetChannelsTypeEXT8,
-		GetChannelsTypeEXT9,
-	}
-}
-
-// MarshalText implements encoding.TextMarshaler.
-func (s GetChannelsType) MarshalText() ([]byte, error) {
-	switch s {
-	case GetChannelsTypeGR:
-		return []byte(s), nil
-	case GetChannelsTypeBS:
-		return []byte(s), nil
-	case GetChannelsTypeCS:
-		return []byte(s), nil
-	case GetChannelsTypeSKY:
-		return []byte(s), nil
-	case GetChannelsTypeEXT1:
-		return []byte(s), nil
-	case GetChannelsTypeEXT2:
-		return []byte(s), nil
-	case GetChannelsTypeEXT3:
-		return []byte(s), nil
-	case GetChannelsTypeEXT4:
-		return []byte(s), nil
-	case GetChannelsTypeEXT5:
-		return []byte(s), nil
-	case GetChannelsTypeEXT6:
-		return []byte(s), nil
-	case GetChannelsTypeEXT7:
-		return []byte(s), nil
-	case GetChannelsTypeEXT8:
-		return []byte(s), nil
-	case GetChannelsTypeEXT9:
-		return []byte(s), nil
-	default:
-		return nil, errors.Errorf("invalid value: %q", s)
-	}
-}
-
-// UnmarshalText implements encoding.TextUnmarshaler.
-func (s *GetChannelsType) UnmarshalText(data []byte) error {
-	switch GetChannelsType(data) {
-	case GetChannelsTypeGR:
-		*s = GetChannelsTypeGR
-		return nil
-	case GetChannelsTypeBS:
-		*s = GetChannelsTypeBS
-		return nil
-	case GetChannelsTypeCS:
-		*s = GetChannelsTypeCS
-		return nil
-	case GetChannelsTypeSKY:
-		*s = GetChannelsTypeSKY
-		return nil
-	case GetChannelsTypeEXT1:
-		*s = GetChannelsTypeEXT1
-		return nil
-	case GetChannelsTypeEXT2:
-		*s = GetChannelsTypeEXT2
-		return nil
-	case GetChannelsTypeEXT3:
-		*s = GetChannelsTypeEXT3
-		return nil
-	case GetChannelsTypeEXT4:
-		*s = GetChannelsTypeEXT4
-		return nil
-	case GetChannelsTypeEXT5:
-		*s = GetChannelsTypeEXT5
-		return nil
-	case GetChannelsTypeEXT6:
-		*s = GetChannelsTypeEXT6
-		return nil
-	case GetChannelsTypeEXT7:
-		*s = GetChannelsTypeEXT7
-		return nil
-	case GetChannelsTypeEXT8:
-		*s = GetChannelsTypeEXT8
-		return nil
-	case GetChannelsTypeEXT9:
-		*s = GetChannelsTypeEXT9
-		return nil
-	default:
-		return errors.Errorf("invalid value: %q", data)
-	}
-}
 
 type GetEventsOKApplicationJSON []Event
 
@@ -1870,124 +881,6 @@ type GetServiceByChannelOKApplicationJSON []Service
 
 func (*GetServiceByChannelOKApplicationJSON) getServiceByChannelRes() {}
 
-type GetServiceByChannelType string
-
-const (
-	GetServiceByChannelTypeGR   GetServiceByChannelType = "GR"
-	GetServiceByChannelTypeBS   GetServiceByChannelType = "BS"
-	GetServiceByChannelTypeCS   GetServiceByChannelType = "CS"
-	GetServiceByChannelTypeSKY  GetServiceByChannelType = "SKY"
-	GetServiceByChannelTypeEXT1 GetServiceByChannelType = "EXT1"
-	GetServiceByChannelTypeEXT2 GetServiceByChannelType = "EXT2"
-	GetServiceByChannelTypeEXT3 GetServiceByChannelType = "EXT3"
-	GetServiceByChannelTypeEXT4 GetServiceByChannelType = "EXT4"
-	GetServiceByChannelTypeEXT5 GetServiceByChannelType = "EXT5"
-	GetServiceByChannelTypeEXT6 GetServiceByChannelType = "EXT6"
-	GetServiceByChannelTypeEXT7 GetServiceByChannelType = "EXT7"
-	GetServiceByChannelTypeEXT8 GetServiceByChannelType = "EXT8"
-	GetServiceByChannelTypeEXT9 GetServiceByChannelType = "EXT9"
-)
-
-// AllValues returns all GetServiceByChannelType values.
-func (GetServiceByChannelType) AllValues() []GetServiceByChannelType {
-	return []GetServiceByChannelType{
-		GetServiceByChannelTypeGR,
-		GetServiceByChannelTypeBS,
-		GetServiceByChannelTypeCS,
-		GetServiceByChannelTypeSKY,
-		GetServiceByChannelTypeEXT1,
-		GetServiceByChannelTypeEXT2,
-		GetServiceByChannelTypeEXT3,
-		GetServiceByChannelTypeEXT4,
-		GetServiceByChannelTypeEXT5,
-		GetServiceByChannelTypeEXT6,
-		GetServiceByChannelTypeEXT7,
-		GetServiceByChannelTypeEXT8,
-		GetServiceByChannelTypeEXT9,
-	}
-}
-
-// MarshalText implements encoding.TextMarshaler.
-func (s GetServiceByChannelType) MarshalText() ([]byte, error) {
-	switch s {
-	case GetServiceByChannelTypeGR:
-		return []byte(s), nil
-	case GetServiceByChannelTypeBS:
-		return []byte(s), nil
-	case GetServiceByChannelTypeCS:
-		return []byte(s), nil
-	case GetServiceByChannelTypeSKY:
-		return []byte(s), nil
-	case GetServiceByChannelTypeEXT1:
-		return []byte(s), nil
-	case GetServiceByChannelTypeEXT2:
-		return []byte(s), nil
-	case GetServiceByChannelTypeEXT3:
-		return []byte(s), nil
-	case GetServiceByChannelTypeEXT4:
-		return []byte(s), nil
-	case GetServiceByChannelTypeEXT5:
-		return []byte(s), nil
-	case GetServiceByChannelTypeEXT6:
-		return []byte(s), nil
-	case GetServiceByChannelTypeEXT7:
-		return []byte(s), nil
-	case GetServiceByChannelTypeEXT8:
-		return []byte(s), nil
-	case GetServiceByChannelTypeEXT9:
-		return []byte(s), nil
-	default:
-		return nil, errors.Errorf("invalid value: %q", s)
-	}
-}
-
-// UnmarshalText implements encoding.TextUnmarshaler.
-func (s *GetServiceByChannelType) UnmarshalText(data []byte) error {
-	switch GetServiceByChannelType(data) {
-	case GetServiceByChannelTypeGR:
-		*s = GetServiceByChannelTypeGR
-		return nil
-	case GetServiceByChannelTypeBS:
-		*s = GetServiceByChannelTypeBS
-		return nil
-	case GetServiceByChannelTypeCS:
-		*s = GetServiceByChannelTypeCS
-		return nil
-	case GetServiceByChannelTypeSKY:
-		*s = GetServiceByChannelTypeSKY
-		return nil
-	case GetServiceByChannelTypeEXT1:
-		*s = GetServiceByChannelTypeEXT1
-		return nil
-	case GetServiceByChannelTypeEXT2:
-		*s = GetServiceByChannelTypeEXT2
-		return nil
-	case GetServiceByChannelTypeEXT3:
-		*s = GetServiceByChannelTypeEXT3
-		return nil
-	case GetServiceByChannelTypeEXT4:
-		*s = GetServiceByChannelTypeEXT4
-		return nil
-	case GetServiceByChannelTypeEXT5:
-		*s = GetServiceByChannelTypeEXT5
-		return nil
-	case GetServiceByChannelTypeEXT6:
-		*s = GetServiceByChannelTypeEXT6
-		return nil
-	case GetServiceByChannelTypeEXT7:
-		*s = GetServiceByChannelTypeEXT7
-		return nil
-	case GetServiceByChannelTypeEXT8:
-		*s = GetServiceByChannelTypeEXT8
-		return nil
-	case GetServiceByChannelTypeEXT9:
-		*s = GetServiceByChannelTypeEXT9
-		return nil
-	default:
-		return errors.Errorf("invalid value: %q", data)
-	}
-}
-
 type GetServiceProgramsOKApplicationJSON []Program
 
 func (*GetServiceProgramsOKApplicationJSON) getServiceProgramsRes() {}
@@ -2036,124 +929,6 @@ type GetServiceStreamByChannelServiceUnavailable struct{}
 
 func (*GetServiceStreamByChannelServiceUnavailable) getServiceStreamByChannelRes() {}
 
-type GetServiceStreamByChannelType string
-
-const (
-	GetServiceStreamByChannelTypeGR   GetServiceStreamByChannelType = "GR"
-	GetServiceStreamByChannelTypeBS   GetServiceStreamByChannelType = "BS"
-	GetServiceStreamByChannelTypeCS   GetServiceStreamByChannelType = "CS"
-	GetServiceStreamByChannelTypeSKY  GetServiceStreamByChannelType = "SKY"
-	GetServiceStreamByChannelTypeEXT1 GetServiceStreamByChannelType = "EXT1"
-	GetServiceStreamByChannelTypeEXT2 GetServiceStreamByChannelType = "EXT2"
-	GetServiceStreamByChannelTypeEXT3 GetServiceStreamByChannelType = "EXT3"
-	GetServiceStreamByChannelTypeEXT4 GetServiceStreamByChannelType = "EXT4"
-	GetServiceStreamByChannelTypeEXT5 GetServiceStreamByChannelType = "EXT5"
-	GetServiceStreamByChannelTypeEXT6 GetServiceStreamByChannelType = "EXT6"
-	GetServiceStreamByChannelTypeEXT7 GetServiceStreamByChannelType = "EXT7"
-	GetServiceStreamByChannelTypeEXT8 GetServiceStreamByChannelType = "EXT8"
-	GetServiceStreamByChannelTypeEXT9 GetServiceStreamByChannelType = "EXT9"
-)
-
-// AllValues returns all GetServiceStreamByChannelType values.
-func (GetServiceStreamByChannelType) AllValues() []GetServiceStreamByChannelType {
-	return []GetServiceStreamByChannelType{
-		GetServiceStreamByChannelTypeGR,
-		GetServiceStreamByChannelTypeBS,
-		GetServiceStreamByChannelTypeCS,
-		GetServiceStreamByChannelTypeSKY,
-		GetServiceStreamByChannelTypeEXT1,
-		GetServiceStreamByChannelTypeEXT2,
-		GetServiceStreamByChannelTypeEXT3,
-		GetServiceStreamByChannelTypeEXT4,
-		GetServiceStreamByChannelTypeEXT5,
-		GetServiceStreamByChannelTypeEXT6,
-		GetServiceStreamByChannelTypeEXT7,
-		GetServiceStreamByChannelTypeEXT8,
-		GetServiceStreamByChannelTypeEXT9,
-	}
-}
-
-// MarshalText implements encoding.TextMarshaler.
-func (s GetServiceStreamByChannelType) MarshalText() ([]byte, error) {
-	switch s {
-	case GetServiceStreamByChannelTypeGR:
-		return []byte(s), nil
-	case GetServiceStreamByChannelTypeBS:
-		return []byte(s), nil
-	case GetServiceStreamByChannelTypeCS:
-		return []byte(s), nil
-	case GetServiceStreamByChannelTypeSKY:
-		return []byte(s), nil
-	case GetServiceStreamByChannelTypeEXT1:
-		return []byte(s), nil
-	case GetServiceStreamByChannelTypeEXT2:
-		return []byte(s), nil
-	case GetServiceStreamByChannelTypeEXT3:
-		return []byte(s), nil
-	case GetServiceStreamByChannelTypeEXT4:
-		return []byte(s), nil
-	case GetServiceStreamByChannelTypeEXT5:
-		return []byte(s), nil
-	case GetServiceStreamByChannelTypeEXT6:
-		return []byte(s), nil
-	case GetServiceStreamByChannelTypeEXT7:
-		return []byte(s), nil
-	case GetServiceStreamByChannelTypeEXT8:
-		return []byte(s), nil
-	case GetServiceStreamByChannelTypeEXT9:
-		return []byte(s), nil
-	default:
-		return nil, errors.Errorf("invalid value: %q", s)
-	}
-}
-
-// UnmarshalText implements encoding.TextUnmarshaler.
-func (s *GetServiceStreamByChannelType) UnmarshalText(data []byte) error {
-	switch GetServiceStreamByChannelType(data) {
-	case GetServiceStreamByChannelTypeGR:
-		*s = GetServiceStreamByChannelTypeGR
-		return nil
-	case GetServiceStreamByChannelTypeBS:
-		*s = GetServiceStreamByChannelTypeBS
-		return nil
-	case GetServiceStreamByChannelTypeCS:
-		*s = GetServiceStreamByChannelTypeCS
-		return nil
-	case GetServiceStreamByChannelTypeSKY:
-		*s = GetServiceStreamByChannelTypeSKY
-		return nil
-	case GetServiceStreamByChannelTypeEXT1:
-		*s = GetServiceStreamByChannelTypeEXT1
-		return nil
-	case GetServiceStreamByChannelTypeEXT2:
-		*s = GetServiceStreamByChannelTypeEXT2
-		return nil
-	case GetServiceStreamByChannelTypeEXT3:
-		*s = GetServiceStreamByChannelTypeEXT3
-		return nil
-	case GetServiceStreamByChannelTypeEXT4:
-		*s = GetServiceStreamByChannelTypeEXT4
-		return nil
-	case GetServiceStreamByChannelTypeEXT5:
-		*s = GetServiceStreamByChannelTypeEXT5
-		return nil
-	case GetServiceStreamByChannelTypeEXT6:
-		*s = GetServiceStreamByChannelTypeEXT6
-		return nil
-	case GetServiceStreamByChannelTypeEXT7:
-		*s = GetServiceStreamByChannelTypeEXT7
-		return nil
-	case GetServiceStreamByChannelTypeEXT8:
-		*s = GetServiceStreamByChannelTypeEXT8
-		return nil
-	case GetServiceStreamByChannelTypeEXT9:
-		*s = GetServiceStreamByChannelTypeEXT9
-		return nil
-	default:
-		return errors.Errorf("invalid value: %q", data)
-	}
-}
-
 // GetServiceStreamDef is default response for GetServiceStream operation.
 type GetServiceStreamDef struct {
 	StatusCode int
@@ -2201,242 +976,6 @@ func (*GetServiceStreamServiceUnavailable) getServiceStreamRes() {}
 type GetServicesByChannelOKApplicationJSON []Service
 
 func (*GetServicesByChannelOKApplicationJSON) getServicesByChannelRes() {}
-
-type GetServicesByChannelType string
-
-const (
-	GetServicesByChannelTypeGR   GetServicesByChannelType = "GR"
-	GetServicesByChannelTypeBS   GetServicesByChannelType = "BS"
-	GetServicesByChannelTypeCS   GetServicesByChannelType = "CS"
-	GetServicesByChannelTypeSKY  GetServicesByChannelType = "SKY"
-	GetServicesByChannelTypeEXT1 GetServicesByChannelType = "EXT1"
-	GetServicesByChannelTypeEXT2 GetServicesByChannelType = "EXT2"
-	GetServicesByChannelTypeEXT3 GetServicesByChannelType = "EXT3"
-	GetServicesByChannelTypeEXT4 GetServicesByChannelType = "EXT4"
-	GetServicesByChannelTypeEXT5 GetServicesByChannelType = "EXT5"
-	GetServicesByChannelTypeEXT6 GetServicesByChannelType = "EXT6"
-	GetServicesByChannelTypeEXT7 GetServicesByChannelType = "EXT7"
-	GetServicesByChannelTypeEXT8 GetServicesByChannelType = "EXT8"
-	GetServicesByChannelTypeEXT9 GetServicesByChannelType = "EXT9"
-)
-
-// AllValues returns all GetServicesByChannelType values.
-func (GetServicesByChannelType) AllValues() []GetServicesByChannelType {
-	return []GetServicesByChannelType{
-		GetServicesByChannelTypeGR,
-		GetServicesByChannelTypeBS,
-		GetServicesByChannelTypeCS,
-		GetServicesByChannelTypeSKY,
-		GetServicesByChannelTypeEXT1,
-		GetServicesByChannelTypeEXT2,
-		GetServicesByChannelTypeEXT3,
-		GetServicesByChannelTypeEXT4,
-		GetServicesByChannelTypeEXT5,
-		GetServicesByChannelTypeEXT6,
-		GetServicesByChannelTypeEXT7,
-		GetServicesByChannelTypeEXT8,
-		GetServicesByChannelTypeEXT9,
-	}
-}
-
-// MarshalText implements encoding.TextMarshaler.
-func (s GetServicesByChannelType) MarshalText() ([]byte, error) {
-	switch s {
-	case GetServicesByChannelTypeGR:
-		return []byte(s), nil
-	case GetServicesByChannelTypeBS:
-		return []byte(s), nil
-	case GetServicesByChannelTypeCS:
-		return []byte(s), nil
-	case GetServicesByChannelTypeSKY:
-		return []byte(s), nil
-	case GetServicesByChannelTypeEXT1:
-		return []byte(s), nil
-	case GetServicesByChannelTypeEXT2:
-		return []byte(s), nil
-	case GetServicesByChannelTypeEXT3:
-		return []byte(s), nil
-	case GetServicesByChannelTypeEXT4:
-		return []byte(s), nil
-	case GetServicesByChannelTypeEXT5:
-		return []byte(s), nil
-	case GetServicesByChannelTypeEXT6:
-		return []byte(s), nil
-	case GetServicesByChannelTypeEXT7:
-		return []byte(s), nil
-	case GetServicesByChannelTypeEXT8:
-		return []byte(s), nil
-	case GetServicesByChannelTypeEXT9:
-		return []byte(s), nil
-	default:
-		return nil, errors.Errorf("invalid value: %q", s)
-	}
-}
-
-// UnmarshalText implements encoding.TextUnmarshaler.
-func (s *GetServicesByChannelType) UnmarshalText(data []byte) error {
-	switch GetServicesByChannelType(data) {
-	case GetServicesByChannelTypeGR:
-		*s = GetServicesByChannelTypeGR
-		return nil
-	case GetServicesByChannelTypeBS:
-		*s = GetServicesByChannelTypeBS
-		return nil
-	case GetServicesByChannelTypeCS:
-		*s = GetServicesByChannelTypeCS
-		return nil
-	case GetServicesByChannelTypeSKY:
-		*s = GetServicesByChannelTypeSKY
-		return nil
-	case GetServicesByChannelTypeEXT1:
-		*s = GetServicesByChannelTypeEXT1
-		return nil
-	case GetServicesByChannelTypeEXT2:
-		*s = GetServicesByChannelTypeEXT2
-		return nil
-	case GetServicesByChannelTypeEXT3:
-		*s = GetServicesByChannelTypeEXT3
-		return nil
-	case GetServicesByChannelTypeEXT4:
-		*s = GetServicesByChannelTypeEXT4
-		return nil
-	case GetServicesByChannelTypeEXT5:
-		*s = GetServicesByChannelTypeEXT5
-		return nil
-	case GetServicesByChannelTypeEXT6:
-		*s = GetServicesByChannelTypeEXT6
-		return nil
-	case GetServicesByChannelTypeEXT7:
-		*s = GetServicesByChannelTypeEXT7
-		return nil
-	case GetServicesByChannelTypeEXT8:
-		*s = GetServicesByChannelTypeEXT8
-		return nil
-	case GetServicesByChannelTypeEXT9:
-		*s = GetServicesByChannelTypeEXT9
-		return nil
-	default:
-		return errors.Errorf("invalid value: %q", data)
-	}
-}
-
-type GetServicesChannelType string
-
-const (
-	GetServicesChannelTypeGR   GetServicesChannelType = "GR"
-	GetServicesChannelTypeBS   GetServicesChannelType = "BS"
-	GetServicesChannelTypeCS   GetServicesChannelType = "CS"
-	GetServicesChannelTypeSKY  GetServicesChannelType = "SKY"
-	GetServicesChannelTypeEXT1 GetServicesChannelType = "EXT1"
-	GetServicesChannelTypeEXT2 GetServicesChannelType = "EXT2"
-	GetServicesChannelTypeEXT3 GetServicesChannelType = "EXT3"
-	GetServicesChannelTypeEXT4 GetServicesChannelType = "EXT4"
-	GetServicesChannelTypeEXT5 GetServicesChannelType = "EXT5"
-	GetServicesChannelTypeEXT6 GetServicesChannelType = "EXT6"
-	GetServicesChannelTypeEXT7 GetServicesChannelType = "EXT7"
-	GetServicesChannelTypeEXT8 GetServicesChannelType = "EXT8"
-	GetServicesChannelTypeEXT9 GetServicesChannelType = "EXT9"
-)
-
-// AllValues returns all GetServicesChannelType values.
-func (GetServicesChannelType) AllValues() []GetServicesChannelType {
-	return []GetServicesChannelType{
-		GetServicesChannelTypeGR,
-		GetServicesChannelTypeBS,
-		GetServicesChannelTypeCS,
-		GetServicesChannelTypeSKY,
-		GetServicesChannelTypeEXT1,
-		GetServicesChannelTypeEXT2,
-		GetServicesChannelTypeEXT3,
-		GetServicesChannelTypeEXT4,
-		GetServicesChannelTypeEXT5,
-		GetServicesChannelTypeEXT6,
-		GetServicesChannelTypeEXT7,
-		GetServicesChannelTypeEXT8,
-		GetServicesChannelTypeEXT9,
-	}
-}
-
-// MarshalText implements encoding.TextMarshaler.
-func (s GetServicesChannelType) MarshalText() ([]byte, error) {
-	switch s {
-	case GetServicesChannelTypeGR:
-		return []byte(s), nil
-	case GetServicesChannelTypeBS:
-		return []byte(s), nil
-	case GetServicesChannelTypeCS:
-		return []byte(s), nil
-	case GetServicesChannelTypeSKY:
-		return []byte(s), nil
-	case GetServicesChannelTypeEXT1:
-		return []byte(s), nil
-	case GetServicesChannelTypeEXT2:
-		return []byte(s), nil
-	case GetServicesChannelTypeEXT3:
-		return []byte(s), nil
-	case GetServicesChannelTypeEXT4:
-		return []byte(s), nil
-	case GetServicesChannelTypeEXT5:
-		return []byte(s), nil
-	case GetServicesChannelTypeEXT6:
-		return []byte(s), nil
-	case GetServicesChannelTypeEXT7:
-		return []byte(s), nil
-	case GetServicesChannelTypeEXT8:
-		return []byte(s), nil
-	case GetServicesChannelTypeEXT9:
-		return []byte(s), nil
-	default:
-		return nil, errors.Errorf("invalid value: %q", s)
-	}
-}
-
-// UnmarshalText implements encoding.TextUnmarshaler.
-func (s *GetServicesChannelType) UnmarshalText(data []byte) error {
-	switch GetServicesChannelType(data) {
-	case GetServicesChannelTypeGR:
-		*s = GetServicesChannelTypeGR
-		return nil
-	case GetServicesChannelTypeBS:
-		*s = GetServicesChannelTypeBS
-		return nil
-	case GetServicesChannelTypeCS:
-		*s = GetServicesChannelTypeCS
-		return nil
-	case GetServicesChannelTypeSKY:
-		*s = GetServicesChannelTypeSKY
-		return nil
-	case GetServicesChannelTypeEXT1:
-		*s = GetServicesChannelTypeEXT1
-		return nil
-	case GetServicesChannelTypeEXT2:
-		*s = GetServicesChannelTypeEXT2
-		return nil
-	case GetServicesChannelTypeEXT3:
-		*s = GetServicesChannelTypeEXT3
-		return nil
-	case GetServicesChannelTypeEXT4:
-		*s = GetServicesChannelTypeEXT4
-		return nil
-	case GetServicesChannelTypeEXT5:
-		*s = GetServicesChannelTypeEXT5
-		return nil
-	case GetServicesChannelTypeEXT6:
-		*s = GetServicesChannelTypeEXT6
-		return nil
-	case GetServicesChannelTypeEXT7:
-		*s = GetServicesChannelTypeEXT7
-		return nil
-	case GetServicesChannelTypeEXT8:
-		*s = GetServicesChannelTypeEXT8
-		return nil
-	case GetServicesChannelTypeEXT9:
-		*s = GetServicesChannelTypeEXT9
-		return nil
-	default:
-		return errors.Errorf("invalid value: %q", data)
-	}
-}
 
 type GetServicesOKApplicationJSON []Service
 
@@ -2605,144 +1144,6 @@ func (o OptChannelPolarity) Or(d ChannelPolarity) ChannelPolarity {
 	return d
 }
 
-// NewOptChannelScanScanMode returns new OptChannelScanScanMode with value set to v.
-func NewOptChannelScanScanMode(v ChannelScanScanMode) OptChannelScanScanMode {
-	return OptChannelScanScanMode{
-		Value: v,
-		Set:   true,
-	}
-}
-
-// OptChannelScanScanMode is optional ChannelScanScanMode.
-type OptChannelScanScanMode struct {
-	Value ChannelScanScanMode
-	Set   bool
-}
-
-// IsSet returns true if OptChannelScanScanMode was set.
-func (o OptChannelScanScanMode) IsSet() bool { return o.Set }
-
-// Reset unsets value.
-func (o *OptChannelScanScanMode) Reset() {
-	var v ChannelScanScanMode
-	o.Value = v
-	o.Set = false
-}
-
-// SetTo sets value to v.
-func (o *OptChannelScanScanMode) SetTo(v ChannelScanScanMode) {
-	o.Set = true
-	o.Value = v
-}
-
-// Get returns value and boolean that denotes whether value was set.
-func (o OptChannelScanScanMode) Get() (v ChannelScanScanMode, ok bool) {
-	if !o.Set {
-		return v, false
-	}
-	return o.Value, true
-}
-
-// Or returns value if set, or given parameter if does not.
-func (o OptChannelScanScanMode) Or(d ChannelScanScanMode) ChannelScanScanMode {
-	if v, ok := o.Get(); ok {
-		return v
-	}
-	return d
-}
-
-// NewOptChannelScanType returns new OptChannelScanType with value set to v.
-func NewOptChannelScanType(v ChannelScanType) OptChannelScanType {
-	return OptChannelScanType{
-		Value: v,
-		Set:   true,
-	}
-}
-
-// OptChannelScanType is optional ChannelScanType.
-type OptChannelScanType struct {
-	Value ChannelScanType
-	Set   bool
-}
-
-// IsSet returns true if OptChannelScanType was set.
-func (o OptChannelScanType) IsSet() bool { return o.Set }
-
-// Reset unsets value.
-func (o *OptChannelScanType) Reset() {
-	var v ChannelScanType
-	o.Value = v
-	o.Set = false
-}
-
-// SetTo sets value to v.
-func (o *OptChannelScanType) SetTo(v ChannelScanType) {
-	o.Set = true
-	o.Value = v
-}
-
-// Get returns value and boolean that denotes whether value was set.
-func (o OptChannelScanType) Get() (v ChannelScanType, ok bool) {
-	if !o.Set {
-		return v, false
-	}
-	return o.Value, true
-}
-
-// Or returns value if set, or given parameter if does not.
-func (o OptChannelScanType) Or(d ChannelScanType) ChannelScanType {
-	if v, ok := o.Get(); ok {
-		return v
-	}
-	return d
-}
-
-// NewOptChannelType returns new OptChannelType with value set to v.
-func NewOptChannelType(v ChannelType) OptChannelType {
-	return OptChannelType{
-		Value: v,
-		Set:   true,
-	}
-}
-
-// OptChannelType is optional ChannelType.
-type OptChannelType struct {
-	Value ChannelType
-	Set   bool
-}
-
-// IsSet returns true if OptChannelType was set.
-func (o OptChannelType) IsSet() bool { return o.Set }
-
-// Reset unsets value.
-func (o *OptChannelType) Reset() {
-	var v ChannelType
-	o.Value = v
-	o.Set = false
-}
-
-// SetTo sets value to v.
-func (o *OptChannelType) SetTo(v ChannelType) {
-	o.Set = true
-	o.Value = v
-}
-
-// Get returns value and boolean that denotes whether value was set.
-func (o OptChannelType) Get() (v ChannelType, ok bool) {
-	if !o.Set {
-		return v, false
-	}
-	return o.Value, true
-}
-
-// Or returns value if set, or given parameter if does not.
-func (o OptChannelType) Or(d ChannelType) ChannelType {
-	if v, ok := o.Get(); ok {
-		return v
-	}
-	return d
-}
-
 // NewOptConfigChannelsItemPolarity returns new OptConfigChannelsItemPolarity with value set to v.
 func NewOptConfigChannelsItemPolarity(v ConfigChannelsItemPolarity) OptConfigChannelsItemPolarity {
 	return OptConfigChannelsItemPolarity{
@@ -2789,52 +1190,6 @@ func (o OptConfigChannelsItemPolarity) Or(d ConfigChannelsItemPolarity) ConfigCh
 	return d
 }
 
-// NewOptConfigServer returns new OptConfigServer with value set to v.
-func NewOptConfigServer(v ConfigServer) OptConfigServer {
-	return OptConfigServer{
-		Value: v,
-		Set:   true,
-	}
-}
-
-// OptConfigServer is optional ConfigServer.
-type OptConfigServer struct {
-	Value ConfigServer
-	Set   bool
-}
-
-// IsSet returns true if OptConfigServer was set.
-func (o OptConfigServer) IsSet() bool { return o.Set }
-
-// Reset unsets value.
-func (o *OptConfigServer) Reset() {
-	var v ConfigServer
-	o.Value = v
-	o.Set = false
-}
-
-// SetTo sets value to v.
-func (o *OptConfigServer) SetTo(v ConfigServer) {
-	o.Set = true
-	o.Value = v
-}
-
-// Get returns value and boolean that denotes whether value was set.
-func (o OptConfigServer) Get() (v ConfigServer, ok bool) {
-	if !o.Set {
-		return v, false
-	}
-	return o.Value, true
-}
-
-// Or returns value if set, or given parameter if does not.
-func (o OptConfigServer) Or(d ConfigServer) ConfigServer {
-	if v, ok := o.Get(); ok {
-		return v
-	}
-	return d
-}
-
 // NewOptFloat64 returns new OptFloat64 with value set to v.
 func NewOptFloat64(v float64) OptFloat64 {
 	return OptFloat64{
@@ -2875,52 +1230,6 @@ func (o OptFloat64) Get() (v float64, ok bool) {
 
 // Or returns value if set, or given parameter if does not.
 func (o OptFloat64) Or(d float64) float64 {
-	if v, ok := o.Get(); ok {
-		return v
-	}
-	return d
-}
-
-// NewOptGetChannelsType returns new OptGetChannelsType with value set to v.
-func NewOptGetChannelsType(v GetChannelsType) OptGetChannelsType {
-	return OptGetChannelsType{
-		Value: v,
-		Set:   true,
-	}
-}
-
-// OptGetChannelsType is optional GetChannelsType.
-type OptGetChannelsType struct {
-	Value GetChannelsType
-	Set   bool
-}
-
-// IsSet returns true if OptGetChannelsType was set.
-func (o OptGetChannelsType) IsSet() bool { return o.Set }
-
-// Reset unsets value.
-func (o *OptGetChannelsType) Reset() {
-	var v GetChannelsType
-	o.Value = v
-	o.Set = false
-}
-
-// SetTo sets value to v.
-func (o *OptGetChannelsType) SetTo(v GetChannelsType) {
-	o.Set = true
-	o.Value = v
-}
-
-// Get returns value and boolean that denotes whether value was set.
-func (o OptGetChannelsType) Get() (v GetChannelsType, ok bool) {
-	if !o.Set {
-		return v, false
-	}
-	return o.Value, true
-}
-
-// Or returns value if set, or given parameter if does not.
-func (o OptGetChannelsType) Or(d GetChannelsType) GetChannelsType {
 	if v, ok := o.Get(); ok {
 		return v
 	}
@@ -3013,52 +1322,6 @@ func (o OptGetEventsStreamType) Get() (v GetEventsStreamType, ok bool) {
 
 // Or returns value if set, or given parameter if does not.
 func (o OptGetEventsStreamType) Or(d GetEventsStreamType) GetEventsStreamType {
-	if v, ok := o.Get(); ok {
-		return v
-	}
-	return d
-}
-
-// NewOptGetServicesChannelType returns new OptGetServicesChannelType with value set to v.
-func NewOptGetServicesChannelType(v GetServicesChannelType) OptGetServicesChannelType {
-	return OptGetServicesChannelType{
-		Value: v,
-		Set:   true,
-	}
-}
-
-// OptGetServicesChannelType is optional GetServicesChannelType.
-type OptGetServicesChannelType struct {
-	Value GetServicesChannelType
-	Set   bool
-}
-
-// IsSet returns true if OptGetServicesChannelType was set.
-func (o OptGetServicesChannelType) IsSet() bool { return o.Set }
-
-// Reset unsets value.
-func (o *OptGetServicesChannelType) Reset() {
-	var v GetServicesChannelType
-	o.Value = v
-	o.Set = false
-}
-
-// SetTo sets value to v.
-func (o *OptGetServicesChannelType) SetTo(v GetServicesChannelType) {
-	o.Set = true
-	o.Value = v
-}
-
-// Get returns value and boolean that denotes whether value was set.
-func (o OptGetServicesChannelType) Get() (v GetServicesChannelType, ok bool) {
-	if !o.Set {
-		return v, false
-	}
-	return o.Value, true
-}
-
-// Or returns value if set, or given parameter if does not.
-func (o OptGetServicesChannelType) Or(d GetServicesChannelType) GetServicesChannelType {
 	if v, ok := o.Get(); ok {
 		return v
 	}
@@ -5565,19 +3828,19 @@ type TransportStreamId int
 
 // Ref: #/components/schemas/TunerDevice
 type TunerDevice struct {
-	Index              int            `json:"index"`
-	Name               string         `json:"name"`
-	Types              []ChannelType  `json:"types"`
-	Command            string         `json:"command"`
-	Pid                int            `json:"pid"`
-	Users              []TunerUser    `json:"users"`
-	IsAvailable        bool           `json:"isAvailable"`
-	IsRemote           OptBool        `json:"isRemote"`
-	IsFree             bool           `json:"isFree"`
-	IsUsing            bool           `json:"isUsing"`
-	IsFault            bool           `json:"isFault"`
-	CurrentChannelType OptChannelType `json:"currentChannelType"`
-	CurrentChannel     OptString      `json:"currentChannel"`
+	Index              int         `json:"index"`
+	Name               string      `json:"name"`
+	Types              []string    `json:"types"`
+	Command            string      `json:"command"`
+	Pid                int         `json:"pid"`
+	Users              []TunerUser `json:"users"`
+	IsAvailable        bool        `json:"isAvailable"`
+	IsRemote           OptBool     `json:"isRemote"`
+	IsFree             bool        `json:"isFree"`
+	IsUsing            bool        `json:"isUsing"`
+	IsFault            bool        `json:"isFault"`
+	CurrentChannelType OptString   `json:"currentChannelType"`
+	CurrentChannel     OptString   `json:"currentChannel"`
 }
 
 // GetIndex returns the value of Index.
@@ -5591,7 +3854,7 @@ func (s *TunerDevice) GetName() string {
 }
 
 // GetTypes returns the value of Types.
-func (s *TunerDevice) GetTypes() []ChannelType {
+func (s *TunerDevice) GetTypes() []string {
 	return s.Types
 }
 
@@ -5636,7 +3899,7 @@ func (s *TunerDevice) GetIsFault() bool {
 }
 
 // GetCurrentChannelType returns the value of CurrentChannelType.
-func (s *TunerDevice) GetCurrentChannelType() OptChannelType {
+func (s *TunerDevice) GetCurrentChannelType() OptString {
 	return s.CurrentChannelType
 }
 
@@ -5656,7 +3919,7 @@ func (s *TunerDevice) SetName(val string) {
 }
 
 // SetTypes sets the value of Types.
-func (s *TunerDevice) SetTypes(val []ChannelType) {
+func (s *TunerDevice) SetTypes(val []string) {
 	s.Types = val
 }
 
@@ -5701,7 +3964,7 @@ func (s *TunerDevice) SetIsFault(val bool) {
 }
 
 // SetCurrentChannelType sets the value of CurrentChannelType.
-func (s *TunerDevice) SetCurrentChannelType(val OptChannelType) {
+func (s *TunerDevice) SetCurrentChannelType(val OptString) {
 	s.CurrentChannelType = val
 }
 

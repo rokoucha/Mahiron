@@ -15,599 +15,9 @@ import (
 	"github.com/ogen-go/ogen/validate"
 )
 
-// ChannelScanParams is parameters of channelScan operation.
-type ChannelScanParams struct {
-	// Dry run. If `true`, the scanned result will not be saved.
-	DryRun OptBool
-	// Specifies the channel type to scan.
-	Type OptChannelScanType
-	// Specifies the minimum number of channel numbers to scan.
-	MinCh OptInt
-	// Specifies the maximum number of channel numbers to scan.
-	MaxCh OptInt
-	// Specifies the minimum number of subchannel numbers to scan. This parameter is only used if the
-	// type is `BS` and the bs_subch_style is `true`.
-	MinSubCh OptInt
-	// Specifies the maximum number of subchannel numbers to scan. This parameter is only used if the
-	// type is `BS` and the bs_subch_style is `true`.
-	MaxSubCh OptInt
-	// Specify true to specify the channel in the subchannel style. Only used for BS scans. (e.g. BS01_0).
-	UseSubCh OptBool
-	// To specify the service explictly, use the `Service` mode.
-	// _Default value (GR)_: Channel
-	// _Default value (BS/CS)_: Service.
-	ScanMode OptChannelScanScanMode
-	// If `true`, set disable on add channel.
-	// _Default value (GR)_: false
-	// _Default value (BS/CS)_: true.
-	SetDisabledOnAdd OptBool
-	// If `true`, update the existing settings without inheriting them.
-	// However, non-scanned types of channels will always be inherited.
-	Refresh OptBool
-}
-
-func unpackChannelScanParams(packed middleware.Parameters) (params ChannelScanParams) {
-	{
-		key := middleware.ParameterKey{
-			Name: "dryRun",
-			In:   "query",
-		}
-		if v, ok := packed[key]; ok {
-			params.DryRun = v.(OptBool)
-		}
-	}
-	{
-		key := middleware.ParameterKey{
-			Name: "type",
-			In:   "query",
-		}
-		if v, ok := packed[key]; ok {
-			params.Type = v.(OptChannelScanType)
-		}
-	}
-	{
-		key := middleware.ParameterKey{
-			Name: "minCh",
-			In:   "query",
-		}
-		if v, ok := packed[key]; ok {
-			params.MinCh = v.(OptInt)
-		}
-	}
-	{
-		key := middleware.ParameterKey{
-			Name: "maxCh",
-			In:   "query",
-		}
-		if v, ok := packed[key]; ok {
-			params.MaxCh = v.(OptInt)
-		}
-	}
-	{
-		key := middleware.ParameterKey{
-			Name: "minSubCh",
-			In:   "query",
-		}
-		if v, ok := packed[key]; ok {
-			params.MinSubCh = v.(OptInt)
-		}
-	}
-	{
-		key := middleware.ParameterKey{
-			Name: "maxSubCh",
-			In:   "query",
-		}
-		if v, ok := packed[key]; ok {
-			params.MaxSubCh = v.(OptInt)
-		}
-	}
-	{
-		key := middleware.ParameterKey{
-			Name: "useSubCh",
-			In:   "query",
-		}
-		if v, ok := packed[key]; ok {
-			params.UseSubCh = v.(OptBool)
-		}
-	}
-	{
-		key := middleware.ParameterKey{
-			Name: "scanMode",
-			In:   "query",
-		}
-		if v, ok := packed[key]; ok {
-			params.ScanMode = v.(OptChannelScanScanMode)
-		}
-	}
-	{
-		key := middleware.ParameterKey{
-			Name: "setDisabledOnAdd",
-			In:   "query",
-		}
-		if v, ok := packed[key]; ok {
-			params.SetDisabledOnAdd = v.(OptBool)
-		}
-	}
-	{
-		key := middleware.ParameterKey{
-			Name: "refresh",
-			In:   "query",
-		}
-		if v, ok := packed[key]; ok {
-			params.Refresh = v.(OptBool)
-		}
-	}
-	return params
-}
-
-func decodeChannelScanParams(args [0]string, argsEscaped bool, r *http.Request) (params ChannelScanParams, _ error) {
-	q := uri.NewQueryDecoder(r.URL.Query())
-	// Set default value for query: dryRun.
-	{
-		val := bool(false)
-		params.DryRun.SetTo(val)
-	}
-	// Decode query: dryRun.
-	if err := func() error {
-		cfg := uri.QueryParameterDecodingConfig{
-			Name:    "dryRun",
-			Style:   uri.QueryStyleForm,
-			Explode: true,
-		}
-
-		if err := q.HasParam(cfg); err == nil {
-			if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
-				var paramsDotDryRunVal bool
-				if err := func() error {
-					val, err := d.DecodeValue()
-					if err != nil {
-						return err
-					}
-
-					c, err := conv.ToBool(val)
-					if err != nil {
-						return err
-					}
-
-					paramsDotDryRunVal = c
-					return nil
-				}(); err != nil {
-					return err
-				}
-				params.DryRun.SetTo(paramsDotDryRunVal)
-				return nil
-			}); err != nil {
-				return err
-			}
-		}
-		return nil
-	}(); err != nil {
-		return params, &ogenerrors.DecodeParamError{
-			Name: "dryRun",
-			In:   "query",
-			Err:  err,
-		}
-	}
-	// Set default value for query: type.
-	{
-		val := ChannelScanType("GR")
-		params.Type.SetTo(val)
-	}
-	// Decode query: type.
-	if err := func() error {
-		cfg := uri.QueryParameterDecodingConfig{
-			Name:    "type",
-			Style:   uri.QueryStyleForm,
-			Explode: true,
-		}
-
-		if err := q.HasParam(cfg); err == nil {
-			if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
-				var paramsDotTypeVal ChannelScanType
-				if err := func() error {
-					val, err := d.DecodeValue()
-					if err != nil {
-						return err
-					}
-
-					c, err := conv.ToString(val)
-					if err != nil {
-						return err
-					}
-
-					paramsDotTypeVal = ChannelScanType(c)
-					return nil
-				}(); err != nil {
-					return err
-				}
-				params.Type.SetTo(paramsDotTypeVal)
-				return nil
-			}); err != nil {
-				return err
-			}
-			if err := func() error {
-				if value, ok := params.Type.Get(); ok {
-					if err := func() error {
-						if err := value.Validate(); err != nil {
-							return err
-						}
-						return nil
-					}(); err != nil {
-						return err
-					}
-				}
-				return nil
-			}(); err != nil {
-				return err
-			}
-		}
-		return nil
-	}(); err != nil {
-		return params, &ogenerrors.DecodeParamError{
-			Name: "type",
-			In:   "query",
-			Err:  err,
-		}
-	}
-	// Decode query: minCh.
-	if err := func() error {
-		cfg := uri.QueryParameterDecodingConfig{
-			Name:    "minCh",
-			Style:   uri.QueryStyleForm,
-			Explode: true,
-		}
-
-		if err := q.HasParam(cfg); err == nil {
-			if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
-				var paramsDotMinChVal int
-				if err := func() error {
-					val, err := d.DecodeValue()
-					if err != nil {
-						return err
-					}
-
-					c, err := conv.ToInt(val)
-					if err != nil {
-						return err
-					}
-
-					paramsDotMinChVal = c
-					return nil
-				}(); err != nil {
-					return err
-				}
-				params.MinCh.SetTo(paramsDotMinChVal)
-				return nil
-			}); err != nil {
-				return err
-			}
-		}
-		return nil
-	}(); err != nil {
-		return params, &ogenerrors.DecodeParamError{
-			Name: "minCh",
-			In:   "query",
-			Err:  err,
-		}
-	}
-	// Decode query: maxCh.
-	if err := func() error {
-		cfg := uri.QueryParameterDecodingConfig{
-			Name:    "maxCh",
-			Style:   uri.QueryStyleForm,
-			Explode: true,
-		}
-
-		if err := q.HasParam(cfg); err == nil {
-			if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
-				var paramsDotMaxChVal int
-				if err := func() error {
-					val, err := d.DecodeValue()
-					if err != nil {
-						return err
-					}
-
-					c, err := conv.ToInt(val)
-					if err != nil {
-						return err
-					}
-
-					paramsDotMaxChVal = c
-					return nil
-				}(); err != nil {
-					return err
-				}
-				params.MaxCh.SetTo(paramsDotMaxChVal)
-				return nil
-			}); err != nil {
-				return err
-			}
-		}
-		return nil
-	}(); err != nil {
-		return params, &ogenerrors.DecodeParamError{
-			Name: "maxCh",
-			In:   "query",
-			Err:  err,
-		}
-	}
-	// Decode query: minSubCh.
-	if err := func() error {
-		cfg := uri.QueryParameterDecodingConfig{
-			Name:    "minSubCh",
-			Style:   uri.QueryStyleForm,
-			Explode: true,
-		}
-
-		if err := q.HasParam(cfg); err == nil {
-			if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
-				var paramsDotMinSubChVal int
-				if err := func() error {
-					val, err := d.DecodeValue()
-					if err != nil {
-						return err
-					}
-
-					c, err := conv.ToInt(val)
-					if err != nil {
-						return err
-					}
-
-					paramsDotMinSubChVal = c
-					return nil
-				}(); err != nil {
-					return err
-				}
-				params.MinSubCh.SetTo(paramsDotMinSubChVal)
-				return nil
-			}); err != nil {
-				return err
-			}
-		}
-		return nil
-	}(); err != nil {
-		return params, &ogenerrors.DecodeParamError{
-			Name: "minSubCh",
-			In:   "query",
-			Err:  err,
-		}
-	}
-	// Decode query: maxSubCh.
-	if err := func() error {
-		cfg := uri.QueryParameterDecodingConfig{
-			Name:    "maxSubCh",
-			Style:   uri.QueryStyleForm,
-			Explode: true,
-		}
-
-		if err := q.HasParam(cfg); err == nil {
-			if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
-				var paramsDotMaxSubChVal int
-				if err := func() error {
-					val, err := d.DecodeValue()
-					if err != nil {
-						return err
-					}
-
-					c, err := conv.ToInt(val)
-					if err != nil {
-						return err
-					}
-
-					paramsDotMaxSubChVal = c
-					return nil
-				}(); err != nil {
-					return err
-				}
-				params.MaxSubCh.SetTo(paramsDotMaxSubChVal)
-				return nil
-			}); err != nil {
-				return err
-			}
-		}
-		return nil
-	}(); err != nil {
-		return params, &ogenerrors.DecodeParamError{
-			Name: "maxSubCh",
-			In:   "query",
-			Err:  err,
-		}
-	}
-	// Set default value for query: useSubCh.
-	{
-		val := bool(true)
-		params.UseSubCh.SetTo(val)
-	}
-	// Decode query: useSubCh.
-	if err := func() error {
-		cfg := uri.QueryParameterDecodingConfig{
-			Name:    "useSubCh",
-			Style:   uri.QueryStyleForm,
-			Explode: true,
-		}
-
-		if err := q.HasParam(cfg); err == nil {
-			if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
-				var paramsDotUseSubChVal bool
-				if err := func() error {
-					val, err := d.DecodeValue()
-					if err != nil {
-						return err
-					}
-
-					c, err := conv.ToBool(val)
-					if err != nil {
-						return err
-					}
-
-					paramsDotUseSubChVal = c
-					return nil
-				}(); err != nil {
-					return err
-				}
-				params.UseSubCh.SetTo(paramsDotUseSubChVal)
-				return nil
-			}); err != nil {
-				return err
-			}
-		}
-		return nil
-	}(); err != nil {
-		return params, &ogenerrors.DecodeParamError{
-			Name: "useSubCh",
-			In:   "query",
-			Err:  err,
-		}
-	}
-	// Decode query: scanMode.
-	if err := func() error {
-		cfg := uri.QueryParameterDecodingConfig{
-			Name:    "scanMode",
-			Style:   uri.QueryStyleForm,
-			Explode: true,
-		}
-
-		if err := q.HasParam(cfg); err == nil {
-			if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
-				var paramsDotScanModeVal ChannelScanScanMode
-				if err := func() error {
-					val, err := d.DecodeValue()
-					if err != nil {
-						return err
-					}
-
-					c, err := conv.ToString(val)
-					if err != nil {
-						return err
-					}
-
-					paramsDotScanModeVal = ChannelScanScanMode(c)
-					return nil
-				}(); err != nil {
-					return err
-				}
-				params.ScanMode.SetTo(paramsDotScanModeVal)
-				return nil
-			}); err != nil {
-				return err
-			}
-			if err := func() error {
-				if value, ok := params.ScanMode.Get(); ok {
-					if err := func() error {
-						if err := value.Validate(); err != nil {
-							return err
-						}
-						return nil
-					}(); err != nil {
-						return err
-					}
-				}
-				return nil
-			}(); err != nil {
-				return err
-			}
-		}
-		return nil
-	}(); err != nil {
-		return params, &ogenerrors.DecodeParamError{
-			Name: "scanMode",
-			In:   "query",
-			Err:  err,
-		}
-	}
-	// Decode query: setDisabledOnAdd.
-	if err := func() error {
-		cfg := uri.QueryParameterDecodingConfig{
-			Name:    "setDisabledOnAdd",
-			Style:   uri.QueryStyleForm,
-			Explode: true,
-		}
-
-		if err := q.HasParam(cfg); err == nil {
-			if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
-				var paramsDotSetDisabledOnAddVal bool
-				if err := func() error {
-					val, err := d.DecodeValue()
-					if err != nil {
-						return err
-					}
-
-					c, err := conv.ToBool(val)
-					if err != nil {
-						return err
-					}
-
-					paramsDotSetDisabledOnAddVal = c
-					return nil
-				}(); err != nil {
-					return err
-				}
-				params.SetDisabledOnAdd.SetTo(paramsDotSetDisabledOnAddVal)
-				return nil
-			}); err != nil {
-				return err
-			}
-		}
-		return nil
-	}(); err != nil {
-		return params, &ogenerrors.DecodeParamError{
-			Name: "setDisabledOnAdd",
-			In:   "query",
-			Err:  err,
-		}
-	}
-	// Set default value for query: refresh.
-	{
-		val := bool(false)
-		params.Refresh.SetTo(val)
-	}
-	// Decode query: refresh.
-	if err := func() error {
-		cfg := uri.QueryParameterDecodingConfig{
-			Name:    "refresh",
-			Style:   uri.QueryStyleForm,
-			Explode: true,
-		}
-
-		if err := q.HasParam(cfg); err == nil {
-			if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
-				var paramsDotRefreshVal bool
-				if err := func() error {
-					val, err := d.DecodeValue()
-					if err != nil {
-						return err
-					}
-
-					c, err := conv.ToBool(val)
-					if err != nil {
-						return err
-					}
-
-					paramsDotRefreshVal = c
-					return nil
-				}(); err != nil {
-					return err
-				}
-				params.Refresh.SetTo(paramsDotRefreshVal)
-				return nil
-			}); err != nil {
-				return err
-			}
-		}
-		return nil
-	}(); err != nil {
-		return params, &ogenerrors.DecodeParamError{
-			Name: "refresh",
-			In:   "query",
-			Err:  err,
-		}
-	}
-	return params, nil
-}
-
 // GetChannelParams is parameters of getChannel operation.
 type GetChannelParams struct {
-	Type    GetChannelType
+	Type    string
 	Channel string
 }
 
@@ -617,7 +27,7 @@ func unpackGetChannelParams(packed middleware.Parameters) (params GetChannelPara
 			Name: "type",
 			In:   "path",
 		}
-		params.Type = packed[key].(GetChannelType)
+		params.Type = packed[key].(string)
 	}
 	{
 		key := middleware.ParameterKey{
@@ -659,15 +69,7 @@ func decodeGetChannelParams(args [2]string, argsEscaped bool, r *http.Request) (
 					return err
 				}
 
-				params.Type = GetChannelType(c)
-				return nil
-			}(); err != nil {
-				return err
-			}
-			if err := func() error {
-				if err := params.Type.Validate(); err != nil {
-					return err
-				}
+				params.Type = c
 				return nil
 			}(); err != nil {
 				return err
@@ -733,7 +135,7 @@ func decodeGetChannelParams(args [2]string, argsEscaped bool, r *http.Request) (
 
 // GetChannelStreamParams is parameters of getChannelStream operation.
 type GetChannelStreamParams struct {
-	Type               GetChannelStreamType
+	Type               string
 	Channel            string
 	XMirakurunPriority OptInt
 	Decode             OptInt
@@ -745,7 +147,7 @@ func unpackGetChannelStreamParams(packed middleware.Parameters) (params GetChann
 			Name: "type",
 			In:   "path",
 		}
-		params.Type = packed[key].(GetChannelStreamType)
+		params.Type = packed[key].(string)
 	}
 	{
 		key := middleware.ParameterKey{
@@ -807,15 +209,7 @@ func decodeGetChannelStreamParams(args [2]string, argsEscaped bool, r *http.Requ
 					return err
 				}
 
-				params.Type = GetChannelStreamType(c)
-				return nil
-			}(); err != nil {
-				return err
-			}
-			if err := func() error {
-				if err := params.Type.Validate(); err != nil {
-					return err
-				}
+				params.Type = c
 				return nil
 			}(); err != nil {
 				return err
@@ -1009,7 +403,7 @@ func decodeGetChannelStreamParams(args [2]string, argsEscaped bool, r *http.Requ
 
 // GetChannelsParams is parameters of getChannels operation.
 type GetChannelsParams struct {
-	Type    OptGetChannelsType
+	Type    OptString
 	Channel OptString
 	Name    OptString
 }
@@ -1021,7 +415,7 @@ func unpackGetChannelsParams(packed middleware.Parameters) (params GetChannelsPa
 			In:   "query",
 		}
 		if v, ok := packed[key]; ok {
-			params.Type = v.(OptGetChannelsType)
+			params.Type = v.(OptString)
 		}
 	}
 	{
@@ -1057,7 +451,7 @@ func decodeGetChannelsParams(args [0]string, argsEscaped bool, r *http.Request) 
 
 		if err := q.HasParam(cfg); err == nil {
 			if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
-				var paramsDotTypeVal GetChannelsType
+				var paramsDotTypeVal string
 				if err := func() error {
 					val, err := d.DecodeValue()
 					if err != nil {
@@ -1069,7 +463,7 @@ func decodeGetChannelsParams(args [0]string, argsEscaped bool, r *http.Request) 
 						return err
 					}
 
-					paramsDotTypeVal = GetChannelsType(c)
+					paramsDotTypeVal = c
 					return nil
 				}(); err != nil {
 					return err
@@ -1077,21 +471,6 @@ func decodeGetChannelsParams(args [0]string, argsEscaped bool, r *http.Request) 
 				params.Type.SetTo(paramsDotTypeVal)
 				return nil
 			}); err != nil {
-				return err
-			}
-			if err := func() error {
-				if value, ok := params.Type.Get(); ok {
-					if err := func() error {
-						if err := value.Validate(); err != nil {
-							return err
-						}
-						return nil
-					}(); err != nil {
-						return err
-					}
-				}
-				return nil
-			}(); err != nil {
 				return err
 			}
 		}
@@ -1190,7 +569,7 @@ func decodeGetChannelsParams(args [0]string, argsEscaped bool, r *http.Request) 
 
 // GetChannelsByTypeParams is parameters of getChannelsByType operation.
 type GetChannelsByTypeParams struct {
-	Type    GetChannelsByTypeType
+	Type    string
 	Channel OptString
 	Name    OptString
 }
@@ -1201,7 +580,7 @@ func unpackGetChannelsByTypeParams(packed middleware.Parameters) (params GetChan
 			Name: "type",
 			In:   "path",
 		}
-		params.Type = packed[key].(GetChannelsByTypeType)
+		params.Type = packed[key].(string)
 	}
 	{
 		key := middleware.ParameterKey{
@@ -1255,15 +634,7 @@ func decodeGetChannelsByTypeParams(args [1]string, argsEscaped bool, r *http.Req
 					return err
 				}
 
-				params.Type = GetChannelsByTypeType(c)
-				return nil
-			}(); err != nil {
-				return err
-			}
-			if err := func() error {
-				if err := params.Type.Validate(); err != nil {
-					return err
-				}
+				params.Type = c
 				return nil
 			}(); err != nil {
 				return err
@@ -2155,7 +1526,7 @@ func decodeGetServiceParams(args [1]string, argsEscaped bool, r *http.Request) (
 
 // GetServiceByChannelParams is parameters of getServiceByChannel operation.
 type GetServiceByChannelParams struct {
-	Type    GetServiceByChannelType
+	Type    string
 	Channel string
 	ID      int
 }
@@ -2166,7 +1537,7 @@ func unpackGetServiceByChannelParams(packed middleware.Parameters) (params GetSe
 			Name: "type",
 			In:   "path",
 		}
-		params.Type = packed[key].(GetServiceByChannelType)
+		params.Type = packed[key].(string)
 	}
 	{
 		key := middleware.ParameterKey{
@@ -2215,15 +1586,7 @@ func decodeGetServiceByChannelParams(args [3]string, argsEscaped bool, r *http.R
 					return err
 				}
 
-				params.Type = GetServiceByChannelType(c)
-				return nil
-			}(); err != nil {
-				return err
-			}
-			if err := func() error {
-				if err := params.Type.Validate(); err != nil {
-					return err
-				}
+				params.Type = c
 				return nil
 			}(); err != nil {
 				return err
@@ -2665,7 +2028,7 @@ func decodeGetServiceStreamParams(args [1]string, argsEscaped bool, r *http.Requ
 
 // GetServiceStreamByChannelParams is parameters of getServiceStreamByChannel operation.
 type GetServiceStreamByChannelParams struct {
-	Type               GetServiceStreamByChannelType
+	Type               string
 	Channel            string
 	ID                 int
 	XMirakurunPriority OptInt
@@ -2678,7 +2041,7 @@ func unpackGetServiceStreamByChannelParams(packed middleware.Parameters) (params
 			Name: "type",
 			In:   "path",
 		}
-		params.Type = packed[key].(GetServiceStreamByChannelType)
+		params.Type = packed[key].(string)
 	}
 	{
 		key := middleware.ParameterKey{
@@ -2747,15 +2110,7 @@ func decodeGetServiceStreamByChannelParams(args [3]string, argsEscaped bool, r *
 					return err
 				}
 
-				params.Type = GetServiceStreamByChannelType(c)
-				return nil
-			}(); err != nil {
-				return err
-			}
-			if err := func() error {
-				if err := params.Type.Validate(); err != nil {
-					return err
-				}
+				params.Type = c
 				return nil
 			}(); err != nil {
 				return err
@@ -3015,7 +2370,7 @@ type GetServicesParams struct {
 	NetworkId      OptInt
 	Name           OptString
 	Type           OptInt
-	ChannelType    OptGetServicesChannelType
+	ChannelType    OptString
 	ChannelChannel OptString
 }
 
@@ -3062,7 +2417,7 @@ func unpackGetServicesParams(packed middleware.Parameters) (params GetServicesPa
 			In:   "query",
 		}
 		if v, ok := packed[key]; ok {
-			params.ChannelType = v.(OptGetServicesChannelType)
+			params.ChannelType = v.(OptString)
 		}
 	}
 	{
@@ -3253,7 +2608,7 @@ func decodeGetServicesParams(args [0]string, argsEscaped bool, r *http.Request) 
 
 		if err := q.HasParam(cfg); err == nil {
 			if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
-				var paramsDotChannelTypeVal GetServicesChannelType
+				var paramsDotChannelTypeVal string
 				if err := func() error {
 					val, err := d.DecodeValue()
 					if err != nil {
@@ -3265,7 +2620,7 @@ func decodeGetServicesParams(args [0]string, argsEscaped bool, r *http.Request) 
 						return err
 					}
 
-					paramsDotChannelTypeVal = GetServicesChannelType(c)
+					paramsDotChannelTypeVal = c
 					return nil
 				}(); err != nil {
 					return err
@@ -3273,21 +2628,6 @@ func decodeGetServicesParams(args [0]string, argsEscaped bool, r *http.Request) 
 				params.ChannelType.SetTo(paramsDotChannelTypeVal)
 				return nil
 			}); err != nil {
-				return err
-			}
-			if err := func() error {
-				if value, ok := params.ChannelType.Get(); ok {
-					if err := func() error {
-						if err := value.Validate(); err != nil {
-							return err
-						}
-						return nil
-					}(); err != nil {
-						return err
-					}
-				}
-				return nil
-			}(); err != nil {
 				return err
 			}
 		}
@@ -3345,7 +2685,7 @@ func decodeGetServicesParams(args [0]string, argsEscaped bool, r *http.Request) 
 
 // GetServicesByChannelParams is parameters of getServicesByChannel operation.
 type GetServicesByChannelParams struct {
-	Type    GetServicesByChannelType
+	Type    string
 	Channel string
 }
 
@@ -3355,7 +2695,7 @@ func unpackGetServicesByChannelParams(packed middleware.Parameters) (params GetS
 			Name: "type",
 			In:   "path",
 		}
-		params.Type = packed[key].(GetServicesByChannelType)
+		params.Type = packed[key].(string)
 	}
 	{
 		key := middleware.ParameterKey{
@@ -3397,15 +2737,7 @@ func decodeGetServicesByChannelParams(args [2]string, argsEscaped bool, r *http.
 					return err
 				}
 
-				params.Type = GetServicesByChannelType(c)
-				return nil
-			}(); err != nil {
-				return err
-			}
-			if err := func() error {
-				if err := params.Type.Validate(); err != nil {
-					return err
-				}
+				params.Type = c
 				return nil
 			}(); err != nil {
 				return err

@@ -15,12 +15,12 @@ func NewHandler() *Handler {
 	return &Handler{}
 }
 
-func (h *Handler) ChannelScan(ctx context.Context, params apigen.ChannelScanParams) (apigen.ChannelScanRes, error) {
-	panic("implement me")
-}
-
 func (h *Handler) CheckVersion(ctx context.Context) (apigen.CheckVersionRes, error) {
 	return CheckVersion(ctx, h)
+}
+
+func (h *Handler) GetApiDocumentation(ctx context.Context) (string, error) {
+	panic("implement me")
 }
 
 func (h *Handler) GetChannel(ctx context.Context, params apigen.GetChannelParams) (apigen.GetChannelRes, error) {
@@ -36,10 +36,6 @@ func (h *Handler) GetChannels(ctx context.Context, params apigen.GetChannelsPara
 }
 
 func (h *Handler) GetChannelsByType(ctx context.Context, params apigen.GetChannelsByTypeParams) (apigen.GetChannelsByTypeRes, error) {
-	panic("implement me")
-}
-
-func (h *Handler) GetChannelsConfig(ctx context.Context) (apigen.GetChannelsConfigRes, error) {
 	panic("implement me")
 }
 
@@ -72,10 +68,6 @@ func (h *Handler) GetProgramStream(ctx context.Context, params apigen.GetProgram
 }
 
 func (h *Handler) GetPrograms(ctx context.Context, params apigen.GetProgramsParams) (apigen.GetProgramsRes, error) {
-	panic("implement me")
-}
-
-func (h *Handler) GetServerConfig(ctx context.Context) (apigen.GetServerConfigRes, error) {
 	panic("implement me")
 }
 
@@ -123,10 +115,6 @@ func (h *Handler) GetTuners(ctx context.Context) (apigen.GetTunersRes, error) {
 	panic("implement me")
 }
 
-func (h *Handler) GetTunersConfig(ctx context.Context) (apigen.GetTunersConfigRes, error) {
-	panic("implement me")
-}
-
 func (h *Handler) IptvDiscoverJSONGet(ctx context.Context) (apigen.IptvDiscoverJSONGetRes, error) {
 	panic("implement me")
 }
@@ -140,17 +128,5 @@ func (h *Handler) IptvLineupStatusJSONGet(ctx context.Context) (apigen.IptvLineu
 }
 
 func (h *Handler) KillTunerProcess(ctx context.Context, params apigen.KillTunerProcessParams) (apigen.KillTunerProcessRes, error) {
-	panic("implement me")
-}
-
-func (h *Handler) UpdateChannelsConfig(ctx context.Context, req apigen.ConfigChannels) (apigen.UpdateChannelsConfigRes, error) {
-	panic("implement me")
-}
-
-func (h *Handler) UpdateServerConfig(ctx context.Context, req apigen.OptConfigServer) (apigen.UpdateServerConfigRes, error) {
-	panic("implement me")
-}
-
-func (h *Handler) UpdateTunersConfig(ctx context.Context, req apigen.ConfigTuners) (apigen.UpdateTunersConfigRes, error) {
 	panic("implement me")
 }

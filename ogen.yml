@@ -1,2 +1,4 @@
 generator:
-  ignore_not_implemented: ["unsupported content types"]
+  ignore_not_implemented:
+    - unsupported content types
+    - empty schema
