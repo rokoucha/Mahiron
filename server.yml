@@ -1,3 +1,5 @@
 addresses:
   - http: localhost:40772
   - unix: /tmp/test.sock
+
+logLevel: debug

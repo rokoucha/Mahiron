@@ -5,14 +5,15 @@ import (
 	"errors"
 	"io"
 	"log/slog"
-	"net/http"
 	"time"
 
+	"github.com/21S1298001/Mahiron5/util"
 	"github.com/21S1298001/Mahiron5/util/dynamicmultiwriter"
 )
 
 type Tuner struct {
 	name      string
+	process   *util.Process
 	streaming bool
 	writer    *dynamicmultiwriter.DynamicMultiWriter
 }
@@ -64,19 +65,41 @@ func (t *Tuner) Shutdown(ctx context.Context) {
 func (t *Tuner) spawn() error {
 	t.streaming = true
 
-	resp, err := http.Get("http://v6.haruka.dns.ggrel.net:40772/api/services/3273601024/stream")
+	if t.process != nil && t.process.Pid() > 0 {
+		slog.Warn("tuner process already running", "name", t.name, "pid", t.process.Pid())
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := t.process.Stop(ctx); err != nil {
+			slog.Error("failed to stop process", "name", t.name, "err", err)
+		}
+	}
+
+	process, err := util.NewProcess([]string{"curl", "-s", "http://v6.haruka.dns.ggrel.net:40772/api/services/3273601024/stream"})
 	if err != nil {
 		return err
 	}
-	if resp.StatusCode != http.StatusOK {
-		return errors.New("failed to get stream")
+
+	t.process = process
+
+	err = process.Start()
+	if err != nil {
+		return err
 	}
 
-	defer resp.Body.Close()
-	defer t.writer.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	defer func() {
+		t.writer.Close()
+		if err := t.process.Stop(ctx); err != nil {
+			slog.Error("failed to stop process", "name", t.name, "err", err)
+		}
+		slog.Info("tuner process stopped", "name", t.name, "pid", t.process.Pid())
+		t.process = nil
+	}()
 
 	slog.Info("tuner stream started", "name", t.name)
-	_, err = io.Copy(t.writer, resp.Body)
+	_, err = io.Copy(t.writer, t.process.Stdout())
 	if err == nil {
 		slog.Info("tuner stream ended", "name", t.name)
 		t.streaming = false
