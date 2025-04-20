@@ -112,7 +112,7 @@ func (h *Handler) GetServicePrograms(ctx context.Context, params apigen.GetServi
 }
 
 func (h *Handler) GetServiceStream(ctx context.Context, params apigen.GetServiceStreamParams) (apigen.GetServiceStreamRes, error) {
-	return GetServiceStream(ctx, h)
+	return GetServiceStream(ctx, h, params)
 }
 
 func (h *Handler) GetServiceStreamByChannel(ctx context.Context, params apigen.GetServiceStreamByChannelParams) (apigen.GetServiceStreamByChannelRes, error) {

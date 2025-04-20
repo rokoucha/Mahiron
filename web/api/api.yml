@@ -534,6 +534,7 @@ paths:
           schema:
             maximum: 6553565535
             type: integer
+            format: int64
         - name: X-Mirakurun-Priority
           in: header
           schema:
@@ -577,6 +578,7 @@ paths:
           schema:
             maximum: 6553565535
             type: integer
+            format: int64
         - name: X-Mirakurun-Priority
           in: header
           schema:
@@ -618,6 +620,7 @@ paths:
           schema:
             maximum: 6553565535
             type: integer
+            format: int64
       responses:
         "200":
           description: OK
@@ -645,6 +648,7 @@ paths:
           schema:
             maximum: 6553565535
             type: integer
+            format: int64
       responses:
         "200":
           description: OK
@@ -674,6 +678,7 @@ paths:
           schema:
             maximum: 6553565535
             type: integer
+            format: int64
       responses:
         "200":
           description: OK
@@ -707,6 +712,7 @@ paths:
             maximum: 655356553565535
             minimum: 10000000000
             type: integer
+            format: int64
         - name: X-Mirakurun-Priority
           in: header
           schema:
@@ -751,6 +757,7 @@ paths:
             maximum: 655356553565535
             minimum: 10000000000
             type: integer
+            format: int64
         - name: X-Mirakurun-Priority
           in: header
           schema:
@@ -792,6 +799,7 @@ paths:
             maximum: 655356553565535
             minimum: 10000000000
             type: integer
+            format: int64
       responses:
         "200":
           description: OK
@@ -1011,6 +1019,7 @@ paths:
           schema:
             maximum: 6553565535
             type: integer
+            format: int64
         - name: X-Mirakurun-Priority
           in: header
           schema:
@@ -1065,6 +1074,7 @@ paths:
           schema:
             maximum: 6553565535
             type: integer
+            format: int64
         - name: X-Mirakurun-Priority
           in: header
           schema:
@@ -1116,6 +1126,7 @@ paths:
           schema:
             maximum: 6553565535
             type: integer
+            format: int64
       responses:
         "200":
           description: OK
@@ -1257,6 +1268,7 @@ components:
     ProgramId:
       maximum: 655356553565535
       type: integer
+      format: int64
     EventId:
       maximum: 65535
       type: integer
@@ -1269,6 +1281,7 @@ components:
     ServiceItemId:
       maximum: 6553565535
       type: integer
+      format: int64
     UnixtimeMS:
       type: integer
     TransportStreamId:

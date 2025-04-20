@@ -84,7 +84,7 @@ func decodeAbortJobParams(args [1]string, argsEscaped bool, r *http.Request) (pa
 type ChannelsTypeChannelServicesIDStreamHeadParams struct {
 	Type               string
 	Channel            string
-	ID                 int
+	ID                 int64
 	XMirakurunPriority OptInt
 	Decode             OptInt
 }
@@ -109,7 +109,7 @@ func unpackChannelsTypeChannelServicesIDStreamHeadParams(packed middleware.Param
 			Name: "id",
 			In:   "path",
 		}
-		params.ID = packed[key].(int)
+		params.ID = packed[key].(int64)
 	}
 	{
 		key := middleware.ParameterKey{
@@ -249,7 +249,7 @@ func decodeChannelsTypeChannelServicesIDStreamHeadParams(args [3]string, argsEsc
 					return err
 				}
 
-				c, err := conv.ToInt(val)
+				c, err := conv.ToInt64(val)
 				if err != nil {
 					return err
 				}
@@ -1553,7 +1553,7 @@ func decodeGetEventsStreamParams(args [0]string, argsEscaped bool, r *http.Reque
 
 // GetLogoImageParams is parameters of getLogoImage operation.
 type GetLogoImageParams struct {
-	ID int
+	ID int64
 }
 
 func unpackGetLogoImageParams(packed middleware.Parameters) (params GetLogoImageParams) {
@@ -1562,7 +1562,7 @@ func unpackGetLogoImageParams(packed middleware.Parameters) (params GetLogoImage
 			Name: "id",
 			In:   "path",
 		}
-		params.ID = packed[key].(int)
+		params.ID = packed[key].(int64)
 	}
 	return params
 }
@@ -1592,7 +1592,7 @@ func decodeGetLogoImageParams(args [1]string, argsEscaped bool, r *http.Request)
 					return err
 				}
 
-				c, err := conv.ToInt(val)
+				c, err := conv.ToInt64(val)
 				if err != nil {
 					return err
 				}
@@ -1635,7 +1635,7 @@ func decodeGetLogoImageParams(args [1]string, argsEscaped bool, r *http.Request)
 
 // GetProgramParams is parameters of getProgram operation.
 type GetProgramParams struct {
-	ID int
+	ID int64
 }
 
 func unpackGetProgramParams(packed middleware.Parameters) (params GetProgramParams) {
@@ -1644,7 +1644,7 @@ func unpackGetProgramParams(packed middleware.Parameters) (params GetProgramPara
 			Name: "id",
 			In:   "path",
 		}
-		params.ID = packed[key].(int)
+		params.ID = packed[key].(int64)
 	}
 	return params
 }
@@ -1674,7 +1674,7 @@ func decodeGetProgramParams(args [1]string, argsEscaped bool, r *http.Request) (
 					return err
 				}
 
-				c, err := conv.ToInt(val)
+				c, err := conv.ToInt64(val)
 				if err != nil {
 					return err
 				}
@@ -1717,7 +1717,7 @@ func decodeGetProgramParams(args [1]string, argsEscaped bool, r *http.Request) (
 
 // GetProgramStreamParams is parameters of getProgramStream operation.
 type GetProgramStreamParams struct {
-	ID                 int
+	ID                 int64
 	XMirakurunPriority OptInt
 	Decode             OptInt
 }
@@ -1728,7 +1728,7 @@ func unpackGetProgramStreamParams(packed middleware.Parameters) (params GetProgr
 			Name: "id",
 			In:   "path",
 		}
-		params.ID = packed[key].(int)
+		params.ID = packed[key].(int64)
 	}
 	{
 		key := middleware.ParameterKey{
@@ -1778,7 +1778,7 @@ func decodeGetProgramStreamParams(args [1]string, argsEscaped bool, r *http.Requ
 					return err
 				}
 
-				c, err := conv.ToInt(val)
+				c, err := conv.ToInt64(val)
 				if err != nil {
 					return err
 				}
@@ -2115,7 +2115,7 @@ func decodeGetProgramsParams(args [0]string, argsEscaped bool, r *http.Request) 
 
 // GetServiceParams is parameters of getService operation.
 type GetServiceParams struct {
-	ID int
+	ID int64
 }
 
 func unpackGetServiceParams(packed middleware.Parameters) (params GetServiceParams) {
@@ -2124,7 +2124,7 @@ func unpackGetServiceParams(packed middleware.Parameters) (params GetServicePara
 			Name: "id",
 			In:   "path",
 		}
-		params.ID = packed[key].(int)
+		params.ID = packed[key].(int64)
 	}
 	return params
 }
@@ -2154,7 +2154,7 @@ func decodeGetServiceParams(args [1]string, argsEscaped bool, r *http.Request) (
 					return err
 				}
 
-				c, err := conv.ToInt(val)
+				c, err := conv.ToInt64(val)
 				if err != nil {
 					return err
 				}
@@ -2199,7 +2199,7 @@ func decodeGetServiceParams(args [1]string, argsEscaped bool, r *http.Request) (
 type GetServiceByChannelParams struct {
 	Type    string
 	Channel string
-	ID      int
+	ID      int64
 }
 
 func unpackGetServiceByChannelParams(packed middleware.Parameters) (params GetServiceByChannelParams) {
@@ -2222,7 +2222,7 @@ func unpackGetServiceByChannelParams(packed middleware.Parameters) (params GetSe
 			Name: "id",
 			In:   "path",
 		}
-		params.ID = packed[key].(int)
+		params.ID = packed[key].(int64)
 	}
 	return params
 }
@@ -2342,7 +2342,7 @@ func decodeGetServiceByChannelParams(args [3]string, argsEscaped bool, r *http.R
 					return err
 				}
 
-				c, err := conv.ToInt(val)
+				c, err := conv.ToInt64(val)
 				if err != nil {
 					return err
 				}
@@ -2385,7 +2385,7 @@ func decodeGetServiceByChannelParams(args [3]string, argsEscaped bool, r *http.R
 
 // GetServiceProgramsParams is parameters of getServicePrograms operation.
 type GetServiceProgramsParams struct {
-	ID int
+	ID int64
 }
 
 func unpackGetServiceProgramsParams(packed middleware.Parameters) (params GetServiceProgramsParams) {
@@ -2394,7 +2394,7 @@ func unpackGetServiceProgramsParams(packed middleware.Parameters) (params GetSer
 			Name: "id",
 			In:   "path",
 		}
-		params.ID = packed[key].(int)
+		params.ID = packed[key].(int64)
 	}
 	return params
 }
@@ -2424,7 +2424,7 @@ func decodeGetServiceProgramsParams(args [1]string, argsEscaped bool, r *http.Re
 					return err
 				}
 
-				c, err := conv.ToInt(val)
+				c, err := conv.ToInt64(val)
 				if err != nil {
 					return err
 				}
@@ -2467,7 +2467,7 @@ func decodeGetServiceProgramsParams(args [1]string, argsEscaped bool, r *http.Re
 
 // GetServiceStreamParams is parameters of getServiceStream operation.
 type GetServiceStreamParams struct {
-	ID                 int
+	ID                 int64
 	XMirakurunPriority OptInt
 	Decode             OptInt
 }
@@ -2478,7 +2478,7 @@ func unpackGetServiceStreamParams(packed middleware.Parameters) (params GetServi
 			Name: "id",
 			In:   "path",
 		}
-		params.ID = packed[key].(int)
+		params.ID = packed[key].(int64)
 	}
 	{
 		key := middleware.ParameterKey{
@@ -2528,7 +2528,7 @@ func decodeGetServiceStreamParams(args [1]string, argsEscaped bool, r *http.Requ
 					return err
 				}
 
-				c, err := conv.ToInt(val)
+				c, err := conv.ToInt64(val)
 				if err != nil {
 					return err
 				}
@@ -2701,7 +2701,7 @@ func decodeGetServiceStreamParams(args [1]string, argsEscaped bool, r *http.Requ
 type GetServiceStreamByChannelParams struct {
 	Type               string
 	Channel            string
-	ID                 int
+	ID                 int64
 	XMirakurunPriority OptInt
 	Decode             OptInt
 }
@@ -2726,7 +2726,7 @@ func unpackGetServiceStreamByChannelParams(packed middleware.Parameters) (params
 			Name: "id",
 			In:   "path",
 		}
-		params.ID = packed[key].(int)
+		params.ID = packed[key].(int64)
 	}
 	{
 		key := middleware.ParameterKey{
@@ -2866,7 +2866,7 @@ func decodeGetServiceStreamByChannelParams(args [3]string, argsEscaped bool, r *
 					return err
 				}
 
-				c, err := conv.ToInt(val)
+				c, err := conv.ToInt64(val)
 				if err != nil {
 					return err
 				}
@@ -3720,7 +3720,7 @@ func decodeKillTunerProcessParams(args [1]string, argsEscaped bool, r *http.Requ
 
 // ProgramsIDStreamHeadParams is parameters of HEAD /programs/{id}/stream operation.
 type ProgramsIDStreamHeadParams struct {
-	ID                 int
+	ID                 int64
 	XMirakurunPriority OptInt
 	Decode             OptInt
 }
@@ -3731,7 +3731,7 @@ func unpackProgramsIDStreamHeadParams(packed middleware.Parameters) (params Prog
 			Name: "id",
 			In:   "path",
 		}
-		params.ID = packed[key].(int)
+		params.ID = packed[key].(int64)
 	}
 	{
 		key := middleware.ParameterKey{
@@ -3781,7 +3781,7 @@ func decodeProgramsIDStreamHeadParams(args [1]string, argsEscaped bool, r *http.
 					return err
 				}
 
-				c, err := conv.ToInt(val)
+				c, err := conv.ToInt64(val)
 				if err != nil {
 					return err
 				}
@@ -4082,7 +4082,7 @@ func decodeRunJobScheduleParams(args [1]string, argsEscaped bool, r *http.Reques
 
 // ServicesIDStreamHeadParams is parameters of HEAD /services/{id}/stream operation.
 type ServicesIDStreamHeadParams struct {
-	ID                 int
+	ID                 int64
 	XMirakurunPriority OptInt
 	Decode             OptInt
 }
@@ -4093,7 +4093,7 @@ func unpackServicesIDStreamHeadParams(packed middleware.Parameters) (params Serv
 			Name: "id",
 			In:   "path",
 		}
-		params.ID = packed[key].(int)
+		params.ID = packed[key].(int64)
 	}
 	{
 		key := middleware.ParameterKey{
@@ -4143,7 +4143,7 @@ func decodeServicesIDStreamHeadParams(args [1]string, argsEscaped bool, r *http.
 					return err
 				}
 
-				c, err := conv.ToInt(val)
+				c, err := conv.ToInt64(val)
 				if err != nil {
 					return err
 				}

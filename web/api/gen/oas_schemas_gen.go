@@ -3208,7 +3208,7 @@ func (s *ProgramGenre) SetUn2(val OptInt) {
 	s.Un2 = val
 }
 
-type ProgramId int
+type ProgramId int64
 
 type ProgramPattern int
 
@@ -3762,7 +3762,7 @@ func (*Service) getServiceRes() {}
 
 type ServiceId int
 
-type ServiceItemId int
+type ServiceItemId int64
 
 // ServicesIDStreamHeadDef is default response for ServicesIDStreamHead operation.
 type ServicesIDStreamHeadDef struct {

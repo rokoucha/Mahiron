@@ -4151,9 +4151,9 @@ func (s *ProgramGenre) UnmarshalJSON(data []byte) error {
 
 // Encode encodes ProgramId as json.
 func (s ProgramId) Encode(e *jx.Encoder) {
-	unwrapped := int(s)
+	unwrapped := int64(s)
 
-	e.Int(unwrapped)
+	e.Int64(unwrapped)
 }
 
 // Decode decodes ProgramId from json.
@@ -4161,10 +4161,10 @@ func (s *ProgramId) Decode(d *jx.Decoder) error {
 	if s == nil {
 		return errors.New("invalid: unable to decode ProgramId to nil")
 	}
-	var unwrapped int
+	var unwrapped int64
 	if err := func() error {
-		v, err := d.Int()
-		unwrapped = int(v)
+		v, err := d.Int64()
+		unwrapped = int64(v)
 		if err != nil {
 			return err
 		}
@@ -5078,9 +5078,9 @@ func (s *ServiceId) UnmarshalJSON(data []byte) error {
 
 // Encode encodes ServiceItemId as json.
 func (s ServiceItemId) Encode(e *jx.Encoder) {
-	unwrapped := int(s)
+	unwrapped := int64(s)
 
-	e.Int(unwrapped)
+	e.Int64(unwrapped)
 }
 
 // Decode decodes ServiceItemId from json.
@@ -5088,10 +5088,10 @@ func (s *ServiceItemId) Decode(d *jx.Decoder) error {
 	if s == nil {
 		return errors.New("invalid: unable to decode ServiceItemId to nil")
 	}
-	var unwrapped int
+	var unwrapped int64
 	if err := func() error {
-		v, err := d.Int()
-		unwrapped = int(v)
+		v, err := d.Int64()
+		unwrapped = int64(v)
 		if err != nil {
 			return err
 		}

@@ -779,7 +779,7 @@ func (s ProgramEpisodeNumber) Validate() error {
 }
 
 func (s ProgramId) Validate() error {
-	alias := (int)(s)
+	alias := (int64)(s)
 	if err := (validate.Int{
 		MinSet:        false,
 		Min:           0,
@@ -1131,7 +1131,7 @@ func (s ServiceId) Validate() error {
 }
 
 func (s ServiceItemId) Validate() error {
-	alias := (int)(s)
+	alias := (int64)(s)
 	if err := (validate.Int{
 		MinSet:        false,
 		Min:           0,

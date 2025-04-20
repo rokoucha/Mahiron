@@ -7,7 +7,7 @@ import (
 	apigen "github.com/21S1298001/Mahiron5/web/api/gen"
 )
 
-func GetServiceStream(ctx context.Context, h *Handler) (apigen.GetServiceStreamRes, error) {
+func GetServiceStream(ctx context.Context, h *Handler, params apigen.GetServiceStreamParams) (apigen.GetServiceStreamRes, error) {
 	pr, pw := io.Pipe()
 
 	tuner := h.tunerManager.GetTuner("test")
