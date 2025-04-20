@@ -1,4 +1,4 @@
 - name: test
   types:
     - GR
-  command: curl -s http://v6.haruka.dns.ggrel.net:40772/api/services/3273601024/stream
+  command: curl -s http://v6.haruka.dns.ggrel.net:40772/api/channels/GR/27/stream

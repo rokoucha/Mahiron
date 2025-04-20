@@ -100,14 +100,19 @@ func (t *Tuner) spawn() error {
 		return err
 	}
 
-	process, err := util.NewProcess(args)
+	t.process, err = util.NewProcess(util.ProcessConfig{
+		Args: args,
+	})
 	if err != nil {
 		return err
 	}
 
-	t.process = process
+	or, err := t.process.StdoutPipe()
+	if err != nil {
+		return err
+	}
 
-	err = process.Start()
+	err = t.process.Start()
 	if err != nil {
 		return err
 	}
@@ -125,7 +130,7 @@ func (t *Tuner) spawn() error {
 	}()
 
 	slog.Info("tuner stream started", "name", t.Name())
-	_, err = io.Copy(t.writer, t.process.Stdout())
+	_, err = io.Copy(t.writer, or)
 	if err == nil {
 		slog.Info("tuner stream ended", "name", t.Name())
 		t.streaming = false

@@ -9,53 +9,34 @@ import (
 )
 
 type Process struct {
-	args   []string
-	cmd    *exec.Cmd
-	stdin  io.WriteCloser
-	stdout io.ReadCloser
-	stderr io.ReadCloser
+	cmd *exec.Cmd
 }
 
-func NewProcess(args []string) (*Process, error) {
-	cmd := exec.Command(args[0], args[1:]...)
+type ProcessConfig struct {
+	Args []string
+}
+
+func NewProcess(config ProcessConfig) (*Process, error) {
+	cmd := exec.Command(config.Args[0], config.Args[1:]...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Setpgid: true,
 	}
 
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		return nil, err
-	}
-
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return nil, err
-	}
-
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return nil, err
-	}
-
 	return &Process{
-		args:   args,
-		cmd:    cmd,
-		stdin:  stdin,
-		stdout: stdout,
-		stderr: stderr,
+		cmd: cmd,
 	}, nil
 }
 
-func (p *Process) Stdin() io.Writer {
-	return p.stdin
+func (p *Process) StdinPipe() (io.WriteCloser, error) {
+	return p.cmd.StdinPipe()
 }
 
-func (p *Process) Stdout() io.Reader {
-	return p.stdout
+func (p *Process) StdoutPipe() (io.ReadCloser, error) {
+	return p.cmd.StdoutPipe()
 }
 
-func (p *Process) Stderr() io.Reader {
-	return p.stderr
+func (p *Process) StderrPipe() (io.ReadCloser, error) {
+	return p.cmd.StderrPipe()
 }
 
 func (p *Process) Pid() int {
@@ -70,12 +51,6 @@ func (p *Process) Start() error {
 }
 
 func (p *Process) Stop(ctx context.Context) error {
-	defer func() {
-		p.stdin.Close()
-		p.stdout.Close()
-		p.stderr.Close()
-	}()
-
 	if err := p.cmd.Process.Signal(syscall.SIGTERM); err != nil {
 		return err
 	}
