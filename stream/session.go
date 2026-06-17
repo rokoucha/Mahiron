@@ -361,9 +361,11 @@ func (s *ChannelSession) startEITPFLocked() {
 	s.hub.Attach(w)
 	ctx := s.ctx
 	go func() {
+		slog.Debug("starting EITPF piggyback collection", "type", s.typ, "channel", s.channel)
 		defer s.hub.Detach(w)
 		defer r.Close()
 		defer w.Close()
+		defer slog.Debug("finished EITPF piggyback collection", "type", s.typ, "channel", s.channel)
 
 		pr, pw := io.Pipe()
 		done := make(chan error, 1)

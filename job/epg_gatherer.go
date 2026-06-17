@@ -60,13 +60,14 @@ func epgGathererHandler(pm *program.ProgramManager, stm *stream.StreamManager, t
 					slog.Error("failed to get stream session for EPG piggyback", "channel", channel.Channel, "err", err)
 					continue
 				}
+				slog.Debug("starting EPG collection piggyback", "type", channel.Type, "channel", channel.Channel)
 				if err := collectSessionEPG(ctx, pm, session); err != nil {
 					failed++
 					slog.Error("failed to collect EPG (piggyback)", "channel", channel.Channel, "err", err)
 					continue
 				}
 				piggybacked++
-				slog.Debug("collected EPG (piggyback)", "group", group, "channel", channel.Channel)
+				slog.Debug("finished EPG collection piggyback", "group", group, "type", channel.Type, "channel", channel.Channel)
 				continue
 			}
 
@@ -82,13 +83,14 @@ func epgGathererHandler(pm *program.ProgramManager, stm *stream.StreamManager, t
 				slog.Error("failed to create stream session for EPG", "channel", channel.Channel, "err", err)
 				continue
 			}
+			slog.Debug("starting EPG collection", "type", channel.Type, "channel", channel.Channel)
 			if err := collectSessionEPG(ctx, pm, session); err != nil {
 				failed++
 				slog.Error("failed to collect EPG", "channel", channel.Channel, "err", err)
 				continue
 			}
 			collected++
-			slog.Debug("collected EPG", "group", group, "channel", channel.Channel)
+			slog.Debug("finished EPG collection", "group", group, "type", channel.Type, "channel", channel.Channel)
 		}
 
 		slog.Info("EPG gatherer completed", "collected", collected, "piggybacked", piggybacked, "skipped", skipped, "failed", failed)
@@ -105,12 +107,16 @@ func collectSessionEPG(ctx context.Context, pm *program.ProgramManager, session 
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
+		slog.Debug("starting EITS collection")
 		errCh <- collectEITSUntilComplete(collectCtx, pm, session.CollectEITS)
+		slog.Debug("finished EITS collection")
 		cancel()
 	}()
 	go func() {
 		defer wg.Done()
+		slog.Debug("starting EITPF collection")
 		errCh <- collectEITJSONL(collectCtx, pm, session.CollectEITPF)
+		slog.Debug("finished EITPF collection")
 	}()
 	wg.Wait()
 	close(errCh)
