@@ -3,7 +3,9 @@ package util
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
+	"sync"
 	"testing"
 )
 
@@ -149,6 +151,12 @@ func (m *mockErrorWriter) Write(p []byte) (n int, err error) {
 	return 0, m.err
 }
 
+type discardWriter struct{}
+
+func (d *discardWriter) Write(p []byte) (n int, err error) {
+	return len(p), nil
+}
+
 func TestDynamicMultiWriter_Write(t *testing.T) {
 	t.Run("successful write to multiple writers", func(t *testing.T) {
 		buf1 := &bytes.Buffer{}
@@ -201,6 +209,20 @@ func TestDynamicMultiWriter_Write(t *testing.T) {
 		}
 	})
 
+	t.Run("write with all writers closed", func(t *testing.T) {
+		closedWriter1 := &mockErrorWriter{err: io.ErrClosedPipe}
+		closedWriter2 := &mockErrorWriter{err: io.ErrClosedPipe}
+		d := NewDynamicMultiWriter(closedWriter1, closedWriter2)
+
+		_, err := d.Write([]byte("test"))
+		if !errors.Is(err, io.ErrClosedPipe) {
+			t.Errorf("Write() error = %v, want %v", err, io.ErrClosedPipe)
+		}
+		if got := d.Count(); got != 0 {
+			t.Errorf("Count after all closed pipes = %v, want 0", got)
+		}
+	})
+
 	t.Run("write with short write", func(t *testing.T) {
 		buf := &bytes.Buffer{}
 		shortWriter := &mockShortWriter{}
@@ -220,4 +242,64 @@ func TestDynamicMultiWriter_Write(t *testing.T) {
 			t.Errorf("Write() error = %v, want %v", err, io.ErrClosedPipe)
 		}
 	})
+}
+
+func TestDynamicMultiWriter_ConcurrentAccess(t *testing.T) {
+	d := NewDynamicMultiWriter(&discardWriter{})
+	data := bytes.Repeat([]byte{0x47}, 188)
+
+	var wg sync.WaitGroup
+	for range 4 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for range 1000 {
+				if _, err := d.Write(data); err != nil && !errors.Is(err, io.ErrClosedPipe) {
+					t.Errorf("Write() error = %v, want nil or ErrClosedPipe", err)
+				}
+			}
+		}()
+	}
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for range 1000 {
+			w := &discardWriter{}
+			d.Attach(w)
+			d.Detach(w)
+		}
+	}()
+
+	wg.Wait()
+}
+
+func BenchmarkDynamicMultiWriter_Write(b *testing.B) {
+	sizes := []int{188, 1316, 8192}
+	writerCounts := []int{1, 2, 4}
+
+	for _, size := range sizes {
+		size := size
+		for _, writerCount := range writerCounts {
+			writerCount := writerCount
+			b.Run(fmt.Sprintf("%dB_%dWriters", size, writerCount), func(b *testing.B) {
+				writers := make([]io.Writer, writerCount)
+				for i := range writers {
+					writers[i] = io.Discard
+				}
+				d := NewDynamicMultiWriter(writers...)
+				data := bytes.Repeat([]byte{0x47}, size)
+
+				b.SetBytes(int64(size))
+				b.ReportAllocs()
+				b.ResetTimer()
+
+				for range b.N {
+					if _, err := d.Write(data); err != nil {
+						b.Fatal(err)
+					}
+				}
+			})
+		}
+	}
 }

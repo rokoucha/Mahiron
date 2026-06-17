@@ -5,18 +5,15 @@ import (
 	"io"
 	"slices"
 	"sync"
-
-	"github.com/hashicorp/go-multierror"
 )
 
 type DynamicMultiWriter struct {
-	mutex   *sync.RWMutex
+	mutex   sync.RWMutex
 	writers []io.Writer
 }
 
 func NewDynamicMultiWriter(writers ...io.Writer) *DynamicMultiWriter {
 	return &DynamicMultiWriter{
-		mutex:   &sync.RWMutex{},
 		writers: writers,
 	}
 }
@@ -61,33 +58,39 @@ func (d *DynamicMultiWriter) Close() {
 
 func (d *DynamicMultiWriter) Write(p []byte) (n int, err error) {
 	d.mutex.RLock()
-	writers := slices.Clone(d.writers)
-	d.mutex.RUnlock()
-
-	var meg multierror.Group
-	for _, w := range writers {
-		w := w
-		meg.Go(func() error {
-			written, err := w.Write(p)
-			if errors.Is(err, io.ErrClosedPipe) {
-				d.Detach(w)
-				return nil
-			}
-			if err != nil {
-				return err
-			}
-			if written != len(p) {
-				return io.ErrShortWrite
-			}
-			return nil
-		})
-	}
-	if err := meg.Wait(); err != nil {
-		return 0, err
-	}
-	if d.Count() == 0 {
+	if len(d.writers) == 0 {
+		d.mutex.RUnlock()
 		return 0, io.ErrClosedPipe
 	}
 
+	var closed []io.Writer
+	var result error
+	for _, w := range d.writers {
+		written, err := w.Write(p)
+		if errors.Is(err, io.ErrClosedPipe) {
+			closed = append(closed, w)
+			continue
+		}
+		if err != nil {
+			result = errors.Join(result, err)
+			continue
+		}
+		if written != len(p) {
+			result = errors.Join(result, io.ErrShortWrite)
+		}
+	}
+	remaining := len(d.writers) - len(closed)
+	d.mutex.RUnlock()
+
+	for _, w := range closed {
+		d.Detach(w)
+	}
+
+	if result != nil {
+		return 0, result
+	}
+	if remaining == 0 {
+		return 0, io.ErrClosedPipe
+	}
 	return len(p), nil
 }
