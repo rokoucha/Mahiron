@@ -42,24 +42,19 @@ func serviceUpdaterHandler(sm *service.ServiceManager, stm *stream.StreamManager
 				continue
 			}
 
-			group := channel.Type
-			if len(channel.TunerGroups) > 0 {
-				group = channel.TunerGroups[0]
-			}
-
 			if stm.HasSession(channel.Type, channel.Channel) {
 				if err := sm.ScanServices(ctx, stm, channel.Type, channel.Channel); err != nil {
 					slog.Error("failed to scan services (piggyback)", "channel", channel.Channel, "err", err)
 					continue
 				}
 				piggybacked++
-				slog.Debug("scanned services (piggyback)", "group", group, "channel", channel.Channel)
+				slog.Debug("scanned services (piggyback)", "type", channel.Type, "channel", channel.Channel)
 				continue
 			}
 
-			if stm.ActiveSessionCountByGroup(group) >= tm.TunerCountByGroup(group) {
+			if !hasAvailableRoute(stm, tm, channel) {
 				skipped++
-				slog.Info("skipping scan: tuner unavailable", "group", group, "channel", channel.Channel)
+				slog.Info("skipping scan: tuner unavailable", "type", channel.Type, "channel", channel.Channel)
 				continue
 			}
 
@@ -68,7 +63,7 @@ func serviceUpdaterHandler(sm *service.ServiceManager, stm *stream.StreamManager
 				continue
 			}
 			scanned++
-			slog.Debug("scanned services", "group", group, "channel", channel.Channel)
+			slog.Debug("scanned services", "type", channel.Type, "channel", channel.Channel)
 		}
 
 		slog.Info("service updater completed",
@@ -79,4 +74,16 @@ func serviceUpdaterHandler(sm *service.ServiceManager, stm *stream.StreamManager
 		)
 		return nil
 	}
+}
+
+func hasAvailableRoute(stm *stream.StreamManager, tm *tuner.TunerManager, channel config.ChannelConfig) bool {
+	for _, route := range channel.RoutesOrDefault() {
+		if route.IsDisabled != nil && *route.IsDisabled {
+			continue
+		}
+		if stm.ActiveSessionCountByType(route.Type) < tm.TunerCountByType(route.Type) {
+			return true
+		}
+	}
+	return false
 }

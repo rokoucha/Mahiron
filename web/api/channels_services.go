@@ -125,12 +125,31 @@ func apiChannel(h *Handler, channel config.ChannelConfig, includeServices bool) 
 		Type:    channel.Type,
 		Channel: channel.Channel,
 		Name:    apigen.NewOptString(channel.Name),
+		Routes:  apiChannelRoutes(channel.RoutesOrDefault()),
 	}
 	if channel.TsmfRelTs != nil {
 		result.TsmfRelTs = apigen.NewOptInt(int(*channel.TsmfRelTs))
 	}
 	if includeServices {
 		result.Services = apiServices(h, h.serviceManager.GetServicesByChannel(channel.Type, channel.Channel), false)
+	}
+	return result
+}
+
+func apiChannelRoutes(routes []config.ChannelRouteConfig) []apigen.ChannelRoute {
+	result := make([]apigen.ChannelRoute, len(routes))
+	for i, route := range routes {
+		result[i] = apigen.ChannelRoute{
+			ID:      route.Id,
+			Type:    route.Type,
+			Channel: route.Channel,
+		}
+		if route.Priority != nil {
+			result[i].Priority = apigen.NewOptInt(*route.Priority)
+		}
+		if route.IsDisabled != nil {
+			result[i].IsDisabled = apigen.NewOptBool(*route.IsDisabled)
+		}
 	}
 	return result
 }

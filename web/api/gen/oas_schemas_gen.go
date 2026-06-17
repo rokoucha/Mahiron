@@ -16,11 +16,12 @@ func (*AbortJobAccepted) abortJobRes() {}
 
 // Ref: #/components/schemas/Channel
 type Channel struct {
-	Type      string    `json:"type"`
-	Channel   string    `json:"channel"`
-	Name      OptString `json:"name"`
-	TsmfRelTs OptInt    `json:"tsmfRelTs"`
-	Services  []Service `json:"services"`
+	Type      string         `json:"type"`
+	Channel   string         `json:"channel"`
+	Name      OptString      `json:"name"`
+	TsmfRelTs OptInt         `json:"tsmfRelTs"`
+	Services  []Service      `json:"services"`
+	Routes    []ChannelRoute `json:"routes"`
 }
 
 // GetType returns the value of Type.
@@ -48,6 +49,11 @@ func (s *Channel) GetServices() []Service {
 	return s.Services
 }
 
+// GetRoutes returns the value of Routes.
+func (s *Channel) GetRoutes() []ChannelRoute {
+	return s.Routes
+}
+
 // SetType sets the value of Type.
 func (s *Channel) SetType(val string) {
 	s.Type = val
@@ -73,7 +79,71 @@ func (s *Channel) SetServices(val []Service) {
 	s.Services = val
 }
 
+// SetRoutes sets the value of Routes.
+func (s *Channel) SetRoutes(val []ChannelRoute) {
+	s.Routes = val
+}
+
 func (*Channel) getChannelRes() {}
+
+// Ref: #/components/schemas/ChannelRoute
+type ChannelRoute struct {
+	ID         string  `json:"id"`
+	Type       string  `json:"type"`
+	Channel    string  `json:"channel"`
+	Priority   OptInt  `json:"priority"`
+	IsDisabled OptBool `json:"isDisabled"`
+}
+
+// GetID returns the value of ID.
+func (s *ChannelRoute) GetID() string {
+	return s.ID
+}
+
+// GetType returns the value of Type.
+func (s *ChannelRoute) GetType() string {
+	return s.Type
+}
+
+// GetChannel returns the value of Channel.
+func (s *ChannelRoute) GetChannel() string {
+	return s.Channel
+}
+
+// GetPriority returns the value of Priority.
+func (s *ChannelRoute) GetPriority() OptInt {
+	return s.Priority
+}
+
+// GetIsDisabled returns the value of IsDisabled.
+func (s *ChannelRoute) GetIsDisabled() OptBool {
+	return s.IsDisabled
+}
+
+// SetID sets the value of ID.
+func (s *ChannelRoute) SetID(val string) {
+	s.ID = val
+}
+
+// SetType sets the value of Type.
+func (s *ChannelRoute) SetType(val string) {
+	s.Type = val
+}
+
+// SetChannel sets the value of Channel.
+func (s *ChannelRoute) SetChannel(val string) {
+	s.Channel = val
+}
+
+// SetPriority sets the value of Priority.
+func (s *ChannelRoute) SetPriority(val OptInt) {
+	s.Priority = val
+}
+
+// SetIsDisabled sets the value of IsDisabled.
+func (s *ChannelRoute) SetIsDisabled(val OptBool) {
+	s.IsDisabled = val
+}
 
 // ChannelsTypeChannelServicesIDStreamHeadDef is default response for ChannelsTypeChannelServicesIDStreamHead operation.
 type ChannelsTypeChannelServicesIDStreamHeadDef struct {
@@ -165,6 +235,100 @@ type ChannelsTypeChannelStreamHeadServiceUnavailable struct{}
 
 func (*ChannelsTypeChannelStreamHeadServiceUnavailable) channelsTypeChannelStreamHeadRes() {}
 
+// Ref: #/components/schemas/ConfigChannelRoute
+type ConfigChannelRoute struct {
+	ID          OptString                      `json:"id"`
+	Type        string                         `json:"type"`
+	Channel     string                         `json:"channel"`
+	ServiceId   OptServiceId                   `json:"serviceId"`
+	TsmfRelTs   OptInt                         `json:"tsmfRelTs"`
+	CommandVars *ConfigChannelRouteCommandVars `json:"commandVars"`
+	IsDisabled  OptBool                        `json:"isDisabled"`
+	Priority    OptInt                         `json:"priority"`
+}
+
+// GetID returns the value of ID.
+func (s *ConfigChannelRoute) GetID() OptString {
+	return s.ID
+}
+
+// GetType returns the value of Type.
+func (s *ConfigChannelRoute) GetType() string {
+	return s.Type
+}
+
+// GetChannel returns the value of Channel.
+func (s *ConfigChannelRoute) GetChannel() string {
+	return s.Channel
+}
+
+// GetServiceId returns the value of ServiceId.
+func (s *ConfigChannelRoute) GetServiceId() OptServiceId {
+	return s.ServiceId
+}
+
+// GetTsmfRelTs returns the value of TsmfRelTs.
+func (s *ConfigChannelRoute) GetTsmfRelTs() OptInt {
+	return s.TsmfRelTs
+}
+
+// GetCommandVars returns the value of CommandVars.
+func (s *ConfigChannelRoute) GetCommandVars() *ConfigChannelRouteCommandVars {
+	return s.CommandVars
+}
+
+// GetIsDisabled returns the value of IsDisabled.
+func (s *ConfigChannelRoute) GetIsDisabled() OptBool {
+	return s.IsDisabled
+}
+
+// GetPriority returns the value of Priority.
+func (s *ConfigChannelRoute) GetPriority() OptInt {
+	return s.Priority
+}
+
+// SetID sets the value of ID.
+func (s *ConfigChannelRoute) SetID(val OptString) {
+	s.ID = val
+}
+
+// SetType sets the value of Type.
+func (s *ConfigChannelRoute) SetType(val string) {
+	s.Type = val
+}
+
+// SetChannel sets the value of Channel.
+func (s *ConfigChannelRoute) SetChannel(val string) {
+	s.Channel = val
+}
+
+// SetServiceId sets the value of ServiceId.
+func (s *ConfigChannelRoute) SetServiceId(val OptServiceId) {
+	s.ServiceId = val
+}
+
+// SetTsmfRelTs sets the value of TsmfRelTs.
+func (s *ConfigChannelRoute) SetTsmfRelTs(val OptInt) {
+	s.TsmfRelTs = val
+}
+
+// SetCommandVars sets the value of CommandVars.
+func (s *ConfigChannelRoute) SetCommandVars(val *ConfigChannelRouteCommandVars) {
+	s.CommandVars = val
+}
+
+// SetIsDisabled sets the value of IsDisabled.
+func (s *ConfigChannelRoute) SetIsDisabled(val OptBool) {
+	s.IsDisabled = val
+}
+
+// SetPriority sets the value of Priority.
+func (s *ConfigChannelRoute) SetPriority(val OptInt) {
+	s.Priority = val
+}
+
+type ConfigChannelRouteCommandVars struct{}
+
 // Ref: #/components/schemas/ConfigChannelsItem
 type ConfigChannelsItem struct {
 	Name        string                         `json:"name"`
@@ -174,6 +338,7 @@ type ConfigChannelsItem struct {
 	TsmfRelTs   OptInt                         `json:"tsmfRelTs"`
 	CommandVars *ConfigChannelsItemCommandVars `json:"commandVars"`
 	IsDisabled  OptBool                        `json:"isDisabled"`
+	Routes      []ConfigChannelRoute           `json:"routes"`
 }
 
 // GetName returns the value of Name.
@@ -211,6 +376,11 @@ func (s *ConfigChannelsItem) GetIsDisabled() OptBool {
 	return s.IsDisabled
 }
 
+// GetRoutes returns the value of Routes.
+func (s *ConfigChannelsItem) GetRoutes() []ConfigChannelRoute {
+	return s.Routes
+}
+
 // SetName sets the value of Name.
 func (s *ConfigChannelsItem) SetName(val string) {
 	s.Name = val
@@ -244,6 +414,11 @@ func (s *ConfigChannelsItem) SetCommandVars(val *ConfigChannelsItemCommandVars) 
 // SetIsDisabled sets the value of IsDisabled.
 func (s *ConfigChannelsItem) SetIsDisabled(val OptBool) {
 	s.IsDisabled = val
+}
+
+// SetRoutes sets the value of Routes.
+func (s *ConfigChannelsItem) SetRoutes(val []ConfigChannelRoute) {
+	s.Routes = val
 }
 
 type ConfigChannelsItemCommandVars struct{}

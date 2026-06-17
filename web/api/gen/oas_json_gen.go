@@ -50,14 +50,25 @@ func (s *Channel) encodeFields(e *jx.Encoder) {
 			e.ArrEnd()
 		}
 	}
+	{
+		if s.Routes != nil {
+			e.FieldStart("routes")
+			e.ArrStart()
+			for _, elem := range s.Routes {
+				elem.Encode(e)
+			}
+			e.ArrEnd()
+		}
+	}
 }
 
-var jsonFieldsNameOfChannel = [5]string{
+var jsonFieldsNameOfChannel = [6]string{
 	0: "type",
 	1: "channel",
 	2: "name",
 	3: "tsmfRelTs",
 	4: "services",
+	5: "routes",
 }
 
 // Decode decodes Channel from json.
@@ -130,6 +141,23 @@ func (s *Channel) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"services\"")
 			}
+		case "routes":
+			if err := func() error {
+				s.Routes = make([]ChannelRoute, 0)
+				if err := d.Arr(func(d *jx.Decoder) error {
+					var elem ChannelRoute
+					if err := elem.Decode(d); err != nil {
+						return err
+					}
+					s.Routes = append(s.Routes, elem)
+					return nil
+				}); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"routes\"")
+			}
 		default:
 			return d.Skip()
 		}
@@ -187,6 +215,431 @@ func (s *Channel) UnmarshalJSON(data []byte) error {
 }
 
 // Encode implements json.Marshaler.
+func (s *ChannelRoute) Encode(e *jx.Encoder) {
+	e.ObjStart()
+	s.encodeFields(e)
+	e.ObjEnd()
+}
+
+// encodeFields encodes fields.
+func (s *ChannelRoute) encodeFields(e *jx.Encoder) {
+	{
+		e.FieldStart("id")
+		e.Str(s.ID)
+	}
+	{
+		e.FieldStart("type")
+		e.Str(s.Type)
+	}
+	{
+		e.FieldStart("channel")
+		e.Str(s.Channel)
+	}
+	{
+		if s.Priority.Set {
+			e.FieldStart("priority")
+			s.Priority.Encode(e)
+		}
+	}
+	{
+		if s.IsDisabled.Set {
+			e.FieldStart("isDisabled")
+			s.IsDisabled.Encode(e)
+		}
+	}
+}
+
+var jsonFieldsNameOfChannelRoute = [5]string{
+	0: "id",
+	1: "type",
+	2: "channel",
+	3: "priority",
+	4: "isDisabled",
+}
+
+// Decode decodes ChannelRoute from json.
+func (s *ChannelRoute) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode ChannelRoute to nil")
+	}
+	var requiredBitSet [1]uint8
+
+	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
+		switch string(k) {
+		case "id":
+			requiredBitSet[0] |= 1 << 0
+			if err := func() error {
+				v, err := d.Str()
+				s.ID = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"id\"")
+			}
+		case "type":
+			requiredBitSet[0] |= 1 << 1
+			if err := func() error {
+				v, err := d.Str()
+				s.Type = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"type\"")
+			}
+		case "channel":
+			requiredBitSet[0] |= 1 << 2
+			if err := func() error {
+				v, err := d.Str()
+				s.Channel = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"channel\"")
+			}
+		case "priority":
+			if err := func() error {
+				s.Priority.Reset()
+				if err := s.Priority.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"priority\"")
+			}
+		case "isDisabled":
+			if err := func() error {
+				s.IsDisabled.Reset()
+				if err := s.IsDisabled.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"isDisabled\"")
+			}
+		default:
+			return d.Skip()
+		}
+		return nil
+	}); err != nil {
+		return errors.Wrap(err, "decode ChannelRoute")
+	}
+	// Validate required fields.
+	var failures []validate.FieldError
+	for i, mask := range [1]uint8{
+		0b00000111,
+	} {
+		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
+			// Mask only required fields and check equality to mask using XOR.
+			//
+			// If XOR result is not zero, result is not equal to expected, so some fields are missed.
+			// Bits of fields which would be set are actually bits of missed fields.
+			missed := bits.OnesCount8(result)
+			for bitN := 0; bitN < missed; bitN++ {
+				bitIdx := bits.TrailingZeros8(result)
+				fieldIdx := i*8 + bitIdx
+				var name string
+				if fieldIdx < len(jsonFieldsNameOfChannelRoute) {
+					name = jsonFieldsNameOfChannelRoute[fieldIdx]
+				} else {
+					name = strconv.Itoa(fieldIdx)
+				}
+				failures = append(failures, validate.FieldError{
+					Name:  name,
+					Error: validate.ErrFieldRequired,
+				})
+				// Reset bit.
+				result &^= 1 << bitIdx
+			}
+		}
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *ChannelRoute) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *ChannelRoute) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode implements json.Marshaler.
+func (s *ConfigChannelRoute) Encode(e *jx.Encoder) {
+	e.ObjStart()
+	s.encodeFields(e)
+	e.ObjEnd()
+}
+
+// encodeFields encodes fields.
+func (s *ConfigChannelRoute) encodeFields(e *jx.Encoder) {
+	{
+		if s.ID.Set {
+			e.FieldStart("id")
+			s.ID.Encode(e)
+		}
+	}
+	{
+		e.FieldStart("type")
+		e.Str(s.Type)
+	}
+	{
+		e.FieldStart("channel")
+		e.Str(s.Channel)
+	}
+	{
+		if s.ServiceId.Set {
+			e.FieldStart("serviceId")
+			s.ServiceId.Encode(e)
+		}
+	}
+	{
+		if s.TsmfRelTs.Set {
+			e.FieldStart("tsmfRelTs")
+			s.TsmfRelTs.Encode(e)
+		}
+	}
+	{
+		if s.CommandVars != nil {
+			e.FieldStart("commandVars")
+			s.CommandVars.Encode(e)
+		}
+	}
+	{
+		if s.IsDisabled.Set {
+			e.FieldStart("isDisabled")
+			s.IsDisabled.Encode(e)
+		}
+	}
+	{
+		if s.Priority.Set {
+			e.FieldStart("priority")
+			s.Priority.Encode(e)
+		}
+	}
+}
+
+var jsonFieldsNameOfConfigChannelRoute = [8]string{
+	0: "id",
+	1: "type",
+	2: "channel",
+	3: "serviceId",
+	4: "tsmfRelTs",
+	5: "commandVars",
+	6: "isDisabled",
+	7: "priority",
+}
+
+// Decode decodes ConfigChannelRoute from json.
+func (s *ConfigChannelRoute) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode ConfigChannelRoute to nil")
+	}
+	var requiredBitSet [1]uint8
+
+	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
+		switch string(k) {
+		case "id":
+			if err := func() error {
+				s.ID.Reset()
+				if err := s.ID.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"id\"")
+			}
+		case "type":
+			requiredBitSet[0] |= 1 << 1
+			if err := func() error {
+				v, err := d.Str()
+				s.Type = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"type\"")
+			}
+		case "channel":
+			requiredBitSet[0] |= 1 << 2
+			if err := func() error {
+				v, err := d.Str()
+				s.Channel = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"channel\"")
+			}
+		case "serviceId":
+			if err := func() error {
+				s.ServiceId.Reset()
+				if err := s.ServiceId.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"serviceId\"")
+			}
+		case "tsmfRelTs":
+			if err := func() error {
+				s.TsmfRelTs.Reset()
+				if err := s.TsmfRelTs.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"tsmfRelTs\"")
+			}
+		case "commandVars":
+			if err := func() error {
+				s.CommandVars = nil
+				var elem ConfigChannelRouteCommandVars
+				if err := elem.Decode(d); err != nil {
+					return err
+				}
+				s.CommandVars = &elem
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"commandVars\"")
+			}
+		case "isDisabled":
+			if err := func() error {
+				s.IsDisabled.Reset()
+				if err := s.IsDisabled.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"isDisabled\"")
+			}
+		case "priority":
+			if err := func() error {
+				s.Priority.Reset()
+				if err := s.Priority.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"priority\"")
+			}
+		default:
+			return d.Skip()
+		}
+		return nil
+	}); err != nil {
+		return errors.Wrap(err, "decode ConfigChannelRoute")
+	}
+	// Validate required fields.
+	var failures []validate.FieldError
+	for i, mask := range [1]uint8{
+		0b00000110,
+	} {
+		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
+			// Mask only required fields and check equality to mask using XOR.
+			//
+			// If XOR result is not zero, result is not equal to expected, so some fields are missed.
+			// Bits of fields which would be set are actually bits of missed fields.
+			missed := bits.OnesCount8(result)
+			for bitN := 0; bitN < missed; bitN++ {
+				bitIdx := bits.TrailingZeros8(result)
+				fieldIdx := i*8 + bitIdx
+				var name string
+				if fieldIdx < len(jsonFieldsNameOfConfigChannelRoute) {
+					name = jsonFieldsNameOfConfigChannelRoute[fieldIdx]
+				} else {
+					name = strconv.Itoa(fieldIdx)
+				}
+				failures = append(failures, validate.FieldError{
+					Name:  name,
+					Error: validate.ErrFieldRequired,
+				})
+				// Reset bit.
+				result &^= 1 << bitIdx
+			}
+		}
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *ConfigChannelRoute) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *ConfigChannelRoute) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode implements json.Marshaler.
+func (s *ConfigChannelRouteCommandVars) Encode(e *jx.Encoder) {
+	e.ObjStart()
+	s.encodeFields(e)
+	e.ObjEnd()
+}
+
+// encodeFields encodes fields.
+func (s *ConfigChannelRouteCommandVars) encodeFields(e *jx.Encoder) {
+}
+
+var jsonFieldsNameOfConfigChannelRouteCommandVars = [0]string{}
+
+// Decode decodes ConfigChannelRouteCommandVars from json.
+func (s *ConfigChannelRouteCommandVars) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode ConfigChannelRouteCommandVars to nil")
+	}
+
+	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
+		switch string(k) {
+		default:
+			return d.Skip()
+		}
+	}); err != nil {
+		return errors.Wrap(err, "decode ConfigChannelRouteCommandVars")
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *ConfigChannelRouteCommandVars) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *ConfigChannelRouteCommandVars) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode implements json.Marshaler.
 func (s *ConfigChannelsItem) Encode(e *jx.Encoder) {
 	e.ObjStart()
 	s.encodeFields(e)
@@ -231,9 +684,19 @@ func (s *ConfigChannelsItem) encodeFields(e *jx.Encoder) {
 			s.IsDisabled.Encode(e)
 		}
 	}
+	{
+		if s.Routes != nil {
+			e.FieldStart("routes")
+			e.ArrStart()
+			for _, elem := range s.Routes {
+				elem.Encode(e)
+			}
+			e.ArrEnd()
+		}
+	}
 }
 
-var jsonFieldsNameOfConfigChannelsItem = [7]string{
+var jsonFieldsNameOfConfigChannelsItem = [8]string{
 	0: "name",
 	1: "type",
 	2: "channel",
@@ -241,6 +704,7 @@ var jsonFieldsNameOfConfigChannelsItem = [7]string{
 	4: "tsmfRelTs",
 	5: "commandVars",
 	6: "isDisabled",
+	7: "routes",
 }
 
 // Decode decodes ConfigChannelsItem from json.
@@ -329,6 +793,23 @@ func (s *ConfigChannelsItem) Decode(d *jx.Decoder) error {
 				return nil
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"isDisabled\"")
+			}
+		case "routes":
+			if err := func() error {
+				s.Routes = make([]ConfigChannelRoute, 0)
+				if err := d.Arr(func(d *jx.Decoder) error {
+					var elem ConfigChannelRoute
+					if err := elem.Decode(d); err != nil {
+						return err
+					}
+					s.Routes = append(s.Routes, elem)
+					return nil
+				}); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"routes\"")
 			}
 		default:
 			return d.Skip()

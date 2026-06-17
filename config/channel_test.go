@@ -16,6 +16,8 @@ func TestLoadAndParseChannelsConfig(t *testing.T) {
 	ch3tsmfRelTs := uint8(15)
 
 	ch5ServiceId := uint32(65534)
+	routePriority10 := 10
+	routePriority20 := 20
 
 	type args struct {
 		filePath string
@@ -45,7 +47,9 @@ func TestLoadAndParseChannelsConfig(t *testing.T) {
 					Space:       nil,
 					Freq:        nil,
 					Polarity:    nil,
-					TunerGroups: []string{},
+					Routes: []ChannelRouteConfig{
+						{Id: "default", Type: "GR", Channel: "GR01", CommandVars: map[string]any{}, IsDisabled: &no},
+					},
 				},
 				{
 					Name:        "Channel2",
@@ -60,7 +64,9 @@ func TestLoadAndParseChannelsConfig(t *testing.T) {
 					Space:       nil,
 					Freq:        nil,
 					Polarity:    nil,
-					TunerGroups: []string{},
+					Routes: []ChannelRouteConfig{
+						{Id: "default", Type: "SKY", Channel: "SKY02", ServiceId: &ch2ServiceId, CommandVars: map[string]any{}, IsDisabled: &no},
+					},
 				},
 				{
 					Name:        "Channel3",
@@ -75,7 +81,9 @@ func TestLoadAndParseChannelsConfig(t *testing.T) {
 					Space:       nil,
 					Freq:        nil,
 					Polarity:    nil,
-					TunerGroups: []string{},
+					Routes: []ChannelRouteConfig{
+						{Id: "default", Type: "CATV", Channel: "CATV03", ServiceId: &ch3ServiceId, TsmfRelTs: &ch3tsmfRelTs, CommandVars: map[string]any{}, IsDisabled: &no},
+					},
 				},
 				{
 					Name:      "Channel4",
@@ -86,13 +94,15 @@ func TestLoadAndParseChannelsConfig(t *testing.T) {
 					CommandVars: map[string]any{
 						"extra-args": "--extra-arg",
 					},
-					IsDisabled:  &no,
-					Satelite:    nil,
-					Satellite:   nil,
-					Space:       nil,
-					Freq:        nil,
-					Polarity:    nil,
-					TunerGroups: []string{},
+					IsDisabled: &no,
+					Satelite:   nil,
+					Satellite:  nil,
+					Space:      nil,
+					Freq:       nil,
+					Polarity:   nil,
+					Routes: []ChannelRouteConfig{
+						{Id: "default", Type: "BS", Channel: "BS04", CommandVars: map[string]any{"extra-args": "--extra-arg"}, IsDisabled: &no},
+					},
 				},
 				{
 					Name:      "Channel5",
@@ -106,18 +116,32 @@ func TestLoadAndParseChannelsConfig(t *testing.T) {
 						"freq":      uint32(12345),
 						"polarity":  "H",
 					},
-					IsDisabled:  &no,
-					Satelite:    nil,
-					Satellite:   nil,
-					Space:       nil,
-					Freq:        nil,
-					Polarity:    nil,
-					TunerGroups: []string{},
+					IsDisabled: &no,
+					Satelite:   nil,
+					Satellite:  nil,
+					Space:      nil,
+					Freq:       nil,
+					Polarity:   nil,
+					Routes: []ChannelRouteConfig{
+						{
+							Id:        "default",
+							Type:      "CS",
+							Channel:   "CS05",
+							ServiceId: &ch5ServiceId,
+							CommandVars: map[string]any{
+								"satellite": "SOMESAT",
+								"space":     uint8(1),
+								"freq":      uint32(12345),
+								"polarity":  "H",
+							},
+							IsDisabled: &no,
+						},
+					},
 				},
 				{
 					Name:        "Channel6",
-					Type:        "GR",
-					Channel:     "GR06",
+					Type:        "CATV",
+					Channel:     "CATV06",
 					ServiceId:   nil,
 					TsmfRelTs:   nil,
 					CommandVars: map[string]any{},
@@ -127,7 +151,9 @@ func TestLoadAndParseChannelsConfig(t *testing.T) {
 					Space:       nil,
 					Freq:        nil,
 					Polarity:    nil,
-					TunerGroups: []string{"GR_KANAGAWA"},
+					Routes: []ChannelRouteConfig{
+						{Id: "default", Type: "CATV", Channel: "CATV06", CommandVars: map[string]any{}, IsDisabled: &yes},
+					},
 				},
 			},
 			wantErr: false,
@@ -139,6 +165,33 @@ func TestLoadAndParseChannelsConfig(t *testing.T) {
 			},
 			want:    nil,
 			wantErr: true,
+		},
+		{
+			name: "Routes config",
+			args: args{
+				filePath: "testdata/channels-routes.yml",
+			},
+			want: ChannelsConfig{
+				{
+					Name:        "NHK BS",
+					Type:        "BS",
+					Channel:     "101",
+					CommandVars: map[string]any{},
+					IsDisabled:  &no,
+					Routes: []ChannelRouteConfig{
+						{Id: "bs-direct", Type: "BS", Channel: "101", CommandVars: map[string]any{}, IsDisabled: &no, Priority: &routePriority10},
+						{
+							Id:          "catv-bs-transmod",
+							Type:        "CATV_BS",
+							Channel:     "C101",
+							CommandVars: map[string]any{"freq": 12345.0},
+							IsDisabled:  &no,
+							Priority:    &routePriority20,
+						},
+					},
+				},
+			},
+			wantErr: false,
 		},
 		{
 			name: "Empty tuner name",
@@ -184,6 +237,14 @@ func TestLoadAndParseChannelsConfig(t *testing.T) {
 			name: "Duplicate specify commandVars and other fields",
 			args: args{
 				filePath: "testdata/channels-duplicate-commandvars.yml",
+			},
+			want:    nil,
+			wantErr: true,
+		},
+		{
+			name: "Specified tunerGroups",
+			args: args{
+				filePath: "testdata/channels-tuner-groups.yml",
 			},
 			want:    nil,
 			wantErr: true,

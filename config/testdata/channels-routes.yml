@@ -1,0 +1,14 @@
+- name: NHK BS
+  type: BS
+  channel: "101"
+  routes:
+    - id: bs-direct
+      type: BS
+      channel: "101"
+      priority: 10
+    - id: catv-bs-transmod
+      type: CATV_BS
+      channel: C101
+      priority: 20
+      commandVars:
+        freq: 12345

@@ -29,8 +29,6 @@
   polarity: H
 
 - name: Channel6
-  type: GR
-  channel: GR06
-  tunerGroups:
-    - GR_KANAGAWA
+  type: CATV
+  channel: CATV06
   isDisabled: true

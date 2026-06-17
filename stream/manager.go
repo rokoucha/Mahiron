@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"sort"
 	"sync"
 
 	"github.com/21S1298001/Mahiron5/config"
@@ -21,7 +22,7 @@ type StreamManager struct {
 	eitUpdater         EITSectionUpdater
 	scanner            ServiceScanner
 	sessions           map[sessionKey]*ChannelSession
-	sessionGroups      map[sessionKey]string
+	sessionTypes       map[sessionKey]string
 	tunerManager       TunerManager
 }
 
@@ -65,7 +66,7 @@ func NewStreamManager(cfg StreamManagerConfig) *StreamManager {
 		filter:             serviceFilter,
 		scanner:            scanner,
 		sessions:           map[sessionKey]*ChannelSession{},
-		sessionGroups:      map[sessionKey]string{},
+		sessionTypes:       map[sessionKey]string{},
 		tunerManager:       cfg.TunerManager,
 	}
 }
@@ -88,26 +89,21 @@ func (m *StreamManager) GetOrCreate(ctx context.Context, channelType, channel st
 		return nil, ErrChannelNotFound
 	}
 
-	group := channelConfig.Type
-	if len(channelConfig.TunerGroups) > 0 {
-		group = channelConfig.TunerGroups[0]
-	}
-
-	device, err := m.tunerManager.NewDeviceByGroup(group, channelConfig)
+	route, routeChannelConfig, device, err := m.newRouteDevice(channelConfig)
 	if err != nil {
 		return nil, err
 	}
 
 	var descrambler Descrambler
 	if provider, ok := m.tunerManager.(DecoderCommandProvider); ok {
-		if command := provider.DecoderCommandByGroup(group); command != "" {
+		if command := provider.DecoderCommandByType(route.Type); command != "" {
 			descrambler = m.descramblerFactory(command)
 		}
 	}
 
 	session := NewChannelSession(ChannelSessionConfig{
 		Channel:       channel,
-		ChannelConfig: channelConfig,
+		ChannelConfig: routeChannelConfig,
 		Descrambler:   descrambler,
 		Device:        device,
 		EITCollector:  m.eitCollector,
@@ -118,7 +114,7 @@ func (m *StreamManager) GetOrCreate(ctx context.Context, channelType, channel st
 		Type:          channelType,
 	})
 	m.sessions[key] = session
-	m.sessionGroups[key] = group
+	m.sessionTypes[key] = route.Type
 	return session, nil
 }
 
@@ -135,12 +131,12 @@ func (m *StreamManager) ActiveSessionCount() int {
 	return len(m.sessions)
 }
 
-func (m *StreamManager) ActiveSessionCountByGroup(group string) int {
+func (m *StreamManager) ActiveSessionCountByType(channelType string) int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	count := 0
-	for _, g := range m.sessionGroups {
-		if g == group {
+	for _, typ := range m.sessionTypes {
+		if typ == channelType {
 			count++
 		}
 	}
@@ -173,11 +169,49 @@ func (m *StreamManager) findChannel(channelType, channel string) *config.Channel
 	return nil
 }
 
+func (m *StreamManager) newRouteDevice(channel *config.ChannelConfig) (config.ChannelRouteConfig, *config.ChannelConfig, TunerDevice, error) {
+	routes := enabledRoutes(channel.RoutesOrDefault())
+	var lastErr error
+	for _, route := range routes {
+		routeChannel := channel.RouteChannelConfig(route)
+		device, err := m.tunerManager.NewDeviceByType(route.Type, &routeChannel)
+		if err == nil {
+			return route, &routeChannel, device, nil
+		}
+		lastErr = err
+	}
+	if lastErr != nil {
+		return config.ChannelRouteConfig{}, nil, nil, lastErr
+	}
+	return config.ChannelRouteConfig{}, nil, nil, ErrChannelNotFound
+}
+
+func enabledRoutes(routes []config.ChannelRouteConfig) []config.ChannelRouteConfig {
+	enabled := make([]config.ChannelRouteConfig, 0, len(routes))
+	for _, route := range routes {
+		if route.IsDisabled != nil && *route.IsDisabled {
+			continue
+		}
+		enabled = append(enabled, route)
+	}
+	sort.SliceStable(enabled, func(i, j int) bool {
+		left, right := 0, 0
+		if enabled[i].Priority != nil {
+			left = *enabled[i].Priority
+		}
+		if enabled[j].Priority != nil {
+			right = *enabled[j].Priority
+		}
+		return left < right
+	})
+	return enabled
+}
+
 func (m *StreamManager) remove(key sessionKey) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	delete(m.sessions, key)
-	delete(m.sessionGroups, key)
+	delete(m.sessionTypes, key)
 }
 
 var (
@@ -187,11 +221,11 @@ var (
 )
 
 type TunerManager interface {
-	NewDeviceByGroup(string, *config.ChannelConfig) (TunerDevice, error)
+	NewDeviceByType(string, *config.ChannelConfig) (TunerDevice, error)
 }
 
 type DecoderCommandProvider interface {
-	DecoderCommandByGroup(string) string
+	DecoderCommandByType(string) string
 }
 
 type TunerDevice = tuner.Device

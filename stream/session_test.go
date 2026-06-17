@@ -77,6 +77,45 @@ func TestManagerSharesSessionsByTypeAndChannel(t *testing.T) {
 	}
 }
 
+func TestManagerSelectsRouteByFreeChannelType(t *testing.T) {
+	no := false
+	priorityDirect := 10
+	priorityCATV := 20
+	manager := NewStreamManager(StreamManagerConfig{
+		Channels: config.ChannelsConfig{
+			{
+				Name:       "NHK BS",
+				Type:       "BS",
+				Channel:    "101",
+				IsDisabled: &no,
+				Routes: []config.ChannelRouteConfig{
+					{Id: "bs-direct", Type: "BS", Channel: "101", IsDisabled: &no, Priority: &priorityDirect},
+					{Id: "catv-bs", Type: "CATV_BS", Channel: "C101", IsDisabled: &no, Priority: &priorityCATV},
+				},
+			},
+		},
+		TunerManager: &routeSelectingTunerManager{
+			availableType: "CATV_BS",
+		},
+	})
+
+	session, err := manager.GetOrCreate(context.Background(), "BS", "101")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	routeManager := manager.tunerManager.(*routeSelectingTunerManager)
+	if got, want := routeManager.channelType, "CATV_BS"; got != want {
+		t.Fatalf("device channel type = %q, want %q", got, want)
+	}
+	if got, want := routeManager.channelID, "C101"; got != want {
+		t.Fatalf("device channel = %q, want %q", got, want)
+	}
+	if got, want := session.typ, "BS"; got != want {
+		t.Fatalf("session type = %q, want public type %q", got, want)
+	}
+}
+
 func TestRawStream(t *testing.T) {
 	devices := &fakeTunerDeviceRecorder{}
 	manager := testManager(t, devices)
@@ -402,16 +441,31 @@ type fakeTunerDevice struct {
 	starts int
 }
 
+type routeSelectingTunerManager struct {
+	availableType string
+	channelType   string
+	channelID     string
+}
+
+func (m *routeSelectingTunerManager) NewDeviceByType(channelType string, channel *config.ChannelConfig) (tuner.Device, error) {
+	if channelType != m.availableType {
+		return nil, tuner.ErrTunerNotFound
+	}
+	m.channelType = channel.Type
+	m.channelID = channel.Channel
+	return &fakeTunerDevice{done: make(chan struct{})}, nil
+}
+
 type fakeTunerManager struct {
 	decoderCommand string
 	devices        *fakeTunerDeviceRecorder
 }
 
-func (m fakeTunerManager) NewDeviceByGroup(_ string, channel *config.ChannelConfig) (tuner.Device, error) {
+func (m fakeTunerManager) NewDeviceByType(_ string, channel *config.ChannelConfig) (tuner.Device, error) {
 	return m.devices.NewDevice(channel), nil
 }
 
-func (m fakeTunerManager) DecoderCommandByGroup(string) string {
+func (m fakeTunerManager) DecoderCommandByType(string) string {
 	return m.decoderCommand
 }
 
@@ -487,7 +541,7 @@ type fakeLiveTunerManager struct {
 	device *fakeLiveTunerDevice
 }
 
-func (m fakeLiveTunerManager) NewDeviceByGroup(string, *config.ChannelConfig) (tuner.Device, error) {
+func (m fakeLiveTunerManager) NewDeviceByType(string, *config.ChannelConfig) (tuner.Device, error) {
 	return m.device, nil
 }
 

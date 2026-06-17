@@ -1,8 +1,6 @@
 package tuner
 
-import (
-	"github.com/21S1298001/Mahiron5/config"
-)
+import "github.com/21S1298001/Mahiron5/config"
 
 type Tuner struct {
 	config *config.TunerConfig
@@ -20,14 +18,8 @@ func (t *Tuner) Name() string {
 
 func (t *Tuner) Groups() []string {
 	groups := map[string]struct{}{}
-	if len(t.config.Types) > 0 {
-		for _, group := range t.config.Types {
-			groups[group] = struct{}{}
-		}
-	} else {
-		for _, group := range t.config.TunerGroups {
-			groups[group] = struct{}{}
-		}
+	for _, group := range t.config.Types {
+		groups[group] = struct{}{}
 	}
 
 	groupList := make([]string, 0, len(groups))
@@ -35,6 +27,10 @@ func (t *Tuner) Groups() []string {
 		groupList = append(groupList, group)
 	}
 	return groupList
+}
+
+func (t *Tuner) IsDisabled() bool {
+	return t.config.IsDisabled
 }
 
 func (t *Tuner) Command() string {

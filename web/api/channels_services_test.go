@@ -69,6 +69,12 @@ func TestGetChannelsReturnsEnabledChannelsWithServices(t *testing.T) {
 	if got, want := len((*channels)[0].Services), 1; got != want {
 		t.Fatalf("first channel services length = %d, want %d", got, want)
 	}
+	if got, want := len((*channels)[0].Routes), 1; got != want {
+		t.Fatalf("first channel routes length = %d, want %d", got, want)
+	}
+	if got, want := (*channels)[0].Routes[0].Type, "GR"; got != want {
+		t.Fatalf("first channel route type = %q, want %q", got, want)
+	}
 }
 
 func TestGetChannelReturnsNotFoundForDisabledChannel(t *testing.T) {

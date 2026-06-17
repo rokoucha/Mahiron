@@ -40,17 +40,17 @@ func (tm *TunerManager) GetTuner(name string) *Tuner {
 	return nil
 }
 
-func (tm *TunerManager) GetTunerByGroup(group string) *Tuner {
+func (tm *TunerManager) GetTunerByType(channelType string) *Tuner {
 	for _, tuner := range tm.tuners {
-		if slices.Contains(tuner.Groups(), group) {
+		if !tuner.IsDisabled() && slices.Contains(tuner.Groups(), channelType) {
 			return tuner
 		}
 	}
 	return nil
 }
 
-func (tm *TunerManager) NewDeviceByGroup(group string, channel *config.ChannelConfig) (Device, error) {
-	tuner := tm.GetTunerByGroup(group)
+func (tm *TunerManager) NewDeviceByType(channelType string, channel *config.ChannelConfig) (Device, error) {
+	tuner := tm.GetTunerByType(channelType)
 	if tuner == nil {
 		return nil, ErrTunerNotFound
 	}
@@ -60,8 +60,8 @@ func (tm *TunerManager) NewDeviceByGroup(group string, channel *config.ChannelCo
 	return tuner.NewDevice(channel), nil
 }
 
-func (tm *TunerManager) DecoderCommandByGroup(group string) string {
-	tuner := tm.GetTunerByGroup(group)
+func (tm *TunerManager) DecoderCommandByType(channelType string) string {
+	tuner := tm.GetTunerByType(channelType)
 	if tuner == nil {
 		return ""
 	}
@@ -72,19 +72,22 @@ func (tm *TunerManager) TunerCount() int {
 	return len(tm.tuners)
 }
 
-func (tm *TunerManager) TunerCountByGroup(group string) int {
+func (tm *TunerManager) TunerCountByType(channelType string) int {
 	count := 0
 	for _, tuner := range tm.tuners {
-		if slices.Contains(tuner.Groups(), group) {
+		if !tuner.IsDisabled() && slices.Contains(tuner.Groups(), channelType) {
 			count++
 		}
 	}
 	return count
 }
 
-func (tm *TunerManager) CountTunersByGroup() map[string]int {
+func (tm *TunerManager) CountTunersByType() map[string]int {
 	counts := make(map[string]int)
 	for _, tuner := range tm.tuners {
+		if tuner.IsDisabled() {
+			continue
+		}
 		for _, g := range tuner.Groups() {
 			counts[g]++
 		}

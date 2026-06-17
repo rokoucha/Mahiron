@@ -1305,6 +1305,27 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Service"
+        routes:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChannelRoute"
+    ChannelRoute:
+      required:
+        - id
+        - type
+        - channel
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+        channel:
+          type: string
+        priority:
+          type: integer
+        isDisabled:
+          type: boolean
     Service:
       required:
         - id
@@ -1727,6 +1748,33 @@ components:
           properties: {}
         isDisabled:
           type: boolean
+        routes:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConfigChannelRoute"
+    ConfigChannelRoute:
+      required:
+        - channel
+        - type
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+        channel:
+          type: string
+        serviceId:
+          $ref: "#/components/schemas/ServiceId"
+        tsmfRelTs:
+          type: integer
+        commandVars:
+          type: object
+          properties: {}
+        isDisabled:
+          type: boolean
+        priority:
+          type: integer
     Version:
       type: object
       properties:

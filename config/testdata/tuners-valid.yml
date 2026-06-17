@@ -20,11 +20,11 @@
   isDisabled: true
 
 - name: Tuner4
-  tunerGroups:
-    - GR_TOKYO
+  types:
+    - CATV_BS
     - BS
   remote:
     url: http://localhost:40772/api
     types:
       BS: BS
-      GR_TOKYO: GR
+      CATV_BS: SKY

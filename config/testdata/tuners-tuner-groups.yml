@@ -1,0 +1,4 @@
+- name: Tuner
+  tunerGroups:
+    - GR_TOKYO
+  command: invalid

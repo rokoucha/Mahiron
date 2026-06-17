@@ -35,7 +35,6 @@ func TestLoadAndParseTunersConfig(t *testing.T) {
 					RemoteMirakurunDecoder: &tr,
 					Decoder:                "test",
 					IsDisabled:             false,
-					TunerGroups:            nil,
 					Remote:                 nil,
 				},
 				{
@@ -48,7 +47,6 @@ func TestLoadAndParseTunersConfig(t *testing.T) {
 					RemoteMirakurunDecoder: &tr,
 					Decoder:                "",
 					IsDisabled:             false,
-					TunerGroups:            nil,
 					Remote:                 nil,
 				},
 				{
@@ -61,12 +59,11 @@ func TestLoadAndParseTunersConfig(t *testing.T) {
 					RemoteMirakurunDecoder: &fa,
 					Decoder:                "",
 					IsDisabled:             true,
-					TunerGroups:            nil,
 					Remote:                 nil,
 				},
 				{
 					Name:                   "Tuner4",
-					Types:                  nil,
+					Types:                  []string{"CATV_BS", "BS"},
 					Command:                "",
 					DvbDevicePath:          "",
 					RemoteMirakurunHost:    "",
@@ -74,10 +71,9 @@ func TestLoadAndParseTunersConfig(t *testing.T) {
 					RemoteMirakurunDecoder: &tr,
 					Decoder:                "",
 					IsDisabled:             false,
-					TunerGroups:            []string{"GR_TOKYO", "BS"},
 					Remote: &Remote{
 						Url:   "http://localhost:40772/api",
-						Types: map[string]string{"BS": "BS", "GR_TOKYO": "GR"},
+						Types: map[string]string{"BS": "BS", "CATV_BS": "SKY"},
 					},
 				},
 			},
@@ -108,7 +104,7 @@ func TestLoadAndParseTunersConfig(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "Empty tuner types and tunerGroups",
+			name: "Empty tuner types",
 			args: args{
 				filePath: "testdata/tuners-empty-grouping.yml",
 			},
@@ -148,9 +144,9 @@ func TestLoadAndParseTunersConfig(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "Specified remote and types",
+			name: "Specified tunerGroups",
 			args: args{
-				filePath: "testdata/tuners-remote-types.yml",
+				filePath: "testdata/tuners-tuner-groups.yml",
 			},
 			want:    nil,
 			wantErr: true,

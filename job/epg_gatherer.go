@@ -48,11 +48,6 @@ func epgGathererHandler(pm *program.ProgramManager, stm *stream.StreamManager, t
 				continue
 			}
 
-			group := channel.Type
-			if len(channel.TunerGroups) > 0 {
-				group = channel.TunerGroups[0]
-			}
-
 			if stm.HasSession(channel.Type, channel.Channel) {
 				session, err := stm.GetOrCreate(ctx, channel.Type, channel.Channel)
 				if err != nil {
@@ -67,13 +62,13 @@ func epgGathererHandler(pm *program.ProgramManager, stm *stream.StreamManager, t
 					continue
 				}
 				piggybacked++
-				slog.Debug("finished EPG collection piggyback", "group", group, "type", channel.Type, "channel", channel.Channel)
+				slog.Debug("finished EPG collection piggyback", "type", channel.Type, "channel", channel.Channel)
 				continue
 			}
 
-			if stm.ActiveSessionCountByGroup(group) >= tm.TunerCountByGroup(group) {
+			if !hasAvailableRoute(stm, tm, channel) {
 				skipped++
-				slog.Info("skipping EPG collection: tuner unavailable", "group", group, "channel", channel.Channel)
+				slog.Info("skipping EPG collection: tuner unavailable", "type", channel.Type, "channel", channel.Channel)
 				continue
 			}
 
@@ -90,7 +85,7 @@ func epgGathererHandler(pm *program.ProgramManager, stm *stream.StreamManager, t
 				continue
 			}
 			collected++
-			slog.Debug("finished EPG collection", "group", group, "type", channel.Type, "channel", channel.Channel)
+			slog.Debug("finished EPG collection", "type", channel.Type, "channel", channel.Channel)
 		}
 
 		slog.Info("EPG gatherer completed", "collected", collected, "piggybacked", piggybacked, "skipped", skipped, "failed", failed)
