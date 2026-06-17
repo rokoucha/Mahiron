@@ -52,7 +52,7 @@ func (h *Handler) GetApiDocumentation(ctx context.Context) (apigen.GetApiDocumen
 }
 
 func (h *Handler) GetChannel(ctx context.Context, params apigen.GetChannelParams) (apigen.GetChannelRes, error) {
-	panic("implement me")
+	return GetChannel(ctx, h, params)
 }
 
 func (h *Handler) GetChannelStream(ctx context.Context, params apigen.GetChannelStreamParams) (apigen.GetChannelStreamRes, error) {
@@ -60,11 +60,11 @@ func (h *Handler) GetChannelStream(ctx context.Context, params apigen.GetChannel
 }
 
 func (h *Handler) GetChannels(ctx context.Context, params apigen.GetChannelsParams) (apigen.GetChannelsRes, error) {
-	panic("implement me")
+	return GetChannels(ctx, h, params)
 }
 
 func (h *Handler) GetChannelsByType(ctx context.Context, params apigen.GetChannelsByTypeParams) (apigen.GetChannelsByTypeRes, error) {
-	panic("implement me")
+	return GetChannelsByType(ctx, h, params)
 }
 
 func (h *Handler) GetEvents(ctx context.Context) (apigen.GetEventsRes, error) {
@@ -108,11 +108,11 @@ func (h *Handler) GetPrograms(ctx context.Context, params apigen.GetProgramsPara
 }
 
 func (h *Handler) GetService(ctx context.Context, params apigen.GetServiceParams) (apigen.GetServiceRes, error) {
-	panic("implement me")
+	return GetService(ctx, h, params)
 }
 
 func (h *Handler) GetServiceByChannel(ctx context.Context, params apigen.GetServiceByChannelParams) (apigen.GetServiceByChannelRes, error) {
-	panic("implement me")
+	return GetServiceByChannel(ctx, h, params)
 }
 
 func (h *Handler) GetServicePrograms(ctx context.Context, params apigen.GetServiceProgramsParams) (apigen.GetServiceProgramsRes, error) {
@@ -128,11 +128,11 @@ func (h *Handler) GetServiceStreamByChannel(ctx context.Context, params apigen.G
 }
 
 func (h *Handler) GetServices(ctx context.Context, params apigen.GetServicesParams) (apigen.GetServicesRes, error) {
-	panic("implement me")
+	return GetServices(ctx, h, params)
 }
 
 func (h *Handler) GetServicesByChannel(ctx context.Context, params apigen.GetServicesByChannelParams) (apigen.GetServicesByChannelRes, error) {
-	panic("implement me")
+	return GetServicesByChannel(ctx, h, params)
 }
 
 func (h *Handler) GetStatus(ctx context.Context) (apigen.GetStatusRes, error) {

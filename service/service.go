@@ -11,3 +11,7 @@ type Service struct {
 	ChannelType        string
 	ChannelId          string
 }
+
+func (s *Service) ItemId() int64 {
+	return int64(s.NetworkId)*100000 + int64(s.ServiceId)
+}
