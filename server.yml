@@ -3,3 +3,9 @@ addresses:
   - unix: /tmp/test.sock
 
 logLevel: debug
+
+jobs:
+  - key: service-updater
+    schedule: "5 6 * * *"
+  - key: epg-gatherer
+    schedule: "20,50 * * * *"

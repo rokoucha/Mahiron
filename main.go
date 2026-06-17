@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/21S1298001/Mahiron5/config"
+	"github.com/21S1298001/Mahiron5/job"
 	"github.com/21S1298001/Mahiron5/server"
 	"github.com/21S1298001/Mahiron5/service"
 	"github.com/21S1298001/Mahiron5/stream"
@@ -51,10 +52,35 @@ func main() {
 		TunerManager: tm,
 	})
 
+	jm, err := job.NewManager(job.Config{MaxHistory: 100})
+	if err != nil {
+		slog.Error("failed to create job manager", "err", err)
+		os.Exit(1)
+	}
+
+	job.RegisterServiceUpdater(jm, sm, stm, tm, cfg.Channels)
+	job.RegisterEPGGatherer(jm)
+
+	schedules := cfg.System.Jobs
+	if len(schedules) == 0 {
+		schedules = []config.JobScheduleConfig{
+			{Key: job.ServiceUpdaterKey, Schedule: job.ServiceUpdaterDefaultSchedule},
+			{Key: job.EPGGathererKey, Schedule: job.EPGGathererDefaultSchedule},
+		}
+		slog.Info("no job schedules in config, using defaults")
+	}
+
+	for _, js := range schedules {
+		if err := jm.AddSchedule(js.Key, js.Schedule); err != nil {
+			slog.Error("failed to add job schedule", "key", js.Key, "err", err)
+		}
+	}
+
 	handler, err := web.NewWeb(web.WebConfig{
 		ServiceManager: sm,
 		StreamManager:  stm,
 		TunerManager:   tm,
+		JobManager:     jm,
 	})
 	if err != nil {
 		slog.Error("failed to create web handler", "err", err)
@@ -76,33 +102,21 @@ func main() {
 	s := server.NewServer(addresses, handler)
 	s.ListenAndServe()
 
-	go func() {
-		slog.Info("starting service scan", "channels", len(cfg.Channels))
-		for _, channel := range cfg.Channels {
-			t := ""
-			tg := channel.TunerGroups
-			if len(tg) == 0 {
-				t = channel.Type
-			} else {
-				t = tg[0]
-			}
-			slog.Info("processing channel", "group", t, "channel", channel.Channel)
-			err := sm.ScanServices(signalCtx, stm, channel.Type, channel.Channel)
-			if err != nil {
-				slog.Error("failed to scan services", "group", t, "channel", channel.Channel, "err", err)
-				continue
-			}
-			slog.Info("scanned services", "group", t, "channel", channel.Channel)
+	jm.Start()
+
+	if sm.CountServices() == 0 {
+		slog.Info("no services cached, running initial service update")
+		if _, err := jm.Enqueue(job.ServiceUpdaterKey); err != nil {
+			slog.Error("failed to enqueue initial service update", "err", err)
 		}
-		slog.Info("completed scanning services", "discovered", sm.CountServices())
-	}()
+	}
 
 	<-signalCtx.Done()
 	timeoutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	var wg sync.WaitGroup
-	wg.Add(2)
+	wg.Add(3)
 	go func() {
 		defer wg.Done()
 		slog.Info("shutting down servers")
@@ -123,6 +137,14 @@ func main() {
 			slog.Error("failed to shutdown tuner", "err", err)
 		}
 		slog.Info("tuner shut down")
+	}()
+	go func() {
+		defer wg.Done()
+		slog.Info("shutting down job manager")
+		if err := jm.Shutdown(timeoutCtx); err != nil {
+			slog.Error("failed to shutdown job manager", "err", err)
+		}
+		slog.Info("job manager shut down")
 	}()
 	wg.Wait()
 

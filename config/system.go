@@ -8,8 +8,14 @@ import (
 )
 
 type SystemConfig struct {
-	Addresses []ServerAddress `json:"addresses"`
-	LogLevel  string          `json:"logLevel,omitempty"`
+	Addresses []ServerAddress     `json:"addresses"`
+	LogLevel  string              `json:"logLevel,omitempty"`
+	Jobs      []JobScheduleConfig `json:"jobs,omitempty"`
+}
+
+type JobScheduleConfig struct {
+	Key      string `json:"key"`
+	Schedule string `json:"schedule"`
 }
 
 type ServerAddress struct {

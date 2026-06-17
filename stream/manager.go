@@ -19,6 +19,7 @@ type StreamManager struct {
 	filter             ServiceFilter
 	scanner            ServiceScanner
 	sessions           map[sessionKey]*ChannelSession
+	sessionGroups      map[sessionKey]string
 	tunerManager       TunerManager
 }
 
@@ -54,6 +55,7 @@ func NewStreamManager(cfg StreamManagerConfig) *StreamManager {
 		filter:             serviceFilter,
 		scanner:            scanner,
 		sessions:           map[sessionKey]*ChannelSession{},
+		sessionGroups:      map[sessionKey]string{},
 		tunerManager:       cfg.TunerManager,
 	}
 }
@@ -104,7 +106,33 @@ func (m *StreamManager) GetOrCreate(ctx context.Context, channelType, channel st
 		Type:          channelType,
 	})
 	m.sessions[key] = session
+	m.sessionGroups[key] = group
 	return session, nil
+}
+
+func (m *StreamManager) HasSession(channelType, channel string) bool {
+	key := sessionKey{typ: channelType, channel: channel}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.sessions[key] != nil
+}
+
+func (m *StreamManager) ActiveSessionCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.sessions)
+}
+
+func (m *StreamManager) ActiveSessionCountByGroup(group string) int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	count := 0
+	for _, g := range m.sessionGroups {
+		if g == group {
+			count++
+		}
+	}
+	return count
 }
 
 func (m *StreamManager) Shutdown(ctx context.Context) error {
@@ -137,6 +165,7 @@ func (m *StreamManager) remove(key sessionKey) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	delete(m.sessions, key)
+	delete(m.sessionGroups, key)
 }
 
 var (

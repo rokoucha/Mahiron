@@ -3,6 +3,7 @@ package web
 import (
 	"net/http"
 
+	"github.com/21S1298001/Mahiron5/job"
 	"github.com/21S1298001/Mahiron5/service"
 	"github.com/21S1298001/Mahiron5/stream"
 	"github.com/21S1298001/Mahiron5/tuner"
@@ -14,6 +15,7 @@ type WebConfig struct {
 	ServiceManager *service.ServiceManager
 	StreamManager  *stream.StreamManager
 	TunerManager   *tuner.TunerManager
+	JobManager     *job.JobManager
 }
 
 func NewWeb(config WebConfig) (http.Handler, error) {
@@ -22,6 +24,7 @@ func NewWeb(config WebConfig) (http.Handler, error) {
 		ServiceManager: config.ServiceManager,
 		StreamManager:  config.StreamManager,
 		TunerManager:   config.TunerManager,
+		JobManager:     config.JobManager,
 	}))
 	if err != nil {
 		return nil, err

@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 
+	"github.com/21S1298001/Mahiron5/job"
 	"github.com/21S1298001/Mahiron5/service"
 	"github.com/21S1298001/Mahiron5/stream"
 	"github.com/21S1298001/Mahiron5/tuner"
@@ -13,6 +14,7 @@ type Handler struct {
 	serviceManager *service.ServiceManager
 	streamManager  *stream.StreamManager
 	tunerManager   *tuner.TunerManager
+	jobManager     *job.JobManager
 }
 
 var _ apigen.Handler = (*Handler)(nil)
@@ -21,6 +23,7 @@ type HandlerConfig struct {
 	ServiceManager *service.ServiceManager
 	StreamManager  *stream.StreamManager
 	TunerManager   *tuner.TunerManager
+	JobManager     *job.JobManager
 }
 
 func NewHandler(config HandlerConfig) *Handler {
@@ -28,11 +31,12 @@ func NewHandler(config HandlerConfig) *Handler {
 		serviceManager: config.ServiceManager,
 		streamManager:  config.StreamManager,
 		tunerManager:   config.TunerManager,
+		jobManager:     config.JobManager,
 	}
 }
 
 func (h *Handler) AbortJob(ctx context.Context, params apigen.AbortJobParams) (apigen.AbortJobRes, error) {
-	panic("implement me")
+	return AbortJob(ctx, h, params)
 }
 
 func (h *Handler) ChannelsTypeChannelServicesIDStreamHead(ctx context.Context, params apigen.ChannelsTypeChannelServicesIDStreamHeadParams) (apigen.ChannelsTypeChannelServicesIDStreamHeadRes, error) {
@@ -76,11 +80,11 @@ func (h *Handler) GetEventsStream(ctx context.Context, params apigen.GetEventsSt
 }
 
 func (h *Handler) GetJobSchedules(ctx context.Context) (apigen.GetJobSchedulesRes, error) {
-	panic("implement me")
+	return GetJobSchedules(ctx, h)
 }
 
 func (h *Handler) GetJobs(ctx context.Context) (apigen.GetJobsRes, error) {
-	panic("implement me")
+	return GetJobs(ctx, h)
 }
 
 func (h *Handler) GetLog(ctx context.Context) (apigen.GetLogRes, error) {
@@ -180,11 +184,11 @@ func (h *Handler) ProgramsIDStreamHead(ctx context.Context, params apigen.Progra
 }
 
 func (h *Handler) RerunJob(ctx context.Context, params apigen.RerunJobParams) (apigen.RerunJobRes, error) {
-	panic("implement me")
+	return RerunJob(ctx, h, params)
 }
 
 func (h *Handler) RunJobSchedule(ctx context.Context, params apigen.RunJobScheduleParams) (apigen.RunJobScheduleRes, error) {
-	panic("implement me")
+	return RunJobSchedule(ctx, h, params)
 }
 
 func (h *Handler) ServicesIDStreamHead(ctx context.Context, params apigen.ServicesIDStreamHeadParams) (apigen.ServicesIDStreamHeadRes, error) {

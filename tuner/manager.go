@@ -68,6 +68,20 @@ func (tm *TunerManager) DecoderCommandByGroup(group string) string {
 	return tuner.DecoderCommand()
 }
 
+func (tm *TunerManager) TunerCount() int {
+	return len(tm.tuners)
+}
+
+func (tm *TunerManager) TunerCountByGroup(group string) int {
+	count := 0
+	for _, tuner := range tm.tuners {
+		if slices.Contains(tuner.Groups(), group) {
+			count++
+		}
+	}
+	return count
+}
+
 func (tm *TunerManager) CountTunersByGroup() map[string]int {
 	counts := make(map[string]int)
 	for _, tuner := range tm.tuners {
