@@ -4,24 +4,35 @@
 
 package gen
 
+type EpgServiceStatus struct {
+	NetworkID     int64   `json:"network_id"`
+	ServiceID     int64   `json:"service_id"`
+	LastAttemptAt *int64  `json:"last_attempt_at"`
+	LastSuccessAt *int64  `json:"last_success_at"`
+	LastError     *string `json:"last_error"`
+}
+
 type Metadata struct {
 	Key   string `json:"key"`
 	Value string `json:"value"`
 }
 
 type Program struct {
-	ID          int64   `json:"id"`
-	EventID     int64   `json:"event_id"`
-	ServiceID   int64   `json:"service_id"`
-	NetworkID   int64   `json:"network_id"`
-	StartAt     int64   `json:"start_at"`
-	Duration    int64   `json:"duration"`
-	IsFree      int64   `json:"is_free"`
-	Name        *string `json:"name"`
-	Description *string `json:"description"`
-	Genres      *string `json:"genres"`
-	Video       *string `json:"video"`
-	Audios      *string `json:"audios"`
+	ID           int64   `json:"id"`
+	EventID      int64   `json:"event_id"`
+	ServiceID    int64   `json:"service_id"`
+	NetworkID    int64   `json:"network_id"`
+	StartAt      int64   `json:"start_at"`
+	Duration     int64   `json:"duration"`
+	IsFree       int64   `json:"is_free"`
+	Name         *string `json:"name"`
+	Description  *string `json:"description"`
+	Genres       *string `json:"genres"`
+	Video        *string `json:"video"`
+	Audios       *string `json:"audios"`
+	Extended     *string `json:"extended"`
+	RelatedItems *string `json:"related_items"`
+	Series       *string `json:"series"`
 }
 
 type Service struct {

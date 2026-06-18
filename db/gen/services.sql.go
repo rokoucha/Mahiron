@@ -86,6 +86,40 @@ func (q *Queries) GetServicesByChannel(ctx context.Context, arg GetServicesByCha
 	return items, nil
 }
 
+const listEPGStatuses = `-- name: ListEPGStatuses :many
+SELECT network_id, service_id, last_attempt_at, last_success_at, last_error
+FROM epg_service_status
+`
+
+func (q *Queries) ListEPGStatuses(ctx context.Context) ([]EpgServiceStatus, error) {
+	rows, err := q.db.QueryContext(ctx, listEPGStatuses)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []EpgServiceStatus
+	for rows.Next() {
+		var i EpgServiceStatus
+		if err := rows.Scan(
+			&i.NetworkID,
+			&i.ServiceID,
+			&i.LastAttemptAt,
+			&i.LastSuccessAt,
+			&i.LastError,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listServices = `-- name: ListServices :many
 SELECT id, service_id, network_id, transport_stream_id, name, type, remote_control_key_id, channel_type, channel_id FROM services
 `
@@ -121,4 +155,96 @@ func (q *Queries) ListServices(ctx context.Context) ([]Service, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const setEPGAttempt = `-- name: SetEPGAttempt :exec
+INSERT INTO epg_service_status (network_id, service_id, last_attempt_at, last_error)
+VALUES (?, ?, ?, ?)
+ON CONFLICT(network_id, service_id) DO UPDATE SET
+  last_attempt_at=excluded.last_attempt_at,
+  last_error=excluded.last_error
+`
+
+type SetEPGAttemptParams struct {
+	NetworkID     int64   `json:"network_id"`
+	ServiceID     int64   `json:"service_id"`
+	LastAttemptAt *int64  `json:"last_attempt_at"`
+	LastError     *string `json:"last_error"`
+}
+
+func (q *Queries) SetEPGAttempt(ctx context.Context, arg SetEPGAttemptParams) error {
+	_, err := q.db.ExecContext(ctx, setEPGAttempt,
+		arg.NetworkID,
+		arg.ServiceID,
+		arg.LastAttemptAt,
+		arg.LastError,
+	)
+	return err
+}
+
+const setEPGSuccess = `-- name: SetEPGSuccess :exec
+INSERT INTO epg_service_status (network_id, service_id, last_attempt_at, last_success_at, last_error)
+VALUES (?, ?, ?, ?, NULL)
+ON CONFLICT(network_id, service_id) DO UPDATE SET
+  last_attempt_at=excluded.last_attempt_at,
+  last_success_at=excluded.last_success_at,
+  last_error=NULL
+`
+
+type SetEPGSuccessParams struct {
+	NetworkID     int64  `json:"network_id"`
+	ServiceID     int64  `json:"service_id"`
+	LastAttemptAt *int64 `json:"last_attempt_at"`
+	LastSuccessAt *int64 `json:"last_success_at"`
+}
+
+func (q *Queries) SetEPGSuccess(ctx context.Context, arg SetEPGSuccessParams) error {
+	_, err := q.db.ExecContext(ctx, setEPGSuccess,
+		arg.NetworkID,
+		arg.ServiceID,
+		arg.LastAttemptAt,
+		arg.LastSuccessAt,
+	)
+	return err
+}
+
+const upsertService = `-- name: UpsertService :exec
+INSERT INTO services (id, service_id, network_id, transport_stream_id, name, type, remote_control_key_id, channel_type, channel_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+  service_id=excluded.service_id,
+  network_id=excluded.network_id,
+  transport_stream_id=excluded.transport_stream_id,
+  name=excluded.name,
+  type=excluded.type,
+  remote_control_key_id=excluded.remote_control_key_id,
+  channel_type=excluded.channel_type,
+  channel_id=excluded.channel_id
+`
+
+type UpsertServiceParams struct {
+	ID                 string `json:"id"`
+	ServiceID          int64  `json:"service_id"`
+	NetworkID          int64  `json:"network_id"`
+	TransportStreamID  int64  `json:"transport_stream_id"`
+	Name               string `json:"name"`
+	Type               int64  `json:"type"`
+	RemoteControlKeyID int64  `json:"remote_control_key_id"`
+	ChannelType        string `json:"channel_type"`
+	ChannelID          string `json:"channel_id"`
+}
+
+func (q *Queries) UpsertService(ctx context.Context, arg UpsertServiceParams) error {
+	_, err := q.db.ExecContext(ctx, upsertService,
+		arg.ID,
+		arg.ServiceID,
+		arg.NetworkID,
+		arg.TransportStreamID,
+		arg.Name,
+		arg.Type,
+		arg.RemoteControlKeyID,
+		arg.ChannelType,
+		arg.ChannelID,
+	)
+	return err
 }

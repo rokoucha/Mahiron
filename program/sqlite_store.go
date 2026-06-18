@@ -28,73 +28,29 @@ func (s *sqliteStore) UpsertAll(ctx context.Context, programs []*Program) error 
 	}
 	defer tx.Rollback()
 
-	if err := upsertPrograms(ctx, tx, programs); err != nil {
-		return err
+	q := s.q.WithTx(tx)
+	for _, p := range programs {
+		params, err := toUpsertProgramParams(p)
+		if err != nil {
+			return err
+		}
+		if err := q.UpsertProgram(ctx, params); err != nil {
+			return fmt.Errorf("upsert program %d: %w", p.ID, err)
+		}
 	}
 
 	return tx.Commit()
 }
 
-func upsertPrograms(ctx context.Context, tx *sql.Tx, programs []*Program) error {
-	stmt, err := tx.PrepareContext(ctx, `INSERT OR REPLACE INTO programs (id, event_id, service_id, network_id, start_at, duration, is_free, name, description, genres, video, audios, extended, related_items, series) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-	if err != nil {
-		return fmt.Errorf("prepare upsert: %w", err)
-	}
-	defer stmt.Close()
-
-	for _, p := range programs {
-		var name, desc *string
-		if p.Name != "" {
-			name = &p.Name
-		}
-		if p.Description != "" {
-			desc = &p.Description
-		}
-
-		genresStr, err := encodeProgramJSON(p.ID, "genres", p.Genres)
-		if err != nil {
-			return err
-		}
-		videoStr, err := encodeProgramJSON(p.ID, "video", p.Video)
-		if err != nil {
-			return err
-		}
-		audiosStr, err := encodeProgramJSON(p.ID, "audios", p.Audios)
-		if err != nil {
-			return err
-		}
-		extendedStr, err := encodeProgramJSON(p.ID, "extended", p.Extended)
-		if err != nil {
-			return err
-		}
-		relatedStr, err := encodeProgramJSON(p.ID, "related_items", p.RelatedItems)
-		if err != nil {
-			return err
-		}
-		seriesStr, err := encodeProgramJSON(p.ID, "series", p.Series)
-		if err != nil {
-			return err
-		}
-
-		isFree := int64(0)
-		if p.IsFree {
-			isFree = 1
-		}
-
-		if _, err := stmt.ExecContext(ctx, p.ID, int64(p.EventID), int64(p.ServiceID), int64(p.NetworkID), p.StartAt, int64(p.Duration), isFree, name, desc, genresStr, videoStr, audiosStr, extendedStr, relatedStr, seriesStr); err != nil {
-			return fmt.Errorf("upsert program %d: %w", p.ID, err)
-		}
-	}
-
-	return nil
-}
-
 func (s *sqliteStore) Get(ctx context.Context, id int64) (*Program, bool, error) {
-	row := s.db.QueryRowContext(ctx, programSelect+" WHERE id = ?", id)
-	p, err := scanProgram(row)
+	row, err := s.q.GetProgram(ctx, id)
 	if err == sql.ErrNoRows {
 		return nil, false, nil
 	}
+	if err != nil {
+		return nil, false, err
+	}
+	p, err := fromGenProgram(row)
 	if err != nil {
 		return nil, false, err
 	}
@@ -102,46 +58,24 @@ func (s *sqliteStore) Get(ctx context.Context, id int64) (*Program, bool, error)
 }
 
 func (s *sqliteStore) List(ctx context.Context, query Query) ([]*Program, error) {
-	q := programSelect + " WHERE 1=1"
-	args := make([]any, 0)
-
-	if query.ID != nil {
-		q += " AND id = ?"
-		args = append(args, *query.ID)
+	params := gen.ListProgramsParams{
+		ID:        nilOrInt64(query.ID),
+		NetworkID: nilOrInt64(query.NetworkID),
+		ServiceID: nilOrInt64(query.ServiceID),
+		EventID:   nilOrInt64(query.EventID),
 	}
-	if query.NetworkID != nil {
-		q += " AND network_id = ?"
-		args = append(args, int64(*query.NetworkID))
-	}
-	if query.ServiceID != nil {
-		q += " AND service_id = ?"
-		args = append(args, int64(*query.ServiceID))
-	}
-	if query.EventID != nil {
-		q += " AND event_id = ?"
-		args = append(args, int64(*query.EventID))
-	}
-
-	q += " ORDER BY start_at, id"
-
-	rows, err := s.db.QueryContext(ctx, q, args...)
+	rows, err := s.q.ListPrograms(ctx, params)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	var result []*Program
-	for rows.Next() {
-		p, err := scanProgram(rows)
+	result := make([]*Program, 0, len(rows))
+	for i := range rows {
+		p, err := fromGenProgram(rows[i])
 		if err != nil {
 			return nil, err
 		}
 		result = append(result, p)
 	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
 	return result, nil
 }
 
@@ -155,91 +89,121 @@ func (s *sqliteStore) ReplaceServicePrograms(ctx context.Context, networkID, ser
 		return fmt.Errorf("begin replace: %w", err)
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, `DELETE FROM programs WHERE network_id = ? AND service_id = ? AND start_at + duration >= ?`, networkID, serviceID, from); err != nil {
+	q := s.q.WithTx(tx)
+	if err := q.DeleteProgramsByServiceFrom(ctx, gen.DeleteProgramsByServiceFromParams{
+		NetworkID: int64(networkID),
+		ServiceID: int64(serviceID),
+		StartAt:   from,
+	}); err != nil {
 		return fmt.Errorf("delete service snapshot: %w", err)
 	}
-	if err := upsertPrograms(ctx, tx, programs); err != nil {
-		return err
+	for _, p := range programs {
+		params, err := toUpsertProgramParams(p)
+		if err != nil {
+			return err
+		}
+		if err := q.UpsertProgram(ctx, params); err != nil {
+			return fmt.Errorf("upsert program %d: %w", p.ID, err)
+		}
 	}
 	return tx.Commit()
 }
 
 func (s *sqliteStore) Count(ctx context.Context) (int, error) {
-	var count int
-	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM programs").Scan(&count)
-	return count, err
+	n, err := s.q.CountPrograms(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return int(n), nil
 }
 
-const programSelect = `SELECT id, event_id, service_id, network_id, start_at, duration, is_free, name, description, genres, video, audios, extended, related_items, series FROM programs`
+func nilOrInt64[T ~int | ~int8 | ~int16 | ~int32 | ~int64 | ~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64](p *T) interface{} {
+	if p == nil {
+		return nil
+	}
+	return int64(*p)
+}
 
-func scanProgram(row interface{ Scan(dest ...any) error }) (*Program, error) {
-	var p Program
-	var eventID, serviceID, networkID, duration int64
-	var isFree int64
-	var name, desc, genresStr, videoStr, audiosStr, extendedStr, relatedStr, seriesStr *string
-
-	if err := row.Scan(&p.ID, &eventID, &serviceID, &networkID, &p.StartAt, &duration, &isFree, &name, &desc, &genresStr, &videoStr, &audiosStr, &extendedStr, &relatedStr, &seriesStr); err != nil {
+func encodeJSON(v any) (*string, error) {
+	data, err := json.Marshal(v)
+	if err != nil {
 		return nil, err
 	}
-
-	p.EventID = uint16(eventID)
-	p.ServiceID = uint16(serviceID)
-	p.NetworkID = uint16(networkID)
-	p.Duration = int(duration)
-	p.IsFree = isFree != 0
-	if name != nil {
-		p.Name = *name
-	}
-	if desc != nil {
-		p.Description = *desc
-	}
-	if genresStr != nil {
-		if err := decodeProgramJSON(p.ID, "genres", genresStr, &p.Genres); err != nil {
-			return nil, err
-		}
-	}
-	if videoStr != nil {
-		if err := decodeProgramJSON(p.ID, "video", videoStr, &p.Video); err != nil {
-			return nil, err
-		}
-	}
-	if audiosStr != nil {
-		if err := decodeProgramJSON(p.ID, "audios", audiosStr, &p.Audios); err != nil {
-			return nil, err
-		}
-	}
-	if extendedStr != nil {
-		if err := decodeProgramJSON(p.ID, "extended", extendedStr, &p.Extended); err != nil {
-			return nil, err
-		}
-	}
-	if relatedStr != nil {
-		if err := decodeProgramJSON(p.ID, "related_items", relatedStr, &p.RelatedItems); err != nil {
-			return nil, err
-		}
-	}
-	if seriesStr != nil {
-		if err := decodeProgramJSON(p.ID, "series", seriesStr, &p.Series); err != nil {
-			return nil, err
-		}
-	}
-
-	return &p, nil
-}
-
-func encodeProgramJSON(id int64, field string, value any) (*string, error) {
-	data, err := json.Marshal(value)
-	if err != nil {
-		return nil, fmt.Errorf("marshal program %d %s: %w", id, field, err)
-	}
-	if string(data) == "null" || string(data) == "[]" || string(data) == "{}" {
+	if len(data) == 0 || string(data) == "null" || string(data) == "[]" || string(data) == "{}" {
 		return nil, nil
 	}
-	v := string(data)
-	return &v, nil
+	s := string(data)
+	return &s, nil
 }
 
-func fromStoregenProgram(p gen.Program) (*Program, error) {
+func decodeJSON(s *string, dest any) error {
+	if s == nil {
+		return nil
+	}
+	return json.Unmarshal([]byte(*s), dest)
+}
+
+func toUpsertProgramParams(p *Program) (gen.UpsertProgramParams, error) {
+	var name, desc *string
+	if p.Name != "" {
+		v := p.Name
+		name = &v
+	}
+	if p.Description != "" {
+		v := p.Description
+		desc = &v
+	}
+
+	genres, err := encodeJSON(p.Genres)
+	if err != nil {
+		return gen.UpsertProgramParams{}, fmt.Errorf("marshal program %d genres: %w", p.ID, err)
+	}
+	video, err := encodeJSON(p.Video)
+	if err != nil {
+		return gen.UpsertProgramParams{}, fmt.Errorf("marshal program %d video: %w", p.ID, err)
+	}
+	audios, err := encodeJSON(p.Audios)
+	if err != nil {
+		return gen.UpsertProgramParams{}, fmt.Errorf("marshal program %d audios: %w", p.ID, err)
+	}
+	extended, err := encodeJSON(p.Extended)
+	if err != nil {
+		return gen.UpsertProgramParams{}, fmt.Errorf("marshal program %d extended: %w", p.ID, err)
+	}
+	related, err := encodeJSON(p.RelatedItems)
+	if err != nil {
+		return gen.UpsertProgramParams{}, fmt.Errorf("marshal program %d related_items: %w", p.ID, err)
+	}
+	series, err := encodeJSON(p.Series)
+	if err != nil {
+		return gen.UpsertProgramParams{}, fmt.Errorf("marshal program %d series: %w", p.ID, err)
+	}
+
+	isFree := int64(0)
+	if p.IsFree {
+		isFree = 1
+	}
+
+	return gen.UpsertProgramParams{
+		ID:           p.ID,
+		EventID:      int64(p.EventID),
+		ServiceID:    int64(p.ServiceID),
+		NetworkID:    int64(p.NetworkID),
+		StartAt:      p.StartAt,
+		Duration:     int64(p.Duration),
+		IsFree:       isFree,
+		Name:         name,
+		Description:  desc,
+		Genres:       genres,
+		Video:        video,
+		Audios:       audios,
+		Extended:     extended,
+		RelatedItems: related,
+		Series:       series,
+	}, nil
+}
+
+func fromGenProgram(p gen.Program) (*Program, error) {
 	prog := &Program{
 		ID:        p.ID,
 		EventID:   uint16(p.EventID),
@@ -255,27 +219,23 @@ func fromStoregenProgram(p gen.Program) (*Program, error) {
 	if p.Description != nil {
 		prog.Description = *p.Description
 	}
-	if p.Genres != nil {
-		if err := decodeProgramJSON(prog.ID, "genres", p.Genres, &prog.Genres); err != nil {
-			return nil, err
-		}
+	if err := decodeJSON(p.Genres, &prog.Genres); err != nil {
+		return nil, fmt.Errorf("decode program %d genres: %w", p.ID, err)
 	}
-	if p.Video != nil {
-		if err := decodeProgramJSON(prog.ID, "video", p.Video, &prog.Video); err != nil {
-			return nil, err
-		}
+	if err := decodeJSON(p.Video, &prog.Video); err != nil {
+		return nil, fmt.Errorf("decode program %d video: %w", p.ID, err)
 	}
-	if p.Audios != nil {
-		if err := decodeProgramJSON(prog.ID, "audios", p.Audios, &prog.Audios); err != nil {
-			return nil, err
-		}
+	if err := decodeJSON(p.Audios, &prog.Audios); err != nil {
+		return nil, fmt.Errorf("decode program %d audios: %w", p.ID, err)
+	}
+	if err := decodeJSON(p.Extended, &prog.Extended); err != nil {
+		return nil, fmt.Errorf("decode program %d extended: %w", p.ID, err)
+	}
+	if err := decodeJSON(p.RelatedItems, &prog.RelatedItems); err != nil {
+		return nil, fmt.Errorf("decode program %d related_items: %w", p.ID, err)
+	}
+	if err := decodeJSON(p.Series, &prog.Series); err != nil {
+		return nil, fmt.Errorf("decode program %d series: %w", p.ID, err)
 	}
 	return prog, nil
-}
-
-func decodeProgramJSON(id int64, field string, value *string, target any) error {
-	if err := json.Unmarshal([]byte(*value), target); err != nil {
-		return fmt.Errorf("decode program %d %s: %w", id, field, err)
-	}
-	return nil
 }

@@ -69,55 +69,55 @@ func (s *sqliteStore) GetByChannel(ctx context.Context, channelType, channelId s
 }
 
 func (s *sqliteStore) SetEPGAttempt(ctx context.Context, networkID, serviceID uint16, attemptedAt int64, lastError string) error {
-	_, err := s.db.ExecContext(ctx, `INSERT INTO epg_service_status (network_id, service_id, last_attempt_at, last_error)
-		VALUES (?, ?, ?, ?) ON CONFLICT(network_id, service_id) DO UPDATE SET last_attempt_at=excluded.last_attempt_at, last_error=excluded.last_error`,
-		networkID, serviceID, attemptedAt, nullableString(lastError))
-	return err
+	return s.q.SetEPGAttempt(ctx, gen.SetEPGAttemptParams{
+		NetworkID:     int64(networkID),
+		ServiceID:     int64(serviceID),
+		LastAttemptAt: &attemptedAt,
+		LastError:     nullableString(lastError),
+	})
 }
 
 func (s *sqliteStore) SetEPGSuccess(ctx context.Context, networkID, serviceID uint16, succeededAt int64) error {
-	_, err := s.db.ExecContext(ctx, `INSERT INTO epg_service_status (network_id, service_id, last_attempt_at, last_success_at, last_error)
-		VALUES (?, ?, ?, ?, NULL) ON CONFLICT(network_id, service_id) DO UPDATE SET last_attempt_at=excluded.last_attempt_at, last_success_at=excluded.last_success_at, last_error=NULL`,
-		networkID, serviceID, succeededAt, succeededAt)
-	return err
+	return s.q.SetEPGSuccess(ctx, gen.SetEPGSuccessParams{
+		NetworkID:     int64(networkID),
+		ServiceID:     int64(serviceID),
+		LastAttemptAt: &succeededAt,
+		LastSuccessAt: &succeededAt,
+	})
 }
 
 func (s *sqliteStore) attachEPGStatuses(ctx context.Context, services []*Service) error {
 	if len(services) == 0 {
 		return nil
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT network_id, service_id, last_attempt_at, last_success_at, last_error FROM epg_service_status`)
+	statuses, err := s.q.ListEPGStatuses(ctx)
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
 	type key struct{ networkID, serviceID uint16 }
 	byKey := make(map[key]*Service, len(services))
 	for _, svc := range services {
 		byKey[key{svc.NetworkId, svc.ServiceId}] = svc
 	}
-	for rows.Next() {
-		var nid, sid int64
-		var attempted, succeeded *int64
-		var lastError *string
-		if err := rows.Scan(&nid, &sid, &attempted, &succeeded, &lastError); err != nil {
-			return err
+	for _, st := range statuses {
+		svc, ok := byKey[key{uint16(st.NetworkID), uint16(st.ServiceID)}]
+		if !ok {
+			continue
 		}
-		if svc := byKey[key{uint16(nid), uint16(sid)}]; svc != nil {
-			svc.EPG.LastAttemptAt, svc.EPG.LastSuccessAt = attempted, succeeded
-			if lastError != nil {
-				svc.EPG.LastError = *lastError
-			}
+		svc.EPG.LastAttemptAt = st.LastAttemptAt
+		svc.EPG.LastSuccessAt = st.LastSuccessAt
+		if st.LastError != nil {
+			svc.EPG.LastError = *st.LastError
 		}
 	}
-	return rows.Err()
+	return nil
 }
 
-func nullableString(value string) any {
+func nullableString(value string) *string {
 	if value == "" {
 		return nil
 	}
-	return value
+	return &value
 }
 
 func (s *sqliteStore) ReplaceChannelServices(ctx context.Context, channelType, channelId string, services []*Service) error {
@@ -135,20 +135,19 @@ func (s *sqliteStore) ReplaceChannelServices(ctx context.Context, channelType, c
 		return fmt.Errorf("delete existing: %w", err)
 	}
 
-	stmt, err := tx.PrepareContext(ctx, `INSERT INTO services (id, service_id, network_id, transport_stream_id, name, type, remote_control_key_id, channel_type, channel_id)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET service_id=excluded.service_id, network_id=excluded.network_id,
-		transport_stream_id=excluded.transport_stream_id, name=excluded.name, type=excluded.type,
-		remote_control_key_id=excluded.remote_control_key_id, channel_type=excluded.channel_type,
-		channel_id=excluded.channel_id`)
-	if err != nil {
-		return fmt.Errorf("prepare insert: %w", err)
-	}
-	defer stmt.Close()
-
 	for _, svc := range services {
-		if _, err := stmt.ExecContext(ctx, svc.Id, int64(svc.ServiceId), int64(svc.NetworkId), int64(svc.TransportStreamId), svc.Name, int64(svc.Type), int64(svc.RemoteControlKeyId), channelType, channelId); err != nil {
-			return fmt.Errorf("insert service %s: %w", svc.Id, err)
+		if err := q.UpsertService(ctx, gen.UpsertServiceParams{
+			ID:                 svc.Id,
+			ServiceID:          int64(svc.ServiceId),
+			NetworkID:          int64(svc.NetworkId),
+			TransportStreamID:  int64(svc.TransportStreamId),
+			Name:               svc.Name,
+			Type:               int64(svc.Type),
+			RemoteControlKeyID: int64(svc.RemoteControlKeyId),
+			ChannelType:        channelType,
+			ChannelID:          channelId,
+		}); err != nil {
+			return fmt.Errorf("upsert service %s: %w", svc.Id, err)
 		}
 	}
 

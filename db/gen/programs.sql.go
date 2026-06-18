@@ -9,13 +9,15 @@ import (
 	"context"
 )
 
-const deleteAllPrograms = `-- name: DeleteAllPrograms :exec
-DELETE FROM programs
+const countPrograms = `-- name: CountPrograms :one
+SELECT COUNT(*) FROM programs
 `
 
-func (q *Queries) DeleteAllPrograms(ctx context.Context) error {
-	_, err := q.db.ExecContext(ctx, deleteAllPrograms)
-	return err
+func (q *Queries) CountPrograms(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countPrograms)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
 
 const deleteEndedAtBefore = `-- name: DeleteEndedAtBefore :exec
@@ -27,8 +29,25 @@ func (q *Queries) DeleteEndedAtBefore(ctx context.Context, startAt int64) error 
 	return err
 }
 
+const deleteProgramsByServiceFrom = `-- name: DeleteProgramsByServiceFrom :exec
+DELETE FROM programs WHERE network_id = ? AND service_id = ? AND start_at + duration >= ?
+`
+
+type DeleteProgramsByServiceFromParams struct {
+	NetworkID int64 `json:"network_id"`
+	ServiceID int64 `json:"service_id"`
+	StartAt   int64 `json:"start_at"`
+}
+
+func (q *Queries) DeleteProgramsByServiceFrom(ctx context.Context, arg DeleteProgramsByServiceFromParams) error {
+	_, err := q.db.ExecContext(ctx, deleteProgramsByServiceFrom, arg.NetworkID, arg.ServiceID, arg.StartAt)
+	return err
+}
+
 const getProgram = `-- name: GetProgram :one
-SELECT id, event_id, service_id, network_id, start_at, duration, is_free, name, description, genres, video, audios FROM programs WHERE id = ?
+SELECT id, event_id, service_id, network_id, start_at, duration, is_free,
+       name, description, genres, video, audios, extended, related_items, series
+FROM programs WHERE id = ?
 `
 
 func (q *Queries) GetProgram(ctx context.Context, id int64) (Program, error) {
@@ -47,16 +66,38 @@ func (q *Queries) GetProgram(ctx context.Context, id int64) (Program, error) {
 		&i.Genres,
 		&i.Video,
 		&i.Audios,
+		&i.Extended,
+		&i.RelatedItems,
+		&i.Series,
 	)
 	return i, err
 }
 
-const listAllPrograms = `-- name: ListAllPrograms :many
-SELECT id, event_id, service_id, network_id, start_at, duration, is_free, name, description, genres, video, audios FROM programs
+const listPrograms = `-- name: ListPrograms :many
+SELECT id, event_id, service_id, network_id, start_at, duration, is_free,
+       name, description, genres, video, audios, extended, related_items, series
+FROM programs
+WHERE (?1 IS NULL OR id = ?1)
+  AND (?2 IS NULL OR network_id = ?2)
+  AND (?3 IS NULL OR service_id = ?3)
+  AND (?4 IS NULL OR event_id = ?4)
+ORDER BY start_at, id
 `
 
-func (q *Queries) ListAllPrograms(ctx context.Context) ([]Program, error) {
-	rows, err := q.db.QueryContext(ctx, listAllPrograms)
+type ListProgramsParams struct {
+	ID        interface{} `json:"id"`
+	NetworkID interface{} `json:"network_id"`
+	ServiceID interface{} `json:"service_id"`
+	EventID   interface{} `json:"event_id"`
+}
+
+func (q *Queries) ListPrograms(ctx context.Context, arg ListProgramsParams) ([]Program, error) {
+	rows, err := q.db.QueryContext(ctx, listPrograms,
+		arg.ID,
+		arg.NetworkID,
+		arg.ServiceID,
+		arg.EventID,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -77,6 +118,9 @@ func (q *Queries) ListAllPrograms(ctx context.Context) ([]Program, error) {
 			&i.Genres,
 			&i.Video,
 			&i.Audios,
+			&i.Extended,
+			&i.RelatedItems,
+			&i.Series,
 		); err != nil {
 			return nil, err
 		}
@@ -91,167 +135,62 @@ func (q *Queries) ListAllPrograms(ctx context.Context) ([]Program, error) {
 	return items, nil
 }
 
-const listProgramsByEvent = `-- name: ListProgramsByEvent :many
-SELECT id, event_id, service_id, network_id, start_at, duration, is_free, name, description, genres, video, audios FROM programs WHERE event_id = ?
+const upsertProgram = `-- name: UpsertProgram :exec
+INSERT INTO programs (id, event_id, service_id, network_id, start_at, duration, is_free,
+                      name, description, genres, video, audios, extended, related_items, series)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+  event_id=excluded.event_id,
+  service_id=excluded.service_id,
+  network_id=excluded.network_id,
+  start_at=excluded.start_at,
+  duration=excluded.duration,
+  is_free=excluded.is_free,
+  name=excluded.name,
+  description=excluded.description,
+  genres=excluded.genres,
+  video=excluded.video,
+  audios=excluded.audios,
+  extended=excluded.extended,
+  related_items=excluded.related_items,
+  series=excluded.series
 `
 
-func (q *Queries) ListProgramsByEvent(ctx context.Context, eventID int64) ([]Program, error) {
-	rows, err := q.db.QueryContext(ctx, listProgramsByEvent, eventID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []Program
-	for rows.Next() {
-		var i Program
-		if err := rows.Scan(
-			&i.ID,
-			&i.EventID,
-			&i.ServiceID,
-			&i.NetworkID,
-			&i.StartAt,
-			&i.Duration,
-			&i.IsFree,
-			&i.Name,
-			&i.Description,
-			&i.Genres,
-			&i.Video,
-			&i.Audios,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+type UpsertProgramParams struct {
+	ID           int64   `json:"id"`
+	EventID      int64   `json:"event_id"`
+	ServiceID    int64   `json:"service_id"`
+	NetworkID    int64   `json:"network_id"`
+	StartAt      int64   `json:"start_at"`
+	Duration     int64   `json:"duration"`
+	IsFree       int64   `json:"is_free"`
+	Name         *string `json:"name"`
+	Description  *string `json:"description"`
+	Genres       *string `json:"genres"`
+	Video        *string `json:"video"`
+	Audios       *string `json:"audios"`
+	Extended     *string `json:"extended"`
+	RelatedItems *string `json:"related_items"`
+	Series       *string `json:"series"`
 }
 
-const listProgramsByNetwork = `-- name: ListProgramsByNetwork :many
-SELECT id, event_id, service_id, network_id, start_at, duration, is_free, name, description, genres, video, audios FROM programs WHERE network_id = ?
-`
-
-func (q *Queries) ListProgramsByNetwork(ctx context.Context, networkID int64) ([]Program, error) {
-	rows, err := q.db.QueryContext(ctx, listProgramsByNetwork, networkID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []Program
-	for rows.Next() {
-		var i Program
-		if err := rows.Scan(
-			&i.ID,
-			&i.EventID,
-			&i.ServiceID,
-			&i.NetworkID,
-			&i.StartAt,
-			&i.Duration,
-			&i.IsFree,
-			&i.Name,
-			&i.Description,
-			&i.Genres,
-			&i.Video,
-			&i.Audios,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listProgramsByNetworkAndService = `-- name: ListProgramsByNetworkAndService :many
-SELECT id, event_id, service_id, network_id, start_at, duration, is_free, name, description, genres, video, audios FROM programs WHERE network_id = ? AND service_id = ?
-`
-
-type ListProgramsByNetworkAndServiceParams struct {
-	NetworkID int64 `json:"network_id"`
-	ServiceID int64 `json:"service_id"`
-}
-
-func (q *Queries) ListProgramsByNetworkAndService(ctx context.Context, arg ListProgramsByNetworkAndServiceParams) ([]Program, error) {
-	rows, err := q.db.QueryContext(ctx, listProgramsByNetworkAndService, arg.NetworkID, arg.ServiceID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []Program
-	for rows.Next() {
-		var i Program
-		if err := rows.Scan(
-			&i.ID,
-			&i.EventID,
-			&i.ServiceID,
-			&i.NetworkID,
-			&i.StartAt,
-			&i.Duration,
-			&i.IsFree,
-			&i.Name,
-			&i.Description,
-			&i.Genres,
-			&i.Video,
-			&i.Audios,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listProgramsByService = `-- name: ListProgramsByService :many
-SELECT id, event_id, service_id, network_id, start_at, duration, is_free, name, description, genres, video, audios FROM programs WHERE service_id = ?
-`
-
-func (q *Queries) ListProgramsByService(ctx context.Context, serviceID int64) ([]Program, error) {
-	rows, err := q.db.QueryContext(ctx, listProgramsByService, serviceID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []Program
-	for rows.Next() {
-		var i Program
-		if err := rows.Scan(
-			&i.ID,
-			&i.EventID,
-			&i.ServiceID,
-			&i.NetworkID,
-			&i.StartAt,
-			&i.Duration,
-			&i.IsFree,
-			&i.Name,
-			&i.Description,
-			&i.Genres,
-			&i.Video,
-			&i.Audios,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) UpsertProgram(ctx context.Context, arg UpsertProgramParams) error {
+	_, err := q.db.ExecContext(ctx, upsertProgram,
+		arg.ID,
+		arg.EventID,
+		arg.ServiceID,
+		arg.NetworkID,
+		arg.StartAt,
+		arg.Duration,
+		arg.IsFree,
+		arg.Name,
+		arg.Description,
+		arg.Genres,
+		arg.Video,
+		arg.Audios,
+		arg.Extended,
+		arg.RelatedItems,
+		arg.Series,
+	)
+	return err
 }
