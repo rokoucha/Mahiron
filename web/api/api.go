@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"net/http"
 
 	"github.com/21S1298001/Mahiron5/job"
 	"github.com/21S1298001/Mahiron5/program"
@@ -79,11 +80,11 @@ func (h *Handler) GetChannelsByType(ctx context.Context, params apigen.GetChanne
 }
 
 func (h *Handler) GetEvents(ctx context.Context) (apigen.GetEventsRes, error) {
-	panic("implement me")
+	return notImplemented("GET /events is not implemented"), nil
 }
 
 func (h *Handler) GetEventsStream(ctx context.Context, params apigen.GetEventsStreamParams) (apigen.GetEventsStreamRes, error) {
-	panic("implement me")
+	return notImplemented("GET /events/stream is not implemented"), nil
 }
 
 func (h *Handler) GetJobSchedules(ctx context.Context) (apigen.GetJobSchedulesRes, error) {
@@ -95,15 +96,15 @@ func (h *Handler) GetJobs(ctx context.Context) (apigen.GetJobsRes, error) {
 }
 
 func (h *Handler) GetLog(ctx context.Context) (apigen.GetLogRes, error) {
-	panic("implement me")
+	return &apigen.GetLogDef{StatusCode: http.StatusNotImplemented}, nil
 }
 
 func (h *Handler) GetLogStream(ctx context.Context) (apigen.GetLogStreamRes, error) {
-	panic("implement me")
+	return &apigen.GetLogStreamDef{StatusCode: http.StatusNotImplemented}, nil
 }
 
 func (h *Handler) GetLogoImage(ctx context.Context, params apigen.GetLogoImageParams) (apigen.GetLogoImageRes, error) {
-	panic("implement me")
+	return &apigen.GetLogoImageDef{StatusCode: http.StatusNotImplemented}, nil
 }
 
 func (h *Handler) GetProgram(ctx context.Context, params apigen.GetProgramParams) (apigen.GetProgramRes, error) {
@@ -111,7 +112,7 @@ func (h *Handler) GetProgram(ctx context.Context, params apigen.GetProgramParams
 }
 
 func (h *Handler) GetProgramStream(ctx context.Context, params apigen.GetProgramStreamParams) (apigen.GetProgramStreamRes, error) {
-	panic("implement me")
+	return &apigen.GetProgramStreamDef{StatusCode: http.StatusNotImplemented}, nil
 }
 
 func (h *Handler) GetPrograms(ctx context.Context, params apigen.GetProgramsParams) (apigen.GetProgramsRes, error) {
@@ -155,7 +156,7 @@ func (h *Handler) GetTuner(ctx context.Context, params apigen.GetTunerParams) (a
 }
 
 func (h *Handler) GetTunerProcess(ctx context.Context, params apigen.GetTunerProcessParams) (apigen.GetTunerProcessRes, error) {
-	panic("implement me")
+	return notImplemented("GET /tuners/{index}/process is not implemented"), nil
 }
 
 func (h *Handler) GetTuners(ctx context.Context) (apigen.GetTunersRes, error) {
@@ -163,27 +164,27 @@ func (h *Handler) GetTuners(ctx context.Context) (apigen.GetTunersRes, error) {
 }
 
 func (h *Handler) IptvDiscoverJSONGet(ctx context.Context) (apigen.IptvDiscoverJSONGetRes, error) {
-	panic("implement me")
+	return notImplemented("GET /iptv/discover.json is not implemented"), nil
 }
 
 func (h *Handler) IptvLineupJSONGet(ctx context.Context) (apigen.IptvLineupJSONGetRes, error) {
-	panic("implement me")
+	return notImplemented("GET /iptv/lineup.json is not implemented"), nil
 }
 
 func (h *Handler) IptvLineupStatusJSONGet(ctx context.Context) (apigen.IptvLineupStatusJSONGetRes, error) {
-	panic("implement me")
+	return notImplemented("GET /iptv/lineup_status.json is not implemented"), nil
 }
 
 func (h *Handler) IptvPlaylistGet(ctx context.Context) (apigen.IptvPlaylistGetRes, error) {
-	panic("implement me")
+	return notImplemented("GET /iptv/playlist.m3u8 is not implemented"), nil
 }
 
 func (h *Handler) IptvXmltvGet(ctx context.Context) (apigen.IptvXmltvGetRes, error) {
-	panic("implement me")
+	return notImplemented("GET /iptv/xmltv.xml is not implemented"), nil
 }
 
 func (h *Handler) KillTunerProcess(ctx context.Context, params apigen.KillTunerProcessParams) (apigen.KillTunerProcessRes, error) {
-	panic("implement me")
+	return notImplemented("DELETE /tuners/{index}/process is not implemented"), nil
 }
 
 func (h *Handler) ProgramsIDStreamHead(ctx context.Context, params apigen.ProgramsIDStreamHeadParams) (apigen.ProgramsIDStreamHeadRes, error) {
