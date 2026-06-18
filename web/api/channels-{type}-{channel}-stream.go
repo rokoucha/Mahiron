@@ -70,3 +70,28 @@ func GetServiceStreamByChannel(ctx context.Context, h *Handler, params apigen.Ge
 		},
 	}, nil
 }
+
+func ChannelsTypeChannelStreamHead(ctx context.Context, h *Handler, params apigen.ChannelsTypeChannelStreamHeadParams) (apigen.ChannelsTypeChannelStreamHeadRes, error) {
+	channel := h.serviceManager.GetChannel(params.Type, params.Channel)
+	if channel == nil {
+		return &apigen.ChannelsTypeChannelStreamHeadNotFound{}, nil
+	}
+	decode := shouldDecode(params.Decode)
+	_, userID := tunerUserContext(ctx, params.XMirakurunPriority, decode, channel, nil, nil)
+	return &apigen.ChannelsTypeChannelStreamHeadOK{
+		XMirakurunTunerUserID: apigen.NewOptString(userID),
+	}, nil
+}
+
+func ChannelsTypeChannelServicesIDStreamHead(ctx context.Context, h *Handler, params apigen.ChannelsTypeChannelServicesIDStreamHeadParams) (apigen.ChannelsTypeChannelServicesIDStreamHeadRes, error) {
+	channel := h.serviceManager.GetChannel(params.Type, params.Channel)
+	if channel == nil {
+		return &apigen.ChannelsTypeChannelServicesIDStreamHeadNotFound{}, nil
+	}
+	decode := shouldDecode(params.Decode)
+	serviceID := uint16(params.ID)
+	_, userID := tunerUserContext(ctx, params.XMirakurunPriority, decode, channel, nil, &serviceID)
+	return &apigen.ChannelsTypeChannelServicesIDStreamHeadOK{
+		XMirakurunTunerUserID: apigen.NewOptString(userID),
+	}, nil
+}

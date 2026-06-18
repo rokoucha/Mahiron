@@ -50,3 +50,21 @@ func GetServiceStream(ctx context.Context, h *Handler, params apigen.GetServiceS
 		},
 	}, nil
 }
+
+func ServicesIDStreamHead(ctx context.Context, h *Handler, params apigen.ServicesIDStreamHeadParams) (apigen.ServicesIDStreamHeadRes, error) {
+	service, err := h.serviceManager.GetServiceById(ctx, strconv.FormatInt(params.ID, 10))
+	if err != nil {
+		return nil, err
+	}
+	if service == nil {
+		return &apigen.ServicesIDStreamHeadNotFound{}, nil
+	}
+	decode := shouldDecode(params.Decode)
+	serviceID := service.ServiceId
+	networkID := service.NetworkId
+	_, userID := tunerUserContext(ctx, params.XMirakurunPriority, decode, h.serviceManager.GetChannel(service.ChannelType, service.ChannelId), &networkID, &serviceID)
+
+	return &apigen.ServicesIDStreamHeadOK{
+		XMirakurunTunerUserID: apigen.NewOptString(userID),
+	}, nil
+}

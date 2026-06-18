@@ -47,11 +47,11 @@ func (h *Handler) AbortJob(ctx context.Context, params apigen.AbortJobParams) (a
 }
 
 func (h *Handler) ChannelsTypeChannelServicesIDStreamHead(ctx context.Context, params apigen.ChannelsTypeChannelServicesIDStreamHeadParams) (apigen.ChannelsTypeChannelServicesIDStreamHeadRes, error) {
-	panic("implement me")
+	return ChannelsTypeChannelServicesIDStreamHead(ctx, h, params)
 }
 
 func (h *Handler) ChannelsTypeChannelStreamHead(ctx context.Context, params apigen.ChannelsTypeChannelStreamHeadParams) (apigen.ChannelsTypeChannelStreamHeadRes, error) {
-	panic("implement me")
+	return ChannelsTypeChannelStreamHead(ctx, h, params)
 }
 
 func (h *Handler) CheckVersion(ctx context.Context) (apigen.CheckVersionRes, error) {
@@ -187,7 +187,7 @@ func (h *Handler) KillTunerProcess(ctx context.Context, params apigen.KillTunerP
 }
 
 func (h *Handler) ProgramsIDStreamHead(ctx context.Context, params apigen.ProgramsIDStreamHeadParams) (apigen.ProgramsIDStreamHeadRes, error) {
-	panic("implement me")
+	return ProgramsIDStreamHead(ctx, h, params)
 }
 
 func (h *Handler) RerunJob(ctx context.Context, params apigen.RerunJobParams) (apigen.RerunJobRes, error) {
@@ -199,5 +199,5 @@ func (h *Handler) RunJobSchedule(ctx context.Context, params apigen.RunJobSchedu
 }
 
 func (h *Handler) ServicesIDStreamHead(ctx context.Context, params apigen.ServicesIDStreamHeadParams) (apigen.ServicesIDStreamHeadRes, error) {
-	panic("implement me")
+	return ServicesIDStreamHead(ctx, h, params)
 }
