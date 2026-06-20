@@ -73,6 +73,27 @@ func TestGetTunerProcess(t *testing.T) {
 	}
 }
 
+func TestKillTunerProcess(t *testing.T) {
+	handler := NewHandler(HandlerConfig{TunerManager: tuner.NewTunerManager(&tuner.TunerManagerConfig{
+		TunersConfig: config.TunersConfig{{Name: "first", Types: []string{"GR"}, Command: "sleep 1"}},
+	})})
+	res, err := handler.KillTunerProcess(context.Background(), apigen.KillTunerProcessParams{Index: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := res.(*apigen.KillTunerProcessNoContent); !ok {
+		t.Fatalf("response = %T", res)
+	}
+
+	missing, err := handler.KillTunerProcess(context.Background(), apigen.KillTunerProcessParams{Index: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response, ok := missing.(*apigen.ErrorStatusCode); !ok || response.StatusCode != 404 {
+		t.Fatalf("missing response = %#v", missing)
+	}
+}
+
 func TestApiTunerIncludesLogicalAndTunedChannels(t *testing.T) {
 	item := apiTuner(tuner.Status{
 		CurrentChannelType: "BS", CurrentChannel: "101",

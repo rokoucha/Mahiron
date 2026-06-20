@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 
@@ -59,6 +60,7 @@ type StreamManager interface {
 }
 
 type TunerManager interface {
+	KillProcess(context.Context, int) error
 	Status(int) (tuner.Status, bool)
 	Statuses() []tuner.Status
 }
@@ -230,7 +232,13 @@ func (h *Handler) IptvXmltvGet(ctx context.Context) (apigen.IptvXmltvGetRes, err
 }
 
 func (h *Handler) KillTunerProcess(ctx context.Context, params apigen.KillTunerProcessParams) (apigen.KillTunerProcessRes, error) {
-	return notImplemented("DELETE /tuners/{index}/process is not implemented"), nil
+	if err := h.tunerManager.KillProcess(ctx, params.Index); err != nil {
+		if errors.Is(err, tuner.ErrTunerNotFound) {
+			return notFound("tuner not found"), nil
+		}
+		return nil, err
+	}
+	return &apigen.KillTunerProcessNoContent{}, nil
 }
 
 func (h *Handler) ProgramsIDStreamHead(ctx context.Context, params apigen.ProgramsIDStreamHeadParams) (apigen.ProgramsIDStreamHeadRes, error) {

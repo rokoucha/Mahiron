@@ -3,6 +3,7 @@ package tuner
 import (
 	"context"
 	"errors"
+	"io"
 	"testing"
 	"time"
 
@@ -92,5 +93,41 @@ func TestTunerManagerReservesDVBCommandTuner(t *testing.T) {
 	}
 	if err := device.Stop(context.Background()); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestTunerManagerKillProcess(t *testing.T) {
+	mgr := NewTunerManager(&TunerManagerConfig{TunersConfig: config.TunersConfig{
+		{Name: "first", Types: []string{"GR"}, Command: "sleep 10"},
+	}})
+	channel := &config.ChannelConfig{Type: "GR", Channel: "27"}
+	device, _, err := mgr.AcquireDevice(context.Background(), "GR", channel, channel, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tracked := device.(interface{ AddUser(User) })
+	tracked.AddUser(User{ID: "viewer"})
+	if err := device.Start(context.Background(), io.Discard); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := mgr.KillProcess(context.Background(), 0); err != nil {
+		t.Fatal(err)
+	}
+	status, _ := mgr.Status(0)
+	if !status.IsFree || status.PID != 0 || len(status.Users) != 0 {
+		t.Fatalf("unexpected status after kill: %+v", status)
+	}
+}
+
+func TestTunerManagerKillProcessIdleAndMissing(t *testing.T) {
+	mgr := NewTunerManager(&TunerManagerConfig{TunersConfig: config.TunersConfig{
+		{Name: "first", Types: []string{"GR"}, Command: "sleep 1"},
+	}})
+	if err := mgr.KillProcess(context.Background(), 0); err != nil {
+		t.Fatalf("idle kill error = %v", err)
+	}
+	if err := mgr.KillProcess(context.Background(), 1); !errors.Is(err, ErrTunerNotFound) {
+		t.Fatalf("missing kill error = %v", err)
 	}
 }

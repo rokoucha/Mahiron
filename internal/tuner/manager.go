@@ -96,9 +96,9 @@ func (tm *TunerManager) AcquireDevice(ctx context.Context, channelType string, r
 			runtime.stopped = false
 			runtime.requested = requestedChannel
 			runtime.tuned = tunedChannel
-			tm.nextByType[channelType] = (index + 1) % len(tm.tuners)
-			runtime.device = base
 			managed := &managedDevice{Device: base, manager: tm, tuner: item}
+			tm.nextByType[channelType] = (index + 1) % len(tm.tuners)
+			runtime.device = managed
 			decoder := item.DecoderCommand()
 			slog.Info("tuner acquired",
 				"name", item.Name(),
@@ -134,6 +134,22 @@ func (tm *TunerManager) AcquireDevice(ctx context.Context, channelType string, r
 		case <-changed:
 		}
 	}
+}
+
+func (tm *TunerManager) KillProcess(ctx context.Context, index int) error {
+	tm.mu.Lock()
+	if index < 0 || index >= len(tm.tuners) {
+		tm.mu.Unlock()
+		return ErrTunerNotFound
+	}
+	item := tm.tuners[index]
+	device := tm.runtime[item].device
+	tm.mu.Unlock()
+
+	if device == nil {
+		return nil
+	}
+	return device.Stop(ctx)
 }
 
 func (tm *TunerManager) release(item *Tuner) {
@@ -227,6 +243,14 @@ func (d *managedDevice) Stop(ctx context.Context) error {
 	}
 	d.releaseOnce()
 	return err
+}
+
+func (d *managedDevice) ProcessStatus() ProcessInfo {
+	process, ok := d.Device.(ProcessStatus)
+	if !ok {
+		return ProcessInfo{}
+	}
+	return process.ProcessStatus()
 }
 
 func (d *managedDevice) AddUser(user User) { d.manager.addUser(d.tuner, user) }
