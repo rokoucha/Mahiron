@@ -56,6 +56,8 @@ func epgGathererHandler(registry Registry, service *epg.Service) func(context.Co
 
 		if err := service.Cleanup(ctx, time.Now()); err != nil {
 			slog.Warn("failed to clean up old EPG data", "err", err)
+		} else {
+			slog.Debug("EPG cleanup completed")
 		}
 		return nil
 	}
@@ -78,6 +80,7 @@ func enqueueEPGGatherForNetwork(ctx context.Context, registry Registry, service 
 		}
 	}
 	if len(serviceKeys) == 0 {
+		slog.Debug("skipping EPG gather enqueue with no services", "networkId", networkID)
 		return false, nil
 	}
 	nid := networkID
@@ -93,9 +96,11 @@ func enqueueEPGGatherForNetwork(ctx context.Context, registry Registry, service 
 	}
 	if _, err := registry.EnqueueDefinition(definition); err != nil {
 		if errors.Is(err, ErrJobAlreadyRunning) {
+			slog.Debug("EPG gather already queued or running", "networkId", networkID)
 			return false, nil
 		}
 		return false, err
 	}
+	slog.Info("EPG gather queued", "networkId", networkID, "candidates", len(networkCandidates), "services", len(networkServices))
 	return true, nil
 }

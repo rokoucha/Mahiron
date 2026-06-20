@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
+	"time"
 
 	"github.com/21S1298001/Mahiron5/internal/config"
 	"github.com/21S1298001/Mahiron5/internal/service"
@@ -63,6 +65,8 @@ func (s *Service) Channels() []Channel {
 }
 
 func (s *Service) ScanChannel(ctx context.Context, channelType string, channelID string, wait bool) ([]uint16, error) {
+	startedAt := time.Now()
+	slog.Info("service scan started", "type", channelType, "channel", channelID, "wait", wait)
 	existing, err := s.store.GetByChannel(ctx, channelType, channelID)
 	if err != nil {
 		return nil, fmt.Errorf("list existing services: %w", err)
@@ -83,11 +87,13 @@ func (s *Service) ScanChannel(ctx context.Context, channelType string, channelID
 	})
 
 	if err := s.scanner.ScanServices(ctx, channelType, channelID, wait, &out); err != nil {
+		slog.Warn("service scan failed", "type", channelType, "channel", channelID, "duration", time.Since(startedAt), "err", err)
 		return nil, err
 	}
 
 	var services []*scanService
 	if err := json.Unmarshal(out.Bytes(), &services); err != nil {
+		slog.Warn("failed to decode service scan result", "type", channelType, "channel", channelID, "bytes", out.Len(), "err", err)
 		return nil, err
 	}
 
@@ -110,7 +116,9 @@ func (s *Service) ScanChannel(ctx context.Context, channelType string, channelID
 		return nil, err
 	}
 
-	return newNetworkIDsFromDiff(before, scanned), nil
+	newNIDs := newNetworkIDsFromDiff(before, scanned)
+	slog.Info("service scan completed", "type", channelType, "channel", channelID, "services", len(scanned), "newNetworks", len(newNIDs), "duration", time.Since(startedAt))
+	return newNIDs, nil
 }
 
 // newNetworkIDsFromDiff returns the deduplicated network IDs of services in

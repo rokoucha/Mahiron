@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log/slog"
 	"sort"
 	"time"
 
@@ -62,6 +63,7 @@ func (p *SourcePool) Acquire(ctx context.Context, channelType, channel string, w
 		if remote == nil {
 			return nil, ErrTunerNotFound
 		}
+		slog.Debug("selected remote stream route", "type", channelType, "channel", channel, "routeType", route.Type, "remote", route.Remote)
 		return &SourceLease{
 			Channel:   &routeChannelConfig,
 			RouteType: route.Type,
@@ -87,6 +89,7 @@ func (p *SourcePool) Acquire(ctx context.Context, channelType, channel string, w
 		descrambler = p.descramblerFactory(decoderCommand)
 	}
 
+	slog.Debug("selected local stream route", "type", channelType, "channel", channel, "routeType", route.Type, "decoder", decoderCommand != "")
 	return &SourceLease{
 		Channel:     &routeChannelConfig,
 		Descrambler: descrambler,
@@ -114,6 +117,7 @@ func (p *SourcePool) newRouteDevice(ctx context.Context, channel *config.Channel
 		unavailable := false
 		for _, route := range routes {
 			routeChannel := channel.RouteChannelConfig(route)
+			slog.Debug("trying stream route", "type", channel.Type, "channel", channel.Channel, "routeType", route.Type, "remote", route.Remote, "wait", wait)
 			var device TunerDevice
 			var decoder string
 			var err error
@@ -132,8 +136,10 @@ func (p *SourcePool) newRouteDevice(ctx context.Context, channel *config.Channel
 				device, err = p.tunerManager.NewDeviceByType(route.Type, &routeChannel)
 			}
 			if err == nil {
+				slog.Debug("stream route acquired", "type", channel.Type, "channel", channel.Channel, "routeType", route.Type, "remote", route.Remote)
 				return route, routeChannel, device, decoder, nil
 			}
+			slog.Debug("stream route unavailable", "type", channel.Type, "channel", channel.Channel, "routeType", route.Type, "remote", route.Remote, "err", err)
 			if errors.Is(err, tuner.ErrTunerUnavailable) {
 				unavailable = true
 			}
@@ -145,6 +151,7 @@ func (p *SourcePool) newRouteDevice(ctx context.Context, channel *config.Channel
 			}
 			return config.ChannelRouteConfig{}, config.ChannelConfig{}, nil, "", ErrChannelNotFound
 		}
+		slog.Debug("waiting for stream route", "type", channel.Type, "channel", channel.Channel)
 		select {
 		case <-ctx.Done():
 			return config.ChannelRouteConfig{}, config.ChannelConfig{}, nil, "", ctx.Err()

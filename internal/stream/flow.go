@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log/slog"
 	"sync"
 )
 
@@ -60,6 +61,7 @@ func (r *FlowRegistry) getOrCreate(key PipelineKey) (*streamPipeline, error) {
 		return nil, errors.New("flow registry stopped")
 	}
 	if pipeline := r.pipelines[key]; pipeline != nil {
+		slog.Debug("reusing stream pipeline", "type", key.ChannelType, "channel", key.ChannelID, "kind", key.Kind, "serviceId", key.ServiceID, "decode", key.Decode)
 		return pipeline, nil
 	}
 
@@ -67,6 +69,7 @@ func (r *FlowRegistry) getOrCreate(key PipelineKey) (*streamPipeline, error) {
 		r.remove(key)
 	})
 	r.pipelines[key] = pipeline
+	slog.Debug("created stream pipeline", "type", key.ChannelType, "channel", key.ChannelID, "kind", key.Kind, "serviceId", key.ServiceID, "decode", key.Decode)
 	return pipeline, nil
 }
 
@@ -80,4 +83,5 @@ func (r *FlowRegistry) remove(key PipelineKey) {
 	if empty && onEmpty != nil {
 		onEmpty()
 	}
+	slog.Debug("removed stream pipeline", "type", key.ChannelType, "channel", key.ChannelID, "kind", key.Kind, "serviceId", key.ServiceID, "decode", key.Decode)
 }

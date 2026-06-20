@@ -94,6 +94,7 @@ func (b *Broadcast) Stop(ctx context.Context) error {
 	if onStop != nil {
 		onStop()
 	}
+	slog.Debug("broadcast stopped", "err", result)
 	return result
 }
 
@@ -110,6 +111,7 @@ func (b *Broadcast) attach(dst io.Writer) error {
 		return errors.New("broadcast stopped")
 	}
 	b.refs++
+	refs := b.refs
 	b.hub.Attach(dst)
 	if err := b.startLocked(); err != nil {
 		b.refs--
@@ -121,6 +123,7 @@ func (b *Broadcast) attach(dst io.Writer) error {
 		return err
 	}
 	b.mu.Unlock()
+	slog.Debug("broadcast subscriber attached", "refs", refs)
 	return nil
 }
 
@@ -143,6 +146,7 @@ func (b *Broadcast) detach(dst io.Writer) {
 			slog.Error("failed to stop broadcast", "err", err)
 		}
 	}
+	slog.Debug("broadcast subscriber detached", "refs", refs)
 }
 
 func (b *Broadcast) startLocked() error {
@@ -157,6 +161,7 @@ func (b *Broadcast) startLocked() error {
 	}
 	b.done = b.source.Done()
 	b.started = true
+	slog.Info("broadcast started")
 	for _, hook := range b.hooks {
 		hook(ctx, b)
 	}

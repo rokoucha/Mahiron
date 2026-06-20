@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log/slog"
 	"sync"
 
 	"github.com/21S1298001/Mahiron5/internal/config"
@@ -83,16 +84,20 @@ func (m *StreamManager) getOrCreate(ctx context.Context, channelType, channel st
 	defer m.mu.Unlock()
 
 	if session := m.sessions[key]; session != nil {
+		slog.Debug("reusing stream session", "type", channelType, "channel", channel)
 		return session, nil
 	}
 
+	slog.Debug("creating stream session", "type", channelType, "channel", channel, "wait", wait)
 	lease, err := m.sources.Acquire(ctx, channelType, channel, wait)
 	if err != nil {
+		slog.Debug("failed to acquire stream source", "type", channelType, "channel", channel, "wait", wait, "err", err)
 		return nil, err
 	}
 	if lease.Session != nil {
 		m.sessions[key] = lease.Session
 		m.sessionTypes[key] = lease.RouteType
+		slog.Info("stream session created", "type", channelType, "channel", channel, "routeType", lease.RouteType, "source", "remote")
 		return lease.Session, nil
 	}
 
@@ -115,6 +120,7 @@ func (m *StreamManager) getOrCreate(ctx context.Context, channelType, channel st
 	})
 	m.sessions[key] = session
 	m.sessionTypes[key] = lease.RouteType
+	slog.Info("stream session created", "type", channelType, "channel", channel, "routeType", lease.RouteType, "source", "local")
 	return session, nil
 }
 
@@ -165,6 +171,7 @@ func (m *StreamManager) remove(key sessionKey) {
 	defer m.mu.Unlock()
 	delete(m.sessions, key)
 	delete(m.sessionTypes, key)
+	slog.Debug("stream session removed", "type", key.typ, "channel", key.channel)
 }
 
 var (

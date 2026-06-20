@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log/slog"
 	"slices"
 	"sync"
 
@@ -99,6 +100,14 @@ func (tm *TunerManager) AcquireDevice(ctx context.Context, channelType string, r
 			runtime.device = base
 			managed := &managedDevice{Device: base, manager: tm, tuner: item}
 			decoder := item.DecoderCommand()
+			slog.Info("tuner acquired",
+				"name", item.Name(),
+				"type", channelType,
+				"channel", channelID(requestedChannel),
+				"tunedType", channelTypeOf(tunedChannel),
+				"tunedChannel", channelID(tunedChannel),
+				"decoder", decoder != "",
+			)
 			tm.mu.Unlock()
 			return managed, decoder, nil
 		}
@@ -106,16 +115,21 @@ func (tm *TunerManager) AcquireDevice(ctx context.Context, channelType string, r
 		tm.mu.Unlock()
 
 		if !found {
+			slog.Warn("tuner not found", "type", channelType, "channel", channelID(requestedChannel))
 			return nil, "", ErrTunerNotFound
 		}
 		if !usable {
+			slog.Warn("tuner unsupported", "type", channelType, "channel", channelID(requestedChannel))
 			return nil, "", ErrUnsupportedTuner
 		}
 		if !wait {
+			slog.Debug("tuner unavailable", "type", channelType, "channel", channelID(requestedChannel))
 			return nil, "", ErrTunerUnavailable
 		}
+		slog.Debug("waiting for tuner", "type", channelType, "channel", channelID(requestedChannel))
 		select {
 		case <-ctx.Done():
+			slog.Debug("tuner wait canceled", "type", channelType, "channel", channelID(requestedChannel), "err", ctx.Err())
 			return nil, "", ctx.Err()
 		case <-changed:
 		}
@@ -136,6 +150,7 @@ func (tm *TunerManager) release(item *Tuner) {
 		runtime.users = make(map[string]*trackedUser)
 		close(tm.changed)
 		tm.changed = make(chan struct{})
+		slog.Info("tuner released", "name", item.Name())
 	}
 	tm.mu.Unlock()
 }
@@ -183,16 +198,20 @@ type managedDevice struct {
 func (d *managedDevice) Start(ctx context.Context, dst io.Writer) error {
 	err := d.Device.Start(ctx, dst)
 	if err != nil {
+		slog.Warn("failed to start tuner", "name", d.tuner.Name(), "err", err)
 		d.manager.markFault(d.tuner)
 		d.releaseOnce()
 		return err
 	}
+	slog.Info("tuner started", "name", d.tuner.Name())
 	d.manager.markRunning(d.tuner)
 	go func() {
 		<-d.Device.Done()
 		if err := d.Device.Err(); err != nil {
+			slog.Warn("tuner stopped with error", "name", d.tuner.Name(), "err", err)
 			d.manager.markFault(d.tuner)
 		} else {
+			slog.Debug("tuner stopped", "name", d.tuner.Name())
 			d.manager.markStopped(d.tuner)
 		}
 	}()
@@ -201,6 +220,11 @@ func (d *managedDevice) Start(ctx context.Context, dst io.Writer) error {
 
 func (d *managedDevice) Stop(ctx context.Context) error {
 	err := d.Device.Stop(ctx)
+	if err != nil {
+		slog.Warn("failed to stop tuner", "name", d.tuner.Name(), "err", err)
+	} else {
+		slog.Info("tuner stop requested", "name", d.tuner.Name())
+	}
 	d.releaseOnce()
 	return err
 }
@@ -231,6 +255,21 @@ func (tm *TunerManager) markFault(item *Tuner) {
 	runtime.running = false
 	runtime.fault = true
 	tm.mu.Unlock()
+	slog.Warn("tuner marked fault", "name", item.Name())
+}
+
+func channelTypeOf(channel *config.ChannelConfig) string {
+	if channel == nil {
+		return ""
+	}
+	return channel.Type
+}
+
+func channelID(channel *config.ChannelConfig) string {
+	if channel == nil {
+		return ""
+	}
+	return channel.Channel
 }
 
 var (

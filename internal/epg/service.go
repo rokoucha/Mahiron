@@ -87,9 +87,11 @@ func (s *Service) GatherNetwork(ctx context.Context, networkID uint16, candidate
 
 func (s *Service) Cleanup(ctx context.Context, now time.Time) error {
 	if s.retentionDays <= 0 {
+		slog.Debug("skipping EPG cleanup", "retentionDays", s.retentionDays)
 		return nil
 	}
 	cutoff := now.Add(-time.Duration(s.retentionDays) * 24 * time.Hour).UnixMilli()
+	slog.Debug("cleaning up old EPG data", "retentionDays", s.retentionDays, "cutoff", cutoff)
 	return s.programStore.DeleteEndedBefore(ctx, cutoff)
 }
 
@@ -192,6 +194,7 @@ func gatherNetwork(ctx context.Context, programStore ProgramStore, serviceStore 
 	}
 	var result error
 	for _, candidate := range ordered {
+		slog.Info("starting network EPG collection", "networkId", networkID, "type", candidate.Type, "channel", candidate.Channel, "services", len(serviceKeys), "activeSession", active[candidate])
 		yes := true
 		userCtx := tuner.WithUser(ctx, tuner.User{
 			ID: uuid.NewString(), Priority: -1, Agent: "Mahiron EPG Gatherer",
@@ -211,11 +214,13 @@ func gatherNetwork(ctx context.Context, programStore ProgramStore, serviceStore 
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
+		slog.Warn("network EPG collection candidate failed", "networkId", networkID, "type", candidate.Type, "channel", candidate.Channel, "err", err)
 		result = errors.Join(result, fmt.Errorf("%s/%s: %w", candidate.Type, candidate.Channel, err))
 	}
 	if result == nil {
 		return fmt.Errorf("network %d has no channel candidates", networkID)
 	}
+	slog.Warn("network EPG collection failed", "networkId", networkID, "candidates", len(ordered), "err", result)
 	return result
 }
 

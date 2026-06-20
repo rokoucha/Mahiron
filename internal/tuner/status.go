@@ -2,6 +2,7 @@ package tuner
 
 import (
 	"context"
+	"log/slog"
 	"sort"
 
 	"github.com/21S1298001/Mahiron5/internal/config"
@@ -134,9 +135,11 @@ func (tm *TunerManager) addUser(item *Tuner, user User) {
 	if tracked := runtime.users[user.ID]; tracked != nil {
 		tracked.refs++
 		tracked.user = user
+		slog.Debug("tuner user reference added", "name", item.Name(), "userId", user.ID, "refs", tracked.refs)
 		return
 	}
 	runtime.users[user.ID] = &trackedUser{user: user, refs: 1}
+	slog.Debug("tuner user added", "name", item.Name(), "userId", user.ID, "agent", user.Agent, "url", user.URL, "priority", user.Priority, "disableDecoder", user.DisableDecoder)
 }
 
 func (tm *TunerManager) removeUser(item *Tuner, id string) {
@@ -150,5 +153,8 @@ func (tm *TunerManager) removeUser(item *Tuner, id string) {
 	tracked.refs--
 	if tracked.refs == 0 {
 		delete(runtime.users, id)
+		slog.Debug("tuner user removed", "name", item.Name(), "userId", id)
+		return
 	}
+	slog.Debug("tuner user reference removed", "name", item.Name(), "userId", id, "refs", tracked.refs)
 }

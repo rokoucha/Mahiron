@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"sync"
 
 	"github.com/21S1298001/Mahiron5/internal/util"
@@ -138,6 +139,7 @@ func (p *streamPipeline) detach(dst io.Writer) {
 			onStop()
 		}
 	}
+	slog.Debug("stream pipeline subscriber detached", "type", p.key.ChannelType, "channel", p.key.ChannelID, "kind", p.key.Kind, "serviceId", p.key.ServiceID, "decode", p.key.Decode, "refs", refs)
 }
 
 func (p *streamPipeline) startLocked() error {
@@ -148,6 +150,7 @@ func (p *streamPipeline) startLocked() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	p.cancel = cancel
 	p.started = true
+	slog.Debug("starting stream pipeline", "type", p.key.ChannelType, "channel", p.key.ChannelID, "kind", p.key.Kind, "serviceId", p.key.ServiceID, "decode", p.key.Decode, "processors", len(p.processors))
 	go p.run(ctx)
 	return nil
 }
@@ -156,6 +159,11 @@ func (p *streamPipeline) run(ctx context.Context) {
 	err := p.runProcesses(ctx)
 	if util.IsExpectedStreamCloseError(err) {
 		err = nil
+	}
+	if err != nil {
+		slog.Warn("stream pipeline finished with error", "type", p.key.ChannelType, "channel", p.key.ChannelID, "kind", p.key.Kind, "serviceId", p.key.ServiceID, "decode", p.key.Decode, "err", err)
+	} else {
+		slog.Debug("stream pipeline finished", "type", p.key.ChannelType, "channel", p.key.ChannelID, "kind", p.key.Kind, "serviceId", p.key.ServiceID, "decode", p.key.Decode)
 	}
 	p.close(err)
 }

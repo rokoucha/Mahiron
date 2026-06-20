@@ -119,6 +119,7 @@ func (m *JobManager) AddSchedule(key, schedule string) error {
 		return err
 	}
 	m.gocronIDs[key] = gocronJob.ID()
+	slog.Info("job schedule added", "key", key, "name", def.Name, "schedule", schedule)
 	return nil
 }
 
@@ -269,6 +270,7 @@ func (m *JobManager) standbyLocked(item *Job, err error) {
 		item.UpdatedAt = time.Now()
 		item.NextRunAt = nil
 		m.queue = append(m.queue, item)
+		slog.Info("job retry enqueued", "key", item.Key, "name", item.Name, "id", item.ID, "retry", item.RetryCount)
 		m.dispatchLocked()
 	}()
 }
@@ -303,6 +305,7 @@ func (m *JobManager) Abort(id string) error {
 			item.IsAborting = true
 			item.HasAborted = true
 			item.UpdatedAt = time.Now()
+			slog.Info("job abort requested", "key", item.Key, "name", item.Name, "id", item.ID, "status", item.Status)
 		}
 		cancel()
 		return nil
@@ -311,6 +314,7 @@ func (m *JobManager) Abort(id string) error {
 		if item.ID == id {
 			m.queue = append(m.queue[:i], m.queue[i+1:]...)
 			item.IsAborting = true
+			slog.Info("queued job aborted", "key", item.Key, "name", item.Name, "id", item.ID)
 			m.finishLocked(item, context.Canceled, true)
 			return nil
 		}
@@ -318,9 +322,11 @@ func (m *JobManager) Abort(id string) error {
 	if item := m.findJob(id); item != nil && item.Status == StatusStandby {
 		item.IsAborting = true
 		item.HasAborted = true
+		slog.Info("standby job aborted", "key", item.Key, "name", item.Name, "id", item.ID)
 		m.finishLocked(item, context.Canceled, true)
 		return nil
 	}
+	slog.Debug("job abort skipped", "id", id, "err", ErrJobNotRunning)
 	return ErrJobNotRunning
 }
 
@@ -332,11 +338,19 @@ func (m *JobManager) Rerun(id string) error {
 		return ErrJobNotFound
 	}
 	def := item.definition
+	key := item.Key
+	name := item.Name
 	m.mu.Unlock()
 	if def == nil || !def.IsRerunnable {
+		slog.Debug("job rerun skipped", "key", key, "name", name, "id", id, "err", ErrJobNotRerunnable)
 		return ErrJobNotRerunnable
 	}
-	_, err := m.EnqueueDefinition(*def)
+	newID, err := m.EnqueueDefinition(*def)
+	if err != nil {
+		slog.Warn("failed to rerun job", "key", key, "name", name, "id", id, "err", err)
+		return err
+	}
+	slog.Info("job rerun queued", "key", key, "name", name, "id", id, "newId", newID)
 	return err
 }
 
@@ -345,13 +359,16 @@ func (m *JobManager) RunSchedule(key string) error {
 	gocronID, ok := m.gocronIDs[key]
 	m.mu.Unlock()
 	if !ok {
+		slog.Debug("job schedule run skipped", "key", key, "err", ErrDefinitionNotFound)
 		return ErrDefinitionNotFound
 	}
 	for _, scheduled := range m.scheduler.Jobs() {
 		if scheduled.ID() == gocronID {
+			slog.Info("job schedule run requested", "key", key)
 			return scheduled.RunNow()
 		}
 	}
+	slog.Debug("job schedule run skipped", "key", key, "err", ErrJobNotFound)
 	return ErrJobNotFound
 }
 

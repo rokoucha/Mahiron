@@ -38,9 +38,11 @@ func GetServiceStream(ctx context.Context, h *Handler, params apigen.GetServiceS
 	fo, fi := io.Pipe()
 	go func() {
 		defer fi.Close()
+		slog.Info("stream request started", "type", service.ChannelType, "channel", service.ChannelId, "kind", "service", "networkId", networkID, "serviceId", serviceID, "decode", decode, "userId", userID)
 		if err := session.ServiceStream(ctx, service.ServiceId, decode, fi); err != nil && !errors.Is(err, io.ErrClosedPipe) {
 			slog.Error("failed to stream service", "service", service.Id, "err", err)
 		}
+		slog.Debug("stream request finished", "type", service.ChannelType, "channel", service.ChannelId, "kind", "service", "networkId", networkID, "serviceId", serviceID, "decode", decode, "userId", userID)
 	}()
 
 	return &apigen.GetServiceStreamOKHeaders{
