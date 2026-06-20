@@ -1,5 +1,0 @@
-- name: Channel
-  type: GR
-  channel: "27"
-  tunerGroups:
-    - GR_TOKYO

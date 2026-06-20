@@ -25,8 +25,7 @@ type ChannelConfig struct {
 	Polarity    *string        `json:"polarity,omitempty"`  // deprecated
 
 	// Mahiron extension
-	Routes                []ChannelRouteConfig `json:"routes,omitempty"`
-	DeprecatedTunerGroups []string             `json:"tunerGroups,omitempty"`
+	Routes []ChannelRouteConfig `json:"routes,omitempty"`
 }
 
 type ChannelRouteConfig struct {
@@ -66,9 +65,6 @@ func LoadAndParseChannelsConfig(filePath string) (ChannelsConfig, error) {
 		}
 		if channel.Channel == "" {
 			return nil, errors.New("channel symbol is required")
-		}
-		if len(channel.DeprecatedTunerGroups) > 0 {
-			return nil, errors.New("tunerGroups is no longer supported; use routes instead")
 		}
 		if channel.TsmfRelTs != nil && channel.ServiceId == nil {
 			return nil, errors.New("serviceId is required when tsmfRelTs is set")
@@ -177,7 +173,6 @@ func (c ChannelConfig) RouteChannelConfig(route ChannelRouteConfig) ChannelConfi
 	routeChannel.CommandVars = route.CommandVars
 	routeChannel.IsDisabled = route.IsDisabled
 	routeChannel.Routes = nil
-	routeChannel.DeprecatedTunerGroups = nil
 	return routeChannel
 }
 

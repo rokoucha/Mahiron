@@ -19,8 +19,7 @@ type TunerConfig struct {
 	IsDisabled    bool     `json:"isDisabled,omitempty"`
 
 	// Mahiron extension
-	Remote                *Remote  `json:"remote,omitempty"`
-	DeprecatedTunerGroups []string `json:"tunerGroups,omitempty"`
+	Remote *Remote `json:"remote,omitempty"`
 }
 
 type Remote struct {
@@ -55,9 +54,6 @@ func LoadAndParseTunersConfig(filePath string) (TunersConfig, error) {
 		}
 		if tuner.DvbDevicePath != "" && tuner.Command == "" {
 			return nil, errors.New("dvbDevicePath is only allowed when command is set")
-		}
-		if len(tuner.DeprecatedTunerGroups) > 0 {
-			return nil, errors.New("tunerGroups is no longer supported; use types instead")
 		}
 		if len(tuner.Types) == 0 {
 			return nil, errors.New("at least one types is required")
