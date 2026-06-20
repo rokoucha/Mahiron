@@ -90,8 +90,12 @@ func (m *StreamManager) getOrCreate(ctx context.Context, channelType, channel st
 		return session, nil
 	}
 
+	hooks := []BroadcastHook{}
+	if piggyback := NewEITPFPiggyback(channelType, channel, m.eitCollector, m.eitUpdater); piggyback != nil {
+		hooks = append(hooks, piggyback.Hook)
+	}
 	slog.Debug("creating stream session", "type", channelType, "channel", channel, "wait", wait)
-	lease, err := m.sources.Acquire(ctx, channelType, channel, wait)
+	lease, err := m.sources.Acquire(ctx, channelType, channel, wait, hooks)
 	if err != nil {
 		slog.Debug("failed to acquire stream source", "type", channelType, "channel", channel, "wait", wait, "err", err)
 		return nil, err
@@ -102,12 +106,10 @@ func (m *StreamManager) getOrCreate(ctx context.Context, channelType, channel st
 		slog.Info("stream session created", "type", channelType, "channel", channel, "routeType", lease.RouteType, "source", "remote")
 		return lease.Session, nil
 	}
-
-	hooks := []BroadcastHook{}
-	if piggyback := NewEITPFPiggyback(channelType, channel, m.eitCollector, m.eitUpdater); piggyback != nil {
-		hooks = append(hooks, piggyback.Hook)
+	broadcast := lease.Broadcast
+	if broadcast == nil {
+		broadcast = NewBroadcast(lease.Source, hooks, func() { m.remove(key) })
 	}
-	broadcast := NewBroadcast(lease.Source, hooks, func() { m.remove(key) })
 
 	session := NewChannelSession(ChannelSessionConfig{
 		Channel:       channel,
@@ -117,6 +119,7 @@ func (m *StreamManager) getOrCreate(ctx context.Context, channelType, channel st
 		EITCollector:  m.eitCollector,
 		EITUpdater:    m.eitUpdater,
 		Filter:        m.filter,
+		OnStop:        func() { m.remove(key) },
 		Scanner:       m.scanner,
 		Type:          channelType,
 	})

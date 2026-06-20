@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -118,6 +119,230 @@ func TestManagerSelectsRouteByFreeChannelType(t *testing.T) {
 	}
 }
 
+func TestManagerSharesLocalRouteAcrossLogicalChannels(t *testing.T) {
+	no := false
+	devices := &fakeTunerDeviceRecorder{}
+	manager := NewStreamManager(StreamManagerConfig{
+		Channels: config.ChannelsConfig{
+			{
+				Name: "NHK 1", Type: "GR", Channel: "27", IsDisabled: &no,
+				Routes: []config.ChannelRouteConfig{{Id: "catv-27", Type: "CATV", Channel: "C27", IsDisabled: &no}},
+			},
+			{
+				Name: "NHK 2", Type: "GR", Channel: "28", IsDisabled: &no,
+				Routes: []config.ChannelRouteConfig{{Id: "catv-27", Type: "CATV", Channel: "C27", IsDisabled: &no}},
+			},
+		},
+		Filter:       fakeFilter{},
+		Scanner:      fakeScanner{},
+		TunerManager: fakeTunerManager{devices: devices},
+	})
+
+	first, err := manager.GetOrCreate(context.Background(), "GR", "27")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := manager.GetOrCreate(context.Background(), "GR", "28")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == second {
+		t.Fatal("different logical channels should keep distinct public sessions")
+	}
+
+	var firstOut bytes.Buffer
+	var secondOut bytes.Buffer
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		if err := first.ChannelStream(context.Background(), false, &firstOut); err != nil {
+			t.Errorf("first stream: %v", err)
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		if err := second.ChannelStream(context.Background(), false, &secondOut); err != nil {
+			t.Errorf("second stream: %v", err)
+		}
+	}()
+	wg.Wait()
+
+	if got := devices.starts(); got != 1 {
+		t.Fatalf("tuner device starts = %d, want 1", got)
+	}
+	if firstOut.String() == "" || secondOut.String() == "" {
+		t.Fatalf("both logical streams should receive data: first=%q second=%q", firstOut.String(), secondOut.String())
+	}
+}
+
+func TestManagerCoalescesConcurrentLocalRouteCreation(t *testing.T) {
+	no := false
+	tuners := &slowTunerManager{delay: 20 * time.Millisecond}
+	manager := NewStreamManager(StreamManagerConfig{
+		Channels: config.ChannelsConfig{
+			{
+				Name: "NHK 1", Type: "GR", Channel: "27", IsDisabled: &no,
+				Routes: []config.ChannelRouteConfig{{Id: "catv-27", Type: "CATV", Channel: "C27", IsDisabled: &no}},
+			},
+			{
+				Name: "NHK 2", Type: "GR", Channel: "28", IsDisabled: &no,
+				Routes: []config.ChannelRouteConfig{{Id: "catv-27", Type: "CATV", Channel: "C27", IsDisabled: &no}},
+			},
+		},
+		TunerManager: tuners,
+	})
+
+	var first Session
+	var second Session
+	var firstErr error
+	var secondErr error
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		first, firstErr = manager.GetOrCreate(context.Background(), "GR", "27")
+	}()
+	go func() {
+		defer wg.Done()
+		second, secondErr = manager.GetOrCreate(context.Background(), "GR", "28")
+	}()
+	wg.Wait()
+
+	if firstErr != nil {
+		t.Fatal(firstErr)
+	}
+	if secondErr != nil {
+		t.Fatal(secondErr)
+	}
+	if first == nil || second == nil || first == second {
+		t.Fatalf("sessions = %T/%T, want distinct non-nil sessions", first, second)
+	}
+	if got := tuners.acquires(); got != 1 {
+		t.Fatalf("tuner acquires = %d, want 1", got)
+	}
+}
+
+func TestManagerSharesLocalRouteButFiltersPerLogicalSession(t *testing.T) {
+	no := false
+	devices := &fakeTunerDeviceRecorder{}
+	manager := NewStreamManager(StreamManagerConfig{
+		Channels: config.ChannelsConfig{
+			{
+				Name: "NHK 1", Type: "GR", Channel: "27", IsDisabled: &no,
+				Routes: []config.ChannelRouteConfig{{Id: "catv-27", Type: "CATV", Channel: "C27", IsDisabled: &no}},
+			},
+			{
+				Name: "NHK 2", Type: "GR", Channel: "28", IsDisabled: &no,
+				Routes: []config.ChannelRouteConfig{{Id: "catv-27", Type: "CATV", Channel: "C27", IsDisabled: &no}},
+			},
+		},
+		Filter:       serviceIDFilter{},
+		TunerManager: fakeTunerManager{devices: devices},
+	})
+
+	first, err := manager.GetOrCreate(context.Background(), "GR", "27")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := manager.GetOrCreate(context.Background(), "GR", "28")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var firstOut bytes.Buffer
+	var secondOut bytes.Buffer
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		if err := first.ServiceStream(context.Background(), 1024, false, &firstOut); err != nil {
+			t.Errorf("first service stream: %v", err)
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		if err := second.ServiceStream(context.Background(), 2048, false, &secondOut); err != nil {
+			t.Errorf("second service stream: %v", err)
+		}
+	}()
+	wg.Wait()
+
+	if got := devices.starts(); got != 1 {
+		t.Fatalf("tuner device starts = %d, want 1", got)
+	}
+	if got, want := firstOut.String(), "service:1024:ts2"; got != want {
+		t.Fatalf("first service stream = %q, want %q", got, want)
+	}
+	if got, want := secondOut.String(), "service:2048:ts2"; got != want {
+		t.Fatalf("second service stream = %q, want %q", got, want)
+	}
+}
+
+func TestManagerKeepsSharedRouteRunningUntilAllLogicalConsumersDetach(t *testing.T) {
+	no := false
+	device := &fakeLiveTunerDevice{}
+	manager := NewStreamManager(StreamManagerConfig{
+		Channels: config.ChannelsConfig{
+			{
+				Name: "NHK 1", Type: "GR", Channel: "27", IsDisabled: &no,
+				Routes: []config.ChannelRouteConfig{{Id: "catv-27", Type: "CATV", Channel: "C27", IsDisabled: &no}},
+			},
+			{
+				Name: "NHK 2", Type: "GR", Channel: "28", IsDisabled: &no,
+				Routes: []config.ChannelRouteConfig{{Id: "catv-27", Type: "CATV", Channel: "C27", IsDisabled: &no}},
+			},
+		},
+		TunerManager: fakeLiveTunerManager{device: device},
+	})
+
+	first, err := manager.GetOrCreate(context.Background(), "GR", "27")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := manager.GetOrCreate(context.Background(), "GR", "28")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	firstCtx, firstCancel := context.WithCancel(context.Background())
+	secondCtx, secondCancel := context.WithCancel(context.Background())
+	firstDone := make(chan error, 1)
+	secondDone := make(chan error, 1)
+	go func() { firstDone <- first.ChannelStream(firstCtx, false, io.Discard) }()
+	go func() { secondDone <- second.ChannelStream(secondCtx, false, io.Discard) }()
+
+	time.Sleep(20 * time.Millisecond)
+	firstCancel()
+	select {
+	case err := <-firstDone:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("first stream did not stop")
+	}
+	if got := device.stopCount(); got != 0 {
+		t.Fatalf("shared route stopped while second consumer was active: stops = %d", got)
+	}
+
+	secondCancel()
+	select {
+	case err := <-secondDone:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("second stream did not stop")
+	}
+	if got := device.startCount(); got != 1 {
+		t.Fatalf("tuner device starts = %d, want 1", got)
+	}
+	if !eventually(time.Second, func() bool { return device.stopCount() == 1 }) {
+		t.Fatalf("tuner device stops = %d, want 1", device.stopCount())
+	}
+}
+
 func TestManagerPassesTunerUserPriorityToAllocator(t *testing.T) {
 	no := false
 	tuners := &priorityCapturingTunerManager{}
@@ -180,6 +405,58 @@ func TestManagerSelectsRemoteRouteWhenLocalUnavailable(t *testing.T) {
 	}
 	if _, ok := session.(*RemoteSession); !ok {
 		t.Fatalf("session type = %T, want *RemoteSession", session)
+	}
+	var out bytes.Buffer
+	if err := session.ChannelStream(context.Background(), false, &out); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := out.String(), "remote-ts"; got != want {
+		t.Fatalf("remote stream = %q, want %q", got, want)
+	}
+}
+
+func TestManagerSelectsRemoteRouteWhenRemoteAlreadyTunedToSameRoute(t *testing.T) {
+	no := false
+	previousNewRemoteClient := newRemoteClient
+	t.Cleanup(func() { newRemoteClient = previousNewRemoteClient })
+	newRemoteClient = func(remote config.RemoteConfig) *RemoteClient {
+		client := NewRemoteClient(remote)
+		client.httpClient = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			switch r.URL.Path {
+			case "/api/tuners":
+				return stringResponse(http.StatusOK, `[{
+					"types":["CATV"],
+					"isAvailable":true,
+					"isFree":false,
+					"isFault":false,
+					"tunedChannelType":"CATV",
+					"tunedChannel":"C27"
+				}]`), nil
+			case "/api/channels/CATV/C27/stream":
+				return stringResponse(http.StatusOK, "remote-ts"), nil
+			default:
+				return stringResponse(http.StatusNotFound, ""), nil
+			}
+		})}
+		return client
+	}
+
+	manager := NewStreamManager(StreamManagerConfig{
+		Channels: config.ChannelsConfig{
+			{
+				Name: "NHK", Type: "GR", Channel: "27", IsDisabled: &no,
+				Routes: []config.ChannelRouteConfig{
+					{Id: "remote-catv", Remote: "living", Type: "CATV", Channel: "C27", IsDisabled: &no},
+				},
+			},
+		},
+		Remotes:      config.RemotesConfig{{Name: "living", URL: "http://remote.local/api"}},
+		TunerManager: &routeSelectingTunerManager{availableType: "BS"},
+	})
+
+	session, err := manager.GetOrCreate(context.Background(), "GR", "27")
+	if err != nil {
+		t.Fatal(err)
 	}
 	var out bytes.Buffer
 	if err := session.ChannelStream(context.Background(), false, &out); err != nil {
@@ -543,6 +820,17 @@ func (r *fakeTunerDeviceRecorder) starts() int {
 	return count
 }
 
+func eventually(timeout time.Duration, ok func() bool) bool {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if ok() {
+			return true
+		}
+		time.Sleep(time.Millisecond)
+	}
+	return ok()
+}
+
 type fakeTunerDevice struct {
 	done   chan struct{}
 	err    error
@@ -590,6 +878,26 @@ func (m fakeTunerManager) NewDeviceByType(_ string, channel *config.ChannelConfi
 
 func (m fakeTunerManager) DecoderCommandByType(string) string {
 	return m.decoderCommand
+}
+
+type slowTunerManager struct {
+	delay time.Duration
+	mu    sync.Mutex
+	count int
+}
+
+func (m *slowTunerManager) NewDeviceByType(string, *config.ChannelConfig) (tuner.Device, error) {
+	m.mu.Lock()
+	m.count++
+	m.mu.Unlock()
+	time.Sleep(m.delay)
+	return &fakeTunerDevice{done: make(chan struct{})}, nil
+}
+
+func (m *slowTunerManager) acquires() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.count
 }
 
 func (d *fakeTunerDevice) Start(_ context.Context, dst io.Writer) error {
@@ -642,6 +950,17 @@ func (fakeFilter) FilterService(_ context.Context, _ uint16, src io.Reader, dst 
 	return err
 }
 
+type serviceIDFilter struct{}
+
+func (serviceIDFilter) FilterService(_ context.Context, serviceID uint16, src io.Reader, dst io.Writer) error {
+	data, err := io.ReadAll(src)
+	if err != nil {
+		return err
+	}
+	_, err = dst.Write([]byte(fmt.Sprintf("service:%d:%s", serviceID, string(data))))
+	return err
+}
+
 type fakeScanner struct{}
 
 func (fakeScanner) ScanServices(_ context.Context, src io.Reader, dst io.Writer) error {
@@ -674,6 +993,7 @@ type fakeLiveTunerDevice struct {
 	err    error
 	mu     sync.Mutex
 	starts int
+	stops  int
 }
 
 func (d *fakeLiveTunerDevice) Start(ctx context.Context, dst io.Writer) error {
@@ -706,6 +1026,7 @@ func (d *fakeLiveTunerDevice) Start(ctx context.Context, dst io.Writer) error {
 
 func (d *fakeLiveTunerDevice) Stop(context.Context) error {
 	d.mu.Lock()
+	d.stops++
 	cancel := d.cancel
 	d.mu.Unlock()
 	if cancel != nil {
@@ -730,6 +1051,12 @@ func (d *fakeLiveTunerDevice) startCount() int {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return d.starts
+}
+
+func (d *fakeLiveTunerDevice) stopCount() int {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.stops
 }
 
 type panicProcessor struct{}

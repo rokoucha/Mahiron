@@ -35,6 +35,10 @@ func NewRemoteClient(config config.RemoteConfig) *RemoteClient {
 }
 
 func (c *RemoteClient) CheckAvailable(ctx context.Context, channelType string) error {
+	return c.CheckAvailableForRoute(ctx, channelType, "")
+}
+
+func (c *RemoteClient) CheckAvailableForRoute(ctx context.Context, channelType, channel string) error {
 	checkCtx, cancel := context.WithTimeout(ctx, remoteAvailabilityTimeout)
 	defer cancel()
 
@@ -61,7 +65,10 @@ func (c *RemoteClient) CheckAvailable(ctx context.Context, channelType string) e
 		return err
 	}
 	for _, tuner := range tuners {
-		if slices.Contains(tuner.Types, channelType) && tuner.IsAvailable && tuner.IsFree && !tuner.IsFault {
+		if !slices.Contains(tuner.Types, channelType) || !tuner.IsAvailable || tuner.IsFault {
+			continue
+		}
+		if tuner.IsFree || tuner.matchesRoute(channelType, channel) {
 			return nil
 		}
 	}
@@ -191,10 +198,22 @@ func (c *RemoteClient) newRequest(ctx context.Context, method string, elems ...s
 }
 
 type remoteTuner struct {
-	Types       []string `json:"types"`
-	IsAvailable bool     `json:"isAvailable"`
-	IsFree      bool     `json:"isFree"`
-	IsFault     bool     `json:"isFault"`
+	Types              []string `json:"types"`
+	IsAvailable        bool     `json:"isAvailable"`
+	IsFree             bool     `json:"isFree"`
+	IsFault            bool     `json:"isFault"`
+	CurrentChannelType string   `json:"currentChannelType"`
+	CurrentChannel     string   `json:"currentChannel"`
+	TunedChannelType   string   `json:"tunedChannelType"`
+	TunedChannel       string   `json:"tunedChannel"`
+}
+
+func (t remoteTuner) matchesRoute(channelType, channel string) bool {
+	if channel == "" {
+		return false
+	}
+	return t.TunedChannelType == channelType && t.TunedChannel == channel ||
+		t.CurrentChannelType == channelType && t.CurrentChannel == channel
 }
 
 type remoteService struct {

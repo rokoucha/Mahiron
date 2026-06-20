@@ -56,6 +56,79 @@ func TestRemoteClientNoAuthAndUnavailable(t *testing.T) {
 	}
 }
 
+func TestRemoteClientCheckAvailableForActiveSameRoute(t *testing.T) {
+	client := NewRemoteClient(config.RemoteConfig{URL: "http://remote.local"})
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return stringResponse(http.StatusOK, `[{
+			"types":["GR"],
+			"isAvailable":true,
+			"isFree":false,
+			"isFault":false,
+			"tunedChannelType":"GR",
+			"tunedChannel":"27"
+		}]`), nil
+	})}
+	if err := client.CheckAvailableForRoute(context.Background(), "GR", "27"); err != nil {
+		t.Fatalf("CheckAvailableForRoute error = %v, want nil", err)
+	}
+}
+
+func TestRemoteClientCheckAvailableForActiveCurrentRoute(t *testing.T) {
+	client := NewRemoteClient(config.RemoteConfig{URL: "http://remote.local"})
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return stringResponse(http.StatusOK, `[{
+			"types":["CATV"],
+			"isAvailable":true,
+			"isFree":false,
+			"isFault":false,
+			"currentChannelType":"CATV",
+			"currentChannel":"C27"
+		}]`), nil
+	})}
+	if err := client.CheckAvailableForRoute(context.Background(), "CATV", "C27"); err != nil {
+		t.Fatalf("CheckAvailableForRoute error = %v, want nil", err)
+	}
+}
+
+func TestRemoteClientCheckAvailableForBusyDifferentOrUnknownRoute(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+	}{
+		{
+			name: "different route",
+			body: `[{
+				"types":["GR"],
+				"isAvailable":true,
+				"isFree":false,
+				"isFault":false,
+				"tunedChannelType":"GR",
+				"tunedChannel":"28"
+			}]`,
+		},
+		{
+			name: "unknown route",
+			body: `[{
+				"types":["GR"],
+				"isAvailable":true,
+				"isFree":false,
+				"isFault":false
+			}]`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := NewRemoteClient(config.RemoteConfig{URL: "http://remote.local"})
+			client.httpClient = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+				return stringResponse(http.StatusOK, tt.body), nil
+			})}
+			if err := client.CheckAvailableForRoute(context.Background(), "GR", "27"); err != ErrTunerUnavailable {
+				t.Fatalf("CheckAvailableForRoute error = %v, want ErrTunerUnavailable", err)
+			}
+		})
+	}
+}
+
 func TestRemoteSessionStreamsChannelAndService(t *testing.T) {
 	paths := []string{}
 	queries := []string{}

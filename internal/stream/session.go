@@ -47,7 +47,7 @@ func NewChannelSession(config ChannelSessionConfig) *ChannelSession {
 		scanner:      config.Scanner,
 		typ:          config.Type,
 	}
-	session.flows = NewFlowRegistry(session.broadcast.SubscribeRaw, session.pipelineProcessors, nil)
+	session.flows = NewFlowRegistry(session.broadcast.SubscribeRaw, session.pipelineProcessors, config.OnStop)
 	return session
 }
 
