@@ -26,39 +26,30 @@ type PipelineKey struct {
 }
 
 type sourceSubscriber func(context.Context, io.Writer) error
-type sourceAttacher func(io.Writer) error
-type sourceDetacher func(io.Writer)
-type sourceWaiter func(context.Context) error
 
 type streamPipeline struct {
-	attachSource func(io.Writer) error
-	cancel       context.CancelFunc
-	detachSource func(io.Writer)
-	done         chan struct{}
-	err          error
-	hub          *util.DynamicMultiWriter
-	key          PipelineKey
-	mu           sync.Mutex
-	onStop       func()
-	processors   []Processor
-	refs         int
-	source       sourceSubscriber
-	started      bool
-	stopped      bool
-	waitSource   func(context.Context) error
+	cancel     context.CancelFunc
+	done       chan struct{}
+	err        error
+	hub        *util.DynamicMultiWriter
+	key        PipelineKey
+	mu         sync.Mutex
+	onStop     func()
+	processors []Processor
+	refs       int
+	source     sourceSubscriber
+	started    bool
+	stopped    bool
 }
 
-func newStreamPipeline(key PipelineKey, processors []Processor, source sourceSubscriber, attach sourceAttacher, detach sourceDetacher, wait sourceWaiter, onStop func()) *streamPipeline {
+func newStreamPipeline(key PipelineKey, processors []Processor, source sourceSubscriber, onStop func()) *streamPipeline {
 	return &streamPipeline{
-		attachSource: attach,
-		detachSource: detach,
-		done:         make(chan struct{}),
-		hub:          util.NewDynamicMultiWriter(),
-		key:          key,
-		onStop:       onStop,
-		processors:   processors,
-		source:       source,
-		waitSource:   wait,
+		done:       make(chan struct{}),
+		hub:        util.NewDynamicMultiWriter(),
+		key:        key,
+		onStop:     onStop,
+		processors: processors,
+		source:     source,
 	}
 }
 
@@ -191,13 +182,7 @@ func (p *streamPipeline) runProcesses(ctx context.Context) error {
 	}
 
 	go func() {
-		if err := p.attachSource(writers[0]); err != nil {
-			_ = writers[0].Close()
-			errCh <- err
-			cancel()
-			return
-		}
-		err := p.waitSource(ctx)
+		err := p.source(ctx, writers[0])
 		_ = writers[0].Close()
 		errCh <- err
 		if err != nil {
@@ -239,7 +224,6 @@ func (p *streamPipeline) runProcesses(ctx context.Context) error {
 			result = errors.Join(result, err)
 		}
 	}
-	p.detachSource(writers[0])
 	return result
 }
 

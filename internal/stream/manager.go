@@ -4,25 +4,21 @@ import (
 	"context"
 	"errors"
 	"io"
-	"sort"
 	"sync"
-	"time"
 
 	"github.com/21S1298001/Mahiron5/internal/config"
 	"github.com/21S1298001/Mahiron5/internal/tuner"
 )
 
 type StreamManager struct {
-	mu                 sync.Mutex
-	channels           config.ChannelsConfig
-	descramblerFactory DescramblerFactory
-	filter             ServiceFilter
-	eitCollector       EITCollector
-	eitUpdater         EITSectionUpdater
-	scanner            ServiceScanner
-	sessions           map[sessionKey]*ChannelSession
-	sessionTypes       map[sessionKey]string
-	tunerManager       TunerManager
+	mu           sync.Mutex
+	eitCollector EITCollector
+	eitUpdater   EITSectionUpdater
+	filter       ServiceFilter
+	scanner      ServiceScanner
+	sessions     map[sessionKey]*ChannelSession
+	sessionTypes map[sessionKey]string
+	sources      *SourcePool
 }
 
 type StreamManagerConfig struct {
@@ -46,15 +42,13 @@ func NewStreamManager(cfg StreamManagerConfig) *StreamManager {
 		descramblerFactory = NewCommandDescrambler
 	}
 	return &StreamManager{
-		channels:           cfg.Channels,
-		descramblerFactory: descramblerFactory,
-		eitCollector:       cfg.EITCollector,
-		eitUpdater:         cfg.EITUpdater,
-		filter:             cfg.Filter,
-		scanner:            cfg.Scanner,
-		sessions:           map[sessionKey]*ChannelSession{},
-		sessionTypes:       map[sessionKey]string{},
-		tunerManager:       cfg.TunerManager,
+		eitCollector: cfg.EITCollector,
+		eitUpdater:   cfg.EITUpdater,
+		filter:       cfg.Filter,
+		scanner:      cfg.Scanner,
+		sessions:     map[sessionKey]*ChannelSession{},
+		sessionTypes: map[sessionKey]string{},
+		sources:      NewSourcePool(cfg.Channels, cfg.TunerManager, descramblerFactory),
 	}
 }
 
@@ -76,43 +70,30 @@ func (m *StreamManager) getOrCreate(ctx context.Context, channelType, channel st
 		return session, nil
 	}
 
-	channelConfig := m.findChannel(channelType, channel)
-	if channelConfig == nil {
-		return nil, ErrChannelNotFound
-	}
-	if channelConfig.IsDisabled != nil && *channelConfig.IsDisabled {
-		return nil, ErrChannelNotFound
-	}
-
-	route, routeChannelConfig, device, decoderCommand, err := m.newRouteDevice(ctx, channelConfig, wait)
+	lease, err := m.sources.Acquire(ctx, channelType, channel, wait)
 	if err != nil {
 		return nil, err
 	}
 
-	var descrambler Descrambler
-	if decoderCommand == "" {
-		if provider, ok := m.tunerManager.(DecoderCommandProvider); ok {
-			decoderCommand = provider.DecoderCommandByType(route.Type)
-		}
+	hooks := []BroadcastHook{}
+	if piggyback := NewEITPFPiggyback(channelType, channel, m.eitCollector, m.eitUpdater); piggyback != nil {
+		hooks = append(hooks, piggyback.Hook)
 	}
-	if decoderCommand != "" {
-		descrambler = m.descramblerFactory(decoderCommand)
-	}
+	broadcast := NewBroadcast(lease.Source, hooks, func() { m.remove(key) })
 
 	session := NewChannelSession(ChannelSessionConfig{
 		Channel:       channel,
-		ChannelConfig: routeChannelConfig,
-		Descrambler:   descrambler,
-		Device:        device,
+		ChannelConfig: lease.Channel,
+		Broadcast:     broadcast,
+		Descrambler:   lease.Descrambler,
 		EITCollector:  m.eitCollector,
 		EITUpdater:    m.eitUpdater,
 		Filter:        m.filter,
-		OnStop:        func() { m.remove(key) },
 		Scanner:       m.scanner,
 		Type:          channelType,
 	})
 	m.sessions[key] = session
-	m.sessionTypes[key] = route.Type
+	m.sessionTypes[key] = lease.RouteType
 	return session, nil
 }
 
@@ -156,73 +137,6 @@ func (m *StreamManager) Shutdown(ctx context.Context) error {
 		}
 	}
 	return result
-}
-
-func (m *StreamManager) findChannel(channelType, channel string) *config.ChannelConfig {
-	for i := range m.channels {
-		if m.channels[i].Type == channelType && m.channels[i].Channel == channel {
-			return &m.channels[i]
-		}
-	}
-	return nil
-}
-
-func (m *StreamManager) newRouteDevice(ctx context.Context, channel *config.ChannelConfig, wait bool) (config.ChannelRouteConfig, *config.ChannelConfig, TunerDevice, string, error) {
-	routes := enabledRoutes(channel.RoutesOrDefault())
-	for {
-		var lastErr error
-		unavailable := false
-		for _, route := range routes {
-			routeChannel := channel.RouteChannelConfig(route)
-			var device TunerDevice
-			var decoder string
-			var err error
-			if allocator, ok := m.tunerManager.(TunerAllocator); ok {
-				device, decoder, err = allocator.AcquireDevice(ctx, route.Type, channel, &routeChannel, false)
-			} else {
-				device, err = m.tunerManager.NewDeviceByType(route.Type, &routeChannel)
-			}
-			if err == nil {
-				return route, &routeChannel, device, decoder, nil
-			}
-			if errors.Is(err, tuner.ErrTunerUnavailable) {
-				unavailable = true
-			}
-			lastErr = err
-		}
-		if !wait || !unavailable {
-			if lastErr != nil {
-				return config.ChannelRouteConfig{}, nil, nil, "", lastErr
-			}
-			return config.ChannelRouteConfig{}, nil, nil, "", ErrChannelNotFound
-		}
-		select {
-		case <-ctx.Done():
-			return config.ChannelRouteConfig{}, nil, nil, "", ctx.Err()
-		case <-time.After(100 * time.Millisecond):
-		}
-	}
-}
-
-func enabledRoutes(routes []config.ChannelRouteConfig) []config.ChannelRouteConfig {
-	enabled := make([]config.ChannelRouteConfig, 0, len(routes))
-	for _, route := range routes {
-		if route.IsDisabled != nil && *route.IsDisabled {
-			continue
-		}
-		enabled = append(enabled, route)
-	}
-	sort.SliceStable(enabled, func(i, j int) bool {
-		left, right := 0, 0
-		if enabled[i].Priority != nil {
-			left = *enabled[i].Priority
-		}
-		if enabled[j].Priority != nil {
-			right = *enabled[j].Priority
-		}
-		return left < right
-	})
-	return enabled
 }
 
 func (m *StreamManager) remove(key sessionKey) {

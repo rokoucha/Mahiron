@@ -104,7 +104,7 @@ func TestManagerSelectsRouteByFreeChannelType(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	routeManager := manager.tunerManager.(*routeSelectingTunerManager)
+	routeManager := manager.sources.tunerManager.(*routeSelectingTunerManager)
 	if got, want := routeManager.channelType, "CATV_BS"; got != want {
 		t.Fatalf("device channel type = %q, want %q", got, want)
 	}
@@ -353,18 +353,11 @@ func TestSharedServicePipelineStartsOneDescrambler(t *testing.T) {
 }
 
 func TestPipelineConvertsProcessorPanicToError(t *testing.T) {
-	var source io.Writer
 	pipeline := newStreamPipeline(
 		PipelineKey{ChannelType: "GR", ChannelID: "27", Kind: PipelineChannelStream, Decode: true},
 		[]Processor{panicProcessor{}},
-		nil,
-		func(w io.Writer) error {
-			source = w
-			return nil
-		},
-		func(io.Writer) {},
-		func(context.Context) error {
-			_, err := source.Write([]byte("ts"))
+		func(ctx context.Context, w io.Writer) error {
+			_, err := w.Write([]byte("ts"))
 			if errors.Is(err, io.ErrClosedPipe) {
 				return nil
 			}
@@ -392,17 +385,20 @@ func TestDetachRawDoesNotLogExpectedClosedFileStopError(t *testing.T) {
 	session := NewChannelSession(ChannelSessionConfig{
 		Channel: "27",
 		Type:    "GR",
-		Device: fakeStopErrorDevice{
-			done:    done,
-			stopErr: &os.PathError{Op: "read", Path: "|0", Err: os.ErrClosed},
-		},
+		Broadcast: NewBroadcast(&tunerLiveSource{
+			channel: &config.ChannelConfig{Type: "GR", Channel: "27"},
+			device: fakeStopErrorDevice{
+				done:    done,
+				stopErr: &os.PathError{Op: "read", Path: "|0", Err: os.ErrClosed},
+			},
+		}, nil, nil),
 	})
 
 	var dst bytes.Buffer
-	if err := session.attachRaw(&dst); err != nil {
+	if err := session.broadcast.attach(&dst); err != nil {
 		t.Fatal(err)
 	}
-	session.detachRaw(&dst)
+	session.broadcast.detach(&dst)
 
 	if strings.Contains(logs.String(), "failed to stop channel session") {
 		t.Fatalf("unexpected stop error log: %s", logs.String())
