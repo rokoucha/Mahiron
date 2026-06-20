@@ -16,7 +16,7 @@ import (
 )
 
 type Store interface {
-	GetByChannel(ctx context.Context, channelType, channelID string) ([]*service.Service, error)
+	GetServicesByChannel(ctx context.Context, channelType, channelID string) ([]*service.Service, error)
 	ReplaceChannelServices(ctx context.Context, channelType, channelID string, services []*service.Service) error
 }
 
@@ -56,7 +56,7 @@ func NewService(store Store, scanner StreamScanner, channels config.ChannelsConf
 func (s *Service) Channels() []Channel {
 	channels := make([]Channel, 0, len(s.channels))
 	for _, channel := range s.channels {
-		if isDisabled(channel) {
+		if config.IsChannelDisabled(channel) {
 			continue
 		}
 		channels = append(channels, Channel{Type: channel.Type, ID: channel.Channel})
@@ -67,7 +67,7 @@ func (s *Service) Channels() []Channel {
 func (s *Service) ScanChannel(ctx context.Context, channelType string, channelID string, wait bool) ([]uint16, error) {
 	startedAt := time.Now()
 	slog.Info("service scan started", "type", channelType, "channel", channelID, "wait", wait)
-	existing, err := s.store.GetByChannel(ctx, channelType, channelID)
+	existing, err := s.store.GetServicesByChannel(ctx, channelType, channelID)
 	if err != nil {
 		return nil, fmt.Errorf("list existing services: %w", err)
 	}
@@ -142,8 +142,4 @@ func newNetworkIDsFromDiff(before map[string]struct{}, scanned []*service.Servic
 		nids = append(nids, svc.NetworkId)
 	}
 	return nids
-}
-
-func isDisabled(channel config.ChannelConfig) bool {
-	return channel.IsDisabled != nil && *channel.IsDisabled
 }

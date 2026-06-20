@@ -87,7 +87,7 @@ func (s *ServiceManager) EPGSummary(ctx context.Context, staleAfter int64, now i
 func (s *ServiceManager) ReconcileChannels(ctx context.Context) error {
 	active := make([]ChannelKey, 0, len(s.channels))
 	for _, channel := range s.channels {
-		if !isDisabled(channel) {
+		if !config.IsChannelDisabled(channel) {
 			active = append(active, ChannelKey{Type: channel.Type, ID: channel.Channel})
 		}
 	}
@@ -134,7 +134,7 @@ func (s *ServiceManager) GetServiceById(ctx context.Context, id string) (*Servic
 func (s *ServiceManager) GetChannels() config.ChannelsConfig {
 	channels := make(config.ChannelsConfig, 0, len(s.channels))
 	for _, channel := range s.channels {
-		if isDisabled(channel) {
+		if config.IsChannelDisabled(channel) {
 			continue
 		}
 		channels = append(channels, channel)
@@ -144,7 +144,7 @@ func (s *ServiceManager) GetChannels() config.ChannelsConfig {
 
 func (s *ServiceManager) GetChannel(channelType string, channelId string) *config.ChannelConfig {
 	for i := range s.channels {
-		if s.channels[i].Type == channelType && s.channels[i].Channel == channelId && !isDisabled(s.channels[i]) {
+		if s.channels[i].Type == channelType && s.channels[i].Channel == channelId && !config.IsChannelDisabled(s.channels[i]) {
 			channel := s.channels[i]
 			return &channel
 		}
@@ -153,10 +153,6 @@ func (s *ServiceManager) GetChannel(channelType string, channelId string) *confi
 }
 
 func (s *ServiceManager) GetServicesByChannel(ctx context.Context, channelType string, channelId string) ([]*Service, error) {
-	return s.store.GetByChannel(ctx, channelType, channelId)
-}
-
-func (s *ServiceManager) GetByChannel(ctx context.Context, channelType string, channelId string) ([]*Service, error) {
 	return s.store.GetByChannel(ctx, channelType, channelId)
 }
 
@@ -215,10 +211,6 @@ func (s *ServiceManager) GetServiceByChannelAndId(ctx context.Context, channelTy
 		}
 	}
 	return nil, nil
-}
-
-func isDisabled(channel config.ChannelConfig) bool {
-	return channel.IsDisabled != nil && *channel.IsDisabled
 }
 
 func sameServiceCore(a, b *Service) bool {

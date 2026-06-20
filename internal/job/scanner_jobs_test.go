@@ -39,7 +39,7 @@ func TestServiceUpdaterDispatchesPerChannel(t *testing.T) {
 	sm := service.NewServiceManager(serviceStore, channels)
 	stm := stream.NewStreamManager(stream.StreamManagerConfig{Channels: channels, TunerManager: noTunerManager{}})
 	pm := program.NewProgramManager(program.NewSQLiteStore(database))
-	scanService := servicescan.NewService(serviceStore, stream.NewServiceScannerAdapter(stm), channels)
+	scanService := servicescan.NewService(sm, stream.NewServiceScannerAdapter(stm), channels)
 	epgService := epg.NewService(pm, sm, stream.NewEPGCollectorAdapter(stm), channels, 0, 10*time.Minute)
 	RegisterServiceUpdater(mgr, scanService, epgService)
 	if _, err := mgr.Enqueue(ServiceUpdaterKey); err != nil {
@@ -187,7 +187,7 @@ func TestServiceUpdaterTriggersEPGGatherForNewNetworks(t *testing.T) {
 	})
 	mgr := newTestManager(t)
 	pm := program.NewProgramManager(program.NewSQLiteStore(database))
-	scanService := servicescan.NewService(serviceStore, stream.NewServiceScannerAdapter(stm), channels)
+	scanService := servicescan.NewService(sm, stream.NewServiceScannerAdapter(stm), channels)
 	epgService := epg.NewService(pm, sm, stream.NewEPGCollectorAdapter(stm), channels, 0, 10*time.Minute)
 	RegisterServiceUpdater(mgr, scanService, epgService)
 

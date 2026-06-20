@@ -40,6 +40,10 @@ type ChannelRouteConfig struct {
 	Priority    *int           `json:"priority,omitempty"`
 }
 
+func IsChannelDisabled(channel ChannelConfig) bool {
+	return channel.IsDisabled != nil && *channel.IsDisabled
+}
+
 func LoadAndParseChannelsConfig(filePath string) (ChannelsConfig, error) {
 	file, err := os.ReadFile(filePath)
 	if err != nil {
