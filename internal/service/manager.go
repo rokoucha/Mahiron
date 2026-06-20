@@ -5,10 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"strconv"
 
 	"github.com/21S1298001/Mahiron5/internal/config"
-	"github.com/21S1298001/Mahiron5/internal/stream"
 	"github.com/21S1298001/Mahiron5/internal/tuner"
 	"github.com/google/uuid"
 )
@@ -151,15 +151,19 @@ type scanService struct {
 	RemoteControlKeyId uint8  `json:"remoteControlKeyId"`
 }
 
-func (s *ServiceManager) ScanServices(ctx context.Context, streamManager *stream.StreamManager, channelType string, channelId string) ([]uint16, error) {
-	return s.scanServices(ctx, streamManager, channelType, channelId, false)
+type StreamScanner interface {
+	ScanServices(context.Context, string, string, bool, io.Writer) error
 }
 
-func (s *ServiceManager) ScanServicesWait(ctx context.Context, streamManager *stream.StreamManager, channelType string, channelId string) ([]uint16, error) {
-	return s.scanServices(ctx, streamManager, channelType, channelId, true)
+func (s *ServiceManager) ScanServices(ctx context.Context, scanner StreamScanner, channelType string, channelId string) ([]uint16, error) {
+	return s.scanServices(ctx, scanner, channelType, channelId, false)
 }
 
-func (s *ServiceManager) scanServices(ctx context.Context, streamManager *stream.StreamManager, channelType string, channelId string, wait bool) ([]uint16, error) {
+func (s *ServiceManager) ScanServicesWait(ctx context.Context, scanner StreamScanner, channelType string, channelId string) ([]uint16, error) {
+	return s.scanServices(ctx, scanner, channelType, channelId, true)
+}
+
+func (s *ServiceManager) scanServices(ctx context.Context, scanner StreamScanner, channelType string, channelId string, wait bool) ([]uint16, error) {
 	existing, err := s.store.GetByChannel(ctx, channelType, channelId)
 	if err != nil {
 		return nil, fmt.Errorf("list existing services: %w", err)
@@ -179,16 +183,7 @@ func (s *ServiceManager) scanServices(ctx context.Context, streamManager *stream
 		},
 	})
 
-	var session *stream.ChannelSession
-	if wait {
-		session, err = streamManager.GetOrCreateWait(ctx, channelType, channelId)
-	} else {
-		session, err = streamManager.GetOrCreate(ctx, channelType, channelId)
-	}
-	if err != nil {
-		return nil, err
-	}
-	if err := session.ScanServices(ctx, &out); err != nil {
+	if err := scanner.ScanServices(ctx, channelType, channelId, wait, &out); err != nil {
 		return nil, err
 	}
 

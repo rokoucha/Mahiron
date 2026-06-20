@@ -8,9 +8,7 @@ import (
 	"time"
 
 	"github.com/21S1298001/Mahiron5/internal/config"
-	"github.com/21S1298001/Mahiron5/internal/program"
 	"github.com/21S1298001/Mahiron5/internal/service"
-	"github.com/21S1298001/Mahiron5/internal/stream"
 )
 
 const (
@@ -19,8 +17,8 @@ const (
 	ServiceUpdaterDefaultSchedule = "5 6 * * *"
 )
 
-func RegisterServiceUpdater(mgr *JobManager, pm *program.ProgramManager, sm *service.ServiceManager, stm *stream.StreamManager, channels config.ChannelsConfig, retrievalTime time.Duration) {
-	mgr.Register(JobDefinition{
+func RegisterServiceUpdater(registry Registry, programs EPGProgramStore, services ServiceScanner, streamScanner service.StreamScanner, epgStreams EPGStreamManager, channels config.ChannelsConfig, retrievalTime time.Duration) {
+	registry.Register(JobDefinition{
 		Key: ServiceUpdaterKey, Name: ServiceUpdaterName, IsRerunnable: true,
 		Handler: func(ctx context.Context) error {
 			queued := 0
@@ -37,7 +35,7 @@ func RegisterServiceUpdater(mgr *JobManager, pm *program.ProgramManager, sm *ser
 					Name:         fmt.Sprintf("Service Scan %s/%s", channel.Type, channel.Channel),
 					IsRerunnable: true,
 					Handler: func(childCtx context.Context) error {
-						newNIDs, err := sm.ScanServicesWait(childCtx, stm, channel.Type, channel.Channel)
+						newNIDs, err := services.ScanServicesWait(childCtx, streamScanner, channel.Type, channel.Channel)
 						if err != nil {
 							return err
 						}
@@ -45,7 +43,7 @@ func RegisterServiceUpdater(mgr *JobManager, pm *program.ProgramManager, sm *ser
 							if err := childCtx.Err(); err != nil {
 								return err
 							}
-							if _, err := enqueueEPGGatherForNetwork(childCtx, mgr, pm, sm, stm, channels, retrievalTime, nid, nil, nil); err != nil {
+							if _, err := enqueueEPGGatherForNetwork(childCtx, registry, programs, services, epgStreams, channels, retrievalTime, nid, nil, nil); err != nil {
 								slog.Warn("failed to enqueue EPG gather for newly scanned network", "networkId", nid, "channel", fmt.Sprintf("%s/%s", channel.Type, channel.Channel), "err", err)
 							}
 						}
@@ -55,7 +53,7 @@ func RegisterServiceUpdater(mgr *JobManager, pm *program.ProgramManager, sm *ser
 						return nil
 					},
 				}
-				if _, err := mgr.EnqueueDefinition(definition); err != nil {
+				if _, err := registry.EnqueueDefinition(definition); err != nil {
 					if errors.Is(err, ErrJobAlreadyRunning) {
 						continue
 					}

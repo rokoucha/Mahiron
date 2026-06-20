@@ -35,7 +35,7 @@ func TestServiceUpdaterDispatchesPerChannel(t *testing.T) {
 	mgr := newTestManager(t)
 	sm := service.NewServiceManager(service.NewSQLiteStore(database), channels)
 	stm := stream.NewStreamManager(stream.StreamManagerConfig{Channels: channels, TunerManager: noTunerManager{}})
-	RegisterServiceUpdater(mgr, program.NewProgramManager(program.NewSQLiteStore(database)), sm, stm, channels, 10*time.Minute)
+	RegisterServiceUpdater(mgr, program.NewProgramManager(program.NewSQLiteStore(database)), sm, stream.NewServiceScannerAdapter(stm), stream.NewEPGCollectorAdapter(stm), channels, 10*time.Minute)
 	if _, err := mgr.Enqueue(ServiceUpdaterKey); err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +83,7 @@ func TestEPGGathererDispatchesPerNetwork(t *testing.T) {
 	defer programDatabase.Close()
 	mgr := newTestManager(t)
 	stm := stream.NewStreamManager(stream.StreamManagerConfig{Channels: channels, TunerManager: noTunerManager{}})
-	RegisterEPGGatherer(mgr, program.NewProgramManager(program.NewSQLiteStore(programDatabase)), sm, stm, channels, 3, 10*time.Minute)
+	RegisterEPGGatherer(mgr, program.NewProgramManager(program.NewSQLiteStore(programDatabase)), sm, stream.NewEPGCollectorAdapter(stm), channels, 3, 10*time.Minute)
 	if _, err := mgr.Enqueue(EPGGathererKey); err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +117,7 @@ func TestEnqueueEPGGatherForNetworkDispatches(t *testing.T) {
 	stm := stream.NewStreamManager(stream.StreamManagerConfig{Channels: channels, TunerManager: noTunerManager{}})
 	pm := program.NewProgramManager(program.NewSQLiteStore(database))
 
-	enqueued, err := enqueueEPGGatherForNetwork(ctx, mgr, pm, sm, stm, channels, 10*time.Minute, 4, nil, nil)
+	enqueued, err := enqueueEPGGatherForNetwork(ctx, mgr, pm, sm, stream.NewEPGCollectorAdapter(stm), channels, 10*time.Minute, 4, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +142,7 @@ func TestEnqueueEPGGatherForNetworkIgnoresMissingNetwork(t *testing.T) {
 	stm := stream.NewStreamManager(stream.StreamManagerConfig{Channels: channels, TunerManager: noTunerManager{}})
 	pm := program.NewProgramManager(program.NewSQLiteStore(database))
 
-	enqueued, err := enqueueEPGGatherForNetwork(ctx, mgr, pm, sm, stm, channels, 10*time.Minute, 999, nil, nil)
+	enqueued, err := enqueueEPGGatherForNetwork(ctx, mgr, pm, sm, stream.NewEPGCollectorAdapter(stm), channels, 10*time.Minute, 999, nil, nil)
 	if err != nil {
 		t.Fatalf("expected nil error for missing network, got %v", err)
 	}
@@ -179,7 +179,7 @@ func TestServiceUpdaterTriggersEPGGatherForNewNetworks(t *testing.T) {
 	})
 	mgr := newTestManager(t)
 	pm := program.NewProgramManager(program.NewSQLiteStore(database))
-	RegisterServiceUpdater(mgr, pm, sm, stm, channels, 10*time.Minute)
+	RegisterServiceUpdater(mgr, pm, sm, stream.NewServiceScannerAdapter(stm), stream.NewEPGCollectorAdapter(stm), channels, 10*time.Minute)
 
 	if _, err := mgr.Enqueue(ServiceUpdaterKey); err != nil {
 		t.Fatal(err)

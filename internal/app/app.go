@@ -60,28 +60,30 @@ func Run(ctx context.Context) int {
 	serviceStore := service.NewSQLiteStore(database)
 	programStore := program.NewSQLiteStore(database)
 
-	tm := tuner.NewTunerManager(&tuner.TunerManagerConfig{
+	tuners := tuner.NewTunerManager(&tuner.TunerManagerConfig{
 		TunersConfig: cfg.Tuners,
 	})
 
-	sm := service.NewServiceManager(serviceStore, cfg.Channels)
+	services := service.NewServiceManager(serviceStore, cfg.Channels)
 
-	pm := program.NewProgramManager(programStore)
+	programs := program.NewProgramManager(programStore)
 
-	stm := stream.NewStreamManager(stream.StreamManagerConfig{
+	streams := stream.NewStreamManager(stream.StreamManagerConfig{
 		Channels:     cfg.Channels,
-		EITUpdater:   pm,
-		TunerManager: tm,
+		EITUpdater:   programs,
+		TunerManager: tuners,
 	})
+	serviceScanner := stream.NewServiceScannerAdapter(streams)
+	epgStreams := stream.NewEPGCollectorAdapter(streams)
 
-	jm, err := job.NewManager(job.Config{MaxHistory: 100, MaxRunning: cfg.System.JobMaxRunning})
+	jobs, err := job.NewManager(job.Config{MaxHistory: 100, MaxRunning: cfg.System.JobMaxRunning})
 	if err != nil {
 		slog.Error("failed to create job manager", "err", err)
 		return 1
 	}
 
-	job.RegisterServiceUpdater(jm, pm, sm, stm, cfg.Channels, time.Duration(cfg.System.EpgRetrievalTime)*time.Millisecond)
-	job.RegisterEPGGatherer(jm, pm, sm, stm, cfg.Channels, cfg.System.EpgRetentionDays, time.Duration(cfg.System.EpgRetrievalTime)*time.Millisecond)
+	job.RegisterServiceUpdater(jobs, programs, services, serviceScanner, epgStreams, cfg.Channels, time.Duration(cfg.System.EpgRetrievalTime)*time.Millisecond)
+	job.RegisterEPGGatherer(jobs, programs, services, epgStreams, cfg.Channels, cfg.System.EpgRetentionDays, time.Duration(cfg.System.EpgRetrievalTime)*time.Millisecond)
 
 	schedules := cfg.System.Jobs
 	if len(schedules) == 0 {
@@ -93,17 +95,17 @@ func Run(ctx context.Context) int {
 	}
 
 	for _, js := range schedules {
-		if err := jm.AddSchedule(js.Key, js.Schedule); err != nil {
+		if err := jobs.AddSchedule(js.Key, js.Schedule); err != nil {
 			slog.Error("failed to add job schedule", "key", js.Key, "err", err)
 		}
 	}
 
 	handler, err := web.NewWeb(web.WebConfig{
-		ServiceManager: sm,
-		ProgramManager: pm,
-		StreamManager:  stm,
-		TunerManager:   tm,
-		JobManager:     jm,
+		ServiceManager: services,
+		ProgramManager: programs,
+		StreamManager:  streams,
+		TunerManager:   tuners,
+		JobManager:     jobs,
 		EpgStaleAfter:  int64(cfg.System.EpgStaleAfter),
 	})
 	if err != nil {
@@ -123,9 +125,9 @@ func Run(ctx context.Context) int {
 	defer stop()
 
 	s := server.NewServer(addresses, handler)
-	jm.Start()
+	jobs.Start()
 
-	if err := runStartupTasks(signalCtx, sm, pm, jm, database, cfg); err != nil {
+	if err := runStartupTasks(signalCtx, services, programs, jobs, database, cfg); err != nil {
 		slog.Error("startup tasks failed", "err", err)
 	}
 
@@ -149,12 +151,12 @@ func Run(ctx context.Context) int {
 	go func() {
 		defer wg.Done()
 		slog.Info("shutting down streams")
-		if err := stm.Shutdown(timeoutCtx); err != nil {
+		if err := streams.Shutdown(timeoutCtx); err != nil {
 			slog.Error("failed to shutdown streams", "err", err)
 		}
 		slog.Info("streams shut down")
 		slog.Info("shutting down tuner")
-		if err := tm.Shutdown(timeoutCtx); err != nil {
+		if err := tuners.Shutdown(timeoutCtx); err != nil {
 			slog.Error("failed to shutdown tuner", "err", err)
 		}
 		slog.Info("tuner shut down")
@@ -162,7 +164,7 @@ func Run(ctx context.Context) int {
 	go func() {
 		defer wg.Done()
 		slog.Info("shutting down job manager")
-		if err := jm.Shutdown(timeoutCtx); err != nil {
+		if err := jobs.Shutdown(timeoutCtx); err != nil {
 			slog.Error("failed to shutdown job manager", "err", err)
 		}
 		slog.Info("job manager shut down")
@@ -179,8 +181,8 @@ func Run(ctx context.Context) int {
 	return 0
 }
 
-func runStartupTasks(ctx context.Context, sm *service.ServiceManager, pm *program.ProgramManager, jm *job.JobManager, database *sql.DB, cfg *config.Config) error {
-	if err := sm.ReconcileChannels(ctx); err != nil {
+func runStartupTasks(ctx context.Context, services *service.ServiceManager, programs *program.ProgramManager, jobs *job.JobManager, database *sql.DB, cfg *config.Config) error {
+	if err := services.ReconcileChannels(ctx); err != nil {
 		return fmt.Errorf("reconcile service channels: %w", err)
 	}
 	channelsHash := hashChannelConfig(cfg.Channels)
@@ -195,24 +197,24 @@ func runStartupTasks(ctx context.Context, sm *service.ServiceManager, pm *progra
 		}
 	}
 
-	count, err := sm.CountServices(ctx)
+	count, err := services.CountServices(ctx)
 	if err != nil {
 		return fmt.Errorf("count services: %w", err)
 	}
 
 	if count == 0 {
 		slog.Info("no services cached, running initial service update")
-		if _, err := jm.Enqueue(job.ServiceUpdaterKey); err != nil {
+		if _, err := jobs.Enqueue(job.ServiceUpdaterKey); err != nil {
 			slog.Error("failed to enqueue initial service update", "err", err)
 		}
 	} else if storedHash != "" && storedHash != channelsHash {
 		slog.Info("channel config changed, enqueuing service update")
-		if _, err := jm.Enqueue(job.ServiceUpdaterKey); err != nil {
+		if _, err := jobs.Enqueue(job.ServiceUpdaterKey); err != nil {
 			slog.Warn("failed to enqueue service update", "err", err)
 		}
 	}
 
-	stale, _, _, err := sm.EPGSummary(ctx, int64(cfg.System.EpgStaleAfter), time.Now().UnixMilli())
+	stale, _, _, err := services.EPGSummary(ctx, int64(cfg.System.EpgStaleAfter), time.Now().UnixMilli())
 	if err != nil {
 		return fmt.Errorf("read EPG status: %w", err)
 	}
@@ -224,14 +226,14 @@ func runStartupTasks(ctx context.Context, sm *service.ServiceManager, pm *progra
 	// refresh all networks.
 	if count > 0 && stale > 0 {
 		slog.Info("EPG is stale, enqueuing gatherer", "staleServices", stale)
-		if _, err := jm.Enqueue(job.EPGGathererKey); err != nil && !errors.Is(err, job.ErrJobAlreadyRunning) {
+		if _, err := jobs.Enqueue(job.EPGGathererKey); err != nil && !errors.Is(err, job.ErrJobAlreadyRunning) {
 			slog.Warn("failed to enqueue startup EPG gathering", "err", err)
 		}
 	}
 
 	if cfg.System.EpgRetentionDays > 0 {
 		cutoff := time.Now().Add(-time.Duration(cfg.System.EpgRetentionDays) * 24 * time.Hour).UnixMilli()
-		if err := pm.DeleteEndedBefore(ctx, cutoff); err != nil {
+		if err := programs.DeleteEndedBefore(ctx, cutoff); err != nil {
 			slog.Warn("failed to clean up old EPG data", "err", err)
 		} else {
 			slog.Info("cleaned up EPG data", "cutoffDays", cfg.System.EpgRetentionDays)

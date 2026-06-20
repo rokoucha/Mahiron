@@ -2,34 +2,72 @@ package api
 
 import (
 	"context"
+	"io"
 	"net/http"
 
+	"github.com/21S1298001/Mahiron5/internal/config"
 	"github.com/21S1298001/Mahiron5/internal/job"
 	"github.com/21S1298001/Mahiron5/internal/program"
 	"github.com/21S1298001/Mahiron5/internal/service"
-	"github.com/21S1298001/Mahiron5/internal/stream"
 	"github.com/21S1298001/Mahiron5/internal/tuner"
 	apigen "github.com/21S1298001/Mahiron5/internal/web/api/gen"
 )
 
 type Handler struct {
-	serviceManager *service.ServiceManager
-	programManager *program.ProgramManager
-	streamManager  *stream.StreamManager
-	tunerManager   *tuner.TunerManager
-	jobManager     *job.JobManager
+	serviceManager ServiceManager
+	programManager ProgramManager
+	streamManager  StreamManager
+	tunerManager   TunerManager
+	jobManager     JobManager
 	epgStaleAfter  int64
 }
 
 var _ apigen.Handler = (*Handler)(nil)
 
 type HandlerConfig struct {
-	ServiceManager *service.ServiceManager
-	ProgramManager *program.ProgramManager
-	StreamManager  *stream.StreamManager
-	TunerManager   *tuner.TunerManager
-	JobManager     *job.JobManager
+	ServiceManager ServiceManager
+	ProgramManager ProgramManager
+	StreamManager  StreamManager
+	TunerManager   TunerManager
+	JobManager     JobManager
 	EpgStaleAfter  int64
+}
+
+type ServiceManager interface {
+	EPGSummary(context.Context, int64, int64) (int, int, *int64, error)
+	GetChannel(string, string) *config.ChannelConfig
+	GetChannels() config.ChannelsConfig
+	GetServiceByChannelAndId(context.Context, string, string, string) (*service.Service, error)
+	GetServiceById(context.Context, string) (*service.Service, error)
+	GetServices(context.Context) ([]*service.Service, error)
+	GetServicesByChannel(context.Context, string, string) ([]*service.Service, error)
+}
+
+type ProgramManager interface {
+	Count(context.Context) (int, error)
+	Get(context.Context, int64) (*program.Program, bool, error)
+	List(context.Context, program.Query) ([]*program.Program, error)
+}
+
+type StreamManager interface {
+	GetOrCreate(context.Context, string, string) (interface {
+		ChannelStream(context.Context, bool, io.Writer) error
+		ServiceStream(context.Context, uint16, bool, io.Writer) error
+	}, error)
+}
+
+type TunerManager interface {
+	Status(int) (tuner.Status, bool)
+	Statuses() []tuner.Status
+}
+
+type JobManager interface {
+	Abort(string) error
+	GetActiveJobKeysByPrefix(string) []string
+	GetJobSchedules() []job.ScheduleInfo
+	GetJobs() []*job.Job
+	Rerun(string) error
+	RunSchedule(string) error
 }
 
 func NewHandler(config HandlerConfig) *Handler {

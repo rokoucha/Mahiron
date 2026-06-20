@@ -26,7 +26,7 @@ func NewWeb(config WebConfig) (http.Handler, error) {
 	api, err := apigen.NewServer(api.NewHandler(api.HandlerConfig{
 		ServiceManager: config.ServiceManager,
 		ProgramManager: config.ProgramManager,
-		StreamManager:  config.StreamManager,
+		StreamManager:  stream.NewAPIStreamAdapter(config.StreamManager),
 		TunerManager:   config.TunerManager,
 		JobManager:     config.JobManager,
 		EpgStaleAfter:  config.EpgStaleAfter,

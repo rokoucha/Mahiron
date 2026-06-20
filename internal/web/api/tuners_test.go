@@ -75,9 +75,9 @@ func TestChannelStreamReturnsTrackedTunerUserID(t *testing.T) {
 	handler := NewHandler(HandlerConfig{
 		TunerManager:   tunerManager,
 		ServiceManager: service.NewServiceManager(service.NewSQLiteStore(database), channels),
-		StreamManager: stream.NewStreamManager(stream.StreamManagerConfig{
+		StreamManager: stream.NewAPIStreamAdapter(stream.NewStreamManager(stream.StreamManagerConfig{
 			Channels: channels, TunerManager: tunerManager,
-		}),
+		})),
 	})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

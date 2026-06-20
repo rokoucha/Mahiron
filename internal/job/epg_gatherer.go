@@ -15,7 +15,6 @@ import (
 	"github.com/21S1298001/Mahiron5/internal/processor"
 	"github.com/21S1298001/Mahiron5/internal/program"
 	"github.com/21S1298001/Mahiron5/internal/service"
-	"github.com/21S1298001/Mahiron5/internal/stream"
 	"github.com/21S1298001/Mahiron5/internal/tuner"
 	"github.com/google/uuid"
 )
@@ -27,11 +26,11 @@ const (
 	EPGGathererDefaultSchedule = "20,50 * * * *"
 )
 
-func RegisterEPGGatherer(mgr *JobManager, pm *program.ProgramManager, sm *service.ServiceManager, stm *stream.StreamManager, channels config.ChannelsConfig, epgRetentionDays int, retrievalTime time.Duration) {
-	mgr.Register(JobDefinition{
+func RegisterEPGGatherer(registry Registry, programStore EPGProgramStore, serviceStore EPGServiceStore, epgStreams EPGStreamManager, channels config.ChannelsConfig, epgRetentionDays int, retrievalTime time.Duration) {
+	registry.Register(JobDefinition{
 		Key:          EPGGathererKey,
 		Name:         EPGGathererName,
-		Handler:      epgGathererHandler(mgr, pm, sm, stm, channels, epgRetentionDays, retrievalTime),
+		Handler:      epgGathererHandler(registry, programStore, serviceStore, epgStreams, channels, epgRetentionDays, retrievalTime),
 		IsRerunnable: true,
 		RetryDelays:  []time.Duration{time.Minute, 2 * time.Minute, 4 * time.Minute},
 	})
@@ -43,22 +42,22 @@ type epgNetwork struct {
 	services   []program.ServiceKey
 }
 
-func epgGathererHandler(mgr *JobManager, pm *program.ProgramManager, sm *service.ServiceManager, stm *stream.StreamManager, channels config.ChannelsConfig, epgRetentionDays int, retrievalTime time.Duration) func(context.Context) error {
+func epgGathererHandler(registry Registry, programStore EPGProgramStore, serviceStore EPGServiceStore, epgStreams EPGStreamManager, channels config.ChannelsConfig, epgRetentionDays int, retrievalTime time.Duration) func(context.Context) error {
 	return func(ctx context.Context) error {
-		services, err := sm.GetServices(ctx)
+		storedServices, err := serviceStore.GetServices(ctx)
 		if err != nil {
 			return fmt.Errorf("get services: %w", err)
 		}
-		if len(services) == 0 {
+		if len(storedServices) == 0 {
 			return errors.New("EPG gathering requires scanned services")
 		}
-		grouped := groupServicesByNetwork(services, channels)
+		grouped := groupServicesByNetwork(storedServices, channels)
 		queued := 0
 		for nid, group := range grouped {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
-			enqueued, err := enqueueEPGGatherForNetwork(ctx, mgr, pm, sm, stm, channels, retrievalTime, nid, group.candidates, group.services)
+			enqueued, err := enqueueEPGGatherForNetwork(ctx, registry, programStore, serviceStore, epgStreams, channels, retrievalTime, nid, group.candidates, group.services)
 			if err != nil {
 				return err
 			}
@@ -70,7 +69,7 @@ func epgGathererHandler(mgr *JobManager, pm *program.ProgramManager, sm *service
 
 		if epgRetentionDays > 0 {
 			cutoff := time.Now().Add(-time.Duration(epgRetentionDays) * 24 * time.Hour).UnixMilli()
-			if err := pm.DeleteEndedBefore(ctx, cutoff); err != nil {
+			if err := programStore.DeleteEndedBefore(ctx, cutoff); err != nil {
 				slog.Warn("failed to clean up old EPG data", "err", err)
 			}
 		}
@@ -120,13 +119,13 @@ func groupServicesByNetwork(services []*service.Service, channels config.Channel
 // buildNetworkEPGInputs looks up the channel candidates and services belonging
 // to networkID from the currently stored services. Returns the inputs needed
 // to enqueue or invoke an EPG gather for that network.
-func buildNetworkEPGInputs(ctx context.Context, sm *service.ServiceManager, channels config.ChannelsConfig, networkID uint16) ([]epgCandidate, []program.ServiceKey, error) {
-	services, err := sm.GetServices(ctx)
+func buildNetworkEPGInputs(ctx context.Context, serviceStore EPGServiceStore, channels config.ChannelsConfig, networkID uint16) ([]epgCandidate, []program.ServiceKey, error) {
+	storedServices, err := serviceStore.GetServices(ctx)
 	if err != nil {
 		return nil, nil, fmt.Errorf("get services: %w", err)
 	}
 	byChannel := make(map[string]bool)
-	for _, item := range services {
+	for _, item := range storedServices {
 		if item.NetworkId != networkID {
 			continue
 		}
@@ -145,7 +144,7 @@ func buildNetworkEPGInputs(ctx context.Context, sm *service.ServiceManager, chan
 	}
 	serviceSeen := make(map[program.ServiceKey]bool)
 	var networkServices []program.ServiceKey
-	for _, svc := range services {
+	for _, svc := range storedServices {
 		if svc.NetworkId != networkID {
 			continue
 		}
@@ -164,34 +163,34 @@ func buildNetworkEPGInputs(ctx context.Context, sm *service.ServiceManager, chan
 // want to trigger gathering for a freshly discovered network without waiting
 // for the next cron tick. Returns true when a job was actually enqueued (not
 // already running and not skipped for having no services).
-func enqueueEPGGatherForNetwork(ctx context.Context, mgr *JobManager, pm *program.ProgramManager, sm *service.ServiceManager, stm *stream.StreamManager, channels config.ChannelsConfig, retrievalTime time.Duration, networkID uint16, presetCandidates []epgCandidate, presetServices []program.ServiceKey) (bool, error) {
+func enqueueEPGGatherForNetwork(ctx context.Context, registry Registry, programStore EPGProgramStore, serviceStore EPGServiceStore, epgStreams EPGStreamManager, channels config.ChannelsConfig, retrievalTime time.Duration, networkID uint16, presetCandidates []epgCandidate, presetServices []program.ServiceKey) (bool, error) {
 	var candidates []epgCandidate
-	var services []program.ServiceKey
+	var serviceKeys []program.ServiceKey
 	if len(presetCandidates) > 0 || len(presetServices) > 0 {
 		candidates = presetCandidates
-		services = presetServices
+		serviceKeys = presetServices
 	} else {
 		var err error
-		candidates, services, err = buildNetworkEPGInputs(ctx, sm, channels, networkID)
+		candidates, serviceKeys, err = buildNetworkEPGInputs(ctx, serviceStore, channels, networkID)
 		if err != nil {
 			return false, err
 		}
 	}
-	if len(services) == 0 {
+	if len(serviceKeys) == 0 {
 		return false, nil
 	}
 	nid := networkID
 	networkCandidates := append([]epgCandidate(nil), candidates...)
-	networkServices := append([]program.ServiceKey(nil), services...)
+	networkServices := append([]program.ServiceKey(nil), serviceKeys...)
 	definition := JobDefinition{
 		Key: fmt.Sprintf("epg-gather:nid:%d", nid), Name: fmt.Sprintf("EPG Gather NID %d", nid), IsRerunnable: true,
 		Handler: func(childCtx context.Context) error {
-			return gatherNetworkEPG(childCtx, pm, sm, stm, nid, networkCandidates, networkServices, retrievalTime)
+			return gatherNetworkEPG(childCtx, programStore, serviceStore, epgStreams, nid, networkCandidates, networkServices, retrievalTime)
 		},
 		RetryDelays: []time.Duration{time.Minute, 2 * time.Minute, 4 * time.Minute},
 		RetryIf:     retryableEPGError,
 	}
-	if _, err := mgr.EnqueueDefinition(definition); err != nil {
+	if _, err := registry.EnqueueDefinition(definition); err != nil {
 		if errors.Is(err, ErrJobAlreadyRunning) {
 			return false, nil
 		}
@@ -200,14 +199,14 @@ func enqueueEPGGatherForNetwork(ctx context.Context, mgr *JobManager, pm *progra
 	return true, nil
 }
 
-func gatherNetworkEPG(ctx context.Context, pm *program.ProgramManager, sm *service.ServiceManager, stm *stream.StreamManager, networkID uint16, candidates []epgCandidate, services []program.ServiceKey, retrievalTime time.Duration) error {
-	if len(services) == 0 {
+func gatherNetworkEPG(ctx context.Context, programStore EPGProgramStore, serviceStore EPGServiceStore, epgStreams EPGStreamManager, networkID uint16, candidates []epgCandidate, serviceKeys []program.ServiceKey, retrievalTime time.Duration) error {
+	if len(serviceKeys) == 0 {
 		return fmt.Errorf("network %d has no known services", networkID)
 	}
 	ordered := make([]epgCandidate, 0, len(candidates))
 	active := make(map[epgCandidate]bool, len(candidates))
 	for _, candidate := range candidates {
-		if stm.HasSession(candidate.typ, candidate.channel) {
+		if epgStreams.HasSession(candidate.typ, candidate.channel) {
 			active[candidate] = true
 			ordered = append(ordered, candidate)
 		}
@@ -230,9 +229,9 @@ func gatherNetworkEPG(ctx context.Context, pm *program.ProgramManager, sm *servi
 		// GetOrCreate is non-blocking: if no tuner is free we fail fast and rely on
 		// RetryDelays to back off. We do not want EPG collection to starve live
 		// streams or recording sessions.
-		session, err := stm.GetOrCreate(userCtx, candidate.typ, candidate.channel)
+		session, err := epgStreams.GetOrCreate(userCtx, candidate.typ, candidate.channel)
 		if err == nil {
-			err = collectServiceSnapshots(userCtx, pm, sm, session, services, retrievalTime)
+			err = collectServiceSnapshots(userCtx, programStore, serviceStore, session, serviceKeys, retrievalTime)
 		}
 		if err == nil {
 			slog.Debug("finished network EPG collection", "networkId", networkID, "type", candidate.typ, "channel", candidate.channel)
@@ -253,7 +252,10 @@ func retryableEPGError(err error) bool {
 	return err != nil && !errors.Is(err, processor.ErrMirakcAribRequired)
 }
 
-func collectServiceSnapshots(ctx context.Context, pm *program.ProgramManager, sm *service.ServiceManager, session *stream.ChannelSession, expected []program.ServiceKey, retrievalTime time.Duration) error {
+func collectServiceSnapshots(ctx context.Context, programStore EPGProgramStore, serviceStore EPGServiceStore, session interface {
+	CollectEITS(context.Context, io.Writer) error
+	CollectEITPF(context.Context, io.Writer) error
+}, expected []program.ServiceKey, retrievalTime time.Duration) error {
 	if len(expected) == 0 {
 		return errors.New("collectServiceSnapshots: expected is empty")
 	}
@@ -275,7 +277,7 @@ func collectServiceSnapshots(ctx context.Context, pm *program.ProgramManager, sm
 
 	startedAt := time.Now().UnixMilli()
 	for _, key := range expected {
-		_ = sm.SetEPGAttempt(ctx, key.NetworkID, key.ServiceID, startedAt, "")
+		_ = serviceStore.SetEPGAttempt(ctx, key.NetworkID, key.ServiceID, startedAt, "")
 	}
 	collectCtx, cancel := context.WithTimeout(ctx, retrievalTime)
 	defer cancel()
@@ -342,7 +344,7 @@ func collectServiceSnapshots(ctx context.Context, pm *program.ProgramManager, sm
 				continue
 			}
 			slog.Debug("upserting EIT section", "source", "eitpf", "networkId", section.OriginalNetworkID, "serviceId", section.ServiceID, "tableId", section.TableID, "sectionNumber", section.SectionNumber, "lastSectionNumber", section.LastSectionNumber, "version", section.VersionNumber, "events", len(section.Events))
-			if err := pm.UpsertEITSection(collectCtx, &section); err != nil {
+			if err := programStore.UpsertEITSection(collectCtx, &section); err != nil {
 				pfErrCh <- err
 				return
 			}
@@ -368,7 +370,7 @@ func collectServiceSnapshots(ctx context.Context, pm *program.ProgramManager, sm
 				now := time.Now().UnixMilli()
 				msg := result.err.Error()
 				for _, key := range expected {
-					_ = sm.SetEPGAttempt(ctx, key.NetworkID, key.ServiceID, now, msg)
+					_ = serviceStore.SetEPGAttempt(ctx, key.NetworkID, key.ServiceID, now, msg)
 				}
 				return result.err
 			}
@@ -416,12 +418,12 @@ func collectServiceSnapshots(ctx context.Context, pm *program.ProgramManager, sm
 					"report", snapshot.CompletionReport(key))
 			}
 			slog.Info("merging EPG collection", "networkId", key.NetworkID, "serviceId", key.ServiceID, "programs", len(programs))
-			if err := pm.UpsertPrograms(ctx, programs); err != nil {
-				_ = sm.SetEPGAttempt(ctx, key.NetworkID, key.ServiceID, now, err.Error())
+			if err := programStore.UpsertPrograms(ctx, programs); err != nil {
+				_ = serviceStore.SetEPGAttempt(ctx, key.NetworkID, key.ServiceID, now, err.Error())
 				result = errors.Join(result, fmt.Errorf("service %d: merge: %w", key.ServiceID, err))
 				continue
 			}
-			if err := sm.SetEPGSuccess(ctx, key.NetworkID, key.ServiceID, now); err != nil {
+			if err := serviceStore.SetEPGSuccess(ctx, key.NetworkID, key.ServiceID, now); err != nil {
 				result = errors.Join(result, err)
 			}
 		} else {
@@ -430,7 +432,7 @@ func collectServiceSnapshots(ctx context.Context, pm *program.ProgramManager, sm
 				"serviceId", key.ServiceID,
 				"report", snapshot.CompletionReport(key))
 			err := fmt.Errorf("service %d EITS incomplete", key.ServiceID)
-			_ = sm.SetEPGAttempt(ctx, key.NetworkID, key.ServiceID, now, err.Error())
+			_ = serviceStore.SetEPGAttempt(ctx, key.NetworkID, key.ServiceID, now, err.Error())
 			result = errors.Join(result, err)
 		}
 	}
