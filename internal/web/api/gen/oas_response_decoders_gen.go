@@ -2635,7 +2635,7 @@ func decodeIptvDiscoverJSONGetResponse(resp *http.Response) (res IptvDiscoverJSO
 			}
 			d := jx.DecodeBytes(buf)
 
-			var response IptvDiscoverJSONGetOKApplicationJSON
+			var response IptvDiscover
 			if err := func() error {
 				if err := response.Decode(d); err != nil {
 					return err
@@ -2735,6 +2735,15 @@ func decodeIptvLineupJSONGetResponse(resp *http.Response) (res IptvLineupJSONGet
 				}
 				return res, err
 			}
+			// Validate response.
+			if err := func() error {
+				if err := response.Validate(); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return res, errors.Wrap(err, "validate")
+			}
 			return &response, nil
 		default:
 			return res, validate.InvalidContentType(ct)
@@ -2801,7 +2810,7 @@ func decodeIptvLineupStatusJSONGetResponse(resp *http.Response) (res IptvLineupS
 			}
 			d := jx.DecodeBytes(buf)
 
-			var response IptvLineupStatusJSONGetOKApplicationJSON
+			var response IptvLineupStatus
 			if err := func() error {
 				if err := response.Decode(d); err != nil {
 					return err
@@ -2817,6 +2826,15 @@ func decodeIptvLineupStatusJSONGetResponse(resp *http.Response) (res IptvLineupS
 					Err:         err,
 				}
 				return res, err
+			}
+			// Validate response.
+			if err := func() error {
+				if err := response.Validate(); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return res, errors.Wrap(err, "validate")
 			}
 			return &response, nil
 		default:

@@ -14,6 +14,8 @@ type RequestInfo struct {
 	RemoteAddr string
 	UserAgent  string
 	URL        string
+	Scheme     string
+	Host       string
 }
 
 func RequestInfoMiddleware() *Middleware {
@@ -25,10 +27,29 @@ func RequestInfoMiddleware() *Middleware {
 					RemoteAddr: r.RemoteAddr,
 					UserAgent:  r.UserAgent(),
 					URL:        r.URL.String(),
+					Scheme:     requestScheme(r),
+					Host:       requestHost(r),
 				})))
 			})
 		},
 	}
+}
+
+func requestScheme(r *http.Request) string {
+	if scheme := r.Header.Get("X-Forwarded-Proto"); scheme != "" {
+		return scheme
+	}
+	if r.TLS != nil {
+		return "https"
+	}
+	return "http"
+}
+
+func requestHost(r *http.Request) string {
+	if host := r.Header.Get("X-Forwarded-Host"); host != "" {
+		return host
+	}
+	return r.Host
 }
 
 func GetRequestInfo(ctx context.Context) (*RequestInfo, error) {

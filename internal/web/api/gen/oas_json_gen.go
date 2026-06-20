@@ -2080,51 +2080,395 @@ func (s *GetTunersOKApplicationJSON) UnmarshalJSON(data []byte) error {
 	return s.Decode(d)
 }
 
-// Encode encodes IptvDiscoverJSONGetOKApplicationJSON as json.
-func (s IptvDiscoverJSONGetOKApplicationJSON) Encode(e *jx.Encoder) {
-	unwrapped := string(s)
-
-	e.Str(unwrapped)
+// Encode implements json.Marshaler.
+func (s *IptvDiscover) Encode(e *jx.Encoder) {
+	e.ObjStart()
+	s.encodeFields(e)
+	e.ObjEnd()
 }
 
-// Decode decodes IptvDiscoverJSONGetOKApplicationJSON from json.
-func (s *IptvDiscoverJSONGetOKApplicationJSON) Decode(d *jx.Decoder) error {
-	if s == nil {
-		return errors.New("invalid: unable to decode IptvDiscoverJSONGetOKApplicationJSON to nil")
+// encodeFields encodes fields.
+func (s *IptvDiscover) encodeFields(e *jx.Encoder) {
+	{
+		e.FieldStart("FriendlyName")
+		e.Str(s.FriendlyName)
 	}
-	var unwrapped string
-	if err := func() error {
-		v, err := d.Str()
-		unwrapped = string(v)
-		if err != nil {
-			return err
+	{
+		e.FieldStart("Manufacturer")
+		e.Str(s.Manufacturer)
+	}
+	{
+		e.FieldStart("ModelNumber")
+		e.Str(s.ModelNumber)
+	}
+	{
+		e.FieldStart("FirmwareName")
+		e.Str(s.FirmwareName)
+	}
+	{
+		e.FieldStart("TunerCount")
+		e.Int(s.TunerCount)
+	}
+	{
+		e.FieldStart("FirmwareVersion")
+		e.Str(s.FirmwareVersion)
+	}
+	{
+		e.FieldStart("DeviceID")
+		e.Str(s.DeviceID)
+	}
+	{
+		e.FieldStart("DeviceAuth")
+		e.Str(s.DeviceAuth)
+	}
+	{
+		e.FieldStart("BaseURL")
+		e.Str(s.BaseURL)
+	}
+	{
+		e.FieldStart("LineupURL")
+		e.Str(s.LineupURL)
+	}
+}
+
+var jsonFieldsNameOfIptvDiscover = [10]string{
+	0: "FriendlyName",
+	1: "Manufacturer",
+	2: "ModelNumber",
+	3: "FirmwareName",
+	4: "TunerCount",
+	5: "FirmwareVersion",
+	6: "DeviceID",
+	7: "DeviceAuth",
+	8: "BaseURL",
+	9: "LineupURL",
+}
+
+// Decode decodes IptvDiscover from json.
+func (s *IptvDiscover) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode IptvDiscover to nil")
+	}
+	var requiredBitSet [2]uint8
+
+	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
+		switch string(k) {
+		case "FriendlyName":
+			requiredBitSet[0] |= 1 << 0
+			if err := func() error {
+				v, err := d.Str()
+				s.FriendlyName = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"FriendlyName\"")
+			}
+		case "Manufacturer":
+			requiredBitSet[0] |= 1 << 1
+			if err := func() error {
+				v, err := d.Str()
+				s.Manufacturer = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"Manufacturer\"")
+			}
+		case "ModelNumber":
+			requiredBitSet[0] |= 1 << 2
+			if err := func() error {
+				v, err := d.Str()
+				s.ModelNumber = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"ModelNumber\"")
+			}
+		case "FirmwareName":
+			requiredBitSet[0] |= 1 << 3
+			if err := func() error {
+				v, err := d.Str()
+				s.FirmwareName = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"FirmwareName\"")
+			}
+		case "TunerCount":
+			requiredBitSet[0] |= 1 << 4
+			if err := func() error {
+				v, err := d.Int()
+				s.TunerCount = int(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"TunerCount\"")
+			}
+		case "FirmwareVersion":
+			requiredBitSet[0] |= 1 << 5
+			if err := func() error {
+				v, err := d.Str()
+				s.FirmwareVersion = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"FirmwareVersion\"")
+			}
+		case "DeviceID":
+			requiredBitSet[0] |= 1 << 6
+			if err := func() error {
+				v, err := d.Str()
+				s.DeviceID = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"DeviceID\"")
+			}
+		case "DeviceAuth":
+			requiredBitSet[0] |= 1 << 7
+			if err := func() error {
+				v, err := d.Str()
+				s.DeviceAuth = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"DeviceAuth\"")
+			}
+		case "BaseURL":
+			requiredBitSet[1] |= 1 << 0
+			if err := func() error {
+				v, err := d.Str()
+				s.BaseURL = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"BaseURL\"")
+			}
+		case "LineupURL":
+			requiredBitSet[1] |= 1 << 1
+			if err := func() error {
+				v, err := d.Str()
+				s.LineupURL = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"LineupURL\"")
+			}
+		default:
+			return d.Skip()
 		}
 		return nil
-	}(); err != nil {
-		return errors.Wrap(err, "alias")
+	}); err != nil {
+		return errors.Wrap(err, "decode IptvDiscover")
 	}
-	*s = IptvDiscoverJSONGetOKApplicationJSON(unwrapped)
+	// Validate required fields.
+	var failures []validate.FieldError
+	for i, mask := range [2]uint8{
+		0b11111111,
+		0b00000011,
+	} {
+		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
+			// Mask only required fields and check equality to mask using XOR.
+			//
+			// If XOR result is not zero, result is not equal to expected, so some fields are missed.
+			// Bits of fields which would be set are actually bits of missed fields.
+			missed := bits.OnesCount8(result)
+			for bitN := 0; bitN < missed; bitN++ {
+				bitIdx := bits.TrailingZeros8(result)
+				fieldIdx := i*8 + bitIdx
+				var name string
+				if fieldIdx < len(jsonFieldsNameOfIptvDiscover) {
+					name = jsonFieldsNameOfIptvDiscover[fieldIdx]
+				} else {
+					name = strconv.Itoa(fieldIdx)
+				}
+				failures = append(failures, validate.FieldError{
+					Name:  name,
+					Error: validate.ErrFieldRequired,
+				})
+				// Reset bit.
+				result &^= 1 << bitIdx
+			}
+		}
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+
 	return nil
 }
 
 // MarshalJSON implements stdjson.Marshaler.
-func (s IptvDiscoverJSONGetOKApplicationJSON) MarshalJSON() ([]byte, error) {
+func (s *IptvDiscover) MarshalJSON() ([]byte, error) {
 	e := jx.Encoder{}
 	s.Encode(&e)
 	return e.Bytes(), nil
 }
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
-func (s *IptvDiscoverJSONGetOKApplicationJSON) UnmarshalJSON(data []byte) error {
+func (s *IptvDiscover) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode implements json.Marshaler.
+func (s *IptvLineupItem) Encode(e *jx.Encoder) {
+	e.ObjStart()
+	s.encodeFields(e)
+	e.ObjEnd()
+}
+
+// encodeFields encodes fields.
+func (s *IptvLineupItem) encodeFields(e *jx.Encoder) {
+	{
+		e.FieldStart("GuideNumber")
+		e.Str(s.GuideNumber)
+	}
+	{
+		e.FieldStart("GuideName")
+		e.Str(s.GuideName)
+	}
+	{
+		e.FieldStart("URL")
+		e.Str(s.URL)
+	}
+}
+
+var jsonFieldsNameOfIptvLineupItem = [3]string{
+	0: "GuideNumber",
+	1: "GuideName",
+	2: "URL",
+}
+
+// Decode decodes IptvLineupItem from json.
+func (s *IptvLineupItem) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode IptvLineupItem to nil")
+	}
+	var requiredBitSet [1]uint8
+
+	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
+		switch string(k) {
+		case "GuideNumber":
+			requiredBitSet[0] |= 1 << 0
+			if err := func() error {
+				v, err := d.Str()
+				s.GuideNumber = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"GuideNumber\"")
+			}
+		case "GuideName":
+			requiredBitSet[0] |= 1 << 1
+			if err := func() error {
+				v, err := d.Str()
+				s.GuideName = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"GuideName\"")
+			}
+		case "URL":
+			requiredBitSet[0] |= 1 << 2
+			if err := func() error {
+				v, err := d.Str()
+				s.URL = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"URL\"")
+			}
+		default:
+			return d.Skip()
+		}
+		return nil
+	}); err != nil {
+		return errors.Wrap(err, "decode IptvLineupItem")
+	}
+	// Validate required fields.
+	var failures []validate.FieldError
+	for i, mask := range [1]uint8{
+		0b00000111,
+	} {
+		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
+			// Mask only required fields and check equality to mask using XOR.
+			//
+			// If XOR result is not zero, result is not equal to expected, so some fields are missed.
+			// Bits of fields which would be set are actually bits of missed fields.
+			missed := bits.OnesCount8(result)
+			for bitN := 0; bitN < missed; bitN++ {
+				bitIdx := bits.TrailingZeros8(result)
+				fieldIdx := i*8 + bitIdx
+				var name string
+				if fieldIdx < len(jsonFieldsNameOfIptvLineupItem) {
+					name = jsonFieldsNameOfIptvLineupItem[fieldIdx]
+				} else {
+					name = strconv.Itoa(fieldIdx)
+				}
+				failures = append(failures, validate.FieldError{
+					Name:  name,
+					Error: validate.ErrFieldRequired,
+				})
+				// Reset bit.
+				result &^= 1 << bitIdx
+			}
+		}
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *IptvLineupItem) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *IptvLineupItem) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }
 
 // Encode encodes IptvLineupJSONGetOKApplicationJSON as json.
 func (s IptvLineupJSONGetOKApplicationJSON) Encode(e *jx.Encoder) {
-	unwrapped := string(s)
+	unwrapped := []IptvLineupItem(s)
 
-	e.Str(unwrapped)
+	e.ArrStart()
+	for _, elem := range unwrapped {
+		elem.Encode(e)
+	}
+	e.ArrEnd()
 }
 
 // Decode decodes IptvLineupJSONGetOKApplicationJSON from json.
@@ -2132,11 +2476,17 @@ func (s *IptvLineupJSONGetOKApplicationJSON) Decode(d *jx.Decoder) error {
 	if s == nil {
 		return errors.New("invalid: unable to decode IptvLineupJSONGetOKApplicationJSON to nil")
 	}
-	var unwrapped string
+	var unwrapped []IptvLineupItem
 	if err := func() error {
-		v, err := d.Str()
-		unwrapped = string(v)
-		if err != nil {
+		unwrapped = make([]IptvLineupItem, 0)
+		if err := d.Arr(func(d *jx.Decoder) error {
+			var elem IptvLineupItem
+			if err := elem.Decode(d); err != nil {
+				return err
+			}
+			unwrapped = append(unwrapped, elem)
+			return nil
+		}); err != nil {
 			return err
 		}
 		return nil
@@ -2160,42 +2510,161 @@ func (s *IptvLineupJSONGetOKApplicationJSON) UnmarshalJSON(data []byte) error {
 	return s.Decode(d)
 }
 
-// Encode encodes IptvLineupStatusJSONGetOKApplicationJSON as json.
-func (s IptvLineupStatusJSONGetOKApplicationJSON) Encode(e *jx.Encoder) {
-	unwrapped := string(s)
-
-	e.Str(unwrapped)
+// Encode implements json.Marshaler.
+func (s *IptvLineupStatus) Encode(e *jx.Encoder) {
+	e.ObjStart()
+	s.encodeFields(e)
+	e.ObjEnd()
 }
 
-// Decode decodes IptvLineupStatusJSONGetOKApplicationJSON from json.
-func (s *IptvLineupStatusJSONGetOKApplicationJSON) Decode(d *jx.Decoder) error {
-	if s == nil {
-		return errors.New("invalid: unable to decode IptvLineupStatusJSONGetOKApplicationJSON to nil")
+// encodeFields encodes fields.
+func (s *IptvLineupStatus) encodeFields(e *jx.Encoder) {
+	{
+		e.FieldStart("ScanInProgress")
+		e.Int(s.ScanInProgress)
 	}
-	var unwrapped string
-	if err := func() error {
-		v, err := d.Str()
-		unwrapped = string(v)
-		if err != nil {
-			return err
+	{
+		e.FieldStart("ScanPossible")
+		e.Int(s.ScanPossible)
+	}
+	{
+		e.FieldStart("Source")
+		e.Str(s.Source)
+	}
+	{
+		e.FieldStart("SourceList")
+		e.ArrStart()
+		for _, elem := range s.SourceList {
+			e.Str(elem)
+		}
+		e.ArrEnd()
+	}
+}
+
+var jsonFieldsNameOfIptvLineupStatus = [4]string{
+	0: "ScanInProgress",
+	1: "ScanPossible",
+	2: "Source",
+	3: "SourceList",
+}
+
+// Decode decodes IptvLineupStatus from json.
+func (s *IptvLineupStatus) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode IptvLineupStatus to nil")
+	}
+	var requiredBitSet [1]uint8
+
+	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
+		switch string(k) {
+		case "ScanInProgress":
+			requiredBitSet[0] |= 1 << 0
+			if err := func() error {
+				v, err := d.Int()
+				s.ScanInProgress = int(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"ScanInProgress\"")
+			}
+		case "ScanPossible":
+			requiredBitSet[0] |= 1 << 1
+			if err := func() error {
+				v, err := d.Int()
+				s.ScanPossible = int(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"ScanPossible\"")
+			}
+		case "Source":
+			requiredBitSet[0] |= 1 << 2
+			if err := func() error {
+				v, err := d.Str()
+				s.Source = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"Source\"")
+			}
+		case "SourceList":
+			requiredBitSet[0] |= 1 << 3
+			if err := func() error {
+				s.SourceList = make([]string, 0)
+				if err := d.Arr(func(d *jx.Decoder) error {
+					var elem string
+					v, err := d.Str()
+					elem = string(v)
+					if err != nil {
+						return err
+					}
+					s.SourceList = append(s.SourceList, elem)
+					return nil
+				}); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"SourceList\"")
+			}
+		default:
+			return d.Skip()
 		}
 		return nil
-	}(); err != nil {
-		return errors.Wrap(err, "alias")
+	}); err != nil {
+		return errors.Wrap(err, "decode IptvLineupStatus")
 	}
-	*s = IptvLineupStatusJSONGetOKApplicationJSON(unwrapped)
+	// Validate required fields.
+	var failures []validate.FieldError
+	for i, mask := range [1]uint8{
+		0b00001111,
+	} {
+		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
+			// Mask only required fields and check equality to mask using XOR.
+			//
+			// If XOR result is not zero, result is not equal to expected, so some fields are missed.
+			// Bits of fields which would be set are actually bits of missed fields.
+			missed := bits.OnesCount8(result)
+			for bitN := 0; bitN < missed; bitN++ {
+				bitIdx := bits.TrailingZeros8(result)
+				fieldIdx := i*8 + bitIdx
+				var name string
+				if fieldIdx < len(jsonFieldsNameOfIptvLineupStatus) {
+					name = jsonFieldsNameOfIptvLineupStatus[fieldIdx]
+				} else {
+					name = strconv.Itoa(fieldIdx)
+				}
+				failures = append(failures, validate.FieldError{
+					Name:  name,
+					Error: validate.ErrFieldRequired,
+				})
+				// Reset bit.
+				result &^= 1 << bitIdx
+			}
+		}
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+
 	return nil
 }
 
 // MarshalJSON implements stdjson.Marshaler.
-func (s IptvLineupStatusJSONGetOKApplicationJSON) MarshalJSON() ([]byte, error) {
+func (s *IptvLineupStatus) MarshalJSON() ([]byte, error) {
 	e := jx.Encoder{}
 	s.Encode(&e)
 	return e.Bytes(), nil
 }
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
-func (s *IptvLineupStatusJSONGetOKApplicationJSON) UnmarshalJSON(data []byte) error {
+func (s *IptvLineupStatus) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }

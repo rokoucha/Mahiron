@@ -295,7 +295,9 @@ paths:
           content:
             application/json:
               schema:
-                type: string
+                type: array
+                items:
+                  $ref: "#/components/schemas/IptvLineupItem"
         default:
           description: Unexpected Error
           content:
@@ -313,7 +315,7 @@ paths:
           content:
             application/json:
               schema:
-                type: string
+                $ref: "#/components/schemas/IptvLineupStatus"
         default:
           description: Unexpected Error
           content:
@@ -331,7 +333,7 @@ paths:
           content:
             application/json:
               schema:
-                type: string
+                $ref: "#/components/schemas/IptvDiscover"
         default:
           description: Unexpected Error
           content:
@@ -1522,6 +1524,71 @@ components:
           type: integer
         eventId:
           type: integer
+    IptvDiscover:
+      required:
+        - FriendlyName
+        - Manufacturer
+        - ModelNumber
+        - FirmwareName
+        - TunerCount
+        - FirmwareVersion
+        - DeviceID
+        - DeviceAuth
+        - BaseURL
+        - LineupURL
+      type: object
+      properties:
+        FriendlyName:
+          type: string
+        Manufacturer:
+          type: string
+        ModelNumber:
+          type: string
+        FirmwareName:
+          type: string
+        TunerCount:
+          type: integer
+        FirmwareVersion:
+          type: string
+        DeviceID:
+          type: string
+        DeviceAuth:
+          type: string
+        BaseURL:
+          type: string
+        LineupURL:
+          type: string
+    IptvLineupItem:
+      required:
+        - GuideNumber
+        - GuideName
+        - URL
+      type: object
+      properties:
+        GuideNumber:
+          type: string
+        GuideName:
+          type: string
+        URL:
+          type: string
+    IptvLineupStatus:
+      required:
+        - ScanInProgress
+        - ScanPossible
+        - Source
+        - SourceList
+      type: object
+      properties:
+        ScanInProgress:
+          type: integer
+        ScanPossible:
+          type: integer
+        Source:
+          type: string
+        SourceList:
+          type: array
+          items:
+            type: string
     TunerDevice:
       required:
         - command

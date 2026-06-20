@@ -1478,7 +1478,7 @@ func encodeGetTunersResponse(response GetTunersRes, w http.ResponseWriter, span 
 
 func encodeIptvDiscoverJSONGetResponse(response IptvDiscoverJSONGetRes, w http.ResponseWriter, span trace.Span) error {
 	switch response := response.(type) {
-	case *IptvDiscoverJSONGetOKApplicationJSON:
+	case *IptvDiscover:
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(200)
 
@@ -1562,7 +1562,7 @@ func encodeIptvLineupJSONGetResponse(response IptvLineupJSONGetRes, w http.Respo
 
 func encodeIptvLineupStatusJSONGetResponse(response IptvLineupStatusJSONGetRes, w http.ResponseWriter, span trace.Span) error {
 	switch response := response.(type) {
-	case *IptvLineupStatusJSONGetOKApplicationJSON:
+	case *IptvLineupStatus:
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(200)
 

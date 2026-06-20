@@ -213,23 +213,23 @@ func (h *Handler) GetTuners(ctx context.Context) (apigen.GetTunersRes, error) {
 }
 
 func (h *Handler) IptvDiscoverJSONGet(ctx context.Context) (apigen.IptvDiscoverJSONGetRes, error) {
-	return notImplemented("GET /iptv/discover.json is not implemented"), nil
+	return IptvDiscoverJSONGet(ctx, h)
 }
 
 func (h *Handler) IptvLineupJSONGet(ctx context.Context) (apigen.IptvLineupJSONGetRes, error) {
-	return notImplemented("GET /iptv/lineup.json is not implemented"), nil
+	return IptvLineupJSONGet(ctx, h)
 }
 
 func (h *Handler) IptvLineupStatusJSONGet(ctx context.Context) (apigen.IptvLineupStatusJSONGetRes, error) {
-	return notImplemented("GET /iptv/lineup_status.json is not implemented"), nil
+	return IptvLineupStatusJSONGet(ctx, h)
 }
 
 func (h *Handler) IptvPlaylistGet(ctx context.Context) (apigen.IptvPlaylistGetRes, error) {
-	return notImplemented("GET /iptv/playlist.m3u8 is not implemented"), nil
+	return IptvPlaylistGet(ctx, h)
 }
 
 func (h *Handler) IptvXmltvGet(ctx context.Context) (apigen.IptvXmltvGetRes, error) {
-	return notImplemented("GET /iptv/xmltv.xml is not implemented"), nil
+	return IptvXmltvGet(ctx, h)
 }
 
 func (h *Handler) KillTunerProcess(ctx context.Context, params apigen.KillTunerProcessParams) (apigen.KillTunerProcessRes, error) {

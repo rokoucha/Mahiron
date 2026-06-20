@@ -1298,17 +1298,212 @@ type GetTunersOKApplicationJSON []TunerDevice
 
 func (*GetTunersOKApplicationJSON) getTunersRes() {}
 
-type IptvDiscoverJSONGetOKApplicationJSON string
+// Ref: #/components/schemas/IptvDiscover
+type IptvDiscover struct {
+	FriendlyName    string `json:"FriendlyName"`
+	Manufacturer    string `json:"Manufacturer"`
+	ModelNumber     string `json:"ModelNumber"`
+	FirmwareName    string `json:"FirmwareName"`
+	TunerCount      int    `json:"TunerCount"`
+	FirmwareVersion string `json:"FirmwareVersion"`
+	DeviceID        string `json:"DeviceID"`
+	DeviceAuth      string `json:"DeviceAuth"`
+	BaseURL         string `json:"BaseURL"`
+	LineupURL       string `json:"LineupURL"`
+}
 
-func (*IptvDiscoverJSONGetOKApplicationJSON) iptvDiscoverJSONGetRes() {}
+// GetFriendlyName returns the value of FriendlyName.
+func (s *IptvDiscover) GetFriendlyName() string {
+	return s.FriendlyName
+}
 
-type IptvLineupJSONGetOKApplicationJSON string
+// GetManufacturer returns the value of Manufacturer.
+func (s *IptvDiscover) GetManufacturer() string {
+	return s.Manufacturer
+}
+
+// GetModelNumber returns the value of ModelNumber.
+func (s *IptvDiscover) GetModelNumber() string {
+	return s.ModelNumber
+}
+
+// GetFirmwareName returns the value of FirmwareName.
+func (s *IptvDiscover) GetFirmwareName() string {
+	return s.FirmwareName
+}
+
+// GetTunerCount returns the value of TunerCount.
+func (s *IptvDiscover) GetTunerCount() int {
+	return s.TunerCount
+}
+
+// GetFirmwareVersion returns the value of FirmwareVersion.
+func (s *IptvDiscover) GetFirmwareVersion() string {
+	return s.FirmwareVersion
+}
+
+// GetDeviceID returns the value of DeviceID.
+func (s *IptvDiscover) GetDeviceID() string {
+	return s.DeviceID
+}
+
+// GetDeviceAuth returns the value of DeviceAuth.
+func (s *IptvDiscover) GetDeviceAuth() string {
+	return s.DeviceAuth
+}
+
+// GetBaseURL returns the value of BaseURL.
+func (s *IptvDiscover) GetBaseURL() string {
+	return s.BaseURL
+}
+
+// GetLineupURL returns the value of LineupURL.
+func (s *IptvDiscover) GetLineupURL() string {
+	return s.LineupURL
+}
+
+// SetFriendlyName sets the value of FriendlyName.
+func (s *IptvDiscover) SetFriendlyName(val string) {
+	s.FriendlyName = val
+}
+
+// SetManufacturer sets the value of Manufacturer.
+func (s *IptvDiscover) SetManufacturer(val string) {
+	s.Manufacturer = val
+}
+
+// SetModelNumber sets the value of ModelNumber.
+func (s *IptvDiscover) SetModelNumber(val string) {
+	s.ModelNumber = val
+}
+
+// SetFirmwareName sets the value of FirmwareName.
+func (s *IptvDiscover) SetFirmwareName(val string) {
+	s.FirmwareName = val
+}
+
+// SetTunerCount sets the value of TunerCount.
+func (s *IptvDiscover) SetTunerCount(val int) {
+	s.TunerCount = val
+}
+
+// SetFirmwareVersion sets the value of FirmwareVersion.
+func (s *IptvDiscover) SetFirmwareVersion(val string) {
+	s.FirmwareVersion = val
+}
+
+// SetDeviceID sets the value of DeviceID.
+func (s *IptvDiscover) SetDeviceID(val string) {
+	s.DeviceID = val
+}
+
+// SetDeviceAuth sets the value of DeviceAuth.
+func (s *IptvDiscover) SetDeviceAuth(val string) {
+	s.DeviceAuth = val
+}
+
+// SetBaseURL sets the value of BaseURL.
+func (s *IptvDiscover) SetBaseURL(val string) {
+	s.BaseURL = val
+}
+
+// SetLineupURL sets the value of LineupURL.
+func (s *IptvDiscover) SetLineupURL(val string) {
+	s.LineupURL = val
+}
+
+func (*IptvDiscover) iptvDiscoverJSONGetRes() {}
+
+// Ref: #/components/schemas/IptvLineupItem
+type IptvLineupItem struct {
+	GuideNumber string `json:"GuideNumber"`
+	GuideName   string `json:"GuideName"`
+	URL         string `json:"URL"`
+}
+
+// GetGuideNumber returns the value of GuideNumber.
+func (s *IptvLineupItem) GetGuideNumber() string {
+	return s.GuideNumber
+}
+
+// GetGuideName returns the value of GuideName.
+func (s *IptvLineupItem) GetGuideName() string {
+	return s.GuideName
+}
+
+// GetURL returns the value of URL.
+func (s *IptvLineupItem) GetURL() string {
+	return s.URL
+}
+
+// SetGuideNumber sets the value of GuideNumber.
+func (s *IptvLineupItem) SetGuideNumber(val string) {
+	s.GuideNumber = val
+}
+
+// SetGuideName sets the value of GuideName.
+func (s *IptvLineupItem) SetGuideName(val string) {
+	s.GuideName = val
+}
+
+// SetURL sets the value of URL.
+func (s *IptvLineupItem) SetURL(val string) {
+	s.URL = val
+}
+
+type IptvLineupJSONGetOKApplicationJSON []IptvLineupItem
 
 func (*IptvLineupJSONGetOKApplicationJSON) iptvLineupJSONGetRes() {}
 
-type IptvLineupStatusJSONGetOKApplicationJSON string
+// Ref: #/components/schemas/IptvLineupStatus
+type IptvLineupStatus struct {
+	ScanInProgress int      `json:"ScanInProgress"`
+	ScanPossible   int      `json:"ScanPossible"`
+	Source         string   `json:"Source"`
+	SourceList     []string `json:"SourceList"`
+}
 
-func (*IptvLineupStatusJSONGetOKApplicationJSON) iptvLineupStatusJSONGetRes() {}
+// GetScanInProgress returns the value of ScanInProgress.
+func (s *IptvLineupStatus) GetScanInProgress() int {
+	return s.ScanInProgress
+}
+
+// GetScanPossible returns the value of ScanPossible.
+func (s *IptvLineupStatus) GetScanPossible() int {
+	return s.ScanPossible
+}
+
+// GetSource returns the value of Source.
+func (s *IptvLineupStatus) GetSource() string {
+	return s.Source
+}
+
+// GetSourceList returns the value of SourceList.
+func (s *IptvLineupStatus) GetSourceList() []string {
+	return s.SourceList
+}
+
+// SetScanInProgress sets the value of ScanInProgress.
+func (s *IptvLineupStatus) SetScanInProgress(val int) {
+	s.ScanInProgress = val
+}
+
+// SetScanPossible sets the value of ScanPossible.
+func (s *IptvLineupStatus) SetScanPossible(val int) {
+	s.ScanPossible = val
+}
+
+// SetSource sets the value of Source.
+func (s *IptvLineupStatus) SetSource(val string) {
+	s.Source = val
+}
+
+// SetSourceList sets the value of SourceList.
+func (s *IptvLineupStatus) SetSourceList(val []string) {
+	s.SourceList = val
+}
+
+func (*IptvLineupStatus) iptvLineupStatusJSONGetRes() {}
 
 type IptvPlaylistGetOK struct {
 	Data io.Reader
