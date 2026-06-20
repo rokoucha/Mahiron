@@ -5,26 +5,36 @@ import (
 	"reflect"
 	"sync"
 	"time"
-
-	"github.com/21S1298001/Mahiron5/internal/eventhub"
 )
 
 const programEventDelay = time.Second
 
+const (
+	eventTypeCreate = "create"
+	eventTypeUpdate = "update"
+	eventTypeRemove = "remove"
+)
+
+type eventPublisher interface {
+	PublishProgramEvent(typ string, p *Program)
+	PublishProgramRemoveEvent(id int64)
+}
+
 type ProgramManager struct {
 	store      ProgramStore
-	events     eventhub.Publisher
+	events     eventPublisher
 	eventMu    sync.Mutex
 	eventTimer *time.Timer
 	eventQueue []programEvent
 }
 
 type programEvent struct {
-	typ  string
-	data any
+	typ      string
+	program  *Program
+	removeID int64
 }
 
-func NewProgramManager(store ProgramStore, events ...eventhub.Publisher) *ProgramManager {
+func NewProgramManager(store ProgramStore, events ...eventPublisher) *ProgramManager {
 	m := &ProgramManager{store: store}
 	if len(events) > 0 {
 		m.events = events[0]
@@ -56,9 +66,9 @@ func (m *ProgramManager) UpsertPrograms(ctx context.Context, programs []*Program
 		existing, ok := before[p.ID]
 		switch {
 		case !ok:
-			m.enqueueEvent(eventhub.TypeCreate, p)
+			m.enqueueProgramEvent(eventTypeCreate, p)
 		case !reflect.DeepEqual(existing, p):
-			m.enqueueEvent(eventhub.TypeUpdate, p)
+			m.enqueueProgramEvent(eventTypeUpdate, p)
 		}
 	}
 	return nil
@@ -87,7 +97,7 @@ func (m *ProgramManager) DeleteEndedBefore(ctx context.Context, cutoff int64) er
 		return err
 	}
 	for _, id := range removed {
-		m.enqueueEvent(eventhub.TypeRemove, map[string]int64{"id": id})
+		m.enqueueProgramRemoveEvent(id)
 	}
 	return nil
 }
@@ -114,26 +124,37 @@ func (m *ProgramManager) ReplaceServicePrograms(ctx context.Context, networkID, 
 		delete(before, p.ID)
 		switch {
 		case !ok:
-			m.enqueueEvent(eventhub.TypeCreate, p)
+			m.enqueueProgramEvent(eventTypeCreate, p)
 		case !reflect.DeepEqual(existing, p):
-			m.enqueueEvent(eventhub.TypeUpdate, p)
+			m.enqueueProgramEvent(eventTypeUpdate, p)
 		}
 	}
 	for id := range before {
-		m.enqueueEvent(eventhub.TypeRemove, map[string]int64{"id": id})
+		m.enqueueProgramRemoveEvent(id)
 	}
 	return nil
 }
 
 func (m *ProgramManager) Count(ctx context.Context) (int, error) { return m.store.Count(ctx) }
 
-func (m *ProgramManager) enqueueEvent(typ string, data any) {
+func (m *ProgramManager) enqueueProgramEvent(typ string, p *Program) {
 	if m.events == nil {
 		return
 	}
+	m.enqueueEvent(programEvent{typ: typ, program: p})
+}
+
+func (m *ProgramManager) enqueueProgramRemoveEvent(id int64) {
+	if m.events == nil {
+		return
+	}
+	m.enqueueEvent(programEvent{typ: eventTypeRemove, removeID: id})
+}
+
+func (m *ProgramManager) enqueueEvent(event programEvent) {
 	m.eventMu.Lock()
 	defer m.eventMu.Unlock()
-	m.eventQueue = append(m.eventQueue, programEvent{typ: typ, data: data})
+	m.eventQueue = append(m.eventQueue, event)
 	if m.eventTimer != nil {
 		m.eventTimer.Reset(programEventDelay)
 		return
@@ -149,7 +170,11 @@ func (m *ProgramManager) flushEvents() {
 	m.eventMu.Unlock()
 
 	for _, event := range queue {
-		m.events.PublishEvent(eventhub.ResourceProgram, event.typ, event.data)
+		if event.typ == eventTypeRemove {
+			m.events.PublishProgramRemoveEvent(event.removeID)
+		} else {
+			m.events.PublishProgramEvent(event.typ, event.program)
+		}
 		time.Sleep(10 * time.Millisecond)
 	}
 }

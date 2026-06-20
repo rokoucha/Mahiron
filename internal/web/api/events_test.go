@@ -9,13 +9,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/21S1298001/Mahiron5/internal/eventhub"
+	"github.com/21S1298001/Mahiron5/internal/event"
 	apigen "github.com/21S1298001/Mahiron5/internal/web/api/gen"
 )
 
 func TestGetEventsReturnsEventLog(t *testing.T) {
-	hub := eventhub.New()
-	hub.PublishEvent(eventhub.ResourceProgram, eventhub.TypeCreate, map[string]any{"id": 1, "name": "first"})
+	hub := event.New()
+	hub.PublishEvent(event.ResourceProgram, event.TypeCreate, map[string]any{"id": 1, "name": "first"})
 	handler := NewHandler(HandlerConfig{EventHub: hub})
 
 	res, err := handler.GetEvents(context.Background())
@@ -47,9 +47,9 @@ func TestGetEventsReturnsEventLog(t *testing.T) {
 }
 
 func TestGetEventsReturnsOnlyLast100Events(t *testing.T) {
-	hub := eventhub.New()
+	hub := event.New()
 	for i := 0; i < 101; i++ {
-		hub.PublishEvent(eventhub.ResourceProgram, eventhub.TypeUpdate, map[string]any{"id": i})
+		hub.PublishEvent(event.ResourceProgram, event.TypeUpdate, map[string]any{"id": i})
 	}
 	handler := NewHandler(HandlerConfig{EventHub: hub})
 
@@ -71,8 +71,8 @@ func TestGetEventsReturnsOnlyLast100Events(t *testing.T) {
 }
 
 func TestGetEventsStreamReceivesEventsPublishedAfterSubscribe(t *testing.T) {
-	hub := eventhub.New()
-	hub.PublishEvent(eventhub.ResourceProgram, eventhub.TypeUpdate, map[string]any{"id": 1})
+	hub := event.New()
+	hub.PublishEvent(event.ResourceProgram, event.TypeUpdate, map[string]any{"id": 1})
 	handler := NewHandler(HandlerConfig{EventHub: hub})
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -92,7 +92,7 @@ func TestGetEventsStreamReceivesEventsPublishedAfterSubscribe(t *testing.T) {
 	}
 
 	time.Sleep(10 * time.Millisecond)
-	hub.PublishEvent(eventhub.ResourceProgram, eventhub.TypeUpdate, map[string]any{"id": 2})
+	hub.PublishEvent(event.ResourceProgram, event.TypeUpdate, map[string]any{"id": 2})
 	line := readEventLine(t, reader, time.Second)
 	var event apigen.Event
 	if err := json.Unmarshal([]byte(line), &event); err != nil {
@@ -109,9 +109,9 @@ func TestGetEventsStreamReceivesEventsPublishedAfterSubscribe(t *testing.T) {
 
 func TestGetEventsStreamFiltersSubscribedEvents(t *testing.T) {
 	var buf bytes.Buffer
-	events := []eventhub.Event{
-		mustTestEvent(t, eventhub.ResourceService, eventhub.TypeUpdate, map[string]any{"id": 1}),
-		mustTestEvent(t, eventhub.ResourceProgram, eventhub.TypeRemove, map[string]any{"id": 2}),
+	events := []event.Event{
+		mustTestEvent(t, event.ResourceService, event.TypeUpdate, map[string]any{"id": 1}),
+		mustTestEvent(t, event.ResourceProgram, event.TypeRemove, map[string]any{"id": 2}),
 	}
 	if err := writeEventsOpenJSONArrayEvents(&buf, events, apigen.GetEventsStreamParams{
 		Type: apigen.NewOptGetEventsStreamType(apigen.GetEventsStreamTypeRemove),
@@ -192,11 +192,11 @@ func readEventLineBlocking(reader io.Reader) (string, error) {
 	return buf.String(), nil
 }
 
-func mustTestEvent(t *testing.T, resource, typ string, data any) eventhub.Event {
+func mustTestEvent(t *testing.T, resource, typ string, data any) event.Event {
 	t.Helper()
 	raw, err := json.Marshal(data)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return eventhub.Event{Resource: resource, Type: typ, Data: raw, Time: 1}
+	return event.Event{Resource: resource, Type: typ, Data: raw, Time: 1}
 }

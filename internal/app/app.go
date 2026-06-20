@@ -17,7 +17,7 @@ import (
 	"github.com/21S1298001/Mahiron5/internal/config"
 	"github.com/21S1298001/Mahiron5/internal/db"
 	"github.com/21S1298001/Mahiron5/internal/epg"
-	"github.com/21S1298001/Mahiron5/internal/eventhub"
+	"github.com/21S1298001/Mahiron5/internal/event"
 	"github.com/21S1298001/Mahiron5/internal/filter"
 	"github.com/21S1298001/Mahiron5/internal/job"
 	"github.com/21S1298001/Mahiron5/internal/observability"
@@ -63,7 +63,7 @@ func Run(ctx context.Context) int {
 
 	serviceStore := service.NewSQLiteStore(database)
 	programStore := program.NewSQLiteStore(database)
-	events := eventhub.New()
+	events := event.New()
 
 	tuners := tuner.NewTunerManager(&tuner.TunerManagerConfig{
 		TunersConfig: cfg.Tuners,

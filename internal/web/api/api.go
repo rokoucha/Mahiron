@@ -7,7 +7,7 @@ import (
 	"net/http"
 
 	"github.com/21S1298001/Mahiron5/internal/config"
-	"github.com/21S1298001/Mahiron5/internal/eventhub"
+	"github.com/21S1298001/Mahiron5/internal/event"
 	"github.com/21S1298001/Mahiron5/internal/job"
 	"github.com/21S1298001/Mahiron5/internal/program"
 	"github.com/21S1298001/Mahiron5/internal/service"
@@ -85,8 +85,8 @@ type LogStore interface {
 }
 
 type EventHub interface {
-	Log() []eventhub.Event
-	Subscribe() (<-chan eventhub.Event, func())
+	Log() []event.Event
+	Subscribe() (<-chan event.Event, func())
 }
 
 func NewHandler(config HandlerConfig) *Handler {

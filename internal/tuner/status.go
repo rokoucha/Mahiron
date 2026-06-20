@@ -6,7 +6,6 @@ import (
 	"sort"
 
 	"github.com/21S1298001/Mahiron5/internal/config"
-	"github.com/21S1298001/Mahiron5/internal/eventhub"
 )
 
 type User struct {
@@ -161,14 +160,14 @@ func (tm *TunerManager) addUser(item *Tuner, user User) {
 		slog.Debug("tuner user reference added", "name", item.Name(), "userId", user.ID, "refs", tracked.refs)
 		status = tm.statusLockedByTuner(item)
 		tm.mu.Unlock()
-		tm.publishStatus(eventhub.TypeUpdate, status)
+		tm.publishStatus(eventTypeUpdate, status)
 		return
 	}
 	runtime.users[user.ID] = &trackedUser{user: user, refs: 1}
 	slog.Debug("tuner user added", "name", item.Name(), "userId", user.ID, "agent", user.Agent, "url", user.URL, "priority", user.Priority, "disableDecoder", user.DisableDecoder)
 	status = tm.statusLockedByTuner(item)
 	tm.mu.Unlock()
-	tm.publishStatus(eventhub.TypeUpdate, status)
+	tm.publishStatus(eventTypeUpdate, status)
 }
 
 func (tm *TunerManager) removeUser(item *Tuner, id string) {
@@ -189,7 +188,7 @@ func (tm *TunerManager) removeUser(item *Tuner, id string) {
 		publish = true
 		tm.mu.Unlock()
 		if publish {
-			tm.publishStatus(eventhub.TypeUpdate, status)
+			tm.publishStatus(eventTypeUpdate, status)
 		}
 		return
 	}
@@ -198,7 +197,7 @@ func (tm *TunerManager) removeUser(item *Tuner, id string) {
 	publish = true
 	tm.mu.Unlock()
 	if publish {
-		tm.publishStatus(eventhub.TypeUpdate, status)
+		tm.publishStatus(eventTypeUpdate, status)
 	}
 }
 
@@ -207,7 +206,7 @@ func (tm *TunerManager) SeedEventLog() {
 		return
 	}
 	for _, status := range tm.Statuses() {
-		tm.publishStatus(eventhub.TypeCreate, status)
+		tm.publishStatus(eventTypeCreate, status)
 	}
 }
 
@@ -215,84 +214,5 @@ func (tm *TunerManager) publishStatus(typ string, status Status) {
 	if tm.events == nil {
 		return
 	}
-	tm.events.PublishEvent(eventhub.ResourceTuner, typ, tunerEventData(status))
-}
-
-func tunerEventData(status Status) map[string]any {
-	data := map[string]any{
-		"index":       status.Index,
-		"name":        status.Name,
-		"types":       status.Types,
-		"command":     status.Command,
-		"pid":         status.PID,
-		"users":       tunerUserEventData(status.Users),
-		"isAvailable": status.IsAvailable,
-		"isFree":      status.IsFree,
-		"isUsing":     status.IsUsing,
-		"isFault":     status.IsFault,
-	}
-	if status.CurrentChannelType != "" {
-		data["currentChannelType"] = status.CurrentChannelType
-		data["currentChannel"] = status.CurrentChannel
-	}
-	if status.TunedChannelType != "" {
-		data["tunedChannelType"] = status.TunedChannelType
-		data["tunedChannel"] = status.TunedChannel
-	}
-	return data
-}
-
-func tunerUserEventData(users []User) []map[string]any {
-	result := make([]map[string]any, len(users))
-	for i, user := range users {
-		data := map[string]any{
-			"id":             user.ID,
-			"priority":       user.Priority,
-			"disableDecoder": user.DisableDecoder,
-		}
-		if user.Agent != "" {
-			data["agent"] = user.Agent
-		}
-		if user.URL != "" {
-			data["url"] = user.URL
-		}
-		if setting := streamSettingEventData(user.StreamSetting); len(setting) > 0 {
-			data["streamSetting"] = setting
-		}
-		result[i] = data
-	}
-	return result
-}
-
-func streamSettingEventData(setting StreamSetting) map[string]any {
-	data := map[string]any{}
-	if setting.Channel != nil {
-		data["channel"] = map[string]any{
-			"name":    setting.Channel.Name,
-			"type":    setting.Channel.Type,
-			"channel": setting.Channel.Channel,
-		}
-	}
-	if setting.NetworkID != nil {
-		data["networkId"] = *setting.NetworkID
-	}
-	if setting.ServiceID != nil {
-		data["serviceId"] = *setting.ServiceID
-	}
-	if setting.EventID != nil {
-		data["eventId"] = *setting.EventID
-	}
-	if setting.NoProvide != nil {
-		data["noProvide"] = *setting.NoProvide
-	}
-	if setting.ParseNIT != nil {
-		data["parseNIT"] = *setting.ParseNIT
-	}
-	if setting.ParseSDT != nil {
-		data["parseSDT"] = *setting.ParseSDT
-	}
-	if setting.ParseEIT != nil {
-		data["parseEIT"] = *setting.ParseEIT
-	}
-	return data
+	tm.events.PublishTunerStatusEvent(typ, status)
 }

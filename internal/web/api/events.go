@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"io"
 
-	"github.com/21S1298001/Mahiron5/internal/eventhub"
+	"github.com/21S1298001/Mahiron5/internal/event"
 	apigen "github.com/21S1298001/Mahiron5/internal/web/api/gen"
 )
 
@@ -21,7 +21,7 @@ func GetEventsStream(ctx context.Context, h *Handler, params apigen.GetEventsStr
 	}, nil
 }
 
-func apiEvents(events []eventhub.Event) []apigen.Event {
+func apiEvents(events []event.Event) []apigen.Event {
 	result := make([]apigen.Event, 0, len(events))
 	for _, event := range events {
 		apiEvent, err := apiEvent(event)
@@ -33,7 +33,7 @@ func apiEvents(events []eventhub.Event) []apigen.Event {
 	return result
 }
 
-func apiEvent(event eventhub.Event) (apigen.Event, error) {
+func apiEvent(event event.Event) (apigen.Event, error) {
 	data, err := apiEventData(event.Data)
 	if err != nil {
 		return apigen.Event{}, err
@@ -58,7 +58,7 @@ func apiEventData(payload any) (apigen.EventData, error) {
 	return data, nil
 }
 
-func (h *Handler) eventLog() []eventhub.Event {
+func (h *Handler) eventLog() []event.Event {
 	if h.eventHub == nil {
 		return nil
 	}
@@ -119,7 +119,7 @@ func writeEventsOpenJSONArrayStream(ctx context.Context, w io.Writer, h *Handler
 	}
 }
 
-func writeEventsOpenJSONArrayEvents(w io.Writer, events []eventhub.Event, params apigen.GetEventsStreamParams) error {
+func writeEventsOpenJSONArrayEvents(w io.Writer, events []event.Event, params apigen.GetEventsStreamParams) error {
 	if _, err := io.WriteString(w, "[\n"); err != nil {
 		return err
 	}

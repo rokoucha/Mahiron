@@ -1,9 +1,14 @@
-package eventhub
+package event
 
 import (
 	"encoding/json"
 	"sync"
 	"time"
+
+	"github.com/21S1298001/Mahiron5/internal/config"
+	"github.com/21S1298001/Mahiron5/internal/program"
+	"github.com/21S1298001/Mahiron5/internal/service"
+	"github.com/21S1298001/Mahiron5/internal/tuner"
 )
 
 const (
@@ -76,6 +81,28 @@ func (h *Hub) PublishEvent(resource, typ string, data any) {
 		}
 	}
 	h.mu.Unlock()
+}
+
+func (h *Hub) PublishServiceEvent(typ string, svc *service.Service, channel *config.ChannelConfig) {
+	if svc == nil {
+		return
+	}
+	h.PublishEvent(ResourceService, typ, serviceEventData(svc, channel))
+}
+
+func (h *Hub) PublishTunerStatusEvent(typ string, status tuner.Status) {
+	h.PublishEvent(ResourceTuner, typ, tunerEventData(status))
+}
+
+func (h *Hub) PublishProgramEvent(typ string, p *program.Program) {
+	if p == nil {
+		return
+	}
+	h.PublishEvent(ResourceProgram, typ, programEventData(p))
+}
+
+func (h *Hub) PublishProgramRemoveEvent(id int64) {
+	h.PublishEvent(ResourceProgram, TypeRemove, programRemoveEventData(id))
 }
 
 func (h *Hub) Log() []Event {

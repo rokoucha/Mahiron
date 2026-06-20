@@ -2,12 +2,28 @@ package program
 
 import (
 	"context"
-	"encoding/json"
 	"testing"
 
 	"github.com/21S1298001/Mahiron5/internal/db"
-	"github.com/21S1298001/Mahiron5/internal/eventhub"
 )
+
+type publishedProgramEvent struct {
+	typ      string
+	program  *Program
+	removeID int64
+}
+
+type fakeProgramEventPublisher struct {
+	events []publishedProgramEvent
+}
+
+func (p *fakeProgramEventPublisher) PublishProgramEvent(typ string, program *Program) {
+	p.events = append(p.events, publishedProgramEvent{typ: typ, program: program})
+}
+
+func (p *fakeProgramEventPublisher) PublishProgramRemoveEvent(id int64) {
+	p.events = append(p.events, publishedProgramEvent{typ: eventTypeRemove, removeID: id})
+}
 
 func TestProgramManagerPublishesCreateUpdateAndRemoveEvents(t *testing.T) {
 	ctx := context.Background()
@@ -16,8 +32,8 @@ func TestProgramManagerPublishesCreateUpdateAndRemoveEvents(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer database.Close()
-	hub := eventhub.New()
-	manager := NewProgramManager(NewSQLiteStore(database), hub)
+	publisher := &fakeProgramEventPublisher{}
+	manager := NewProgramManager(NewSQLiteStore(database), publisher)
 
 	p := &Program{ID: ProgramID(1, 101, 1), NetworkID: 1, ServiceID: 101, EventID: 1, Name: "first"}
 	if err := manager.UpsertPrograms(ctx, []*Program{p}); err != nil {
@@ -36,18 +52,14 @@ func TestProgramManagerPublishesCreateUpdateAndRemoveEvents(t *testing.T) {
 	}
 	manager.flushEvents()
 
-	events := hub.Log()
+	events := publisher.events
 	if got, want := len(events), 3; got != want {
 		t.Fatalf("events length = %d, want %d: %#v", got, want, events)
 	}
-	if events[0].Type != eventhub.TypeCreate || events[1].Type != eventhub.TypeUpdate || events[2].Type != eventhub.TypeRemove {
-		t.Fatalf("event types = %s/%s/%s", events[0].Type, events[1].Type, events[2].Type)
+	if events[0].typ != eventTypeCreate || events[1].typ != eventTypeUpdate || events[2].typ != eventTypeRemove {
+		t.Fatalf("event types = %s/%s/%s", events[0].typ, events[1].typ, events[2].typ)
 	}
-	var removed map[string]int64
-	if err := json.Unmarshal(events[2].Data, &removed); err != nil {
-		t.Fatal(err)
-	}
-	if got, want := removed["id"], p.ID; got != want {
+	if got, want := events[2].removeID, p.ID; got != want {
 		t.Fatalf("remove payload id = %d, want %d", got, want)
 	}
 }

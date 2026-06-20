@@ -5,14 +5,25 @@ import (
 	"testing"
 
 	"github.com/21S1298001/Mahiron5/internal/config"
-	"github.com/21S1298001/Mahiron5/internal/eventhub"
 )
 
+type publishedTunerEvent struct {
+	typ string
+}
+
+type fakeTunerEventPublisher struct {
+	events []publishedTunerEvent
+}
+
+func (p *fakeTunerEventPublisher) PublishTunerStatusEvent(typ string, _ Status) {
+	p.events = append(p.events, publishedTunerEvent{typ: typ})
+}
+
 func TestTunerManagerPublishesCreateAndUpdateEvents(t *testing.T) {
-	hub := eventhub.New()
+	publisher := &fakeTunerEventPublisher{}
 	mgr := NewTunerManager(&TunerManagerConfig{
 		TunersConfig: config.TunersConfig{{Name: "first", Types: []string{"GR"}, Command: "true"}},
-		EventHub:     hub,
+		EventHub:     publisher,
 	})
 
 	mgr.SeedEventLog()
@@ -26,16 +37,16 @@ func TestTunerManagerPublishesCreateAndUpdateEvents(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	events := hub.Log()
+	events := publisher.events
 	if len(events) < 4 {
 		t.Fatalf("events length = %d, want at least 4: %#v", len(events), events)
 	}
-	if events[0].Resource != eventhub.ResourceTuner || events[0].Type != eventhub.TypeCreate {
-		t.Fatalf("first event = %s/%s, want tuner/create", events[0].Resource, events[0].Type)
+	if events[0].typ != eventTypeCreate {
+		t.Fatalf("first event = %s, want create", events[0].typ)
 	}
 	for i, event := range events[1:] {
-		if event.Resource != eventhub.ResourceTuner || event.Type != eventhub.TypeUpdate {
-			t.Fatalf("event %d = %s/%s, want tuner/update", i+1, event.Resource, event.Type)
+		if event.typ != eventTypeUpdate {
+			t.Fatalf("event %d = %s, want update", i+1, event.typ)
 		}
 	}
 }

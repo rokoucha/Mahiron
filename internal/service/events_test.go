@@ -6,8 +6,19 @@ import (
 
 	"github.com/21S1298001/Mahiron5/internal/config"
 	"github.com/21S1298001/Mahiron5/internal/db"
-	"github.com/21S1298001/Mahiron5/internal/eventhub"
 )
+
+type publishedServiceEvent struct {
+	typ string
+}
+
+type fakeServiceEventPublisher struct {
+	events []publishedServiceEvent
+}
+
+func (p *fakeServiceEventPublisher) PublishServiceEvent(typ string, _ *Service, _ *config.ChannelConfig) {
+	p.events = append(p.events, publishedServiceEvent{typ: typ})
+}
 
 func TestServiceManagerPublishesCreateUpdateRemoveAndEPGUpdateEvents(t *testing.T) {
 	ctx := context.Background()
@@ -16,10 +27,10 @@ func TestServiceManagerPublishesCreateUpdateRemoveAndEPGUpdateEvents(t *testing.
 		t.Fatal(err)
 	}
 	defer database.Close()
-	hub := eventhub.New()
+	publisher := &fakeServiceEventPublisher{}
 	manager := NewServiceManager(NewSQLiteStore(database), config.ChannelsConfig{
 		{Type: "GR", Channel: "27", Name: "NHK"},
-	}, hub)
+	}, publisher)
 
 	if err := manager.ReplaceChannelServices(ctx, "GR", "27", []*Service{
 		{Id: "0000100101", NetworkId: 1, ServiceId: 101, Name: "first", ChannelType: "GR", ChannelId: "27"},
@@ -41,11 +52,11 @@ func TestServiceManagerPublishesCreateUpdateRemoveAndEPGUpdateEvents(t *testing.
 		t.Fatal(err)
 	}
 
-	types := make([]string, 0, len(hub.Log()))
-	for _, event := range hub.Log() {
-		types = append(types, event.Type)
+	types := make([]string, 0, len(publisher.events))
+	for _, event := range publisher.events {
+		types = append(types, event.typ)
 	}
-	want := []string{eventhub.TypeCreate, eventhub.TypeUpdate, eventhub.TypeCreate, eventhub.TypeRemove, eventhub.TypeUpdate}
+	want := []string{eventTypeCreate, eventTypeUpdate, eventTypeCreate, eventTypeRemove, eventTypeUpdate}
 	if len(types) != len(want) {
 		t.Fatalf("event types = %#v, want %#v", types, want)
 	}

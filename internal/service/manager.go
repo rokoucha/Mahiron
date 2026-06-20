@@ -6,17 +6,26 @@ import (
 	"strconv"
 
 	"github.com/21S1298001/Mahiron5/internal/config"
-	"github.com/21S1298001/Mahiron5/internal/eventhub"
 )
+
+const (
+	eventTypeCreate = "create"
+	eventTypeUpdate = "update"
+	eventTypeRemove = "remove"
+)
+
+type eventPublisher interface {
+	PublishServiceEvent(typ string, svc *Service, channel *config.ChannelConfig)
+}
 
 type ServiceManager struct {
 	store    Store
 	channels config.ChannelsConfig
-	events   eventhub.Publisher
+	events   eventPublisher
 }
 
-func NewServiceManager(store Store, channels config.ChannelsConfig, events ...eventhub.Publisher) *ServiceManager {
-	var publisher eventhub.Publisher
+func NewServiceManager(store Store, channels config.ChannelsConfig, events ...eventPublisher) *ServiceManager {
+	var publisher eventPublisher
 	if len(events) > 0 {
 		publisher = events[0]
 	}
@@ -43,7 +52,7 @@ func (s *ServiceManager) SetEPGAttempt(ctx context.Context, networkID, serviceID
 	if err := s.store.SetEPGAttempt(ctx, networkID, serviceID, attemptedAt, lastError); err != nil {
 		return err
 	}
-	s.publishServiceByKey(ctx, eventhub.TypeUpdate, networkID, serviceID)
+	s.publishServiceByKey(ctx, eventTypeUpdate, networkID, serviceID)
 	return nil
 }
 
@@ -51,7 +60,7 @@ func (s *ServiceManager) SetEPGSuccess(ctx context.Context, networkID, serviceID
 	if err := s.store.SetEPGSuccess(ctx, networkID, serviceID, succeededAt); err != nil {
 		return err
 	}
-	s.publishServiceByKey(ctx, eventhub.TypeUpdate, networkID, serviceID)
+	s.publishServiceByKey(ctx, eventTypeUpdate, networkID, serviceID)
 	return nil
 }
 
@@ -90,7 +99,7 @@ func (s *ServiceManager) ReconcileChannels(ctx context.Context) error {
 		return err
 	}
 	for _, svc := range removed {
-		s.publishService(eventhub.TypeRemove, svc)
+		s.publishService(eventTypeRemove, svc)
 	}
 	return nil
 }
@@ -183,13 +192,13 @@ func (s *ServiceManager) ReplaceChannelServices(ctx context.Context, channelType
 		}
 		switch {
 		case !ok:
-			s.publishService(eventhub.TypeCreate, current)
+			s.publishService(eventTypeCreate, current)
 		case !sameServiceCore(existing, current):
-			s.publishService(eventhub.TypeUpdate, current)
+			s.publishService(eventTypeUpdate, current)
 		}
 	}
 	for _, svc := range before {
-		s.publishService(eventhub.TypeRemove, svc)
+		s.publishService(eventTypeRemove, svc)
 	}
 	return nil
 }
@@ -229,7 +238,7 @@ func (s *ServiceManager) SeedEventLog(ctx context.Context) error {
 		return err
 	}
 	for _, svc := range services {
-		s.publishService(eventhub.TypeCreate, svc)
+		s.publishService(eventTypeCreate, svc)
 	}
 	return nil
 }
@@ -251,42 +260,7 @@ func (s *ServiceManager) publishService(typ string, svc *Service) {
 	if s.events == nil || svc == nil {
 		return
 	}
-	s.events.PublishEvent(eventhub.ResourceService, typ, s.serviceEventData(svc))
-}
-
-func (s *ServiceManager) serviceEventData(svc *Service) map[string]any {
-	data := map[string]any{
-		"id":                 svc.ItemId(),
-		"serviceId":          svc.ServiceId,
-		"networkId":          svc.NetworkId,
-		"transportStreamId":  svc.TransportStreamId,
-		"name":               svc.Name,
-		"type":               int(svc.Type),
-		"remoteControlKeyId": int(svc.RemoteControlKeyId),
-	}
-	if svc.EPG.LastSuccessAt != nil {
-		data["epgReady"] = true
-		data["epgUpdatedAt"] = *svc.EPG.LastSuccessAt
-	} else {
-		data["epgReady"] = false
-	}
-	if svc.EPG.LastAttemptAt != nil {
-		data["epgLastAttemptAt"] = *svc.EPG.LastAttemptAt
-	}
-	if svc.EPG.LastError != "" {
-		data["epgLastError"] = svc.EPG.LastError
-	}
-	if channel := s.GetChannel(svc.ChannelType, svc.ChannelId); channel != nil {
-		data["channel"] = map[string]any{
-			"type":    channel.Type,
-			"channel": channel.Channel,
-			"name":    channel.Name,
-		}
-		if channel.TsmfRelTs != nil {
-			data["channel"].(map[string]any)["tsmfRelTs"] = *channel.TsmfRelTs
-		}
-	}
-	return data
+	s.events.PublishServiceEvent(typ, svc, s.GetChannel(svc.ChannelType, svc.ChannelId))
 }
 
 func (s *ServiceManager) prunedServices(ctx context.Context, active []ChannelKey) ([]*Service, error) {

@@ -3,7 +3,7 @@ package web
 import (
 	"net/http"
 
-	"github.com/21S1298001/Mahiron5/internal/eventhub"
+	"github.com/21S1298001/Mahiron5/internal/event"
 	"github.com/21S1298001/Mahiron5/internal/web/api"
 	apigen "github.com/21S1298001/Mahiron5/internal/web/api/gen"
 )
@@ -15,7 +15,7 @@ type WebConfig struct {
 	TunerManager   api.TunerManager
 	JobManager     api.JobManager
 	LogStore       api.LogStore
-	EventHub       *eventhub.Hub
+	EventHub       *event.Hub
 	EpgStaleAfter  int64
 }
 

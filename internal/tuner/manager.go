@@ -9,8 +9,16 @@ import (
 	"sync"
 
 	"github.com/21S1298001/Mahiron5/internal/config"
-	"github.com/21S1298001/Mahiron5/internal/eventhub"
 )
+
+const (
+	eventTypeCreate = "create"
+	eventTypeUpdate = "update"
+)
+
+type eventPublisher interface {
+	PublishTunerStatusEvent(typ string, status Status)
+}
 
 type TunerManager struct {
 	tuners     []*Tuner
@@ -19,12 +27,12 @@ type TunerManager struct {
 	runtime    map[*Tuner]*tunerRuntime
 	nextByType map[string]int
 	changed    chan struct{}
-	events     eventhub.Publisher
+	events     eventPublisher
 }
 
 type TunerManagerConfig struct {
 	TunersConfig config.TunersConfig
-	EventHub     eventhub.Publisher
+	EventHub     eventPublisher
 }
 
 func NewTunerManager(cfg *TunerManagerConfig) *TunerManager {
@@ -79,7 +87,7 @@ func (tm *TunerManager) AcquireDevice(ctx context.Context, channelType string, r
 		tm.mu.Unlock()
 
 		if attempt.device != nil {
-			tm.publishStatus(eventhub.TypeUpdate, attempt.status)
+			tm.publishStatus(eventTypeUpdate, attempt.status)
 			return attempt.device, attempt.decoder, nil
 		}
 		if !attempt.found {
@@ -263,7 +271,7 @@ func (tm *TunerManager) release(item *Tuner) {
 	}
 	tm.mu.Unlock()
 	if publish {
-		tm.publishStatus(eventhub.TypeUpdate, status)
+		tm.publishStatus(eventTypeUpdate, status)
 	}
 }
 
@@ -362,7 +370,7 @@ func (tm *TunerManager) markRunning(item *Tuner) {
 	tm.runtime[item].stopped = false
 	status = tm.statusLockedByTuner(item)
 	tm.mu.Unlock()
-	tm.publishStatus(eventhub.TypeUpdate, status)
+	tm.publishStatus(eventTypeUpdate, status)
 }
 
 func (tm *TunerManager) markStopped(item *Tuner) {
@@ -378,7 +386,7 @@ func (tm *TunerManager) markStopped(item *Tuner) {
 	}
 	tm.mu.Unlock()
 	if publish {
-		tm.publishStatus(eventhub.TypeUpdate, status)
+		tm.publishStatus(eventTypeUpdate, status)
 	}
 }
 
@@ -396,7 +404,7 @@ func (tm *TunerManager) markFault(item *Tuner) {
 	tm.mu.Unlock()
 	if marked {
 		slog.Warn("tuner marked fault", "name", item.Name())
-		tm.publishStatus(eventhub.TypeUpdate, status)
+		tm.publishStatus(eventTypeUpdate, status)
 	}
 }
 
