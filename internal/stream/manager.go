@@ -9,8 +9,6 @@ import (
 	"time"
 
 	"github.com/21S1298001/Mahiron5/internal/config"
-	"github.com/21S1298001/Mahiron5/internal/filter"
-	"github.com/21S1298001/Mahiron5/internal/processor"
 	"github.com/21S1298001/Mahiron5/internal/tuner"
 )
 
@@ -43,18 +41,6 @@ type sessionKey struct {
 }
 
 func NewStreamManager(cfg StreamManagerConfig) *StreamManager {
-	serviceFilter := cfg.Filter
-	if serviceFilter == nil {
-		serviceFilter = filter.NewServiceFilter()
-	}
-	scanner := cfg.Scanner
-	if scanner == nil {
-		scanner = processor.NewServiceScanner()
-	}
-	eitCollector := cfg.EITCollector
-	if eitCollector == nil {
-		eitCollector = processor.NewEITCollector()
-	}
 	descramblerFactory := cfg.DescramblerFactory
 	if descramblerFactory == nil {
 		descramblerFactory = NewCommandDescrambler
@@ -62,10 +48,10 @@ func NewStreamManager(cfg StreamManagerConfig) *StreamManager {
 	return &StreamManager{
 		channels:           cfg.Channels,
 		descramblerFactory: descramblerFactory,
-		eitCollector:       eitCollector,
+		eitCollector:       cfg.EITCollector,
 		eitUpdater:         cfg.EITUpdater,
-		filter:             serviceFilter,
-		scanner:            scanner,
+		filter:             cfg.Filter,
+		scanner:            cfg.Scanner,
 		sessions:           map[sessionKey]*ChannelSession{},
 		sessionTypes:       map[sessionKey]string{},
 		tunerManager:       cfg.TunerManager,
@@ -247,10 +233,13 @@ func (m *StreamManager) remove(key sessionKey) {
 }
 
 var (
-	ErrChannelNotFound  = errors.New("channel not found")
-	ErrTunerNotFound    = tuner.ErrTunerNotFound
-	ErrUnsupportedTuner = tuner.ErrUnsupportedTuner
-	ErrTunerUnavailable = tuner.ErrTunerUnavailable
+	ErrChannelNotFound             = errors.New("channel not found")
+	ErrEITCollectorNotConfigured   = errors.New("EIT collector not configured")
+	ErrServiceFilterNotConfigured  = errors.New("service filter not configured")
+	ErrServiceScannerNotConfigured = errors.New("service scanner not configured")
+	ErrTunerNotFound               = tuner.ErrTunerNotFound
+	ErrUnsupportedTuner            = tuner.ErrUnsupportedTuner
+	ErrTunerUnavailable            = tuner.ErrTunerUnavailable
 )
 
 type TunerManager interface {

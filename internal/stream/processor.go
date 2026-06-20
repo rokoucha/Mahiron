@@ -9,6 +9,14 @@ type Processor interface {
 	Run(context.Context, io.Reader, io.Writer) error
 }
 
+type errorProcessor struct {
+	err error
+}
+
+func (p errorProcessor) Run(context.Context, io.Reader, io.Writer) error {
+	return p.err
+}
+
 type descramblerProcessor struct {
 	descrambler Descrambler
 }

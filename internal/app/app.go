@@ -16,7 +16,9 @@ import (
 
 	"github.com/21S1298001/Mahiron5/internal/config"
 	"github.com/21S1298001/Mahiron5/internal/db"
+	"github.com/21S1298001/Mahiron5/internal/filter"
 	"github.com/21S1298001/Mahiron5/internal/job"
+	"github.com/21S1298001/Mahiron5/internal/processor"
 	"github.com/21S1298001/Mahiron5/internal/program"
 	"github.com/21S1298001/Mahiron5/internal/server"
 	"github.com/21S1298001/Mahiron5/internal/service"
@@ -70,11 +72,15 @@ func Run(ctx context.Context) int {
 
 	streams := stream.NewStreamManager(stream.StreamManagerConfig{
 		Channels:     cfg.Channels,
+		EITCollector: processor.NewEITCollector(),
 		EITUpdater:   programs,
+		Filter:       filter.NewServiceFilter(),
+		Scanner:      processor.NewServiceScanner(),
 		TunerManager: tuners,
 	})
 	serviceScanner := stream.NewServiceScannerAdapter(streams)
 	epgStreams := stream.NewEPGCollectorAdapter(streams)
+	apiStreams := stream.NewAPIStreamAdapter(streams)
 
 	jobs, err := job.NewManager(job.Config{MaxHistory: 100, MaxRunning: cfg.System.JobMaxRunning})
 	if err != nil {
@@ -103,7 +109,7 @@ func Run(ctx context.Context) int {
 	handler, err := web.NewWeb(web.WebConfig{
 		ServiceManager: services,
 		ProgramManager: programs,
-		StreamManager:  streams,
+		StreamManager:  apiStreams,
 		TunerManager:   tuners,
 		JobManager:     jobs,
 		EpgStaleAfter:  int64(cfg.System.EpgStaleAfter),

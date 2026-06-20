@@ -94,6 +94,9 @@ func (s *ChannelSession) ServiceStream(ctx context.Context, serviceID uint16, de
 }
 
 func (s *ChannelSession) ScanServices(ctx context.Context, dst io.Writer) error {
+	if s.scanner == nil {
+		return ErrServiceScannerNotConfigured
+	}
 	return s.withTunerUser(ctx, func() error { return s.scanServices(ctx, dst) })
 }
 
@@ -138,14 +141,14 @@ func (s *ChannelSession) scanServices(ctx context.Context, dst io.Writer) error 
 
 func (s *ChannelSession) CollectEITS(ctx context.Context, dst io.Writer) error {
 	if s.eitCollector == nil {
-		return errors.New("EIT collector not configured")
+		return ErrEITCollectorNotConfigured
 	}
 	return s.withTunerUser(ctx, func() error { return s.collectEIT(ctx, dst, s.eitCollector.CollectEITS) })
 }
 
 func (s *ChannelSession) CollectEITPF(ctx context.Context, dst io.Writer) error {
 	if s.eitCollector == nil {
-		return errors.New("EIT collector not configured")
+		return ErrEITCollectorNotConfigured
 	}
 	return s.withTunerUser(ctx, func() error { return s.collectEIT(ctx, dst, s.eitCollector.CollectEITPF) })
 }
@@ -247,6 +250,10 @@ func (s *ChannelSession) pipelineProcessors(key PipelineKey) []Processor {
 		processors = append(processors, descramblerProcessor{descrambler: s.descrambler})
 	}
 	if key.Kind == PipelineServiceStream {
+		if s.filter == nil {
+			processors = append(processors, errorProcessor{err: ErrServiceFilterNotConfigured})
+			return processors
+		}
 		processors = append(processors, serviceFilterProcessor{
 			filter:    s.filter,
 			serviceID: key.ServiceID,
