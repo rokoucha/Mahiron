@@ -1,6 +1,6 @@
 # ts - MPEG-2 TS ネイティブ処理パッケージ
 
-本パッケージは `mirakc-arib` などの外部コマンドに依存せず、Go ネイティブで MPEG-2 Transport Stream を処理することを目的とする。
+本パッケージは外部コマンドに依存せず、Go ネイティブで MPEG-2 Transport Stream を処理する。
 
 ## 設計方針
 
@@ -40,52 +40,42 @@ ts/
 └── eitcollector.go        # EITPF / EITS 収集
 ```
 
-## 実装フェーズ
+## 実装済みの機能
 
-### Phase 0: 基盤
+### 基盤
 
 - `packet.go`: 188 バイトパケットの読み込み、PID 抽出、adaptation field 判定、sync 喪失時の復帰
 - `section.go`: 同一 PID 上の section 断片を再構成、CRC32-MPEG-2 検証、continuity counter の不連続検知
 - `psi.go`: table_id / section_number / version_number / current_next_indicator 等の共通読み取り
 
-### Phase 1: サービスフィルタ
+### サービスフィルタ
 
 - `pat.go`, `pmt.go`: PAT/PMT パース
 - `filter.go`: 対象 service_id の PMT と関連 PID（PCR/映像/音声/字幕）を抽出し、それ以外を落とす
-- 既存 `filter/service.go` を本パッケージの実装に置き換え
-- この時点で `mirakc-arib filter-service` 依存を削除
+- `internal/filter` から利用されるサービスフィルタ実装
 
-### Phase 2: サービススキャナ
+### サービススキャナ
 
 - `sdt.go`: SDT パース
 - `descriptor_service.go`: Service 記述子からサービス名・サービスタイプを取得
 - `aribstr.go`, `aribstr/`: サービス名の ARIB STD-B24 文字列変換
 - `scanner.go`: PAT/PMT/SDT から `service.scanService` 相当の JSON 配列を出力
-- 既存サービススキャナを本パッケージの実装に置き換え
-- この時点で `mirakc-arib scan-services` 依存を削除
+- `internal/servicescan` から利用されるサービススキャナ実装
 
-### Phase 3: EITPF 収集
+### EITPF 収集
 
 - `eit.go`: EIT section のパース
 - `descriptor_short_event.go`, `descriptor_content.go`, `descriptor_component.go`, `descriptor_audio_component.go`
 - `eitcollector.go`: `CollectEITPF` を実装
-- 既存 `internal/epg` の `mirakc-arib` collector backend の EITPF 側を置き換え
 
-### Phase 4: EITS 収集
+### EITS 収集
 
 - `descriptor_extended_event.go`, `descriptor_event_group.go`, `descriptor_series.go`
 - `eitcollector.go`: `CollectEITS` を実装
-- 既存 `internal/epg` の `mirakc-arib` collector backend の EITS 側を置き換え
-- この時点で `mirakc-arib collect-eits/collect-eitpf` 依存を削除
-
-### Phase 5: 後始末
-
-- `internal/epg` の `ErrMirakcAribRequired` と `mirakc-arib` backend を整理
-- `lookPath("mirakc-arib")` チェックを削除
-- 既存テストを外部コマンド依存のない形に置き換え
+- `internal/epg` から利用される EITPF / EITS collector 実装
 
 ## テスト方針
 
 - ユニットテストはリポジトリにコミット可能な合成 TS fixture を使用
 - 実際の地上波/BS 録画データはローカル開発時のみ使用し、リポジトリにはコミットしない
-- 各フェーズ終了時に `mirakc-arib` 出力と本実装の出力を比較する統合テストを実施
+- `ts/testdata/local` の比較 fixture はローカル開発時の回帰確認に使用する

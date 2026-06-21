@@ -97,7 +97,7 @@ func (s *Service) Cleanup(ctx context.Context, now time.Time) error {
 }
 
 func RetryableError(err error) bool {
-	return err != nil && !errors.Is(err, ErrMirakcAribRequired)
+	return err != nil
 }
 
 func groupServicesByNetwork(services []*service.Service, channels config.ChannelsConfig) map[uint16]*Network {

@@ -8,7 +8,7 @@ import (
 	"sort"
 )
 
-// ServiceInfo represents a scanned service, matching the JSON output of mirakc-arib scan-services.
+// ServiceInfo represents a scanned service in the scanner JSON output.
 type ServiceInfo struct {
 	Nid                uint16 `json:"nid"`
 	Tsid               uint16 `json:"tsid"`
