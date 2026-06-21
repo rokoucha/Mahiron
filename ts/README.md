@@ -33,7 +33,8 @@ ts/
 ├── descriptor_audio_component.go  # AudioComponent 記述子（ARIB）
 ├── descriptor_event_group.go      # EventGroup 記述子（ARIB）
 ├── descriptor_series.go           # Series 記述子（ARIB）
-├── aribstr.go             # ARIB STD-B24 文字列 → UTF-8 変換
+├── aribstr.go             # ARIB STD-B24 文字列 → UTF-8 変換 API
+├── aribstr/               # ARIB STD-B24 文字列デコーダ実装と変換表
 ├── filter.go              # サービスフィルタ
 ├── scanner.go             # サービススキャナ
 └── eitcollector.go        # EITPF / EITS 収集
@@ -58,7 +59,7 @@ ts/
 
 - `sdt.go`: SDT パース
 - `descriptor_service.go`: Service 記述子からサービス名・サービスタイプを取得
-- `aribstr.go`: サービス名の ARIB STD-B24 文字列変換（段階的に対応文字を拡張）
+- `aribstr.go`, `aribstr/`: サービス名の ARIB STD-B24 文字列変換
 - `scanner.go`: PAT/PMT/SDT から `service.scanService` 相当の JSON 配列を出力
 - 既存サービススキャナを本パッケージの実装に置き換え
 - この時点で `mirakc-arib scan-services` 依存を削除

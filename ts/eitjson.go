@@ -196,9 +196,14 @@ type extendedEventDescriptorPart struct {
 	descriptorNumber     int
 	lastDescriptorNumber int
 	lang                 string
-	text                 string
-	items                [][]string
+	textRaw              []byte
+	items                []extendedEventItemPart
 	order                int
+}
+
+type extendedEventItemPart struct {
+	descriptionRaw []byte
+	textRaw        []byte
 }
 
 type extendedEventGroup struct {
@@ -220,7 +225,7 @@ func parseExtendedEventDescriptorPart(desc Descriptor) (extendedEventDescriptorP
 	if itemsEnd > len(data) {
 		return extendedEventDescriptorPart{}, false
 	}
-	var items [][]string
+	var items []extendedEventItemPart
 	for off < itemsEnd {
 		if off >= itemsEnd {
 			return extendedEventDescriptorPart{}, false
@@ -230,10 +235,7 @@ func parseExtendedEventDescriptorPart(desc Descriptor) (extendedEventDescriptorP
 		if off+descLen > itemsEnd {
 			return extendedEventDescriptorPart{}, false
 		}
-		itemDescription, err := DecodeARIBString(data[off : off+descLen])
-		if err != nil {
-			return extendedEventDescriptorPart{}, false
-		}
+		itemDescription := append([]byte(nil), data[off:off+descLen]...)
 		off += descLen
 		if off >= itemsEnd {
 			return extendedEventDescriptorPart{}, false
@@ -243,12 +245,9 @@ func parseExtendedEventDescriptorPart(desc Descriptor) (extendedEventDescriptorP
 		if off+itemLen > itemsEnd {
 			return extendedEventDescriptorPart{}, false
 		}
-		itemText, err := DecodeARIBString(data[off : off+itemLen])
-		if err != nil {
-			return extendedEventDescriptorPart{}, false
-		}
+		itemText := append([]byte(nil), data[off:off+itemLen]...)
 		off += itemLen
-		items = append(items, []string{itemDescription, itemText})
+		items = append(items, extendedEventItemPart{descriptionRaw: itemDescription, textRaw: itemText})
 	}
 	if off >= len(data) {
 		return extendedEventDescriptorPart{}, false
@@ -258,15 +257,12 @@ func parseExtendedEventDescriptorPart(desc Descriptor) (extendedEventDescriptorP
 	if off+textLen > len(data) {
 		return extendedEventDescriptorPart{}, false
 	}
-	text, err := DecodeARIBString(data[off : off+textLen])
-	if err != nil {
-		return extendedEventDescriptorPart{}, false
-	}
+	text := append([]byte(nil), data[off:off+textLen]...)
 	return extendedEventDescriptorPart{
 		descriptorNumber:     descriptorNumber,
 		lastDescriptorNumber: lastDescriptorNumber,
 		lang:                 lang,
-		text:                 text,
+		textRaw:              text,
 		items:                items,
 	}, true
 }
@@ -279,20 +275,36 @@ func mergeExtendedEventParts(parts []extendedEventDescriptorPart) eitDescriptorJ
 		return parts[i].order < parts[j].order
 	})
 	var lang string
-	var text string
-	var items [][]string
+	var textRaw []byte
+	var rawItems []extendedEventItemPart
 	for i, part := range parts {
 		if i == 0 {
 			lang = part.lang
 		}
-		text += part.text
+		textRaw = append(textRaw, part.textRaw...)
 		for _, item := range part.items {
-			if len(item) >= 2 && item[0] == "" && len(items) > 0 && len(items[len(items)-1]) >= 2 {
-				items[len(items)-1][1] += item[1]
+			if len(item.descriptionRaw) == 0 && len(rawItems) > 0 {
+				rawItems[len(rawItems)-1].textRaw = append(rawItems[len(rawItems)-1].textRaw, item.textRaw...)
 				continue
 			}
-			items = append(items, item)
+			rawItems = append(rawItems, item)
 		}
+	}
+	text, err := DecodeARIBString(textRaw)
+	if err != nil {
+		text = ""
+	}
+	items := make([][]string, 0, len(rawItems))
+	for _, item := range rawItems {
+		description, err := DecodeARIBString(item.descriptionRaw)
+		if err != nil {
+			description = ""
+		}
+		itemText, err := DecodeARIBString(item.textRaw)
+		if err != nil {
+			itemText = ""
+		}
+		items = append(items, []string{description, itemText})
 	}
 	if text != "" && len(items) == 0 {
 		items = append(items, []string{"", text})

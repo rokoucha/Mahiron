@@ -380,7 +380,7 @@ func eitFixtureKey(section eitSectionJSON) eitFixtureSectionKey {
 
 func compareMirakcDescriptorCompatibility(t *testing.T, key eitFixtureSectionKey, eventIndex int, gotEvent, wantEvent eitEventJSON) {
 	t.Helper()
-	for _, typ := range []string{"Component", "AudioComponent"} {
+	for _, typ := range []string{"ShortEvent", "ExtendedEvent", "Component", "AudioComponent", "Series"} {
 		got := descriptorsByType(gotEvent.Descriptors, typ)
 		want := descriptorsByType(wantEvent.Descriptors, typ)
 		if len(got) != len(want) {
