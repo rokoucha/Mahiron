@@ -34,7 +34,14 @@ type eitDescriptorJSON struct {
 	ComponentType     *int           `json:"componentType,omitempty"`
 	ComponentTag      *int           `json:"componentTag,omitempty"`
 	MainComponent     *bool          `json:"mainComponent,omitempty"`
+	StreamType        *int           `json:"streamType,omitempty"`
+	SimulcastGroupTag *int           `json:"simulcastGroupTag,omitempty"`
+	ESMultiLingual    *bool          `json:"esMultiLingualFlag,omitempty"`
+	MainComponentFlag *bool          `json:"mainComponentFlag,omitempty"`
+	QualityIndicator  *int           `json:"qualityIndicator,omitempty"`
 	SamplingRate      *int           `json:"samplingRate,omitempty"`
+	LanguageCode      *int           `json:"languageCode,omitempty"`
+	LanguageCode2     *int           `json:"languageCode2,omitempty"`
 	Lang              string         `json:"lang,omitempty"`
 	Lang2             string         `json:"lang2,omitempty"`
 	Nibbles           [][]int        `json:"nibbles,omitempty"`
@@ -327,6 +334,7 @@ func parseComponentDescriptor(desc Descriptor) (eitDescriptorJSON, bool) {
 		StreamContent: intPtr(streamContent),
 		ComponentType: intPtr(componentType),
 		ComponentTag:  intPtr(componentTag),
+		LanguageCode:  intPtr(languageCode(data[3:6])),
 		Lang:          string(data[3:6]),
 		Text:          text,
 	}, true
@@ -339,21 +347,29 @@ func parseAudioComponentDescriptor(desc Descriptor) (eitDescriptorJSON, bool) {
 	}
 	multilingual := data[5]&0x80 != 0
 	main := data[5]&0x40 != 0
+	qualityIndicator := int((data[5] >> 4) & 0x03)
 	samplingRate := int((data[5] >> 1) & 0x07)
 	off := 9
 	item := eitDescriptorJSON{
-		Type:          "AudioComponent",
-		StreamContent: intPtr(int(data[0] & 0x0f)),
-		ComponentType: intPtr(int(data[1])),
-		ComponentTag:  intPtr(int(data[2])),
-		MainComponent: boolPtr(main),
-		SamplingRate:  intPtr(samplingRate),
-		Lang:          string(data[6:9]),
+		Type:              "AudioComponent",
+		StreamContent:     intPtr(int(data[0] & 0x0f)),
+		ComponentType:     intPtr(int(data[1])),
+		ComponentTag:      intPtr(int(data[2])),
+		StreamType:        intPtr(int(data[3])),
+		SimulcastGroupTag: intPtr(int(data[4])),
+		ESMultiLingual:    boolPtr(multilingual),
+		MainComponent:     boolPtr(main),
+		MainComponentFlag: boolPtr(main),
+		QualityIndicator:  intPtr(qualityIndicator),
+		SamplingRate:      intPtr(samplingRate),
+		LanguageCode:      intPtr(languageCode(data[6:9])),
+		Lang:              string(data[6:9]),
 	}
 	if multilingual {
 		if len(data) < 12 {
 			return eitDescriptorJSON{}, false
 		}
+		item.LanguageCode2 = intPtr(languageCode(data[9:12]))
 		item.Lang2 = string(data[9:12])
 		off = 12
 	}
@@ -447,3 +463,7 @@ func intPtr(v int) *int { return &v }
 func boolPtr(v bool) *bool { return &v }
 
 func uint16Ptr(v uint16) *uint16 { return &v }
+
+func languageCode(b []byte) int {
+	return int(uint32(b[0])<<16 | uint32(b[1])<<8 | uint32(b[2]))
+}

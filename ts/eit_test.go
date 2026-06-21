@@ -53,7 +53,7 @@ func TestEITJSONDescriptorCompatibility(t *testing.T) {
 		shortEventDescriptor("jpn", aribAlnum("NEWS"), aribAlnum("WEATHER")),
 		contentDescriptor(0, 1, 15, 15),
 		componentDescriptor(1, 0xb3, 0x10, "jpn", aribAlnum("VIDEO")),
-		audioComponentDescriptor(3, 1, 0x20, true, 7, "jpn", "eng", aribAlnum("AUDIO")),
+		audioComponentDescriptor(3, 1, 0x20, 0x11, 0x22, true, 2, 7, "jpn", "eng", aribAlnum("AUDIO")),
 		extendedEventDescriptor("jpn", [][2][]byte{{aribAlnum("DETAIL"), aribAlnum("BODY")}}, nil),
 		eventGroupDescriptor(4, []relatedEventSpec{{serviceID: 1024, eventID: 10}}, []relatedEventSpec{{onid: 1, tsid: 2, serviceID: 3, eventID: 4}}),
 		seriesDescriptor(11, 1, 2, time.Date(2026, 7, 1, 0, 0, 0, 0, jst), 12, 13, aribAlnum("SERIES")),
@@ -72,10 +72,19 @@ func TestEITJSONDescriptorCompatibility(t *testing.T) {
 	if n := byType["Content"].Nibbles; len(n) != 1 || n[0][0] != 0 || n[0][1] != 1 || n[0][2] != 15 || n[0][3] != 15 {
 		t.Fatalf("Content = %#v", byType["Content"])
 	}
-	if byType["Component"].StreamContent == nil || *byType["Component"].StreamContent != 1 || *byType["Component"].ComponentType != 0xb3 {
+	if byType["Component"].StreamContent == nil || *byType["Component"].StreamContent != 1 || *byType["Component"].ComponentType != 0xb3 || byType["Component"].LanguageCode == nil || *byType["Component"].LanguageCode != 0x6a706e {
 		t.Fatalf("Component = %#v", byType["Component"])
 	}
 	if byType["AudioComponent"].Lang != "jpn" || byType["AudioComponent"].Lang2 != "eng" || byType["AudioComponent"].MainComponent == nil || !*byType["AudioComponent"].MainComponent {
+		t.Fatalf("AudioComponent = %#v", byType["AudioComponent"])
+	}
+	if byType["AudioComponent"].StreamType == nil || *byType["AudioComponent"].StreamType != 0x11 || byType["AudioComponent"].SimulcastGroupTag == nil || *byType["AudioComponent"].SimulcastGroupTag != 0x22 {
+		t.Fatalf("AudioComponent = %#v", byType["AudioComponent"])
+	}
+	if byType["AudioComponent"].ESMultiLingual == nil || !*byType["AudioComponent"].ESMultiLingual || byType["AudioComponent"].MainComponentFlag == nil || !*byType["AudioComponent"].MainComponentFlag {
+		t.Fatalf("AudioComponent = %#v", byType["AudioComponent"])
+	}
+	if byType["AudioComponent"].QualityIndicator == nil || *byType["AudioComponent"].QualityIndicator != 2 || byType["AudioComponent"].LanguageCode == nil || *byType["AudioComponent"].LanguageCode != 0x6a706e || byType["AudioComponent"].LanguageCode2 == nil || *byType["AudioComponent"].LanguageCode2 != 0x656e67 {
 		t.Fatalf("AudioComponent = %#v", byType["AudioComponent"])
 	}
 	if items := byType["ExtendedEvent"].Items; len(items) != 1 || items[0][0] != "ＤＥＴＡＩＬ" || items[0][1] != "ＢＯＤＹ" {
@@ -337,6 +346,7 @@ func TestEITCollectorLocalFixturesMatchMirakcAribEITSKeys(t *testing.T) {
 					if gotEvent.EventID != wantEvent.EventID || gotEvent.StartTime != wantEvent.StartTime || gotEvent.Duration != wantEvent.Duration || gotEvent.Scrambled != wantEvent.Scrambled {
 						t.Fatalf("section %#v event[%d] = %#v, want %#v", eitFixtureKey(wantSection), i, gotEvent, wantEvent)
 					}
+					compareMirakcDescriptorCompatibility(t, eitFixtureKey(wantSection), i, gotEvent, wantEvent)
 				}
 			}
 			for _, typ := range []string{"ShortEvent", "Component", "AudioComponent", "Content", "EventGroup", "ExtendedEvent"} {
@@ -366,6 +376,73 @@ func eitFixtureKey(section eitSectionJSON) eitFixtureSectionKey {
 		SectionNumber:     section.SectionNumber,
 		VersionNumber:     section.VersionNumber,
 	}
+}
+
+func compareMirakcDescriptorCompatibility(t *testing.T, key eitFixtureSectionKey, eventIndex int, gotEvent, wantEvent eitEventJSON) {
+	t.Helper()
+	for _, typ := range []string{"Component", "AudioComponent"} {
+		got := descriptorsByType(gotEvent.Descriptors, typ)
+		want := descriptorsByType(wantEvent.Descriptors, typ)
+		if len(got) != len(want) {
+			t.Fatalf("section %#v event[%d] %s descriptors = %d, want %d", key, eventIndex, typ, len(got), len(want))
+		}
+		for i := range want {
+			compareMirakcDescriptorFields(t, key, eventIndex, typ, i, got[i], want[i])
+		}
+	}
+}
+
+func descriptorsByType(descriptors []eitDescriptorJSON, typ string) []eitDescriptorJSON {
+	var out []eitDescriptorJSON
+	for _, desc := range descriptors {
+		if desc.Type == typ {
+			out = append(out, desc)
+		}
+	}
+	return out
+}
+
+func compareMirakcDescriptorFields(t *testing.T, key eitFixtureSectionKey, eventIndex int, typ string, descriptorIndex int, got, want eitDescriptorJSON) {
+	t.Helper()
+	if !intPtrEqual(got.StreamContent, want.StreamContent) ||
+		!intPtrEqual(got.ComponentType, want.ComponentType) ||
+		!intPtrEqual(got.ComponentTag, want.ComponentTag) ||
+		!intPtrEqual(got.LanguageCode, want.LanguageCode) {
+		t.Fatalf("section %#v event[%d] %s[%d] = %#v, want %#v", key, eventIndex, typ, descriptorIndex, got, want)
+	}
+	if typ != "AudioComponent" {
+		return
+	}
+	if !optionalWantIntPtrEqual(got.StreamType, want.StreamType) ||
+		!intPtrEqual(got.SimulcastGroupTag, want.SimulcastGroupTag) ||
+		!boolPtrEqual(got.ESMultiLingual, want.ESMultiLingual) ||
+		!boolPtrEqual(got.MainComponentFlag, want.MainComponentFlag) ||
+		!intPtrEqual(got.QualityIndicator, want.QualityIndicator) ||
+		!intPtrEqual(got.SamplingRate, want.SamplingRate) ||
+		!intPtrEqual(got.LanguageCode2, want.LanguageCode2) {
+		t.Fatalf("section %#v event[%d] %s[%d] = %#v, want %#v", key, eventIndex, typ, descriptorIndex, got, want)
+	}
+}
+
+func intPtrEqual(a, b *int) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
+}
+
+func optionalWantIntPtrEqual(got, want *int) bool {
+	if want == nil {
+		return true
+	}
+	return intPtrEqual(got, want)
+}
+
+func boolPtrEqual(a, b *bool) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
 }
 
 func readEITSectionsJSONL(t *testing.T, r io.Reader) []eitSectionJSON {
@@ -567,15 +644,15 @@ func componentDescriptor(streamContent, componentType, componentTag byte, lang s
 	return descriptor(DescriptorTagComponent, data)
 }
 
-func audioComponentDescriptor(streamContent, componentType, componentTag byte, main bool, samplingRate byte, lang, lang2 string, text []byte) Descriptor {
-	flags := byte((samplingRate & 0x07) << 1)
+func audioComponentDescriptor(streamContent, componentType, componentTag, streamType, simulcastGroupTag byte, main bool, qualityIndicator, samplingRate byte, lang, lang2 string, text []byte) Descriptor {
+	flags := byte((qualityIndicator&0x03)<<4 | (samplingRate&0x07)<<1)
 	if lang2 != "" {
 		flags |= 0x80
 	}
 	if main {
 		flags |= 0x40
 	}
-	data := []byte{0xf0 | streamContent, componentType, componentTag, 0x0f, 0xff, flags}
+	data := []byte{0xf0 | streamContent, componentType, componentTag, streamType, simulcastGroupTag, flags}
 	data = append(data, []byte(lang)...)
 	if lang2 != "" {
 		data = append(data, []byte(lang2)...)
