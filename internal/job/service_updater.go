@@ -5,9 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-
-	"github.com/21S1298001/Mahiron5/internal/epg"
-	"github.com/21S1298001/Mahiron5/internal/servicescan"
 )
 
 const (
@@ -16,7 +13,7 @@ const (
 	ServiceUpdaterDefaultSchedule = "5 6 * * *"
 )
 
-func RegisterServiceUpdater(registry Registry, scanner *servicescan.Service, epgService *epg.Service) {
+func RegisterServiceUpdater(registry Registry, scanner ServiceScanner, epgService EPGGatherer) {
 	registry.Register(JobDefinition{
 		Key: ServiceUpdaterKey, Name: ServiceUpdaterName, IsRerunnable: true,
 		Handler: func(ctx context.Context) error {

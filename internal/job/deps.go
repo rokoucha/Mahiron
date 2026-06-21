@@ -3,9 +3,12 @@ package job
 import (
 	"context"
 	"io"
+	"time"
 
+	"github.com/21S1298001/Mahiron5/internal/epg"
 	"github.com/21S1298001/Mahiron5/internal/program"
 	"github.com/21S1298001/Mahiron5/internal/service"
+	"github.com/21S1298001/Mahiron5/internal/servicescan"
 )
 
 // This package keeps job orchestration thin. Feature-specific details should
@@ -14,6 +17,18 @@ import (
 type Registry interface {
 	Register(JobDefinition)
 	EnqueueDefinition(JobDefinition) (string, error)
+}
+
+type ServiceScanner interface {
+	Channels() []servicescan.Channel
+	ScanChannel(context.Context, string, string, bool) ([]uint16, error)
+}
+
+type EPGGatherer interface {
+	Groups(context.Context) (map[uint16]*epg.Network, error)
+	BuildNetworkInputs(context.Context, uint16) ([]epg.Candidate, []epg.ServiceKey, error)
+	GatherNetwork(context.Context, uint16, []epg.Candidate, []epg.ServiceKey) error
+	Cleanup(context.Context, time.Time) error
 }
 
 type EPGServiceStore interface {

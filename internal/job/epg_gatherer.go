@@ -23,7 +23,7 @@ func RegisterEPGGatherer(registry Registry, programStore EPGProgramStore, servic
 	RegisterEPGGathererService(registry, service)
 }
 
-func RegisterEPGGathererService(registry Registry, service *epg.Service) {
+func RegisterEPGGathererService(registry Registry, service EPGGatherer) {
 	registry.Register(JobDefinition{
 		Key:          EPGGathererKey,
 		Name:         EPGGathererName,
@@ -33,7 +33,7 @@ func RegisterEPGGathererService(registry Registry, service *epg.Service) {
 	})
 }
 
-func epgGathererHandler(registry Registry, service *epg.Service) func(context.Context) error {
+func epgGathererHandler(registry Registry, service EPGGatherer) func(context.Context) error {
 	return func(ctx context.Context) error {
 		grouped, err := service.Groups(ctx)
 		if err != nil {
@@ -69,7 +69,7 @@ func epgGathererHandler(registry Registry, service *epg.Service) func(context.Co
 // want to trigger gathering for a freshly discovered network without waiting
 // for the next cron tick. Returns true when a job was actually enqueued (not
 // already running and not skipped for having no services).
-func enqueueEPGGatherForNetwork(ctx context.Context, registry Registry, service *epg.Service, networkID uint16, presetCandidates []epg.Candidate, presetServices []epg.ServiceKey) (bool, error) {
+func enqueueEPGGatherForNetwork(ctx context.Context, registry Registry, service EPGGatherer, networkID uint16, presetCandidates []epg.Candidate, presetServices []epg.ServiceKey) (bool, error) {
 	candidates := presetCandidates
 	serviceKeys := presetServices
 	if len(candidates) == 0 && len(serviceKeys) == 0 {
