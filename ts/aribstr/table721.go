@@ -1,7 +1,7 @@
 package aribstr
 
 func lookupARIBTable721BMPKanjiPUA(plane byte, first, second byte) (string, bool) {
-	r, ok := aribTable721BMPKanjiPUA[uint32(plane)<<16|uint32(first)<<8|uint32(second)]
+	r, ok := aribTable721BMPKanjiPUA[aribPlaneRowCellKey(plane, first, second)]
 	if !ok {
 		return "", false
 	}
@@ -9,7 +9,7 @@ func lookupARIBTable721BMPKanjiPUA(plane byte, first, second byte) (string, bool
 }
 
 // ARIB STD-B24 Volume 1, Part 2, Table 7-21 "Kanji reassigned to
-// PUA". Keys are plane + transmitted row/cell bytes.
+// PUA". Keys are encoded with aribPlaneRowCellKey.
 var aribTable721BMPKanjiPUA = map[uint32]rune{
 	0x012e22: 0xe760,
 	0x012f42: 0xe761,

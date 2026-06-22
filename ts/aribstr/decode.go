@@ -355,8 +355,8 @@ func decodeARIBJISCompatibleKanji(plane byte, first, second byte) string {
 	if s, ok := lookupARIBTable721BMPKanjiPUA(plane, first, second); ok {
 		return s
 	}
-	if plane == 1 {
-		return decodeJISX0208Graphic(first, second)
+	if s, ok := lookupJISX0213(plane, first, second); ok {
+		return s
 	}
 	return string(utf8.RuneError)
 }
@@ -390,15 +390,15 @@ var aribJISX0208Overrides = map[uint16]string{
 }
 
 func decodeJISX0208Graphic(first, second byte) string {
-	if first < 0x21 || first > 0x7e || second < 0x21 || second > 0x7e {
+	if !aribValidRowCell(first, second) {
 		return string(utf8.RuneError)
 	}
-	if first >= 0x7a {
+	if first == 0x75 || first == 0x76 || first >= 0x7a {
 		if s, ok := lookupARIBTable719AdditionalSymbol(first, second); ok {
 			return s
 		}
 	}
-	if s, ok := aribJISX0208Overrides[uint16(first)<<8|uint16(second)]; ok {
+	if s, ok := aribJISX0208Overrides[aribRowCellKey(first, second)]; ok {
 		return s
 	}
 	s, err := decodeJISX0208Pair(first, second)
