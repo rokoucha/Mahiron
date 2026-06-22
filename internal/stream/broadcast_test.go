@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -34,6 +35,41 @@ func TestBroadcastStopsSourceAfterLastSubscriberDetaches(t *testing.T) {
 	broadcast.detach(&second)
 	if got := source.stops(); got != 1 {
 		t.Fatalf("source stops after last detach = %d, want 1", got)
+	}
+}
+
+func TestBroadcastRunsAllStopCallbacks(t *testing.T) {
+	source := newFakeLiveSource()
+	var mu sync.Mutex
+	var calls []string
+	broadcast := NewBroadcast(source, nil, func() {
+		mu.Lock()
+		calls = append(calls, "initial")
+		mu.Unlock()
+	})
+	if !broadcast.AddOnStop(func() {
+		mu.Lock()
+		calls = append(calls, "added")
+		mu.Unlock()
+	}) {
+		t.Fatal("AddOnStop rejected callback before stop")
+	}
+
+	if err := broadcast.Stop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if broadcast.AddOnStop(func() {
+		mu.Lock()
+		calls = append(calls, "late")
+		mu.Unlock()
+	}) {
+		t.Fatal("AddOnStop accepted callback after stop")
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if got, want := calls, []string{"initial", "added"}; !slices.Equal(got, want) {
+		t.Fatalf("stop callbacks = %v, want %v", got, want)
 	}
 }
 

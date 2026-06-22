@@ -644,6 +644,23 @@ func TestScanServicesReturnsWhenScannerCompletesBeforeLiveTuner(t *testing.T) {
 	if got := device.startCount(); got != 1 {
 		t.Fatalf("tuner device starts = %d, want 1", got)
 	}
+	if manager.HasSession("GR", "27") {
+		t.Fatal("completed scan left a stopped session cached")
+	}
+
+	replacement, err := manager.GetOrCreate(context.Background(), "GR", "27")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if replacement == session {
+		t.Fatal("GetOrCreate reused the stopped scan session")
+	}
+	if _, err := replacement.ScanServices(context.Background()); err != nil {
+		t.Fatalf("replacement session scan: %v", err)
+	}
+	if got := device.startCount(); got != 2 {
+		t.Fatalf("tuner device starts after replacement = %d, want 2", got)
+	}
 }
 
 func TestDecodePipelinesShareOneTunerDevice(t *testing.T) {

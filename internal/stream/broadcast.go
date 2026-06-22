@@ -20,7 +20,7 @@ type Broadcast struct {
 	hooks   []BroadcastHook
 	hub     *util.DynamicMultiWriter
 	mu      sync.Mutex
-	onStop  func()
+	onStops []func()
 	refs    int
 	source  LiveSource
 	started bool
@@ -28,12 +28,28 @@ type Broadcast struct {
 }
 
 func NewBroadcast(source LiveSource, hooks []BroadcastHook, onStop func()) *Broadcast {
-	return &Broadcast{
+	broadcast := &Broadcast{
 		hooks:  hooks,
 		hub:    util.NewDynamicMultiWriter(),
-		onStop: onStop,
 		source: source,
 	}
+	if onStop != nil {
+		broadcast.onStops = append(broadcast.onStops, onStop)
+	}
+	return broadcast
+}
+
+func (b *Broadcast) AddOnStop(onStop func()) bool {
+	if onStop == nil {
+		return true
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.stopped {
+		return false
+	}
+	b.onStops = append(b.onStops, onStop)
+	return true
 }
 
 func (b *Broadcast) Subscribe(ctx context.Context, dst io.Writer) error {
@@ -79,7 +95,8 @@ func (b *Broadcast) Stop(ctx context.Context) error {
 	}
 	b.stopped = true
 	cancel := b.cancel
-	onStop := b.onStop
+	onStops := append([]func(){}, b.onStops...)
+	b.onStops = nil
 	b.hub.Close()
 	b.mu.Unlock()
 
@@ -91,7 +108,7 @@ func (b *Broadcast) Stop(ctx context.Context) error {
 	if b.source != nil {
 		result = errors.Join(result, b.source.Stop(ctx))
 	}
-	if onStop != nil {
+	for _, onStop := range onStops {
 		onStop()
 	}
 	slog.Debug("broadcast stopped", "err", result)

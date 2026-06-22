@@ -134,6 +134,10 @@ func (m *StreamManager) getOrCreate(ctx context.Context, channelType, channel st
 	broadcast := lease.Broadcast
 	if broadcast == nil {
 		broadcast = NewBroadcast(lease.Source, hooks, func() { m.remove(key) })
+	} else {
+		if !broadcast.AddOnStop(func() { m.remove(key) }) {
+			return nil, errors.New("broadcast stopped")
+		}
 	}
 
 	session = NewChannelSession(ChannelSessionConfig{
