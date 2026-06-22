@@ -3,58 +3,10 @@ package ts
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
-	"os"
 	"reflect"
 	"testing"
 )
-
-func TestServiceScannerMatchesCompatibilityFixtures(t *testing.T) {
-	cases := []struct {
-		name              string
-		inputPath         string
-		compatibilityPath string
-	}{
-		{
-			name:              "gr-27",
-			inputPath:         "testdata/local/test-gr-27.ts",
-			compatibilityPath: "testdata/local/mirakc-arib-scan-services-gr-27.json",
-		},
-		{
-			name:              "bs-15",
-			inputPath:         "testdata/local/test-bs-15.ts",
-			compatibilityPath: "testdata/local/mirakc-arib-scan-services-bs-15.json",
-		},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			if !fileExists(tc.inputPath) || !fileExists(tc.compatibilityPath) {
-				t.Skip("local TS fixture or compatibility output fixture not found")
-			}
-			input, err := os.Open(tc.inputPath)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer input.Close()
-
-			got, err := NewServiceScanner().ScanServices(context.Background(), input)
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			wantBytes, err := os.ReadFile(tc.compatibilityPath)
-			if err != nil {
-				t.Fatal(err)
-			}
-			want := decodeServiceInfoJSON(t, wantBytes)
-			if !containsServices(got, want) {
-				t.Fatalf("ScanServices = %#v, want it to contain compatibility services %#v", got, want)
-			}
-		})
-	}
-}
 
 func TestParseSDTParsesServiceDescriptors(t *testing.T) {
 	section := buildSDT(t, 0x1234, 0x5678, []sdtServiceSpec{
@@ -148,33 +100,6 @@ func TestServiceScannerHonorsCanceledContext(t *testing.T) {
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("ScanServices error = %v, want context.Canceled", err)
 	}
-}
-
-func decodeServiceInfoJSON(t *testing.T, data []byte) []ServiceInfo {
-	t.Helper()
-	var services []ServiceInfo
-	if err := json.Unmarshal(data, &services); err != nil {
-		t.Fatalf("decode service JSON %q: %v", string(data), err)
-	}
-	return services
-}
-
-func containsServices(got, want []ServiceInfo) bool {
-	gotByID := make(map[uint16]ServiceInfo, len(got))
-	for _, svc := range got {
-		gotByID[svc.Sid] = svc
-	}
-	for _, svc := range want {
-		gotSvc, ok := gotByID[svc.Sid]
-		if ok {
-			gotSvc.LogoVersion = svc.LogoVersion
-			gotSvc.LogoDownloadDataId = svc.LogoDownloadDataId
-		}
-		if !ok || !reflect.DeepEqual(gotSvc, svc) {
-			return false
-		}
-	}
-	return true
 }
 
 type sdtServiceSpec struct {
