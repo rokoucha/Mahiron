@@ -4,8 +4,10 @@ import (
 	"context"
 	"reflect"
 	"strconv"
+	"time"
 
 	"github.com/21S1298001/Mahiron5/internal/config"
+	"github.com/21S1298001/Mahiron5/ts"
 )
 
 const (
@@ -102,6 +104,10 @@ func (s *ServiceManager) GetServiceById(ctx context.Context, id string) (*Servic
 	return s.store.GetByItemID(ctx, parsedId)
 }
 
+func (s *ServiceManager) GetServiceByItemID(ctx context.Context, itemID int64) (*Service, error) {
+	return s.store.GetByItemID(ctx, itemID)
+}
+
 func (s *ServiceManager) GetChannels() config.ChannelsConfig {
 	channels := make(config.ChannelsConfig, 0, len(s.channels))
 	for _, channel := range s.channels {
@@ -176,6 +182,56 @@ func (s *ServiceManager) GetServiceByChannelAndId(ctx context.Context, channelTy
 		parsedId = 0
 	}
 	return s.store.GetByChannelAndID(ctx, channelType, channelId, id, parsedId)
+}
+
+func (s *ServiceManager) GetLogoByServiceItemID(ctx context.Context, itemID int64) ([]byte, error) {
+	return s.store.GetLogoByServiceItemID(ctx, itemID)
+}
+
+func (s *ServiceManager) KnownLogoTargets(ctx context.Context) ([]LogoTarget, error) {
+	return s.store.KnownLogoTargets(ctx)
+}
+
+func (s *ServiceManager) UpsertLogo(ctx context.Context, networkID, serviceID uint16, logoID int64, logoType int64, logoVersion int64, downloadDataID int64, data []byte, updatedAt int64) error {
+	if err := s.store.UpsertLogo(ctx, networkID, serviceID, logoID, logoType, logoVersion, downloadDataID, data, updatedAt); err != nil {
+		return err
+	}
+	s.publishServiceByKey(ctx, eventTypeUpdate, networkID, serviceID)
+	return nil
+}
+
+func (s *ServiceManager) DeleteLogo(ctx context.Context, networkID, serviceID uint16, logoID int64, logoType int64, logoVersion int64, downloadDataID int64) error {
+	if err := s.store.DeleteLogo(ctx, networkID, serviceID, logoID, logoType, logoVersion, downloadDataID); err != nil {
+		return err
+	}
+	s.publishServiceByKey(ctx, eventTypeUpdate, networkID, serviceID)
+	return nil
+}
+
+func (s *ServiceManager) UpsertLogoImage(ctx context.Context, image *ts.LogoImage) error {
+	targets, err := s.store.KnownLogoTargets(ctx)
+	if err != nil {
+		return err
+	}
+	now := time.Now().UnixMilli()
+	for _, target := range targets {
+		if target.NetworkId != image.OriginalNetworkID ||
+			target.LogoId != int64(image.LogoID) ||
+			target.LogoVersion != int64(image.LogoVersion) ||
+			target.LogoDownloadDataId != int64(image.DownloadDataID) {
+			continue
+		}
+		if image.IsDeleted {
+			if err := s.DeleteLogo(ctx, target.NetworkId, target.ServiceId, target.LogoId, int64(image.LogoType), int64(image.LogoVersion), int64(image.DownloadDataID)); err != nil {
+				return err
+			}
+		} else {
+			if err := s.UpsertLogo(ctx, target.NetworkId, target.ServiceId, target.LogoId, int64(image.LogoType), int64(image.LogoVersion), int64(image.DownloadDataID), image.Data, now); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func sameServiceCore(a, b *Service) bool {

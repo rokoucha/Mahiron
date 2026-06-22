@@ -534,6 +534,10 @@ func (s *RemoteSession) CollectEITPF(context.Context, func(*ts.EIT) error) error
 	return ErrEITCollectorNotConfigured
 }
 
+func (s *RemoteSession) CollectLogos(context.Context, func(*ts.LogoImage) error) error {
+	return ErrLogoCollectorNotConfigured
+}
+
 func (s *RemoteSession) Stop(context.Context) error {
 	if s.eventCancel != nil {
 		s.eventCancel()

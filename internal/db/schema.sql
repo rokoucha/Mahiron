@@ -10,12 +10,27 @@ CREATE TABLE IF NOT EXISTS services (
     transport_stream_id INTEGER NOT NULL,
     name TEXT NOT NULL,
     type INTEGER NOT NULL,
+    logo_id INTEGER,
+    logo_version INTEGER,
+    logo_download_data_id INTEGER,
     remote_control_key_id INTEGER NOT NULL,
     channel_type TEXT NOT NULL,
     channel_id TEXT NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_services_channel ON services(channel_type, channel_id);
+
+CREATE TABLE IF NOT EXISTS service_logos (
+    network_id INTEGER NOT NULL,
+    service_id INTEGER NOT NULL,
+    logo_id INTEGER NOT NULL,
+    logo_type INTEGER NOT NULL,
+    logo_version INTEGER NOT NULL,
+    download_data_id INTEGER NOT NULL,
+    data BLOB NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (network_id, service_id, logo_id, logo_type)
+);
 
 CREATE TABLE IF NOT EXISTS programs (
     id INTEGER PRIMARY KEY,

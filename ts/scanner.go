@@ -9,13 +9,15 @@ import (
 
 // ServiceInfo represents a scanned service in the scanner JSON output.
 type ServiceInfo struct {
-	Nid                uint16 `json:"nid"`
-	Tsid               uint16 `json:"tsid"`
-	Sid                uint16 `json:"sid"`
-	Name               string `json:"name"`
-	Type               uint8  `json:"type"`
-	LogoId             int64  `json:"logoId"`
-	RemoteControlKeyId *uint8 `json:"remoteControlKeyId,omitempty"`
+	Nid                uint16  `json:"nid"`
+	Tsid               uint16  `json:"tsid"`
+	Sid                uint16  `json:"sid"`
+	Name               string  `json:"name"`
+	Type               uint8   `json:"type"`
+	LogoId             int64   `json:"logoId"`
+	LogoVersion        *uint16 `json:"logoVersion,omitempty"`
+	LogoDownloadDataId *uint16 `json:"logoDownloadDataId,omitempty"`
+	RemoteControlKeyId *uint8  `json:"remoteControlKeyId,omitempty"`
 }
 
 // ServiceScanner reads a TS stream and outputs a list of services.
@@ -136,9 +138,15 @@ func (s *serviceScanState) handleSDT(section Section) {
 			Type:   desc.ServiceType,
 			LogoId: -1,
 		}
+		if logo := LogoDescriptorFromDescriptors(svc.Descriptors); logo != nil {
+			info.LogoId = int64(logo.LogoID)
+			if logo.TransmissionType == LogoTransmissionTypeCDTDirect {
+				info.LogoVersion = uint16Ptr(logo.LogoVersion)
+				info.LogoDownloadDataId = uint16Ptr(logo.DownloadDataID)
+			}
+		}
 		if key, ok := s.remoteKeys[sdt.TransportStreamID]; ok {
 			info.RemoteControlKeyId = uint8Ptr(key)
-			info.LogoId = 0
 		}
 		s.services[svc.ServiceID] = info
 		s.sdtServices[svc.ServiceID] = struct{}{}
@@ -173,7 +181,6 @@ func (s *serviceScanState) handleNIT(section Section) {
 			continue
 		}
 		info.RemoteControlKeyId = uint8Ptr(key)
-		info.LogoId = 0
 		s.services[sid] = info
 	}
 }
@@ -247,5 +254,9 @@ func (s *serviceScanState) serviceList() []ServiceInfo {
 }
 
 func uint8Ptr(v uint8) *uint8 {
+	return &v
+}
+
+func uint16Ptr(v uint16) *uint16 {
 	return &v
 }

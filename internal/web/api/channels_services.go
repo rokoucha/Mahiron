@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"net/http"
 	"strconv"
@@ -88,6 +89,24 @@ func GetServiceByChannel(ctx context.Context, h *Handler, params apigen.GetServi
 	}
 	res := apigen.GetServiceByChannelOKApplicationJSON(apiServices(h, []*service.Service{svc}, true))
 	return &res, nil
+}
+
+func GetLogoImage(ctx context.Context, h *Handler, params apigen.GetLogoImageParams) (apigen.GetLogoImageRes, error) {
+	svc, err := h.serviceManager.GetServiceByItemID(ctx, params.ID)
+	if err != nil {
+		return nil, err
+	}
+	if svc == nil {
+		return &apigen.GetLogoImageNotFound{}, nil
+	}
+	data, err := h.serviceManager.GetLogoByServiceItemID(ctx, params.ID)
+	if err != nil {
+		return nil, err
+	}
+	if len(data) == 0 {
+		return &apigen.GetLogoImageServiceUnavailable{}, nil
+	}
+	return &apigen.GetLogoImageOK{Data: bytes.NewReader(data)}, nil
 }
 
 func apiChannels(ctx context.Context, h *Handler, channels config.ChannelsConfig) ([]apigen.Channel, error) {
@@ -215,6 +234,10 @@ func apiService(h *Handler, service *service.Service, includeChannel bool) *apig
 			result.Channel = apigen.NewOptChannel(*apiChannelWithoutServices(h, *channel))
 		}
 	}
+	if service.LogoId != nil {
+		result.LogoId = apigen.NewOptInt(int(*service.LogoId))
+	}
+	result.HasLogoData = apigen.NewOptBool(service.HasLogoData)
 	return result
 }
 

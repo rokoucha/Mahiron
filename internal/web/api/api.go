@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"net/http"
 
 	"github.com/21S1298001/Mahiron5/internal/config"
 	"github.com/21S1298001/Mahiron5/internal/event"
@@ -45,6 +44,8 @@ type ServiceManager interface {
 	GetChannels() config.ChannelsConfig
 	GetServiceByChannelAndId(context.Context, string, string, string) (*service.Service, error)
 	GetServiceById(context.Context, string) (*service.Service, error)
+	GetServiceByItemID(context.Context, int64) (*service.Service, error)
+	GetLogoByServiceItemID(context.Context, int64) ([]byte, error)
 	GetServices(context.Context) ([]*service.Service, error)
 	GetServicesByChannel(context.Context, string, string) ([]*service.Service, error)
 }
@@ -163,7 +164,7 @@ func (h *Handler) GetLogStream(ctx context.Context) (apigen.GetLogStreamRes, err
 }
 
 func (h *Handler) GetLogoImage(ctx context.Context, params apigen.GetLogoImageParams) (apigen.GetLogoImageRes, error) {
-	return &apigen.GetLogoImageDef{StatusCode: http.StatusNotImplemented}, nil
+	return GetLogoImage(ctx, h, params)
 }
 
 func (h *Handler) GetProgram(ctx context.Context, params apigen.GetProgramParams) (apigen.GetProgramRes, error) {

@@ -24,6 +24,14 @@ type ServiceScanner interface {
 	ScanChannel(context.Context, string, string, bool) ([]uint16, error)
 }
 
+type LogoCollector interface {
+	CollectLogos(context.Context, string, string, func(*ts.LogoImage) error) error
+}
+
+type LogoUpdater interface {
+	UpsertLogoImage(context.Context, *ts.LogoImage) error
+}
+
 type EPGGatherer interface {
 	Groups(context.Context) (map[uint16]*epg.Network, error)
 	BuildNetworkInputs(context.Context, uint16) ([]epg.Candidate, []epg.ServiceKey, error)

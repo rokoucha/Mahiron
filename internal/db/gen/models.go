@@ -42,7 +42,21 @@ type Service struct {
 	TransportStreamID  int64  `json:"transport_stream_id"`
 	Name               string `json:"name"`
 	Type               int64  `json:"type"`
+	LogoID             *int64 `json:"logo_id"`
+	LogoVersion        *int64 `json:"logo_version"`
+	LogoDownloadDataID *int64 `json:"logo_download_data_id"`
 	RemoteControlKeyID int64  `json:"remote_control_key_id"`
 	ChannelType        string `json:"channel_type"`
 	ChannelID          string `json:"channel_id"`
+}
+
+type ServiceLogo struct {
+	NetworkID      int64  `json:"network_id"`
+	ServiceID      int64  `json:"service_id"`
+	LogoID         int64  `json:"logo_id"`
+	LogoType       int64  `json:"logo_type"`
+	LogoVersion    int64  `json:"logo_version"`
+	DownloadDataID int64  `json:"download_data_id"`
+	Data           []byte `json:"data"`
+	UpdatedAt      int64  `json:"updated_at"`
 }

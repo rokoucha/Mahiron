@@ -36,6 +36,7 @@ const (
 	DescriptorTagComponent                 = 0x50
 	DescriptorTagContent                   = 0x54
 	DescriptorTagAudioComponent            = 0xC4
+	DescriptorTagLogoTransmission          = 0xCF
 	DescriptorTagTerrestrialDeliverySystem = 0xCD
 	DescriptorTagEventGroup                = 0xD6
 	DescriptorTagSeries                    = 0xD5

@@ -8,15 +8,16 @@ import (
 )
 
 type SystemConfig struct {
-	Addresses        []ServerAddress     `json:"addresses"`
-	LogLevel         string              `json:"logLevel,omitempty"`
-	Observability    ObservabilityConfig `json:"observability,omitempty"`
-	JobMaxRunning    int                 `json:"jobMaxRunning,omitempty"`
-	Jobs             []JobScheduleConfig `json:"jobs,omitempty"`
-	DatabasePath     string              `json:"databasePath,omitempty"`
-	EpgRetentionDays int                 `json:"epgRetentionDays,omitempty"`
-	EpgRetrievalTime int                 `json:"epgRetrievalTime,omitempty"`
-	EpgStaleAfter    int                 `json:"epgStaleAfter,omitempty"`
+	Addresses          []ServerAddress     `json:"addresses"`
+	LogLevel           string              `json:"logLevel,omitempty"`
+	Observability      ObservabilityConfig `json:"observability,omitempty"`
+	JobMaxRunning      int                 `json:"jobMaxRunning,omitempty"`
+	Jobs               []JobScheduleConfig `json:"jobs,omitempty"`
+	DatabasePath       string              `json:"databasePath,omitempty"`
+	EpgRetentionDays   int                 `json:"epgRetentionDays,omitempty"`
+	EpgRetrievalTime   int                 `json:"epgRetrievalTime,omitempty"`
+	EpgStaleAfter      int                 `json:"epgStaleAfter,omitempty"`
+	LogoGatherDuration int                 `json:"logoGatherDuration,omitempty"`
 }
 
 type JobScheduleConfig struct {
@@ -50,10 +51,11 @@ func LoadAndParseSystemConfig(filePath string) (*SystemConfig, error) {
 	}
 
 	config := SystemConfig{
-		DatabasePath:     "./mahiron.db",
-		EpgRetentionDays: 3,
-		EpgRetrievalTime: 600000,
-		EpgStaleAfter:    7200000,
+		DatabasePath:       "./mahiron.db",
+		EpgRetentionDays:   3,
+		EpgRetrievalTime:   600000,
+		EpgStaleAfter:      7200000,
+		LogoGatherDuration: 86400000,
 	}
 	err = yaml.Unmarshal(file, &config)
 	if err != nil {
@@ -104,6 +106,9 @@ func LoadAndParseSystemConfig(filePath string) (*SystemConfig, error) {
 	}
 	if config.EpgStaleAfter <= 0 {
 		return nil, errors.New("epgStaleAfter must be > 0")
+	}
+	if config.LogoGatherDuration <= 0 {
+		return nil, errors.New("logoGatherDuration must be > 0")
 	}
 
 	return &config, nil

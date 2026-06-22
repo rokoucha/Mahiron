@@ -6,6 +6,7 @@ import (
 
 	"github.com/21S1298001/Mahiron5/internal/config"
 	"github.com/21S1298001/Mahiron5/internal/db"
+	"github.com/21S1298001/Mahiron5/ts"
 )
 
 func TestServiceManagerGetChannelsExcludesDisabledChannels(t *testing.T) {
@@ -334,5 +335,126 @@ func TestServiceManagerEPGSummary(t *testing.T) {
 	}
 	if stale != 2 {
 		t.Errorf("stale = %d, want 2 with larger window", stale)
+	}
+}
+
+func TestServiceManagerUpsertLogoImageRequiresSDTConsistency(t *testing.T) {
+	ctx := context.Background()
+	database, err := db.OpenInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	store := NewSQLiteStore(database)
+	manager := NewServiceManager(store, config.ChannelsConfig{})
+	logoID := int64(42)
+	logoVersion := int64(3)
+	downloadDataID := int64(0x1234)
+	if err := store.ReplaceChannelServices(ctx, "GR", "27", []*Service{{
+		Id:                 "0000100101",
+		ServiceId:          101,
+		NetworkId:          1,
+		LogoId:             &logoID,
+		LogoVersion:        &logoVersion,
+		LogoDownloadDataId: &downloadDataID,
+		ChannelType:        "GR",
+		ChannelId:          "27",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+
+	data := []byte{0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a}
+	if err := manager.UpsertLogoImage(ctx, &ts.LogoImage{
+		OriginalNetworkID: 1,
+		LogoID:            42,
+		LogoVersion:       4,
+		DownloadDataID:    0x1234,
+		LogoType:          5,
+		Data:              data,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	svc, err := manager.GetServiceByItemID(ctx, 100101)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if svc.HasLogoData {
+		t.Fatal("HasLogoData = true for mismatched logo version")
+	}
+
+	if err := manager.UpsertLogoImage(ctx, &ts.LogoImage{
+		OriginalNetworkID: 1,
+		LogoID:            42,
+		LogoVersion:       3,
+		DownloadDataID:    0x1234,
+		LogoType:          5,
+		Data:              data,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	svc, err = manager.GetServiceByItemID(ctx, 100101)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !svc.HasLogoData {
+		t.Fatal("HasLogoData = false for consistent logo metadata")
+	}
+	if err := manager.UpsertLogoImage(ctx, &ts.LogoImage{
+		OriginalNetworkID: 1,
+		LogoID:            42,
+		LogoVersion:       3,
+		DownloadDataID:    0x1234,
+		LogoType:          5,
+		IsDeleted:         true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	svc, err = manager.GetServiceByItemID(ctx, 100101)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if svc.HasLogoData {
+		t.Fatal("HasLogoData = true after CDT deletion notice")
+	}
+}
+
+func TestSQLiteStoreDeletesStaleLogosWhenServiceLogoMetadataChanges(t *testing.T) {
+	ctx := context.Background()
+	database, err := db.OpenInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	store := NewSQLiteStore(database)
+	logoID := int64(42)
+	oldVersion := int64(3)
+	newVersion := int64(4)
+	downloadDataID := int64(0x1234)
+	service := &Service{
+		Id:                 "0000100101",
+		ServiceId:          101,
+		NetworkId:          1,
+		LogoId:             &logoID,
+		LogoVersion:        &oldVersion,
+		LogoDownloadDataId: &downloadDataID,
+		ChannelType:        "GR",
+		ChannelId:          "27",
+	}
+	if err := store.ReplaceChannelServices(ctx, "GR", "27", []*Service{service}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpsertLogo(ctx, 1, 101, logoID, 5, oldVersion, downloadDataID, []byte{0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a}, 1000); err != nil {
+		t.Fatal(err)
+	}
+	service.LogoVersion = &newVersion
+	if err := store.ReplaceChannelServices(ctx, "GR", "27", []*Service{service}); err != nil {
+		t.Fatal(err)
+	}
+	svc, err := store.GetByItemID(ctx, 100101)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if svc.HasLogoData {
+		t.Fatal("HasLogoData = true after service logo version changed and stale cache was deleted")
 	}
 }

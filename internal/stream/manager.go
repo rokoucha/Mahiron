@@ -19,6 +19,8 @@ type StreamManager struct {
 	eitCollector   EITCollector
 	eitUpdater     EITSectionUpdater
 	filter         ServiceFilter
+	logoCollector  LogoCollector
+	logoUpdater    LogoUpdater
 	programUpdater ProgramUpdater
 	remotes        map[string]*RemoteClient
 	scanner        ServiceScanner
@@ -34,6 +36,8 @@ type StreamManagerConfig struct {
 	EITCollector       EITCollector
 	EITUpdater         EITSectionUpdater
 	Remotes            config.RemotesConfig
+	LogoCollector      LogoCollector
+	LogoUpdater        LogoUpdater
 	ProgramUpdater     ProgramUpdater
 	Scanner            ServiceScanner
 	TunerManager       TunerManager
@@ -51,6 +55,7 @@ type Session interface {
 	ScanServices(context.Context) ([]ts.ServiceInfo, error)
 	CollectEITS(context.Context, func(*ts.EIT) error) error
 	CollectEITPF(context.Context, func(*ts.EIT) error) error
+	CollectLogos(context.Context, func(*ts.LogoImage) error) error
 	Stop(context.Context) error
 }
 
@@ -67,6 +72,8 @@ func NewStreamManager(cfg StreamManagerConfig) *StreamManager {
 		eitCollector:   cfg.EITCollector,
 		eitUpdater:     cfg.EITUpdater,
 		filter:         cfg.Filter,
+		logoCollector:  cfg.LogoCollector,
+		logoUpdater:    cfg.LogoUpdater,
 		programUpdater: cfg.ProgramUpdater,
 		remotes:        remotes,
 		scanner:        cfg.Scanner,
@@ -106,6 +113,9 @@ func (m *StreamManager) getOrCreate(ctx context.Context, channelType, channel st
 	if piggyback := NewEITPFPiggyback(channelType, channel, m.eitCollector, m.eitUpdater); piggyback != nil {
 		hooks = append(hooks, piggyback.Hook)
 	}
+	if piggyback := NewLogoPiggyback(channelType, channel, m.logoCollector, m.logoUpdater); piggyback != nil {
+		hooks = append(hooks, piggyback.Hook)
+	}
 	slog.Debug("creating stream session", "type", channelType, "channel", channel, "wait", wait)
 	lease, err := m.sources.Acquire(ctx, channelType, channel, wait, hooks)
 	if err != nil {
@@ -134,6 +144,7 @@ func (m *StreamManager) getOrCreate(ctx context.Context, channelType, channel st
 		EITCollector:  m.eitCollector,
 		EITUpdater:    m.eitUpdater,
 		Filter:        m.filter,
+		LogoCollector: m.logoCollector,
 		OnStop:        func() { m.remove(key) },
 		Scanner:       m.scanner,
 		Type:          channelType,
@@ -199,6 +210,7 @@ var (
 	ErrEITCollectorNotConfigured   = errors.New("EIT collector not configured")
 	ErrServiceFilterNotConfigured  = errors.New("service filter not configured")
 	ErrServiceScannerNotConfigured = errors.New("service scanner not configured")
+	ErrLogoCollectorNotConfigured  = errors.New("logo collector not configured")
 	ErrTunerNotFound               = tuner.ErrTunerNotFound
 	ErrUnsupportedTuner            = tuner.ErrUnsupportedTuner
 	ErrTunerUnavailable            = tuner.ErrTunerUnavailable
@@ -233,4 +245,12 @@ type EITCollector interface {
 
 type EITSectionUpdater interface {
 	UpsertEIT(ctx context.Context, eit *ts.EIT) error
+}
+
+type LogoCollector interface {
+	Collect(context.Context, io.Reader, func(*ts.LogoImage) error) error
+}
+
+type LogoUpdater interface {
+	UpsertLogoImage(context.Context, *ts.LogoImage) error
 }

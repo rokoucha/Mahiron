@@ -4,9 +4,12 @@ addresses:
 
 logLevel: debug
 jobMaxRunning: 1
+logoGatherDuration: 86400000
 
 jobs:
   - key: service-updater
     schedule: "5 6 * * *"
   - key: epg-gatherer
     schedule: "20,50 * * * *"
+  - key: logo-gatherer
+    schedule: "15 3 * * *"

@@ -166,6 +166,10 @@ func containsServices(got, want []ServiceInfo) bool {
 	}
 	for _, svc := range want {
 		gotSvc, ok := gotByID[svc.Sid]
+		if ok {
+			gotSvc.LogoVersion = svc.LogoVersion
+			gotSvc.LogoDownloadDataId = svc.LogoDownloadDataId
+		}
 		if !ok || !reflect.DeepEqual(gotSvc, svc) {
 			return false
 		}

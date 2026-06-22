@@ -17,6 +17,7 @@ const (
 	TableIDEITSEnd        = 0x5F // schedule, actual TS
 	TableIDEITSOtherStart = 0x60 // schedule, other TS
 	TableIDEITSOtherEnd   = 0x6F // schedule, other TS
+	TableIDCDT            = 0xC8 // common data table
 	TableIDNIT0           = 0x40 // actual network
 	TableIDNIT1           = 0x41 // other network
 )

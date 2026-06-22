@@ -270,6 +270,14 @@ func (m failingStatusServiceManager) GetServiceById(context.Context, string) (*s
 	return nil, errors.New("unexpected GetServiceById call")
 }
 
+func (m failingStatusServiceManager) GetServiceByItemID(context.Context, int64) (*service.Service, error) {
+	return nil, errors.New("unexpected GetServiceByItemID call")
+}
+
+func (m failingStatusServiceManager) GetLogoByServiceItemID(context.Context, int64) ([]byte, error) {
+	return nil, errors.New("unexpected GetLogoByServiceItemID call")
+}
+
 func (m failingStatusServiceManager) GetServices(context.Context) ([]*service.Service, error) {
 	return nil, errors.New("unexpected GetServices call")
 }

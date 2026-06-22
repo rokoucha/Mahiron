@@ -123,11 +123,14 @@ func buildRuntime(cfg *config.Config, database *sql.DB, obs observability.SetupR
 		EITCollector:   ts.NewEITCollector(),
 		EITUpdater:     epgUpdater,
 		Filter:         stream.NativeServiceFilter{},
+		LogoCollector:  ts.NewLogoCollector(),
+		LogoUpdater:    services,
 		ProgramUpdater: programs,
 		Scanner:        ts.NewServiceScanner(),
 		TunerManager:   tuners,
 	})
 	serviceScanner := stream.NewServiceScannerAdapter(streams)
+	logoCollector := stream.NewLogoCollectorAdapter(streams)
 	epgStreams := stream.NewEPGCollectorAdapter(streams)
 	apiStreams := stream.NewAPIStreamAdapter(streams)
 	scanService := servicescan.NewService(services, serviceScanner, cfg.Channels)
@@ -140,12 +143,14 @@ func buildRuntime(cfg *config.Config, database *sql.DB, obs observability.SetupR
 
 	job.RegisterServiceUpdater(jobs, scanService, epgService)
 	job.RegisterEPGGathererService(jobs, epgService)
+	job.RegisterLogoGatherer(jobs, scanService, logoCollector, services, time.Duration(cfg.System.LogoGatherDuration)*time.Millisecond)
 
 	schedules := cfg.System.Jobs
 	if len(schedules) == 0 {
 		schedules = []config.JobScheduleConfig{
 			{Key: job.ServiceUpdaterKey, Schedule: job.ServiceUpdaterDefaultSchedule},
 			{Key: job.EPGGathererKey, Schedule: job.EPGGathererDefaultSchedule},
+			{Key: job.LogoGathererKey, Schedule: job.LogoGathererDefaultSchedule},
 		}
 		slog.Info("no job schedules in config, using defaults")
 	}

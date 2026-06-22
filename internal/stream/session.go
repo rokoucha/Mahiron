@@ -13,16 +13,17 @@ import (
 )
 
 type ChannelSession struct {
-	broadcast    *Broadcast
-	channel      string
-	descrambler  Descrambler
-	eitCollector EITCollector
-	filter       ServiceFilter
-	flows        *FlowRegistry
-	mu           sync.Mutex
-	scanner      ServiceScanner
-	stopped      bool
-	typ          string
+	broadcast     *Broadcast
+	channel       string
+	descrambler   Descrambler
+	eitCollector  EITCollector
+	filter        ServiceFilter
+	flows         *FlowRegistry
+	logoCollector LogoCollector
+	mu            sync.Mutex
+	scanner       ServiceScanner
+	stopped       bool
+	typ           string
 }
 
 type ChannelSessionConfig struct {
@@ -33,6 +34,7 @@ type ChannelSessionConfig struct {
 	EITCollector  EITCollector
 	EITUpdater    EITSectionUpdater
 	Filter        ServiceFilter
+	LogoCollector LogoCollector
 	OnStop        func()
 	Scanner       ServiceScanner
 	Type          string
@@ -40,13 +42,14 @@ type ChannelSessionConfig struct {
 
 func NewChannelSession(config ChannelSessionConfig) *ChannelSession {
 	session := &ChannelSession{
-		broadcast:    config.Broadcast,
-		channel:      config.Channel,
-		descrambler:  config.Descrambler,
-		eitCollector: config.EITCollector,
-		filter:       config.Filter,
-		scanner:      config.Scanner,
-		typ:          config.Type,
+		broadcast:     config.Broadcast,
+		channel:       config.Channel,
+		descrambler:   config.Descrambler,
+		eitCollector:  config.EITCollector,
+		filter:        config.Filter,
+		logoCollector: config.LogoCollector,
+		scanner:       config.Scanner,
+		typ:           config.Type,
 	}
 	session.flows = NewFlowRegistry(session.broadcast.SubscribeRaw, session.pipelineProcessors, config.OnStop)
 	return session
@@ -119,6 +122,15 @@ func (s *ChannelSession) CollectEITPF(ctx context.Context, observe func(*ts.EIT)
 	}
 	return NewStreamTaskRunner(s.broadcast).RunTask(ctx, func(ctx context.Context, src io.Reader) error {
 		return s.eitCollector.CollectEITPF(ctx, src, observe)
+	})
+}
+
+func (s *ChannelSession) CollectLogos(ctx context.Context, observe func(*ts.LogoImage) error) error {
+	if s.logoCollector == nil {
+		return ErrLogoCollectorNotConfigured
+	}
+	return NewStreamTaskRunner(s.broadcast).RunTask(ctx, func(ctx context.Context, src io.Reader) error {
+		return s.logoCollector.Collect(ctx, src, observe)
 	})
 }
 

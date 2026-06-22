@@ -74,6 +74,14 @@ func (testServiceManager) GetServiceById(context.Context, string) (*service.Serv
 	return nil, nil
 }
 
+func (testServiceManager) GetServiceByItemID(context.Context, int64) (*service.Service, error) {
+	return nil, nil
+}
+
+func (testServiceManager) GetLogoByServiceItemID(context.Context, int64) ([]byte, error) {
+	return nil, nil
+}
+
 func (testServiceManager) GetServices(context.Context) ([]*service.Service, error) {
 	return nil, nil
 }

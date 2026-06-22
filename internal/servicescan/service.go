@@ -98,6 +98,21 @@ func (s *Service) ScanChannel(ctx context.Context, channelType string, channelID
 		if svc.RemoteControlKeyId != nil {
 			remoteControlKeyID = *svc.RemoteControlKeyId
 		}
+		var logoID *int64
+		var logoVersion *int64
+		var logoDownloadDataID *int64
+		if svc.LogoId >= 0 {
+			v := svc.LogoId
+			logoID = &v
+		}
+		if svc.LogoVersion != nil {
+			v := int64(*svc.LogoVersion)
+			logoVersion = &v
+		}
+		if svc.LogoDownloadDataId != nil {
+			v := int64(*svc.LogoDownloadDataId)
+			logoDownloadDataID = &v
+		}
 		scanned[i] = &service.Service{
 			Id:                 fmt.Sprintf("%05d%05d", svc.Nid, svc.Sid),
 			ServiceId:          svc.Sid,
@@ -105,6 +120,9 @@ func (s *Service) ScanChannel(ctx context.Context, channelType string, channelID
 			TransportStreamId:  svc.Tsid,
 			Name:               svc.Name,
 			Type:               svc.Type,
+			LogoId:             logoID,
+			LogoVersion:        logoVersion,
+			LogoDownloadDataId: logoDownloadDataID,
 			RemoteControlKeyId: remoteControlKeyID,
 			ChannelType:        channelType,
 			ChannelId:          channelID,
