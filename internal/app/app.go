@@ -152,6 +152,7 @@ func buildRuntime(cfg *config.Config, database *sql.DB, obs observability.SetupR
 		EITUpdater:     epgUpdater,
 		LogoUpdater:    services,
 		ProgramUpdater: programs,
+		ServiceLister:  services,
 		TunerManager:   tuners,
 	})
 	serviceScanner := stream.NewServiceScannerAdapter(streams)

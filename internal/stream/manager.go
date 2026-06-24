@@ -11,6 +11,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/internal/program"
+	"github.com/21S1298001/mahiron/internal/service"
 	"github.com/21S1298001/mahiron/internal/tuner"
 	"github.com/21S1298001/mahiron/ts"
 	"github.com/google/uuid"
@@ -25,6 +26,7 @@ type StreamManager struct {
 	remoteEventSyncOnce   sync.Once
 	remoteEventSyncWG     sync.WaitGroup
 	remotes               map[string]*RemoteClient
+	serviceLister         ServiceLister
 	sessionDetails        map[sessionKey]sessionMetricDetail
 	sessions              map[sessionKey]Session
 	sessionTypes          map[sessionKey]string
@@ -38,6 +40,7 @@ type StreamManagerConfig struct {
 	Remotes            config.RemotesConfig
 	LogoUpdater        LogoUpdater
 	ProgramUpdater     ProgramUpdater
+	ServiceLister      ServiceLister
 	TunerManager       TunerManager
 }
 
@@ -81,6 +84,7 @@ func NewStreamManager(cfg StreamManagerConfig) *StreamManager {
 		logoUpdater:    cfg.LogoUpdater,
 		programUpdater: cfg.ProgramUpdater,
 		remotes:        remotes,
+		serviceLister:  cfg.ServiceLister,
 		sessionDetails: map[sessionKey]sessionMetricDetail{},
 		sessions:       map[sessionKey]Session{},
 		sessionTypes:   map[sessionKey]string{},
@@ -95,25 +99,33 @@ func (m *StreamManager) StartRemoteProgramEventSync(ctx context.Context) {
 	m.remoteEventSyncOnce.Do(func() {
 		syncCtx, cancel := context.WithCancel(ctx)
 		m.remoteEventSyncCancel = cancel
+		updater := m.remoteProgramUpdater()
 		for name, client := range m.remotes {
 			name, client := name, client
 			m.remoteEventSyncWG.Add(1)
 			go func() {
 				defer m.remoteEventSyncWG.Done()
-				m.runRemoteProgramEventSync(syncCtx, name, client)
+				m.runRemoteProgramEventSync(syncCtx, name, client, updater)
 			}()
 		}
 	})
 }
 
-func (m *StreamManager) runRemoteProgramEventSync(ctx context.Context, name string, client *RemoteClient) {
+func (m *StreamManager) remoteProgramUpdater() ProgramUpdater {
+	if m.serviceLister == nil {
+		return m.programUpdater
+	}
+	return newKnownServiceProgramUpdater(m.programUpdater, m.serviceLister)
+}
+
+func (m *StreamManager) runRemoteProgramEventSync(ctx context.Context, name string, client *RemoteClient, updater ProgramUpdater) {
 	backoff := remoteProgramEventSyncInitialBackoff
 	for {
 		if err := ctx.Err(); err != nil {
 			return
 		}
 		slog.Debug("starting remote program event sync", "remote", name)
-		err := client.StreamProgramEvents(ctx, m.programUpdater)
+		err := client.StreamProgramEvents(ctx, updater)
 		if err := ctx.Err(); err != nil {
 			return
 		}
@@ -346,6 +358,10 @@ var (
 
 type TunerManager interface {
 	NewDeviceByType(string, *config.ChannelConfig) (TunerDevice, error)
+}
+
+type ServiceLister interface {
+	GetServices(context.Context) ([]*service.Service, error)
 }
 
 type TunerAllocator interface {

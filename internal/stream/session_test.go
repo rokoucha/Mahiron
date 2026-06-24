@@ -422,17 +422,28 @@ func TestManagerSelectsRemoteRouteWhenRemoteAlreadyTunedToSameRoute(t *testing.T
 	}
 }
 
-func TestManagerSelectsRemoteRouteWithoutTunerPrecheck(t *testing.T) {
+func TestManagerFallsBackWhenRemoteRouteUnavailable(t *testing.T) {
 	no := false
 	priorityRemote := 10
 	priorityLocal := 20
+	requests := make(chan string, 4)
 	previousNewRemoteClient := newRemoteClient
 	t.Cleanup(func() { newRemoteClient = previousNewRemoteClient })
 	newRemoteClient = func(remote config.RemoteConfig) *RemoteClient {
 		client := NewRemoteClient(remote)
-		client.httpClient = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
-			t.Fatal("remote route selection should not precheck /tuners")
-			return stringResponse(http.StatusInternalServerError, ""), nil
+		client.httpClient = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			requests <- r.URL.Path
+			if r.URL.Path != "/tuners" {
+				return stringResponse(http.StatusNotFound, ""), nil
+			}
+			return stringResponse(http.StatusOK, `[{
+				"types":["GR"],
+				"isAvailable":true,
+				"isFree":false,
+				"isFault":false,
+				"tunedChannelType":"GR",
+				"tunedChannel":"28"
+			}]`), nil
 		})}
 		return client
 	}
@@ -457,8 +468,16 @@ func TestManagerSelectsRemoteRouteWithoutTunerPrecheck(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := session.(*RemoteSession); !ok {
-		t.Fatalf("session type = %T, want *RemoteSession", session)
+	if _, ok := session.(*ChannelSession); !ok {
+		t.Fatalf("session type = %T, want *ChannelSession", session)
+	}
+	select {
+	case request := <-requests:
+		if request != "/tuners" {
+			t.Fatalf("remote precheck request = %q, want /tuners", request)
+		}
+	default:
+		t.Fatal("remote route was not prechecked")
 	}
 }
 
@@ -470,6 +489,9 @@ func TestManagerStartsRemoteProgramEventSyncOutsideSessionLifecycle(t *testing.T
 	newRemoteClient = func(remote config.RemoteConfig) *RemoteClient {
 		client := NewRemoteClient(remote)
 		client.httpClient = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			if r.URL.Path == "/api/tuners" {
+				return stringResponse(http.StatusOK, `[{"types":["GR"],"isAvailable":true,"isFree":true,"isFault":false}]`), nil
+			}
 			requests <- r.URL.Path + "?" + r.URL.RawQuery
 			<-r.Context().Done()
 			return nil, r.Context().Err()

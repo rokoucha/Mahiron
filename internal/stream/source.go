@@ -191,9 +191,13 @@ func (p *SourcePool) tryRoute(ctx context.Context, channel *config.ChannelConfig
 	return selected, nil
 }
 
-func (p *SourcePool) tryRemoteRoute(_ context.Context, route config.ChannelRouteConfig, routeChannel config.ChannelConfig) (routeSelection, error) {
-	if p.remotes[route.Remote] == nil {
+func (p *SourcePool) tryRemoteRoute(ctx context.Context, route config.ChannelRouteConfig, routeChannel config.ChannelConfig) (routeSelection, error) {
+	remote := p.remotes[route.Remote]
+	if remote == nil {
 		return routeSelection{}, tuner.ErrTunerNotFound
+	}
+	if err := remote.CheckAvailableForRoute(ctx, route.Type, route.Channel); err != nil {
+		return routeSelection{}, err
 	}
 	return routeSelection{route: route, channel: routeChannel}, nil
 }
