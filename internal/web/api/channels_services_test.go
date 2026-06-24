@@ -178,12 +178,12 @@ func TestGetServicesByChannelAndGetServiceByChannel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	serviceList, ok := serviceRes.(*apigen.GetServiceByChannelOKApplicationJSON)
+	serviceItem, ok := serviceRes.(*apigen.Service)
 	if !ok {
-		t.Fatalf("response type = %T, want *GetServiceByChannelOKApplicationJSON", serviceRes)
+		t.Fatalf("response type = %T, want *Service", serviceRes)
 	}
-	if got, want := len(*serviceList), 1; got != want {
-		t.Fatalf("service list length = %d, want %d", got, want)
+	if got, want := serviceItem.ServiceId, apigen.ServiceId(101); got != want {
+		t.Fatalf("serviceId = %d, want %d", got, want)
 	}
 }
 

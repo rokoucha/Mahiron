@@ -2,10 +2,12 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/tuner"
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
+	"github.com/go-faster/jx"
 )
 
 func GetTuners(_ context.Context, h *Handler) (apigen.GetTunersRes, error) {
@@ -102,7 +104,12 @@ func apiTunerUser(user tuner.User) apigen.TunerUser {
 }
 
 func apiConfiguredChannel(channel *config.ChannelConfig) apigen.ConfigChannelsItem {
-	result := apigen.ConfigChannelsItem{Name: channel.Name, Type: channel.Type, Channel: channel.Channel}
+	result := apigen.ConfigChannelsItem{
+		Name:    channel.Name,
+		Type:    channel.Type,
+		Channel: channel.Channel,
+		Routes:  apiConfiguredChannelRoutes(channel.RoutesOrDefault()),
+	}
 	if channel.ServiceId != nil {
 		result.ServiceId = apigen.NewOptServiceId(apigen.ServiceId(*channel.ServiceId))
 	}
@@ -110,10 +117,66 @@ func apiConfiguredChannel(channel *config.ChannelConfig) apigen.ConfigChannelsIt
 		result.TsmfRelTs = apigen.NewOptInt(int(*channel.TsmfRelTs))
 	}
 	if channel.CommandVars != nil {
-		result.CommandVars = &apigen.ConfigChannelsItemCommandVars{}
+		result.CommandVars = apigen.NewOptConfigChannelsItemCommandVars(apiConfigChannelCommandVars(channel.CommandVars))
 	}
 	if channel.IsDisabled != nil {
 		result.IsDisabled = apigen.NewOptBool(*channel.IsDisabled)
 	}
 	return result
+}
+
+func apiConfiguredChannelRoutes(routes []config.ChannelRouteConfig) []apigen.ConfigChannelRoute {
+	result := make([]apigen.ConfigChannelRoute, len(routes))
+	for i, route := range routes {
+		result[i] = apigen.ConfigChannelRoute{
+			Type:    route.Type,
+			Channel: route.Channel,
+		}
+		if route.Id != "" {
+			result[i].ID = apigen.NewOptString(route.Id)
+		}
+		if route.Remote != "" {
+			result[i].Remote = apigen.NewOptString(route.Remote)
+		}
+		if route.ServiceId != nil {
+			result[i].ServiceId = apigen.NewOptServiceId(apigen.ServiceId(*route.ServiceId))
+		}
+		if route.TsmfRelTs != nil {
+			result[i].TsmfRelTs = apigen.NewOptInt(int(*route.TsmfRelTs))
+		}
+		if route.CommandVars != nil {
+			result[i].CommandVars = apigen.NewOptConfigChannelRouteCommandVars(apiConfigRouteCommandVars(route.CommandVars))
+		}
+		if route.IsDisabled != nil {
+			result[i].IsDisabled = apigen.NewOptBool(*route.IsDisabled)
+		}
+		if route.Priority != nil {
+			result[i].Priority = apigen.NewOptInt(*route.Priority)
+		}
+	}
+	return result
+}
+
+func apiConfigChannelCommandVars(values map[string]any) apigen.ConfigChannelsItemCommandVars {
+	result := make(apigen.ConfigChannelsItemCommandVars, len(values))
+	for key, value := range values {
+		result[key] = apiRawJSON(value)
+	}
+	return result
+}
+
+func apiConfigRouteCommandVars(values map[string]any) apigen.ConfigChannelRouteCommandVars {
+	result := make(apigen.ConfigChannelRouteCommandVars, len(values))
+	for key, value := range values {
+		result[key] = apiRawJSON(value)
+	}
+	return result
+}
+
+func apiRawJSON(value any) jx.Raw {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return jx.Raw("null")
+	}
+	return jx.Raw(data)
 }

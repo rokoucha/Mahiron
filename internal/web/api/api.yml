@@ -1132,9 +1132,7 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Service"
+                $ref: "#/components/schemas/Service"
         default:
           description: Unexpected Error
           content:
@@ -1520,6 +1518,8 @@ components:
             - movement
         networkId:
           type: integer
+        transportStreamId:
+          type: integer
         serviceId:
           type: integer
         eventId:
@@ -1823,7 +1823,7 @@ components:
           type: integer
         commandVars:
           type: object
-          properties: {}
+          additionalProperties: {}
         isDisabled:
           type: boolean
         routes:
@@ -1850,7 +1850,7 @@ components:
           type: integer
         commandVars:
           type: object
-          properties: {}
+          additionalProperties: {}
         isDisabled:
           type: boolean
         priority:

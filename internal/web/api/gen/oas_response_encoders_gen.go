@@ -982,7 +982,7 @@ func encodeGetServiceResponse(response GetServiceRes, w http.ResponseWriter, spa
 
 func encodeGetServiceByChannelResponse(response GetServiceByChannelRes, w http.ResponseWriter, span trace.Span) error {
 	switch response := response.(type) {
-	case *GetServiceByChannelOKApplicationJSON:
+	case *Service:
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(200)
 

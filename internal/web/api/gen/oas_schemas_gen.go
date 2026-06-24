@@ -248,15 +248,15 @@ func (*ChannelsTypeChannelStreamHeadServiceUnavailable) channelsTypeChannelStrea
 
 // Ref: #/components/schemas/ConfigChannelRoute
 type ConfigChannelRoute struct {
-	ID          OptString                      `json:"id"`
-	Remote      OptString                      `json:"remote"`
-	Type        string                         `json:"type"`
-	Channel     string                         `json:"channel"`
-	ServiceId   OptServiceId                   `json:"serviceId"`
-	TsmfRelTs   OptInt                         `json:"tsmfRelTs"`
-	CommandVars *ConfigChannelRouteCommandVars `json:"commandVars"`
-	IsDisabled  OptBool                        `json:"isDisabled"`
-	Priority    OptInt                         `json:"priority"`
+	ID          OptString                        `json:"id"`
+	Remote      OptString                        `json:"remote"`
+	Type        string                           `json:"type"`
+	Channel     string                           `json:"channel"`
+	ServiceId   OptServiceId                     `json:"serviceId"`
+	TsmfRelTs   OptInt                           `json:"tsmfRelTs"`
+	CommandVars OptConfigChannelRouteCommandVars `json:"commandVars"`
+	IsDisabled  OptBool                          `json:"isDisabled"`
+	Priority    OptInt                           `json:"priority"`
 }
 
 // GetID returns the value of ID.
@@ -290,7 +290,7 @@ func (s *ConfigChannelRoute) GetTsmfRelTs() OptInt {
 }
 
 // GetCommandVars returns the value of CommandVars.
-func (s *ConfigChannelRoute) GetCommandVars() *ConfigChannelRouteCommandVars {
+func (s *ConfigChannelRoute) GetCommandVars() OptConfigChannelRouteCommandVars {
 	return s.CommandVars
 }
 
@@ -335,7 +335,7 @@ func (s *ConfigChannelRoute) SetTsmfRelTs(val OptInt) {
 }
 
 // SetCommandVars sets the value of CommandVars.
-func (s *ConfigChannelRoute) SetCommandVars(val *ConfigChannelRouteCommandVars) {
+func (s *ConfigChannelRoute) SetCommandVars(val OptConfigChannelRouteCommandVars) {
 	s.CommandVars = val
 }
 
@@ -349,18 +349,27 @@ func (s *ConfigChannelRoute) SetPriority(val OptInt) {
 	s.Priority = val
 }
 
-type ConfigChannelRouteCommandVars struct{}
+type ConfigChannelRouteCommandVars map[string]jx.Raw
+
+func (s *ConfigChannelRouteCommandVars) init() ConfigChannelRouteCommandVars {
+	m := *s
+	if m == nil {
+		m = map[string]jx.Raw{}
+		*s = m
+	}
+	return m
+}
 
 // Ref: #/components/schemas/ConfigChannelsItem
 type ConfigChannelsItem struct {
-	Name        string                         `json:"name"`
-	Type        string                         `json:"type"`
-	Channel     string                         `json:"channel"`
-	ServiceId   OptServiceId                   `json:"serviceId"`
-	TsmfRelTs   OptInt                         `json:"tsmfRelTs"`
-	CommandVars *ConfigChannelsItemCommandVars `json:"commandVars"`
-	IsDisabled  OptBool                        `json:"isDisabled"`
-	Routes      []ConfigChannelRoute           `json:"routes"`
+	Name        string                           `json:"name"`
+	Type        string                           `json:"type"`
+	Channel     string                           `json:"channel"`
+	ServiceId   OptServiceId                     `json:"serviceId"`
+	TsmfRelTs   OptInt                           `json:"tsmfRelTs"`
+	CommandVars OptConfigChannelsItemCommandVars `json:"commandVars"`
+	IsDisabled  OptBool                          `json:"isDisabled"`
+	Routes      []ConfigChannelRoute             `json:"routes"`
 }
 
 // GetName returns the value of Name.
@@ -389,7 +398,7 @@ func (s *ConfigChannelsItem) GetTsmfRelTs() OptInt {
 }
 
 // GetCommandVars returns the value of CommandVars.
-func (s *ConfigChannelsItem) GetCommandVars() *ConfigChannelsItemCommandVars {
+func (s *ConfigChannelsItem) GetCommandVars() OptConfigChannelsItemCommandVars {
 	return s.CommandVars
 }
 
@@ -429,7 +438,7 @@ func (s *ConfigChannelsItem) SetTsmfRelTs(val OptInt) {
 }
 
 // SetCommandVars sets the value of CommandVars.
-func (s *ConfigChannelsItem) SetCommandVars(val *ConfigChannelsItemCommandVars) {
+func (s *ConfigChannelsItem) SetCommandVars(val OptConfigChannelsItemCommandVars) {
 	s.CommandVars = val
 }
 
@@ -443,7 +452,16 @@ func (s *ConfigChannelsItem) SetRoutes(val []ConfigChannelRoute) {
 	s.Routes = val
 }
 
-type ConfigChannelsItemCommandVars struct{}
+type ConfigChannelsItemCommandVars map[string]jx.Raw
+
+func (s *ConfigChannelsItemCommandVars) init() ConfigChannelsItemCommandVars {
+	m := *s
+	if m == nil {
+		m = map[string]jx.Raw{}
+		*s = m
+	}
+	return m
+}
 
 // Ref: #/components/schemas/Error
 type Error struct {
@@ -1139,10 +1157,6 @@ func (*GetProgramStreamServiceUnavailable) getProgramStreamRes() {}
 type GetProgramsOKApplicationJSON []Program
 
 func (*GetProgramsOKApplicationJSON) getProgramsRes() {}
-
-type GetServiceByChannelOKApplicationJSON []Service
-
-func (*GetServiceByChannelOKApplicationJSON) getServiceByChannelRes() {}
 
 type GetServiceProgramsOKApplicationJSON []Program
 
@@ -1982,6 +1996,98 @@ func (o OptChannel) Get() (v Channel, ok bool) {
 
 // Or returns value if set, or given parameter if does not.
 func (o OptChannel) Or(d Channel) Channel {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptConfigChannelRouteCommandVars returns new OptConfigChannelRouteCommandVars with value set to v.
+func NewOptConfigChannelRouteCommandVars(v ConfigChannelRouteCommandVars) OptConfigChannelRouteCommandVars {
+	return OptConfigChannelRouteCommandVars{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptConfigChannelRouteCommandVars is optional ConfigChannelRouteCommandVars.
+type OptConfigChannelRouteCommandVars struct {
+	Value ConfigChannelRouteCommandVars
+	Set   bool
+}
+
+// IsSet returns true if OptConfigChannelRouteCommandVars was set.
+func (o OptConfigChannelRouteCommandVars) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptConfigChannelRouteCommandVars) Reset() {
+	var v ConfigChannelRouteCommandVars
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptConfigChannelRouteCommandVars) SetTo(v ConfigChannelRouteCommandVars) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptConfigChannelRouteCommandVars) Get() (v ConfigChannelRouteCommandVars, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptConfigChannelRouteCommandVars) Or(d ConfigChannelRouteCommandVars) ConfigChannelRouteCommandVars {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptConfigChannelsItemCommandVars returns new OptConfigChannelsItemCommandVars with value set to v.
+func NewOptConfigChannelsItemCommandVars(v ConfigChannelsItemCommandVars) OptConfigChannelsItemCommandVars {
+	return OptConfigChannelsItemCommandVars{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptConfigChannelsItemCommandVars is optional ConfigChannelsItemCommandVars.
+type OptConfigChannelsItemCommandVars struct {
+	Value ConfigChannelsItemCommandVars
+	Set   bool
+}
+
+// IsSet returns true if OptConfigChannelsItemCommandVars was set.
+func (o OptConfigChannelsItemCommandVars) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptConfigChannelsItemCommandVars) Reset() {
+	var v ConfigChannelsItemCommandVars
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptConfigChannelsItemCommandVars) SetTo(v ConfigChannelsItemCommandVars) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptConfigChannelsItemCommandVars) Get() (v ConfigChannelsItemCommandVars, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptConfigChannelsItemCommandVars) Or(d ConfigChannelsItemCommandVars) ConfigChannelsItemCommandVars {
 	if v, ok := o.Get(); ok {
 		return v
 	}
@@ -3997,10 +4103,11 @@ func (*ProgramsIDStreamHeadServiceUnavailable) programsIDStreamHeadRes() {}
 
 // Ref: #/components/schemas/RelatedItem
 type RelatedItem struct {
-	Type      OptRelatedItemType `json:"type"`
-	NetworkId OptInt             `json:"networkId"`
-	ServiceId OptInt             `json:"serviceId"`
-	EventId   OptInt             `json:"eventId"`
+	Type              OptRelatedItemType `json:"type"`
+	NetworkId         OptInt             `json:"networkId"`
+	TransportStreamId OptInt             `json:"transportStreamId"`
+	ServiceId         OptInt             `json:"serviceId"`
+	EventId           OptInt             `json:"eventId"`
 }
 
 // GetType returns the value of Type.
@@ -4011,6 +4118,11 @@ func (s *RelatedItem) GetType() OptRelatedItemType {
 // GetNetworkId returns the value of NetworkId.
 func (s *RelatedItem) GetNetworkId() OptInt {
 	return s.NetworkId
+}
+
+// GetTransportStreamId returns the value of TransportStreamId.
+func (s *RelatedItem) GetTransportStreamId() OptInt {
+	return s.TransportStreamId
 }
 
 // GetServiceId returns the value of ServiceId.
@@ -4031,6 +4143,11 @@ func (s *RelatedItem) SetType(val OptRelatedItemType) {
 // SetNetworkId sets the value of NetworkId.
 func (s *RelatedItem) SetNetworkId(val OptInt) {
 	s.NetworkId = val
+}
+
+// SetTransportStreamId sets the value of TransportStreamId.
+func (s *RelatedItem) SetTransportStreamId(val OptInt) {
+	s.TransportStreamId = val
 }
 
 // SetServiceId sets the value of ServiceId.
@@ -4270,7 +4387,8 @@ func (s *Service) SetLogoData(val OptString) {
 	s.LogoData = val
 }
 
-func (*Service) getServiceRes() {}
+func (*Service) getServiceByChannelRes() {}
+func (*Service) getServiceRes()          {}
 
 type ServiceId int
 

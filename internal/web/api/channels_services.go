@@ -87,8 +87,7 @@ func GetServiceByChannel(ctx context.Context, h *Handler, params apigen.GetServi
 	if svc == nil {
 		return notFound("service not found"), nil
 	}
-	res := apigen.GetServiceByChannelOKApplicationJSON(apiServices(h, []*service.Service{svc}, true))
-	return &res, nil
+	return apiService(h, svc, true), nil
 }
 
 func GetLogoImage(ctx context.Context, h *Handler, params apigen.GetLogoImageParams) (apigen.GetLogoImageRes, error) {

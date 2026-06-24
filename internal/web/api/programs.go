@@ -175,6 +175,9 @@ func apiRelatedItem(item program.RelatedItem) apigen.RelatedItem {
 	if item.NetworkID != nil {
 		out.NetworkId = apigen.NewOptInt(int(*item.NetworkID))
 	}
+	if item.TransportStreamID != nil {
+		out.TransportStreamId = apigen.NewOptInt(int(*item.TransportStreamID))
+	}
 	out.ServiceId = apigen.NewOptInt(int(item.ServiceID))
 	out.EventId = apigen.NewOptInt(int(item.EventID))
 	return out

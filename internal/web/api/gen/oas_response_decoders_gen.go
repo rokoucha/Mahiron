@@ -1678,7 +1678,7 @@ func decodeGetServiceByChannelResponse(resp *http.Response) (res GetServiceByCha
 			}
 			d := jx.DecodeBytes(buf)
 
-			var response GetServiceByChannelOKApplicationJSON
+			var response Service
 			if err := func() error {
 				if err := response.Decode(d); err != nil {
 					return err

@@ -235,6 +235,7 @@ func TestApiProgramExposesExtendedRelatedAndSeries(t *testing.T) {
 	pm := program.NewProgramManager(program.NewSQLiteStore(database))
 	id := program.ProgramID(1, 101, 7)
 	nid := uint16(1)
+	tsid := uint16(10)
 	if err := pm.ReplaceServicePrograms(ctx, 1, 101, 0, []*program.Program{
 		{
 			ID:        id,
@@ -245,7 +246,7 @@ func TestApiProgramExposesExtendedRelatedAndSeries(t *testing.T) {
 			Duration:  1000,
 			Extended:  map[string]string{"出演者": "Foo"},
 			RelatedItems: []program.RelatedItem{
-				{Type: program.RelatedItemTypeShared, NetworkID: &nid, ServiceID: 101, EventID: 9},
+				{Type: program.RelatedItemTypeShared, NetworkID: &nid, TransportStreamID: &tsid, ServiceID: 101, EventID: 9},
 			},
 			Series: &program.Series{ID: 5, Pattern: 1, Episode: 1, LastEpisode: 12, Name: "series"},
 		},
@@ -272,6 +273,9 @@ func TestApiProgramExposesExtendedRelatedAndSeries(t *testing.T) {
 	}
 	if p.RelatedItems[0].Type.Value != apigen.RelatedItemTypeShared {
 		t.Errorf("RelatedItem.Type = %v, want shared", p.RelatedItems[0].Type.Value)
+	}
+	if p.RelatedItems[0].TransportStreamId.Value != 10 {
+		t.Errorf("RelatedItem.TransportStreamId = %d, want 10", p.RelatedItems[0].TransportStreamId.Value)
 	}
 	if !p.Series.IsSet() {
 		t.Fatal("Series not set")

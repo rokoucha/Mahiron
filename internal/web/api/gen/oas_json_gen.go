@@ -437,7 +437,7 @@ func (s *ConfigChannelRoute) encodeFields(e *jx.Encoder) {
 		}
 	}
 	{
-		if s.CommandVars != nil {
+		if s.CommandVars.Set {
 			e.FieldStart("commandVars")
 			s.CommandVars.Encode(e)
 		}
@@ -543,12 +543,10 @@ func (s *ConfigChannelRoute) Decode(d *jx.Decoder) error {
 			}
 		case "commandVars":
 			if err := func() error {
-				s.CommandVars = nil
-				var elem ConfigChannelRouteCommandVars
-				if err := elem.Decode(d); err != nil {
+				s.CommandVars.Reset()
+				if err := s.CommandVars.Decode(d); err != nil {
 					return err
 				}
-				s.CommandVars = &elem
 				return nil
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"commandVars\"")
@@ -631,29 +629,43 @@ func (s *ConfigChannelRoute) UnmarshalJSON(data []byte) error {
 }
 
 // Encode implements json.Marshaler.
-func (s *ConfigChannelRouteCommandVars) Encode(e *jx.Encoder) {
+func (s ConfigChannelRouteCommandVars) Encode(e *jx.Encoder) {
 	e.ObjStart()
 	s.encodeFields(e)
 	e.ObjEnd()
 }
 
-// encodeFields encodes fields.
-func (s *ConfigChannelRouteCommandVars) encodeFields(e *jx.Encoder) {
-}
+// encodeFields implements json.Marshaler.
+func (s ConfigChannelRouteCommandVars) encodeFields(e *jx.Encoder) {
+	for k, elem := range s {
+		e.FieldStart(k)
 
-var jsonFieldsNameOfConfigChannelRouteCommandVars = [0]string{}
+		if len(elem) != 0 {
+			e.Raw(elem)
+		}
+	}
+}
 
 // Decode decodes ConfigChannelRouteCommandVars from json.
 func (s *ConfigChannelRouteCommandVars) Decode(d *jx.Decoder) error {
 	if s == nil {
 		return errors.New("invalid: unable to decode ConfigChannelRouteCommandVars to nil")
 	}
-
+	m := s.init()
 	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
-		switch string(k) {
-		default:
-			return d.Skip()
+		var elem jx.Raw
+		if err := func() error {
+			v, err := d.RawAppend(nil)
+			elem = jx.Raw(v)
+			if err != nil {
+				return err
+			}
+			return nil
+		}(); err != nil {
+			return errors.Wrapf(err, "decode field %q", k)
 		}
+		m[string(k)] = elem
+		return nil
 	}); err != nil {
 		return errors.Wrap(err, "decode ConfigChannelRouteCommandVars")
 	}
@@ -662,7 +674,7 @@ func (s *ConfigChannelRouteCommandVars) Decode(d *jx.Decoder) error {
 }
 
 // MarshalJSON implements stdjson.Marshaler.
-func (s *ConfigChannelRouteCommandVars) MarshalJSON() ([]byte, error) {
+func (s ConfigChannelRouteCommandVars) MarshalJSON() ([]byte, error) {
 	e := jx.Encoder{}
 	s.Encode(&e)
 	return e.Bytes(), nil
@@ -708,7 +720,7 @@ func (s *ConfigChannelsItem) encodeFields(e *jx.Encoder) {
 		}
 	}
 	{
-		if s.CommandVars != nil {
+		if s.CommandVars.Set {
 			e.FieldStart("commandVars")
 			s.CommandVars.Encode(e)
 		}
@@ -809,12 +821,10 @@ func (s *ConfigChannelsItem) Decode(d *jx.Decoder) error {
 			}
 		case "commandVars":
 			if err := func() error {
-				s.CommandVars = nil
-				var elem ConfigChannelsItemCommandVars
-				if err := elem.Decode(d); err != nil {
+				s.CommandVars.Reset()
+				if err := s.CommandVars.Decode(d); err != nil {
 					return err
 				}
-				s.CommandVars = &elem
 				return nil
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"commandVars\"")
@@ -903,29 +913,43 @@ func (s *ConfigChannelsItem) UnmarshalJSON(data []byte) error {
 }
 
 // Encode implements json.Marshaler.
-func (s *ConfigChannelsItemCommandVars) Encode(e *jx.Encoder) {
+func (s ConfigChannelsItemCommandVars) Encode(e *jx.Encoder) {
 	e.ObjStart()
 	s.encodeFields(e)
 	e.ObjEnd()
 }
 
-// encodeFields encodes fields.
-func (s *ConfigChannelsItemCommandVars) encodeFields(e *jx.Encoder) {
-}
+// encodeFields implements json.Marshaler.
+func (s ConfigChannelsItemCommandVars) encodeFields(e *jx.Encoder) {
+	for k, elem := range s {
+		e.FieldStart(k)
 
-var jsonFieldsNameOfConfigChannelsItemCommandVars = [0]string{}
+		if len(elem) != 0 {
+			e.Raw(elem)
+		}
+	}
+}
 
 // Decode decodes ConfigChannelsItemCommandVars from json.
 func (s *ConfigChannelsItemCommandVars) Decode(d *jx.Decoder) error {
 	if s == nil {
 		return errors.New("invalid: unable to decode ConfigChannelsItemCommandVars to nil")
 	}
-
+	m := s.init()
 	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
-		switch string(k) {
-		default:
-			return d.Skip()
+		var elem jx.Raw
+		if err := func() error {
+			v, err := d.RawAppend(nil)
+			elem = jx.Raw(v)
+			if err != nil {
+				return err
+			}
+			return nil
+		}(); err != nil {
+			return errors.Wrapf(err, "decode field %q", k)
 		}
+		m[string(k)] = elem
+		return nil
 	}); err != nil {
 		return errors.Wrap(err, "decode ConfigChannelsItemCommandVars")
 	}
@@ -934,7 +958,7 @@ func (s *ConfigChannelsItemCommandVars) Decode(d *jx.Decoder) error {
 }
 
 // MarshalJSON implements stdjson.Marshaler.
-func (s *ConfigChannelsItemCommandVars) MarshalJSON() ([]byte, error) {
+func (s ConfigChannelsItemCommandVars) MarshalJSON() ([]byte, error) {
 	e := jx.Encoder{}
 	s.Encode(&e)
 	return e.Bytes(), nil
@@ -1826,56 +1850,6 @@ func (s GetProgramsOKApplicationJSON) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
 func (s *GetProgramsOKApplicationJSON) UnmarshalJSON(data []byte) error {
-	d := jx.DecodeBytes(data)
-	return s.Decode(d)
-}
-
-// Encode encodes GetServiceByChannelOKApplicationJSON as json.
-func (s GetServiceByChannelOKApplicationJSON) Encode(e *jx.Encoder) {
-	unwrapped := []Service(s)
-
-	e.ArrStart()
-	for _, elem := range unwrapped {
-		elem.Encode(e)
-	}
-	e.ArrEnd()
-}
-
-// Decode decodes GetServiceByChannelOKApplicationJSON from json.
-func (s *GetServiceByChannelOKApplicationJSON) Decode(d *jx.Decoder) error {
-	if s == nil {
-		return errors.New("invalid: unable to decode GetServiceByChannelOKApplicationJSON to nil")
-	}
-	var unwrapped []Service
-	if err := func() error {
-		unwrapped = make([]Service, 0)
-		if err := d.Arr(func(d *jx.Decoder) error {
-			var elem Service
-			if err := elem.Decode(d); err != nil {
-				return err
-			}
-			unwrapped = append(unwrapped, elem)
-			return nil
-		}); err != nil {
-			return err
-		}
-		return nil
-	}(); err != nil {
-		return errors.Wrap(err, "alias")
-	}
-	*s = GetServiceByChannelOKApplicationJSON(unwrapped)
-	return nil
-}
-
-// MarshalJSON implements stdjson.Marshaler.
-func (s GetServiceByChannelOKApplicationJSON) MarshalJSON() ([]byte, error) {
-	e := jx.Encoder{}
-	s.Encode(&e)
-	return e.Bytes(), nil
-}
-
-// UnmarshalJSON implements stdjson.Unmarshaler.
-func (s *GetServiceByChannelOKApplicationJSON) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }
@@ -3490,6 +3464,74 @@ func (s OptChannel) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
 func (s *OptChannel) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes ConfigChannelRouteCommandVars as json.
+func (o OptConfigChannelRouteCommandVars) Encode(e *jx.Encoder) {
+	if !o.Set {
+		return
+	}
+	o.Value.Encode(e)
+}
+
+// Decode decodes ConfigChannelRouteCommandVars from json.
+func (o *OptConfigChannelRouteCommandVars) Decode(d *jx.Decoder) error {
+	if o == nil {
+		return errors.New("invalid: unable to decode OptConfigChannelRouteCommandVars to nil")
+	}
+	o.Set = true
+	o.Value = make(ConfigChannelRouteCommandVars)
+	if err := o.Value.Decode(d); err != nil {
+		return err
+	}
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s OptConfigChannelRouteCommandVars) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *OptConfigChannelRouteCommandVars) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes ConfigChannelsItemCommandVars as json.
+func (o OptConfigChannelsItemCommandVars) Encode(e *jx.Encoder) {
+	if !o.Set {
+		return
+	}
+	o.Value.Encode(e)
+}
+
+// Decode decodes ConfigChannelsItemCommandVars from json.
+func (o *OptConfigChannelsItemCommandVars) Decode(d *jx.Decoder) error {
+	if o == nil {
+		return errors.New("invalid: unable to decode OptConfigChannelsItemCommandVars to nil")
+	}
+	o.Set = true
+	o.Value = make(ConfigChannelsItemCommandVars)
+	if err := o.Value.Decode(d); err != nil {
+		return err
+	}
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s OptConfigChannelsItemCommandVars) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *OptConfigChannelsItemCommandVars) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }
@@ -5633,6 +5675,12 @@ func (s *RelatedItem) encodeFields(e *jx.Encoder) {
 		}
 	}
 	{
+		if s.TransportStreamId.Set {
+			e.FieldStart("transportStreamId")
+			s.TransportStreamId.Encode(e)
+		}
+	}
+	{
 		if s.ServiceId.Set {
 			e.FieldStart("serviceId")
 			s.ServiceId.Encode(e)
@@ -5646,11 +5694,12 @@ func (s *RelatedItem) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfRelatedItem = [4]string{
+var jsonFieldsNameOfRelatedItem = [5]string{
 	0: "type",
 	1: "networkId",
-	2: "serviceId",
-	3: "eventId",
+	2: "transportStreamId",
+	3: "serviceId",
+	4: "eventId",
 }
 
 // Decode decodes RelatedItem from json.
@@ -5680,6 +5729,16 @@ func (s *RelatedItem) Decode(d *jx.Decoder) error {
 				return nil
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"networkId\"")
+			}
+		case "transportStreamId":
+			if err := func() error {
+				s.TransportStreamId.Reset()
+				if err := s.TransportStreamId.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"transportStreamId\"")
 			}
 		case "serviceId":
 			if err := func() error {

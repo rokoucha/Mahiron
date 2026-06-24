@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -95,12 +96,34 @@ func TestKillTunerProcess(t *testing.T) {
 }
 
 func TestApiTunerIncludesLogicalAndTunedChannels(t *testing.T) {
+	no := false
+	serviceID := uint32(101)
+	priority := 2
 	item := apiTuner(tuner.Status{
 		CurrentChannelType: "BS", CurrentChannel: "101",
 		TunedChannelType: "CATV", TunedChannel: "C13",
 		Users: []tuner.User{{
 			ID:       "viewer",
 			Priority: 1,
+			StreamSetting: tuner.StreamSetting{
+				Channel: &config.ChannelConfig{
+					Name:        "NHK",
+					Type:        "GR",
+					Channel:     "27",
+					ServiceId:   &serviceID,
+					CommandVars: map[string]any{"freq": 12345, "satellite": "SOMESAT"},
+					IsDisabled:  &no,
+					Routes: []config.ChannelRouteConfig{{
+						Id:          "catv",
+						Type:        "CATV",
+						Channel:     "C27",
+						ServiceId:   &serviceID,
+						CommandVars: map[string]any{"freq": 23456},
+						IsDisabled:  &no,
+						Priority:    &priority,
+					}},
+				},
+			},
 			StreamInfo: map[string]tuner.StreamInfo{
 				"BS/101": {Packet: 10, Drop: 1},
 			},
@@ -115,6 +138,40 @@ func TestApiTunerIncludesLogicalAndTunedChannels(t *testing.T) {
 	info, ok := item.Users[0].StreamInfo.Get()
 	if !ok || info["BS/101"].Packet != 10 || info["BS/101"].Drop != 1 {
 		t.Fatalf("streamInfo = %+v, %v", info, ok)
+	}
+	setting, ok := item.Users[0].StreamSetting.Get()
+	if !ok {
+		t.Fatal("streamSetting should be set")
+	}
+	if got, want := len(setting.Channel.Routes), 1; got != want {
+		t.Fatalf("streamSetting.channel.routes length = %d, want %d", got, want)
+	}
+	if got, want := setting.Channel.Routes[0].ID.Value, "catv"; got != want {
+		t.Fatalf("streamSetting.channel.routes[0].id = %q, want %q", got, want)
+	}
+	if got, want := setting.Channel.Routes[0].Priority.Value, 2; got != want {
+		t.Fatalf("streamSetting.channel.routes[0].priority = %d, want %d", got, want)
+	}
+	commandVars, ok := setting.Channel.CommandVars.Get()
+	if !ok {
+		t.Fatal("streamSetting.channel.commandVars should be set")
+	}
+	var freq int
+	if err := json.Unmarshal(commandVars["freq"], &freq); err != nil {
+		t.Fatal(err)
+	}
+	if freq != 12345 {
+		t.Fatalf("streamSetting.channel.commandVars.freq = %d, want 12345", freq)
+	}
+	routeCommandVars, ok := setting.Channel.Routes[0].CommandVars.Get()
+	if !ok {
+		t.Fatal("streamSetting.channel.routes[0].commandVars should be set")
+	}
+	if err := json.Unmarshal(routeCommandVars["freq"], &freq); err != nil {
+		t.Fatal(err)
+	}
+	if freq != 23456 {
+		t.Fatalf("streamSetting.channel.routes[0].commandVars.freq = %d, want 23456", freq)
 	}
 }
 
