@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"io"
+	"strconv"
 	"sync"
 
 	"github.com/21S1298001/mahiron/internal/observability"
+	"github.com/21S1298001/mahiron/internal/tuner"
 	"github.com/21S1298001/mahiron/ts"
 )
 
@@ -40,12 +42,16 @@ type packetEngine struct {
 }
 
 type packetSubscription struct {
+	ctx        context.Context
+	continuity *continuityMonitor
 	done       chan struct{}
 	err        error
 	finished   bool
 	queue      chan ts.Packet
 	service    *ts.ServiceDemux
 	serviceID  *uint16
+	stats      tuner.StreamInfo
+	statsKey   string
 	writerDone chan struct{}
 }
 
@@ -162,7 +168,15 @@ func (e *packetEngine) Err() error {
 }
 
 func (e *packetEngine) subscribePackets(ctx context.Context, serviceID *uint16, dst io.Writer) error {
-	sub := &packetSubscription{done: make(chan struct{}), queue: make(chan ts.Packet, packetSubscriberBuffer), serviceID: serviceID, writerDone: make(chan struct{})}
+	sub := &packetSubscription{
+		ctx:        ctx,
+		continuity: &continuityMonitor{last: map[uint16]byte{}},
+		done:       make(chan struct{}),
+		queue:      make(chan ts.Packet, packetSubscriberBuffer),
+		serviceID:  serviceID,
+		statsKey:   e.streamInfoKey(serviceID),
+		writerDone: make(chan struct{}),
+	}
 	id, err := e.attachPacket(sub)
 	if err != nil {
 		return err
@@ -334,7 +348,29 @@ func (e *packetEngine) writePackets(id uint64, sub *packetSubscription, dst io.W
 			e.finishPacket(id, err)
 			return
 		}
+		sub.stats.Packet++
+		if sub.continuity.observe(packet) {
+			sub.stats.Drop++
+		}
+		tuner.ReportStreamInfo(sub.ctx, sub.statsKey, sub.stats)
 	}
+}
+
+func (e *packetEngine) streamInfoKey(serviceID *uint16) string {
+	key := e.channelType
+	if e.channelID != "" {
+		if key != "" {
+			key += "/"
+		}
+		key += e.channelID
+	}
+	if serviceID != nil {
+		key += ":" + strconv.Itoa(int(*serviceID))
+	}
+	if key == "" {
+		key = "stream"
+	}
+	return key
 }
 
 func (e *packetEngine) writeSections(id uint64, sub *sectionSubscription) {

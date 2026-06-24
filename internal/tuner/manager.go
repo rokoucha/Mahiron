@@ -406,6 +406,10 @@ func (d *managedDevice) AddUser(user User) { d.manager.addUser(d.tuner, user) }
 
 func (d *managedDevice) RemoveUser(id string) { d.manager.removeUser(d.tuner, id) }
 
+func (d *managedDevice) UpdateUserStreamInfo(userID, key string, info StreamInfo) {
+	d.manager.updateUserStreamInfo(d.tuner, userID, key, info)
+}
+
 func (d *managedDevice) releaseOnce() { d.once.Do(func() { d.manager.release(d.tuner) }) }
 
 func (tm *TunerManager) markRunning(item *Tuner, device *managedDevice) {

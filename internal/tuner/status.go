@@ -16,6 +16,7 @@ type User struct {
 	URL            string
 	DisableDecoder bool
 	StreamSetting  StreamSetting
+	StreamInfo     map[string]StreamInfo
 }
 
 type StreamSetting struct {
@@ -27,6 +28,11 @@ type StreamSetting struct {
 	ParseNIT  *bool
 	ParseSDT  *bool
 	ParseEIT  *bool
+}
+
+type StreamInfo struct {
+	Packet int
+	Drop   int
 }
 
 type Status struct {
@@ -59,6 +65,9 @@ type ProcessUptimeStatus interface {
 }
 
 type userContextKey struct{}
+type streamInfoReporterKey struct{}
+
+type streamInfoReporter func(userID, key string, info StreamInfo)
 
 func WithUser(ctx context.Context, user User) context.Context {
 	return context.WithValue(ctx, userContextKey{}, user)
@@ -67,6 +76,27 @@ func WithUser(ctx context.Context, user User) context.Context {
 func UserFromContext(ctx context.Context) (User, bool) {
 	user, ok := ctx.Value(userContextKey{}).(User)
 	return user, ok
+}
+
+func WithStreamInfoReporter(ctx context.Context, report func(userID, key string, info StreamInfo)) context.Context {
+	return context.WithValue(ctx, streamInfoReporterKey{}, streamInfoReporter(report))
+}
+
+func WithoutStreamInfoReporter(ctx context.Context) context.Context {
+	return context.WithValue(ctx, streamInfoReporterKey{}, streamInfoReporter(nil))
+}
+
+func ReportStreamInfo(ctx context.Context, key string, info StreamInfo) bool {
+	user, ok := UserFromContext(ctx)
+	if !ok || user.ID == "" || key == "" {
+		return false
+	}
+	report, ok := ctx.Value(streamInfoReporterKey{}).(streamInfoReporter)
+	if !ok || report == nil {
+		return false
+	}
+	report(user.ID, key, info)
+	return true
 }
 
 type trackedUser struct {
@@ -197,6 +227,9 @@ func (tm *TunerManager) addUser(item *Tuner, user User) {
 	runtime := tm.runtime[item]
 	if tracked := runtime.users[user.ID]; tracked != nil {
 		tracked.refs++
+		if user.StreamInfo == nil {
+			user.StreamInfo = tracked.user.StreamInfo
+		}
 		tracked.user = user
 		slog.Debug("tuner user reference added", "name", item.Name(), "userId", user.ID, "refs", tracked.refs)
 		status = tm.statusLockedByTuner(item)
@@ -209,6 +242,20 @@ func (tm *TunerManager) addUser(item *Tuner, user User) {
 	status = tm.statusLockedByTuner(item)
 	tm.mu.Unlock()
 	tm.publishStatus(eventTypeUpdate, status)
+}
+
+func (tm *TunerManager) updateUserStreamInfo(item *Tuner, userID, key string, info StreamInfo) {
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
+	runtime := tm.runtime[item]
+	tracked := runtime.users[userID]
+	if tracked == nil {
+		return
+	}
+	if tracked.user.StreamInfo == nil {
+		tracked.user.StreamInfo = map[string]StreamInfo{}
+	}
+	tracked.user.StreamInfo[key] = info
 }
 
 func (tm *TunerManager) removeUser(item *Tuner, id string) {

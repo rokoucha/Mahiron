@@ -89,6 +89,16 @@ func tunerUserEventData(users []tuner.User) []map[string]any {
 		if setting := streamSettingEventData(user.StreamSetting); len(setting) > 0 {
 			data["streamSetting"] = setting
 		}
+		if len(user.StreamInfo) > 0 {
+			info := map[string]any{}
+			for key, item := range user.StreamInfo {
+				info[key] = map[string]any{
+					"packet": item.Packet,
+					"drop":   item.Drop,
+				}
+			}
+			data["streamInfo"] = info
+		}
 		result[i] = data
 	}
 	return result

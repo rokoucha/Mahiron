@@ -10,6 +10,7 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/epg"
 	"github.com/21S1298001/mahiron/internal/program"
+	"github.com/21S1298001/mahiron/internal/tuner"
 	"github.com/21S1298001/mahiron/internal/util"
 	"github.com/21S1298001/mahiron/ts"
 )
@@ -75,7 +76,7 @@ func (s *ChannelSession) ProgramStream(ctx context.Context, p *program.Program, 
 
 func (s *ChannelSession) ScanServices(ctx context.Context) ([]ts.ServiceInfo, error) {
 	scan := ts.NewServiceScan()
-	err := s.broadcast.WithUser(ctx, func() error {
+	err := s.broadcast.WithUser(ctx, func(ctx context.Context) error {
 		return s.rawEngine.ObserveSections(ctx, func(section ts.Section) bool {
 			switch section.TableID() {
 			case ts.TableIDPAT, ts.TableIDSDT0, ts.TableIDNIT0:
@@ -98,11 +99,11 @@ func (s *ChannelSession) ScanServices(ctx context.Context) ([]ts.ServiceInfo, er
 }
 
 func (s *ChannelSession) CollectEIT(ctx context.Context, observe func(*ts.EIT) error) error {
-	return s.broadcast.WithUser(ctx, func() error { return s.observeEIT(ctx, observe) })
+	return s.broadcast.WithUser(ctx, func(ctx context.Context) error { return s.observeEIT(ctx, observe) })
 }
 
 func (s *ChannelSession) ObserveLogos(ctx context.Context, observe func(*ts.LogoImage) error) error {
-	return s.broadcast.WithUser(ctx, func() error {
+	return s.broadcast.WithUser(ctx, func(ctx context.Context) error {
 		return s.rawEngine.ObserveSections(ctx, func(section ts.Section) bool {
 			return section.TableID() == ts.TableIDCDT
 		}, func(section ts.Section) error {
@@ -162,7 +163,7 @@ func (s *ChannelSession) attachEngine(ctx context.Context, decode bool, serviceI
 	if decode && s.descrambler != nil {
 		engine = s.decodedEngine
 	}
-	return s.broadcast.WithUser(ctx, func() error {
+	return s.broadcast.WithUser(ctx, func(ctx context.Context) error {
 		if service {
 			return engine.SubscribeService(ctx, serviceID, dst)
 		}
@@ -179,7 +180,7 @@ func (s *ChannelSession) subscribeDecodedMux(ctx context.Context, dst io.Writer)
 	r, w := io.Pipe()
 	rawDone := make(chan error, 1)
 	go func() {
-		rawDone <- s.rawEngine.SubscribeChannel(ctx, w)
+		rawDone <- s.rawEngine.SubscribeChannel(tuner.WithoutStreamInfoReporter(ctx), w)
 		_ = w.Close()
 	}()
 	err := s.descrambler.Descramble(ctx, r, dst)

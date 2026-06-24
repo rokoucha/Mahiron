@@ -98,12 +98,23 @@ func TestApiTunerIncludesLogicalAndTunedChannels(t *testing.T) {
 	item := apiTuner(tuner.Status{
 		CurrentChannelType: "BS", CurrentChannel: "101",
 		TunedChannelType: "CATV", TunedChannel: "C13",
+		Users: []tuner.User{{
+			ID:       "viewer",
+			Priority: 1,
+			StreamInfo: map[string]tuner.StreamInfo{
+				"BS/101": {Packet: 10, Drop: 1},
+			},
+		}},
 	})
 	if value, ok := item.CurrentChannel.Get(); !ok || value != "101" {
 		t.Fatalf("currentChannel = %q, %v", value, ok)
 	}
 	if value, ok := item.TunedChannel.Get(); !ok || value != "C13" {
 		t.Fatalf("tunedChannel = %q, %v", value, ok)
+	}
+	info, ok := item.Users[0].StreamInfo.Get()
+	if !ok || info["BS/101"].Packet != 10 || info["BS/101"].Drop != 1 {
+		t.Fatalf("streamInfo = %+v, %v", info, ok)
 	}
 }
 

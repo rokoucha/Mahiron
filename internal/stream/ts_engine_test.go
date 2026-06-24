@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/21S1298001/mahiron/internal/tuner"
 	"github.com/21S1298001/mahiron/ts"
 )
 
@@ -46,6 +47,33 @@ func TestPacketEngineNormalizesInputFrames(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestPacketEngineReportsStreamInfo(t *testing.T) {
+	input := append(engineTestPacket(0x0100, 1), engineTestPacket(0x0100, 3)...)
+	input = append(input, engineTestPacket(0x0100, 5)...)
+	engine := newPacketEngine(func(_ context.Context, dst io.Writer) error {
+		_, err := dst.Write(input)
+		return err
+	}, nil).withMetricLabels("GR", "27")
+
+	var gotUserID, gotKey string
+	var gotInfo tuner.StreamInfo
+	ctx := tuner.WithUser(t.Context(), tuner.User{ID: "viewer"})
+	ctx = tuner.WithStreamInfoReporter(ctx, func(userID, key string, info tuner.StreamInfo) {
+		gotUserID = userID
+		gotKey = key
+		gotInfo = info
+	})
+	if err := engine.SubscribeChannel(ctx, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	if gotUserID != "viewer" || gotKey != "GR/27" {
+		t.Fatalf("stream info target = %q/%q", gotUserID, gotKey)
+	}
+	if gotInfo.Packet != 3 || gotInfo.Drop != 2 {
+		t.Fatalf("stream info = %+v", gotInfo)
 	}
 }
 
@@ -232,8 +260,8 @@ func (s *finitePacketSource) Start(_ context.Context, dst io.Writer) error {
 func (*finitePacketSource) Stop(context.Context) error { return nil }
 func (s *finitePacketSource) Done() <-chan struct{}    { return s.done }
 func (s *finitePacketSource) Err() error               { return s.err }
-func (*finitePacketSource) WithUser(_ context.Context, run func() error) error {
-	return run()
+func (*finitePacketSource) WithUser(ctx context.Context, run func(context.Context) error) error {
+	return run(ctx)
 }
 
 type passthroughDescrambler struct {

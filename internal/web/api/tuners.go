@@ -91,6 +91,13 @@ func apiTunerUser(user tuner.User) apigen.TunerUser {
 		}
 		result.StreamSetting = apigen.NewOptTunerUserStreamSetting(setting)
 	}
+	if len(user.StreamInfo) > 0 {
+		info := make(apigen.TunerUserStreamInfo, len(user.StreamInfo))
+		for key, item := range user.StreamInfo {
+			info[key] = apigen.TunerUserStreamInfoItem{Packet: item.Packet, Drop: item.Drop}
+		}
+		result.StreamInfo = apigen.NewOptTunerUserStreamInfo(info)
+	}
 	return result
 }
 

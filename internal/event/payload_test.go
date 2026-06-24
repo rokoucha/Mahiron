@@ -70,6 +70,9 @@ func TestTunerEventDataIncludesUsersAndStreamSetting(t *testing.T) {
 				EventID:   &eventID,
 				ParseEIT:  &parseEIT,
 			},
+			StreamInfo: map[string]tuner.StreamInfo{
+				"GR/27:101": {Packet: 120, Drop: 2},
+			},
 		}},
 	})
 
@@ -79,8 +82,12 @@ func TestTunerEventDataIncludesUsersAndStreamSetting(t *testing.T) {
 	}
 	users := data["users"].([]map[string]any)
 	setting := users[0]["streamSetting"].(map[string]any)
+	info := users[0]["streamInfo"].(map[string]any)["GR/27:101"].(map[string]any)
 	if users[0]["id"] != "viewer" || users[0]["disableDecoder"] != true || setting["eventId"] != eventID || setting["parseEIT"] != true {
 		t.Fatalf("tuner user data = %#v", users[0])
+	}
+	if info["packet"] != 120 || info["drop"] != 2 {
+		t.Fatalf("tuner stream info = %#v", info)
 	}
 }
 

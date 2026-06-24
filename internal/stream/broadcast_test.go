@@ -107,7 +107,7 @@ func (s *fakeLiveSourceForBroadcast) Err() error {
 	return nil
 }
 
-func (s *fakeLiveSourceForBroadcast) WithUser(context.Context, func() error) error {
+func (s *fakeLiveSourceForBroadcast) WithUser(context.Context, func(context.Context) error) error {
 	panic("not used")
 }
 

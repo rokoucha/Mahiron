@@ -49,7 +49,7 @@ func (b *Broadcast) AddOnStop(onStop func()) bool {
 }
 
 func (b *Broadcast) Subscribe(ctx context.Context, dst io.Writer) error {
-	return b.source.WithUser(ctx, func() error {
+	return b.source.WithUser(ctx, func(ctx context.Context) error {
 		return b.SubscribeRaw(ctx, dst)
 	})
 }
@@ -62,7 +62,7 @@ func (b *Broadcast) SubscribeRaw(ctx context.Context, dst io.Writer) error {
 	return b.wait(ctx)
 }
 
-func (b *Broadcast) WithUser(ctx context.Context, run func() error) error {
+func (b *Broadcast) WithUser(ctx context.Context, run func(context.Context) error) error {
 	return b.source.WithUser(ctx, run)
 }
 

@@ -22,7 +22,7 @@ type LiveSource interface {
 	Stop(context.Context) error
 	Done() <-chan struct{}
 	Err() error
-	WithUser(context.Context, func() error) error
+	WithUser(context.Context, func(context.Context) error) error
 }
 
 type SourceLease struct {
@@ -354,6 +354,10 @@ type tunerUserDevice interface {
 	RemoveUser(string)
 }
 
+type tunerUserStreamInfoDevice interface {
+	UpdateUserStreamInfo(string, string, tuner.StreamInfo)
+}
+
 type tunerLiveSource struct {
 	channel *config.ChannelConfig
 	device  TunerDevice
@@ -375,10 +379,10 @@ func (s *tunerLiveSource) Err() error {
 	return s.device.Err()
 }
 
-func (s *tunerLiveSource) WithUser(ctx context.Context, run func() error) error {
+func (s *tunerLiveSource) WithUser(ctx context.Context, run func(context.Context) error) error {
 	device, ok := s.device.(tunerUserDevice)
 	if !ok {
-		return run()
+		return run(ctx)
 	}
 	user, ok := tuner.UserFromContext(ctx)
 	if !ok {
@@ -390,5 +394,8 @@ func (s *tunerLiveSource) WithUser(ctx context.Context, run func() error) error 
 	}
 	device.AddUser(user)
 	defer device.RemoveUser(user.ID)
-	return run()
+	if infoDevice, ok := s.device.(tunerUserStreamInfoDevice); ok {
+		ctx = tuner.WithStreamInfoReporter(ctx, infoDevice.UpdateUserStreamInfo)
+	}
+	return run(ctx)
 }

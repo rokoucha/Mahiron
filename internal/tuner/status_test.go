@@ -22,8 +22,10 @@ func TestTunerStatusTracksChannelsProcessAndUsers(t *testing.T) {
 	tracked := device.(interface {
 		AddUser(User)
 		RemoveUser(string)
+		UpdateUserStreamInfo(string, string, StreamInfo)
 	})
 	tracked.AddUser(User{ID: "viewer", Priority: 1, Agent: "test"})
+	tracked.UpdateUserStreamInfo("viewer", "BS/101", StreamInfo{Packet: 12, Drop: 1})
 	if err := device.Start(context.Background(), io.Discard); err != nil {
 		t.Fatal(err)
 	}
@@ -43,6 +45,9 @@ func TestTunerStatusTracksChannelsProcessAndUsers(t *testing.T) {
 	}
 	if !status.IsAvailable || !status.IsUsing || status.IsFree || len(status.Users) != 1 {
 		t.Fatalf("unexpected active status: %+v", status)
+	}
+	if info := status.Users[0].StreamInfo["BS/101"]; info.Packet != 12 || info.Drop != 1 {
+		t.Fatalf("stream info = %+v", status.Users[0].StreamInfo)
 	}
 
 	tracked.RemoveUser("viewer")
