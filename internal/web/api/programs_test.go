@@ -281,6 +281,72 @@ func TestApiProgramExposesExtendedRelatedAndSeries(t *testing.T) {
 	}
 }
 
+func TestApiProgramVideoTypeAndResolution(t *testing.T) {
+	tests := []struct {
+		name           string
+		video          *program.Video
+		wantType       apigen.ProgramVideoType
+		wantTypeSet    bool
+		wantResolution apigen.ProgramVideoResolution
+		wantResSet     bool
+	}{
+		{
+			name:           "mpeg2 1080i",
+			video:          &program.Video{StreamContent: 0x1, ComponentType: 0xB3},
+			wantType:       apigen.ProgramVideoTypeMpeg2,
+			wantTypeSet:    true,
+			wantResolution: apigen.ProgramVideoResolution1080i,
+			wantResSet:     true,
+		},
+		{
+			name:           "h264 720p",
+			video:          &program.Video{StreamContent: 0x5, ComponentType: 0xC3},
+			wantType:       apigen.ProgramVideoTypeH264,
+			wantTypeSet:    true,
+			wantResolution: apigen.ProgramVideoResolution720p,
+			wantResSet:     true,
+		},
+		{
+			name:           "h265 4320p",
+			video:          &program.Video{StreamContent: 0x9, ComponentType: 0x83},
+			wantType:       apigen.ProgramVideoTypeH265,
+			wantTypeSet:    true,
+			wantResolution: apigen.ProgramVideoResolution4320p,
+			wantResSet:     true,
+		},
+		{
+			name:        "unknown values keep raw fields only",
+			video:       &program.Video{StreamContent: 0xF, ComponentType: 0xF1},
+			wantTypeSet: false,
+			wantResSet:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := apiProgram(&program.Program{Video: tt.video})
+			video, ok := p.Video.Get()
+			if !ok {
+				t.Fatal("Video not set")
+			}
+			if got, ok := video.StreamContent.Get(); !ok || got != tt.video.StreamContent {
+				t.Fatalf("StreamContent = %d, %v; want %d, true", got, ok, tt.video.StreamContent)
+			}
+			if got, ok := video.ComponentType.Get(); !ok || got != tt.video.ComponentType {
+				t.Fatalf("ComponentType = %d, %v; want %d, true", got, ok, tt.video.ComponentType)
+			}
+			gotType, gotTypeSet := video.Type.Get()
+			if gotTypeSet != tt.wantTypeSet || gotType != tt.wantType {
+				t.Errorf("Type = %q, %v; want %q, %v", gotType, gotTypeSet, tt.wantType, tt.wantTypeSet)
+			}
+			gotRes, gotResSet := video.Resolution.Get()
+			if gotResSet != tt.wantResSet || gotRes != tt.wantResolution {
+				t.Errorf("Resolution = %q, %v; want %q, %v", gotRes, gotResSet, tt.wantResolution, tt.wantResSet)
+			}
+		})
+	}
+}
+
 type fakeProgramStreamManager struct {
 	err     error
 	session fakeProgramStreamSession
