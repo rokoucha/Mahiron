@@ -253,8 +253,11 @@ func remoteKeysFromNIT(section Section) map[uint16]uint8 {
 			return keys
 		}
 		for _, desc := range ParseDescriptors(section[descStart:descEnd]) {
-			if desc.Tag() == DescriptorTagTerrestrialDeliverySystem && len(desc.Data()) > 0 {
-				keys[tsid] = desc.Data()[0]
+			if desc.Tag() == DescriptorTagTSInformation {
+				info, err := ParseTSInformationDescriptor(desc)
+				if err == nil {
+					keys[tsid] = info.RemoteControlKeyID
+				}
 			}
 		}
 		off = descEnd

@@ -182,9 +182,92 @@ func TestServiceScanIgnoresOtherTransportSDT(t *testing.T) {
 	}
 }
 
+func TestParseTSInformationDescriptor(t *testing.T) {
+	desc := tsInformationDescriptor(7, aribAlnum("TOKYO"), []tsInformationTransmissionSpec{
+		{
+			info:       0x81,
+			serviceIDs: []uint16{100, 101},
+		},
+		{
+			info:       0x82,
+			serviceIDs: []uint16{200},
+		},
+	})
+
+	got, err := ParseTSInformationDescriptor(desc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := &TSInformationDescriptor{
+		RemoteControlKeyID: 7,
+		TSName:             "ＴＯＫＹＯ",
+		TransmissionTypes: []TSInformationTransmissionType{
+			{TransmissionTypeInfo: 0x81, ServiceIDs: []uint16{100, 101}},
+			{TransmissionTypeInfo: 0x82, ServiceIDs: []uint16{200}},
+		},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("TS information descriptor = %#v, want %#v", got, want)
+	}
+}
+
+func TestParseTSInformationDescriptorRejectsInvalidLengths(t *testing.T) {
+	for _, desc := range []Descriptor{
+		descriptor(DescriptorTagTSInformation, []byte{7}),
+		descriptor(DescriptorTagTSInformation, []byte{7, 4 << 2, 'A'}),
+		descriptor(DescriptorTagTSInformation, []byte{7, 0x01}),
+		descriptor(DescriptorTagTSInformation, []byte{7, 0x01, 0x80, 2, 0, 100}),
+	} {
+		if _, err := ParseTSInformationDescriptor(desc); !errors.Is(err, ErrInvalidSection) {
+			t.Fatalf("ParseTSInformationDescriptor(%#v) error = %v, want ErrInvalidSection", desc, err)
+		}
+	}
+}
+
+func TestRemoteKeysFromNITUsesTSInformationDescriptor(t *testing.T) {
+	section := buildNITWithTransportStreams(t, []nitTransportSpec{
+		{tsid: 0x1111, onid: 0x5678, descriptors: tsInformationDescriptor(4, aribAlnum("A"), nil)},
+		{tsid: 0x2222, onid: 0x5678, descriptors: tsInformationDescriptor(8, aribAlnum("B"), nil)},
+	})
+
+	got := remoteKeysFromNIT(section)
+	want := map[uint16]uint8{0x1111: 4, 0x2222: 8}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("remote keys = %#v, want %#v", got, want)
+	}
+}
+
+func TestRemoteKeysFromNITIgnoresTerrestrialDeliverySystemDescriptor(t *testing.T) {
+	section := buildNITWithTransportStreams(t, []nitTransportSpec{
+		{tsid: 0x1111, onid: 0x5678, descriptors: descriptor(DescriptorTagTerrestrialDeliverySystem, []byte{0x04, 0x10, 0x00, 0x01})},
+	})
+
+	got := remoteKeysFromNIT(section)
+	if len(got) != 0 {
+		t.Fatalf("remote keys = %#v, want none", got)
+	}
+}
+
 type sdtServiceSpec struct {
 	serviceID   uint16
 	descriptors []byte
+}
+
+type tsInformationTransmissionSpec struct {
+	info       byte
+	serviceIDs []uint16
+}
+
+func tsInformationDescriptor(remoteControlKeyID uint8, name []byte, transmissions []tsInformationTransmissionSpec) Descriptor {
+	data := []byte{remoteControlKeyID, byte(len(name)<<2) | byte(len(transmissions)&0x03)}
+	data = append(data, name...)
+	for _, transmission := range transmissions {
+		data = append(data, transmission.info, byte(len(transmission.serviceIDs)))
+		for _, serviceID := range transmission.serviceIDs {
+			data = append(data, byte(serviceID>>8), byte(serviceID))
+		}
+	}
+	return descriptor(DescriptorTagTSInformation, data)
 }
 
 func buildSDT(t *testing.T, tsid, onid uint16, services []sdtServiceSpec) Section {
@@ -220,7 +303,22 @@ func buildSDT(t *testing.T, tsid, onid uint16, services []sdtServiceSpec) Sectio
 
 func buildNIT(t *testing.T) Section {
 	t.Helper()
-	const sectionLength = 13
+	return buildNITWithTransportStreams(t, nil)
+}
+
+type nitTransportSpec struct {
+	tsid        uint16
+	onid        uint16
+	descriptors []byte
+}
+
+func buildNITWithTransportStreams(t *testing.T, transports []nitTransportSpec) Section {
+	t.Helper()
+	tsLoopLen := 0
+	for _, transport := range transports {
+		tsLoopLen += 6 + len(transport.descriptors)
+	}
+	sectionLength := 13 + tsLoopLen
 	s := make([]byte, 3+sectionLength)
 	s[0] = TableIDNIT0
 	s[1] = 0xf0 | byte(sectionLength>>8)
@@ -228,7 +326,18 @@ func buildNIT(t *testing.T) Section {
 	s[3], s[4] = 0x56, 0x78
 	s[5], s[6], s[7] = 0xc1, 0, 0
 	s[8], s[9] = 0xf0, 0
-	s[10], s[11] = 0xf0, 0
+	s[10], s[11] = 0xf0|byte(tsLoopLen>>8), byte(tsLoopLen)
+	off := 12
+	for _, transport := range transports {
+		s[off] = byte(transport.tsid >> 8)
+		s[off+1] = byte(transport.tsid)
+		s[off+2] = byte(transport.onid >> 8)
+		s[off+3] = byte(transport.onid)
+		s[off+4] = 0xf0 | byte(len(transport.descriptors)>>8)
+		s[off+5] = byte(len(transport.descriptors))
+		copy(s[off+6:], transport.descriptors)
+		off += 6 + len(transport.descriptors)
+	}
 	writeCRC(s)
 	return Section(s)
 }
