@@ -1,0 +1,46 @@
+.table-section {
+  margin-bottom: 16px;
+  padding: 16px;
+  overflow: auto;
+}
+
+.table-section h2 {
+  margin-bottom: 12px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  padding: 10px 8px;
+  text-align: left;
+  border-top: 1px solid #edf0f2;
+  vertical-align: top;
+}
+
+th {
+  color: #65717c;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+td strong,
+td span,
+td em {
+  display: block;
+}
+
+td span,
+td em {
+  margin-top: 4px;
+  color: #65717c;
+  font-size: 12px;
+}
+
+td em {
+  color: #b03939;
+  font-style: normal;
+}

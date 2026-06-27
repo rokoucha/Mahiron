@@ -7,6 +7,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/internal/web/api"
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
+	"github.com/21S1298001/mahiron/internal/web/ui"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -44,6 +45,7 @@ func NewWeb(config WebConfig) (http.Handler, error) {
 	}
 
 	mux.Handle("/api/", http.StripPrefix("/api", api))
+	mux.Handle("/", ui.NewHandler())
 
 	return mux, nil
 }

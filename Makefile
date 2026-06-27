@@ -1,7 +1,11 @@
-.PHONY: build generate test test-race verify
+.PHONY: build generate test test-race verify web-build
 
 build:
 	go build ./cmd/mahiron
+
+web-build:
+	npm --prefix web install
+	npm --prefix web run build
 
 generate:
 	go generate ./internal/web/api

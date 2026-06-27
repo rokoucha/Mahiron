@@ -20,6 +20,7 @@
 # Go workspace file
 go.work
 go.work.sum
+*.tsbuildinfo
 
 # env file
 .env
@@ -29,6 +30,9 @@ go.work.sum
 *.db
 *.db-wal
 *.db-shm
+/web/node_modules/
+/internal/web/ui/dist/*
+!/internal/web/ui/dist/.gitkeep
 
 # Local broadcast specs.
 /ts/docs/

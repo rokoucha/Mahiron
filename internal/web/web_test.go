@@ -5,6 +5,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/21S1298001/mahiron/internal/config"
@@ -91,6 +93,58 @@ func (c handlerClient) Do(request *http.Request) (*http.Response, error) {
 	recorder := httptest.NewRecorder()
 	c.handler.ServeHTTP(recorder, request)
 	return recorder.Result(), nil
+}
+
+func TestNewWebServesWebUIRoutesAndAPI(t *testing.T) {
+	handler, err := NewWeb(WebConfig{
+		ServiceManager: testServiceManager{},
+		StreamManager:  testStreamManager{},
+	})
+	if err != nil {
+		t.Fatalf("NewWeb() = %v", err)
+	}
+
+	index := httptest.NewRecorder()
+	handler.ServeHTTP(index, httptest.NewRequest(http.MethodGet, "/", nil))
+	if index.Code != http.StatusOK {
+		t.Fatalf("GET / = %d, want 200", index.Code)
+	}
+	if contentType := index.Header().Get("Content-Type"); !strings.Contains(contentType, "text/html") {
+		t.Fatalf("GET / Content-Type = %q, want text/html", contentType)
+	}
+	if cache := index.Header().Get("Cache-Control"); cache != "no-cache" {
+		t.Fatalf("GET / Cache-Control = %q, want no-cache", cache)
+	}
+
+	epg := httptest.NewRecorder()
+	handler.ServeHTTP(epg, httptest.NewRequest(http.MethodGet, "/epg", nil))
+	if epg.Code != http.StatusOK {
+		t.Fatalf("GET /epg = %d, want 200", epg.Code)
+	}
+	if epg.Body.String() != index.Body.String() {
+		t.Fatal("GET /epg did not serve the SPA index")
+	}
+
+	match := regexp.MustCompile(`"/assets/([^"]+\.js)"`).FindStringSubmatch(index.Body.String())
+	if len(match) == 2 {
+		asset := httptest.NewRecorder()
+		handler.ServeHTTP(asset, httptest.NewRequest(http.MethodGet, "/assets/"+match[1], nil))
+		if asset.Code != http.StatusOK {
+			t.Fatalf("GET /assets/%s = %d, want 200", match[1], asset.Code)
+		}
+		if cache := asset.Header().Get("Cache-Control"); !strings.Contains(cache, "immutable") {
+			t.Fatalf("asset Cache-Control = %q, want immutable", cache)
+		}
+	}
+
+	apiStatus := httptest.NewRecorder()
+	handler.ServeHTTP(apiStatus, httptest.NewRequest(http.MethodGet, "/api/status", nil))
+	if apiStatus.Code != http.StatusOK {
+		t.Fatalf("GET /api/status = %d, want 200", apiStatus.Code)
+	}
+	if contentType := apiStatus.Header().Get("Content-Type"); !strings.Contains(contentType, "application/json") {
+		t.Fatalf("GET /api/status Content-Type = %q, want application/json", contentType)
+	}
 }
 
 func TestNewWebFiltersStreamHTTPSpans(t *testing.T) {

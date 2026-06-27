@@ -1,0 +1,25 @@
+.copy-list {
+  display: grid;
+  gap: 8px;
+}
+
+.copy-row {
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  background: #f8fafb;
+  border: 1px solid #edf0f2;
+  border-radius: 6px;
+}
+
+.copy-row span {
+  font-weight: 700;
+}
+
+@media (max-width: 640px) {
+  .copy-row {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,0 +1,106 @@
+.event-list {
+  display: grid;
+  max-height: 520px;
+  overflow: auto;
+}
+
+.event-item {
+  display: grid;
+  gap: 4px;
+  padding: 10px 0;
+  border-top: 1px solid #edf0f2;
+}
+
+.event-item:first-child {
+  border-top: 0;
+}
+
+.event-item time {
+  color: #65717c;
+  font-size: 12px;
+}
+.stream-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #7a4c0a;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.stream-state::before {
+  width: 8px;
+  height: 8px;
+  content: "";
+  background: #c78521;
+  border-radius: 999px;
+}
+
+.stream-state.connected {
+  color: #12623c;
+}
+
+.stream-state.connected::before {
+  background: #2b9e68;
+}
+
+.log-panel-actions {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.follow-button {
+  min-height: 28px;
+  padding: 4px 9px;
+  color: #19313f;
+  font-size: 12px;
+  font-weight: 700;
+  background: #e4f1f8;
+  border: 1px solid #9fc3d6;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.follow-button[data-visible="false"] {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.follow-button:hover {
+  background: #d5eaf5;
+}
+.logs-grid {
+  grid-template-columns: minmax(320px, 0.8fr) minmax(360px, 1.2fr);
+  align-items: stretch;
+}
+
+.logs-grid .panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 680px;
+}
+
+.logs-grid .event-list {
+  height: 100%;
+  max-height: none;
+  min-height: 0;
+}
+
+.log-view {
+  min-height: 0;
+  max-height: none;
+  margin: 0;
+  overflow: auto;
+  color: #d9e6ef;
+  background: #12202b;
+  border-radius: 6px;
+  padding: 12px;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 980px) {
+  .logs-grid {
+    grid-template-columns: 1fr;
+  }
+}
