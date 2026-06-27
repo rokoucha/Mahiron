@@ -1,7 +1,10 @@
 package service
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
+	"hash/crc32"
 	"testing"
 
 	"github.com/21S1298001/mahiron/internal/config"
@@ -263,6 +266,100 @@ func TestServiceManagerEPGSummary(t *testing.T) {
 	}
 }
 
+func TestServiceManagerUpsertLogoImageNormalizesARIBPNG(t *testing.T) {
+	ctx := context.Background()
+	database, err := db.OpenInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	store := NewSQLiteStore(database)
+	manager := NewServiceManager(store, config.ChannelsConfig{})
+	logoID := int64(42)
+	logoVersion := int64(3)
+	downloadDataID := int64(0x1234)
+	if err := store.ReplaceChannelServices(ctx, "GR", "27", []*Service{{
+		Id: "0000100101", ServiceId: 101, NetworkId: 1, Name: "logo",
+		LogoId: &logoID, LogoVersion: &logoVersion, LogoDownloadDataId: &downloadDataID,
+		ChannelType: "GR", ChannelId: "27",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+
+	raw := buildServiceTestPalettePNG(false)
+	if err := manager.UpsertLogoImage(ctx, &ts.LogoImage{
+		OriginalNetworkID: 1,
+		LogoID:            uint16(logoID),
+		LogoVersion:       uint16(logoVersion),
+		DownloadDataID:    uint16(downloadDataID),
+		LogoType:          5,
+		Data:              raw,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	stored, err := store.GetLogoByServiceItemID(ctx, 100101)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Equal(stored, raw) {
+		t.Fatal("stored logo data was not normalized")
+	}
+	if !serviceTestPNGHasChunk(stored, "PLTE") {
+		t.Fatal("stored logo data does not include PLTE")
+	}
+	if !serviceTestPNGHasChunk(stored, "tRNS") {
+		t.Fatal("stored logo data does not include tRNS")
+	}
+}
+
+func buildServiceTestPalettePNG(includePLTE bool) []byte {
+	var png []byte
+	png = append(png, []byte{0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a}...)
+	ihdr := make([]byte, 13)
+	binary.BigEndian.PutUint32(ihdr[0:4], 1)
+	binary.BigEndian.PutUint32(ihdr[4:8], 1)
+	ihdr[8] = 8
+	ihdr[9] = 3
+	png = appendServiceTestPNGChunk(png, "IHDR", ihdr)
+	if includePLTE {
+		png = appendServiceTestPNGChunk(png, "PLTE", []byte{0, 0, 0})
+	}
+	png = appendServiceTestPNGChunk(png, "IDAT", []byte{0x78, 0x9c, 0x63, 0x60, 0x00, 0x00, 0x00, 0x02, 0x00, 0x01})
+	png = appendServiceTestPNGChunk(png, "IEND", nil)
+	return png
+}
+
+func appendServiceTestPNGChunk(dst []byte, chunkType string, chunkData []byte) []byte {
+	var scratch [4]byte
+	binary.BigEndian.PutUint32(scratch[:], uint32(len(chunkData)))
+	dst = append(dst, scratch[:]...)
+	dst = append(dst, chunkType...)
+	dst = append(dst, chunkData...)
+	crc := crc32.NewIEEE()
+	_, _ = crc.Write([]byte(chunkType))
+	_, _ = crc.Write(chunkData)
+	binary.BigEndian.PutUint32(scratch[:], crc.Sum32())
+	dst = append(dst, scratch[:]...)
+	return dst
+}
+
+func serviceTestPNGHasChunk(png []byte, wantType string) bool {
+	pos := 8
+	for pos+12 <= len(png) {
+		chunkLen := int(binary.BigEndian.Uint32(png[pos : pos+4]))
+		chunkEnd := pos + 8 + chunkLen + 4
+		if chunkEnd > len(png) {
+			return false
+		}
+		if string(png[pos+4:pos+8]) == wantType {
+			return true
+		}
+		pos = chunkEnd
+	}
+	return false
+}
+
 func TestServiceManagerUpsertLogoImageRequiresSDTConsistency(t *testing.T) {
 	ctx := context.Background()
 	database, err := db.OpenInMemory()
@@ -288,7 +385,7 @@ func TestServiceManagerUpsertLogoImageRequiresSDTConsistency(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	data := []byte{0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a}
+	data := buildServiceTestPalettePNG(true)
 	if err := manager.UpsertLogoImage(ctx, &ts.LogoImage{
 		OriginalNetworkID: 1,
 		LogoID:            42,

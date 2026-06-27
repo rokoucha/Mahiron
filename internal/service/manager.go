@@ -243,6 +243,7 @@ func (s *ServiceManager) UpsertLogoImage(ctx context.Context, image *ts.LogoImag
 	if err != nil {
 		return err
 	}
+	var data []byte
 	now := time.Now().UnixMilli()
 	for _, target := range targets {
 		if target.NetworkId != image.OriginalNetworkID ||
@@ -256,7 +257,13 @@ func (s *ServiceManager) UpsertLogoImage(ctx context.Context, image *ts.LogoImag
 				return err
 			}
 		} else {
-			if err := s.UpsertLogo(ctx, target.NetworkId, target.ServiceId, target.LogoId, int64(image.LogoType), int64(image.LogoVersion), int64(image.DownloadDataID), image.Data, now); err != nil {
+			if data == nil {
+				data, err = ts.NormalizeARIBLogoPNG(image.Data)
+				if err != nil {
+					return err
+				}
+			}
+			if err := s.UpsertLogo(ctx, target.NetworkId, target.ServiceId, target.LogoId, int64(image.LogoType), int64(image.LogoVersion), int64(image.DownloadDataID), data, now); err != nil {
 				return err
 			}
 		}
