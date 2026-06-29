@@ -1,13 +1,9 @@
 import { useMemo } from "react";
-import { api } from "../api";
-import { useAsync } from "../hooks";
+import type { DashboardState } from "../dashboard";
 import { channelLabel, currentGatheringNetworks, Definition, Empty, ErrorList, formatDate, formatNumber, isVisibleService, Logo, Metric, openServiceMap, openServiceUsers, PageFrame, Panel, StatusPill } from "../shared";
 
-export default function Overview() {
-  const status = useAsync(api.status);
-  const tuners = useAsync(api.tuners);
-  const services = useAsync(api.services);
-  const jobs = useAsync(api.jobs);
+export default function Overview({ dashboard }: { dashboard: DashboardState }) {
+  const { status, tuners, services, jobs } = dashboard;
   const activeTuners = tuners.data?.filter((tuner) => tuner.isUsing).length ?? 0;
   const faultTuners = tuners.data?.filter((tuner) => tuner.isFault).length ?? 0;
   const activeJobs = jobs.data?.filter((job) => job.status !== "finished").length ?? 0;
@@ -19,7 +15,7 @@ export default function Overview() {
 
   return (
     <PageFrame title="概要" subtitle="サーバー状態、稼働中の処理、サービス状態を確認できます。">
-      <ErrorList errors={[status.error, tuners.error, services.error, jobs.error]} />
+      <ErrorList errors={[dashboard.streamError, status.error, tuners.error, services.error, jobs.error]} />
       <section className="metric-grid">
         <Metric label="保存イベント数" value={formatNumber(status.data?.epg?.storedEvents)} />
         <Metric label="番組表未更新" value={formatNumber(status.data?.epg?.staleServices)} tone={(status.data?.epg?.staleServices ?? 0) > 0 ? "warn" : "ok"} />

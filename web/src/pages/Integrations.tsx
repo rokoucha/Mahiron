@@ -1,10 +1,9 @@
 import { useMemo } from "react";
-import { api } from "../api";
-import { useAsync } from "../hooks";
+import type { DashboardState } from "../dashboard";
 import { CopyRow, isVisibleService, PageFrame } from "../shared";
 
-export default function Integrations() {
-  const services = useAsync(api.services);
+export default function Integrations({ dashboard }: { dashboard: DashboardState }) {
+  const { services } = dashboard;
   const visibleServices = useMemo(() => (services.data ?? []).filter(isVisibleService), [services.data]);
   const origin = window.location.origin;
   const links = [

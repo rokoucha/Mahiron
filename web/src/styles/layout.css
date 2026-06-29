@@ -39,6 +39,29 @@
   font-size: 12px;
 }
 
+.brand-stream {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  margin-top: 6px;
+  padding: 2px 7px;
+  color: #8fbda9;
+  background: #213326;
+  border: 1px solid #31523b;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.brand-stream.reconnecting,
+.brand-stream.disconnected {
+  color: #b5bdc5;
+  background: #2a3138;
+  border-color: #3a4650;
+}
+
 .sidebar nav {
   display: grid;
   gap: 4px;

@@ -1,15 +1,22 @@
+import { useEffect } from "react";
 import { api } from "../api";
+import type { DashboardState } from "../dashboard";
 import { useAsync } from "../hooks";
 import { ErrorList, formatDate, jobStatusLabel, PageFrame } from "../shared";
 
-export default function Jobs() {
-  const jobs = useAsync(api.jobs);
+export default function Jobs({ dashboard }: { dashboard: DashboardState }) {
+  const { jobs } = dashboard;
   const schedules = useAsync(api.schedules);
+
+  useEffect(() => {
+    if (dashboard.lastEvent?.resource !== "job_schedule") return;
+    api.schedules().then(schedules.setData).catch(() => undefined);
+  }, [dashboard.lastEvent?.resource, dashboard.lastEvent?.time, schedules.setData]);
 
   async function runAction(label: string, action: () => Promise<void>) {
     if (!window.confirm(`${label}?`)) return;
     await action();
-    jobs.setData(await api.jobs());
+    await jobs.reload();
     schedules.setData(await api.schedules());
   }
 

@@ -1,6 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from "react";
-import { api } from "./api";
-import { useAsync } from "./hooks";
+import { useDashboard, type DashboardState, type StreamConnectionState } from "./dashboard";
 import activeIconUrl from "./assets/brand/icon-active.svg?url";
 import grayIconUrl from "./assets/brand/icon-gray.svg?url";
 import iconUrl from "./assets/brand/icon.svg?url";
@@ -48,13 +47,22 @@ function setFavicon(href: string) {
   link.href = href;
 }
 
+function connectionLabel(state: StreamConnectionState) {
+  if (state === "connected") return "events 接続中";
+  if (state === "reconnecting") return "events 再接続中";
+  return "events 切断";
+}
+
+function brandState(dashboard: DashboardState): BrandState {
+  if (dashboard.streamState !== "connected" || dashboard.status.error || dashboard.tuners.error) return "gray";
+  return dashboard.tuners.data?.some((tuner) => tuner.isUsing) ? "active" : "normal";
+}
+
 export default function App() {
   const [page, setPage] = useState<Page>(() => pageFromPath(window.location.pathname));
-  const status = useAsync(api.status);
-  const tuners = useAsync(api.tuners);
-  const brandState: BrandState =
-    status.error || tuners.error ? "gray" : tuners.data?.some((tuner) => tuner.isUsing) ? "active" : "normal";
-  const brandIconUrl = brandStateIcon(brandState);
+  const dashboard = useDashboard();
+  const currentBrandState = brandState(dashboard);
+  const brandIconUrl = brandStateIcon(currentBrandState);
 
   useEffect(() => {
     const onPopState = () => setPage(pageFromPath(window.location.pathname));
@@ -73,7 +81,8 @@ export default function App() {
           <img className="brand-mark" src={brandIconUrl} alt="Mahiron" />
           <div>
             <strong>Mahiron</strong>
-            <span>{status.data?.version ? `v${status.data.version}` : "v-"}</span>
+            <span>{dashboard.status.data?.version ? `v${dashboard.status.data.version}` : "v-"}</span>
+            <small className={`brand-stream ${dashboard.streamState}`}>{connectionLabel(dashboard.streamState)}</small>
           </div>
         </div>
         <nav>
@@ -91,11 +100,11 @@ export default function App() {
       </aside>
       <main className="content">
         <Suspense fallback={<div className="empty">読み込み中...</div>}>
-          {page === "overview" && <Overview />}
-          {page === "epg" && <EPG />}
-          {page === "jobs" && <Jobs />}
+          {page === "overview" && <Overview dashboard={dashboard} />}
+          {page === "epg" && <EPG dashboard={dashboard} />}
+          {page === "jobs" && <Jobs dashboard={dashboard} />}
           {page === "logs" && <Logs />}
-          {page === "integrations" && <Integrations />}
+          {page === "integrations" && <Integrations dashboard={dashboard} />}
         </Suspense>
       </main>
     </div>

@@ -1,11 +1,10 @@
 import { useMemo, useState } from "react";
-import { api, type Program } from "../api";
-import { useAsync } from "../hooks";
+import type { Program } from "../api";
+import type { DashboardState } from "../dashboard";
 import { Empty, ErrorList, floorHour, formatHourOnly, formatMinute, formatMonthDayWeekday, isSameDate, isVisibleService, Logo, makeEpgColumns, makeEpgProgramBlocks, PageFrame, ProgramModal, programGenreClass } from "../shared";
 
-export default function EPG() {
-  const services = useAsync(api.services);
-  const programs = useAsync(api.programs);
+export default function EPG({ dashboard }: { dashboard: DashboardState }) {
+  const { services, programs } = dashboard;
   const [selected, setSelected] = useState<Program | null>(null);
   const now = Date.now();
   const windowStart = floorHour(now);
