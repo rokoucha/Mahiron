@@ -85,9 +85,14 @@ func cloneStringMap(src map[string]string) map[string]string {
 }
 
 func lowQualityProgramWarning(programs []*program.Program) string {
-	if len(programs) < lowQualityMinimumPrograms {
+	missingTitle, total := programTitleCounts(programs)
+	if total < lowQualityMinimumPrograms || missingTitle*100 < total*lowQualityMissingTitlePercent {
 		return ""
 	}
+	return fmt.Sprintf("low quality EITS: %d/%d programs missing titles", missingTitle, total)
+}
+
+func programTitleCounts(programs []*program.Program) (int, int) {
 	missingTitle := 0
 	total := 0
 	for _, item := range programs {
@@ -99,8 +104,5 @@ func lowQualityProgramWarning(programs []*program.Program) string {
 			missingTitle++
 		}
 	}
-	if total < lowQualityMinimumPrograms || missingTitle*100 < total*lowQualityMissingTitlePercent {
-		return ""
-	}
-	return fmt.Sprintf("low quality EITS: %d/%d programs missing titles", missingTitle, total)
+	return missingTitle, total
 }

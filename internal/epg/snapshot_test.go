@@ -32,6 +32,12 @@ func namedEv(id uint16, start, dur int, name string) EITEvent {
 	return event
 }
 
+func extendedEv(id uint16, start, dur int, key, value string) EITEvent {
+	event := ev(id, start, dur)
+	event.Descriptors = []EITDescriptor{{Type: "ExtendedEvent", Items: [][]string{{key, value}}}}
+	return event
+}
+
 func readyTestTime(segment int) time.Time {
 	return time.Date(2026, 1, 1, segment*3, 0, 0, 0, snapshotTestJST)
 }
@@ -250,17 +256,84 @@ func TestEITSnapshotReadyDoesNotRequireUnobservedExtendedTable(t *testing.T) {
 	}
 }
 
-func TestEITSnapshotReadyRequiresObservedExtendedTableToComplete(t *testing.T) {
+func TestEITSnapshotReadyIgnoresIncompleteExtendedTable(t *testing.T) {
 	snap := NewEITSnapshot()
 	now := readyTestTime(0)
 	snap.Observe(makeSection(1, 100, 2, 0x50, 0, 0, 1, namedEv(1, 1000, 1000, "news")), now)
 	snap.Observe(makeSection(1, 100, 2, 0x58, 0, 1, 1, ev(2, 2000, 1000)), now)
-	if snap.ServiceReady(ServiceKey{1, 100}) {
-		t.Fatal("ServiceReady should wait for an observed extended table to complete")
-	}
-	snap.Observe(makeSection(1, 100, 2, 0x58, 1, 1, 1, ev(3, 3000, 1000)), now)
 	if !snap.ServiceReady(ServiceKey{1, 100}) {
-		t.Fatal("ServiceReady should be true after the observed extended table completes")
+		t.Fatal("ServiceReady should not wait for an observed extended table to complete")
+	}
+	report := snap.CompletionReport(ServiceKey{1, 100})
+	if len(report.Tables) != 2 || report.Tables[1].Complete {
+		t.Fatalf("extended table report = %+v, want incomplete extended table kept as warning context", report.Tables)
+	}
+}
+
+func TestEITSnapshotExtendedOnlyDoesNotBuildProgramsOrReadiness(t *testing.T) {
+	snap := NewEITSnapshot()
+	now := readyTestTime(0)
+	snap.Observe(makeSection(1, 100, 2, 0x58, 0, 0, 1, extendedEv(1, 1000, 1000, "概要", "detail")), now)
+
+	key := ServiceKey{1, 100}
+	if snap.ServiceReady(key) {
+		t.Fatal("ServiceReady should require schedule basic")
+	}
+	if got := len(snap.Programs(key)); got != 0 {
+		t.Fatalf("extended-only programs = %d, want 0", got)
+	}
+}
+
+func TestEITSnapshotMergesBasicAndExtendedInEitherOrder(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		sections []*EITSection
+	}{{
+		name: "basic then extended",
+		sections: []*EITSection{
+			makeSection(1, 100, 2, 0x50, 0, 0, 1, namedEv(1, 1000, 1000, "news")),
+			makeSection(1, 100, 2, 0x58, 0, 0, 1, extendedEv(1, 9999, 9999, "概要", "detail")),
+		},
+	}, {
+		name: "extended then basic",
+		sections: []*EITSection{
+			makeSection(1, 100, 2, 0x58, 0, 0, 1, extendedEv(1, 9999, 9999, "概要", "detail")),
+			makeSection(1, 100, 2, 0x50, 0, 0, 1, namedEv(1, 1000, 1000, "news")),
+		},
+	}} {
+		t.Run(tt.name, func(t *testing.T) {
+			snap := NewEITSnapshot()
+			now := readyTestTime(0)
+			for _, section := range tt.sections {
+				snap.Observe(section, now)
+			}
+			programs := snap.Programs(ServiceKey{1, 100})
+			if len(programs) != 1 {
+				t.Fatalf("programs = %d, want 1", len(programs))
+			}
+			got := programs[0]
+			if got.Name != "news" || got.Extended["概要"] != "detail" {
+				t.Fatalf("program = %#v, want basic name and extended detail", got)
+			}
+			if got.StartAt != 1000 || got.Duration != 1000 {
+				t.Fatalf("timing = %d/%d, want basic timing 1000/1000", got.StartAt, got.Duration)
+			}
+		})
+	}
+}
+
+func TestEITSnapshotCurrentExtendedAllowsElapsedLeadingSegments(t *testing.T) {
+	snap := NewEITSnapshot()
+	now := readyTestTime(5)
+	snap.Observe(makeSection(1, 100, 2, 0x50, 40, 40, 1, namedEv(1, 1000, 1000, "news")), now)
+	extended := makeSection(1, 100, 2, 0x58, 40, 40, 1, extendedEv(1, 1000, 1000, "概要", "detail"))
+	snap.Observe(extended, now)
+
+	report := snap.CompletionReport(ServiceKey{1, 100})
+	for _, table := range report.Tables {
+		if table.TableID == 0x58 && len(table.MissingSections) != 0 {
+			t.Fatalf("0x58 MissingSections = %v, want none for elapsed leading segments", table.MissingSections)
+		}
 	}
 }
 
@@ -271,6 +344,21 @@ func TestShouldStopEITSCollectionStopsWhenReadyAndQualityIsAcceptable(t *testing
 
 	if !shouldStopEITSCollection(snap, []ServiceKey{{1, 100}}) {
 		t.Fatal("should stop when the snapshot is ready and quality is acceptable")
+	}
+}
+
+func TestShouldStopEITSCollectionWaitsForObservedExtendedTable(t *testing.T) {
+	snap := NewEITSnapshot()
+	now := readyTestTime(0)
+	snap.Observe(makeSection(1, 100, 2, 0x50, 0, 0, 1, namedEv(1, 1000, 1000, "news")), now)
+	snap.Observe(makeSection(1, 100, 2, 0x58, 0, 1, 1, extendedEv(1, 1000, 1000, "概要", "detail")), now)
+
+	if shouldStopEITSCollection(snap, []ServiceKey{{1, 100}}) {
+		t.Fatal("should keep collecting while an observed extended table is incomplete")
+	}
+	snap.Observe(makeSection(1, 100, 2, 0x58, 1, 1, 1), now)
+	if !shouldStopEITSCollection(snap, []ServiceKey{{1, 100}}) {
+		t.Fatal("should stop after observed extended table completes")
 	}
 }
 

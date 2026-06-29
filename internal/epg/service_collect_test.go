@@ -29,10 +29,10 @@ func TestCollectServiceSnapshotsRoutesEITSAndEITPF(t *testing.T) {
 	if session.collectCalls != 1 {
 		t.Fatalf("CollectEIT calls = %d, want 1", session.collectCalls)
 	}
-	if got, want := store.eventIDs(), []uint16{1, 10}; !equalEventIDs(got, want) {
+	if got, want := store.eventIDs(), []uint16{1, 10, 10}; !equalEventIDs(got, want) {
 		t.Fatalf("upserted event IDs = %v, want %v", got, want)
 	}
-	if got, want := store.sources, []string{"eitpf", "eits"}; !equalStrings(got, want) {
+	if got, want := store.sources, []string{"eitpf", "eits", "eits"}; !equalStrings(got, want) {
 		t.Fatalf("sources = %v, want %v", got, want)
 	}
 }
@@ -50,9 +50,83 @@ func TestCollectServiceSnapshotsContinuesEITSAfterEITPFFailure(t *testing.T) {
 	if err := CollectServiceSnapshots(context.Background(), store, newRemoteSyncServiceStore(), session, []ServiceKey{key}, 20*time.Millisecond); err != nil {
 		t.Fatal(err)
 	}
-	if got, want := store.eventIDs(), []uint16{1, 10}; !equalEventIDs(got, want) {
+	if got, want := store.eventIDs(), []uint16{1, 10, 10}; !equalEventIDs(got, want) {
 		t.Fatalf("upserted event IDs = %v, want %v", got, want)
 	}
+}
+
+func TestCollectServiceSnapshotsWaitsForBasicBeforeUpsertingExtended(t *testing.T) {
+	key := ServiceKey{NetworkID: 4, ServiceID: 101}
+	store := &collectProgramStore{}
+	session := &collectEITSession{sections: []*ts.EIT{
+		testEIT(ts.TableIDEITSStart+8, key, 10),
+		testEIT(ts.TableIDEITSStart, key, 10),
+	}}
+
+	if err := CollectServiceSnapshots(context.Background(), store, newRemoteSyncServiceStore(), session, []ServiceKey{key}, 20*time.Millisecond); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := store.eventIDs(), []uint16{10, 10}; !equalEventIDs(got, want) {
+		t.Fatalf("upserted event IDs = %v, want %v", got, want)
+	}
+}
+
+func TestCollectServiceSnapshotsDoesNotTreatExtendedOnlyAsObserved(t *testing.T) {
+	key := ServiceKey{NetworkID: 4, ServiceID: 101}
+	status := newRemoteSyncServiceStore()
+	session := &collectEITSession{sections: []*ts.EIT{
+		testEIT(ts.TableIDEITSStart+8, key, 10),
+	}}
+
+	err := CollectServiceSnapshots(context.Background(), &collectProgramStore{}, status, session, []ServiceKey{key}, 20*time.Millisecond)
+	if err == nil {
+		t.Fatal("CollectServiceSnapshots error = nil, want incomplete service error")
+	}
+	if status.successes[key] != 0 {
+		t.Fatal("extended-only service recorded success")
+	}
+	if got, want := status.errors[key], "service 101 EITS incomplete"; got != want {
+		t.Fatalf("service error = %q, want %q", got, want)
+	}
+}
+
+func TestCollectServiceSnapshotsToleratesLateConcurrentObserve(t *testing.T) {
+	key := ServiceKey{NetworkID: 4, ServiceID: 101}
+	session := &lateObserveEITSession{section: testEIT(ts.TableIDEITSStart, key, 10), done: make(chan struct{})}
+
+	if err := CollectServiceSnapshots(context.Background(), &collectProgramStore{}, newRemoteSyncServiceStore(), session, []ServiceKey{key}, 20*time.Millisecond); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-session.done:
+	case <-time.After(time.Second):
+		t.Fatal("late observe did not finish")
+	}
+}
+
+func TestCollectServiceSnapshotsDoesNotDrainCollectorAfterParentCancel(t *testing.T) {
+	key := ServiceKey{NetworkID: 4, ServiceID: 101}
+	ctx, cancel := context.WithCancel(context.Background())
+	session := &stuckEITSession{started: make(chan struct{}), release: make(chan struct{})}
+	done := make(chan error, 1)
+	go func() {
+		done <- CollectServiceSnapshots(ctx, &collectProgramStore{}, newRemoteSyncServiceStore(), session, []ServiceKey{key}, time.Second)
+	}()
+	<-session.started
+	cancel()
+	started := time.Now()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("CollectServiceSnapshots error = nil, want incomplete service error")
+		}
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("CollectServiceSnapshots waited for collector drain after parent cancel")
+	}
+	if elapsed := time.Since(started); elapsed > 150*time.Millisecond {
+		t.Fatalf("CollectServiceSnapshots took %s after parent cancel, want no 2s drain", elapsed)
+	}
+	close(session.release)
 }
 
 func TestGatherNetworkTimesOutWhileWaitingForSession(t *testing.T) {
@@ -97,8 +171,8 @@ func TestGatherNetworkMergesAfterCollectionTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if store.calls != 1 {
-		t.Fatalf("upsert calls = %d, want 1", store.calls)
+	if store.calls != 2 {
+		t.Fatalf("upsert calls = %d, want 2", store.calls)
 	}
 }
 
@@ -176,8 +250,8 @@ func TestCollectServiceSnapshotsStoresLowQualityWarningWithoutFailing(t *testing
 	if got := status.errors[key]; got != "low quality EITS: 10/10 programs missing titles" {
 		t.Fatalf("service warning = %q", got)
 	}
-	if got := len(store.calls); got != 1 {
-		t.Fatalf("upsert calls = %d, want 1", got)
+	if got := len(store.calls); got != 2 {
+		t.Fatalf("upsert calls = %d, want 2", got)
 	}
 	if got := len(store.calls[0]); got != 10 {
 		t.Fatalf("upserted programs = %d, want 10", got)
@@ -259,6 +333,34 @@ func (s *collectEITSession) CollectEIT(ctx context.Context, observe func(*ts.EIT
 	}
 	<-ctx.Done()
 	return ctx.Err()
+}
+
+type lateObserveEITSession struct {
+	section *ts.EIT
+	done    chan struct{}
+}
+
+func (s *lateObserveEITSession) CollectEIT(ctx context.Context, observe func(*ts.EIT) error) error {
+	if err := observe(s.section); err != nil {
+		return err
+	}
+	go func() {
+		defer close(s.done)
+		time.Sleep(time.Millisecond)
+		_ = observe(s.section)
+	}()
+	return nil
+}
+
+type stuckEITSession struct {
+	started chan struct{}
+	release chan struct{}
+}
+
+func (s *stuckEITSession) CollectEIT(context.Context, func(*ts.EIT) error) error {
+	close(s.started)
+	<-s.release
+	return context.Canceled
 }
 
 type clockedEIT struct {

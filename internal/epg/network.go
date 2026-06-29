@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/21S1298001/mahiron/internal/config"
@@ -197,7 +198,10 @@ func CollectServiceSnapshots(ctx context.Context, programStore ProgramStore, ser
 	}
 
 	var latestClock time.Time
+	var collectMu sync.Mutex
 	now := func() time.Time {
+		collectMu.Lock()
+		defer collectMu.Unlock()
 		if !latestClock.IsZero() {
 			return latestClock
 		}
@@ -232,24 +236,34 @@ func CollectServiceSnapshots(ctx context.Context, programStore ProgramStore, ser
 
 	sectionCh := make(chan *EITSection, 1)
 	go func() {
-		defer close(sectionCh)
 		var pfErr error
 		observeEIT := func(eit *ts.EIT, clock time.Time) error {
 			if !clock.IsZero() {
+				collectMu.Lock()
 				latestClock = clock
+				collectMu.Unlock()
 			}
 			section := EITSectionFromTS(eit)
 			if section == nil || !matchesExpected(section) {
 				return nil
 			}
 			if ts.IsEITPF(section.TableID) {
-				if pfErr != nil {
+				collectMu.Lock()
+				hasPFErr := pfErr != nil
+				collectMu.Unlock()
+				if hasPFErr {
 					return nil
 				}
 				slog.Debug("upserting EIT section", "source", "eitpf", "networkId", section.OriginalNetworkID, "serviceId", section.ServiceID, "tableId", section.TableID, "sectionNumber", section.SectionNumber, "lastSectionNumber", section.LastSectionNumber, "version", section.VersionNumber, "events", len(section.Events))
 				sourceCtx := observability.ContextWithEPGMetricSource(collectCtx, "eitpf")
 				if err := programStore.UpsertPrograms(sourceCtx, section.Programs()); err != nil {
+					collectMu.Lock()
+					if pfErr != nil {
+						collectMu.Unlock()
+						return nil
+					}
 					pfErr = err
+					collectMu.Unlock()
 				}
 				return nil
 			}
@@ -268,40 +282,65 @@ func CollectServiceSnapshots(ctx context.Context, programStore ProgramStore, ser
 				return observeEIT(eit, time.Time{})
 			})
 		}
-		collectDone <- collectionResult{collectErr: collectErr, pfErr: pfErr}
+		collectMu.Lock()
+		result := collectionResult{collectErr: collectErr, pfErr: pfErr}
+		collectMu.Unlock()
+		select {
+		case collectDone <- result:
+		case <-collectCtx.Done():
+		}
 	}()
 
 	snapshot := NewSnapshot()
 	finished := false
+	var collectorResult collectionResult
+	collectorDone := false
 	for !finished {
 		select {
-		case section, ok := <-sectionCh:
-			if !ok {
-				finished = true
-				break
-			}
+		case section := <-sectionCh:
 			if section == nil || !matchesExpected(section) {
 				continue
 			}
 			slog.Debug("observed EIT section", "source", "eits", "networkId", section.OriginalNetworkID, "serviceId", section.ServiceID, "tableId", section.TableID, "sectionNumber", section.SectionNumber, "lastSectionNumber", section.LastSectionNumber, "version", section.VersionNumber, "events", len(section.Events))
 			snapshot.Observe(section, now())
+			programs := snapshot.Programs(ServiceKey{NetworkID: section.OriginalNetworkID, ServiceID: section.ServiceID})
+			if len(programs) > 0 {
+				slog.Debug("upserting partial EITS snapshot", "networkId", section.OriginalNetworkID, "serviceId", section.ServiceID, "programs", len(programs))
+				sourceCtx := observability.ContextWithEPGMetricSource(collectCtx, "eits")
+				if err := programStore.UpsertPrograms(sourceCtx, programs); err != nil {
+					slog.Debug("partial EITS upsert finished with error", "networkId", section.OriginalNetworkID, "serviceId", section.ServiceID, "err", err)
+				}
+			}
 			if shouldStopEITSCollection(snapshot, expected) {
 				cancel()
 			}
+		case collectorResult = <-collectDone:
+			collectorDone = true
+			finished = true
+			cancel()
 		case <-collectCtx.Done():
 			finished = true
 		}
 	}
 	cancel()
-	select {
-	case result := <-collectDone:
-		if result.collectErr != nil && !errors.Is(result.collectErr, context.Canceled) {
-			slog.Debug("EPG collector finished with error", "err", result.collectErr)
+	if !collectorDone {
+		if ctx.Err() != nil {
+			slog.Debug("skipping EPG collector drain during shutdown", "err", ctx.Err())
+		} else {
+			select {
+			case collectorResult = <-collectDone:
+				collectorDone = true
+			case <-time.After(2 * time.Second):
+			}
 		}
-		if result.pfErr != nil {
-			slog.Debug("EITPF upsert finished with error", "err", result.pfErr)
+	}
+	if collectorDone {
+		if collectorResult.collectErr != nil && !errors.Is(collectorResult.collectErr, context.Canceled) {
+			slog.Debug("EPG collector finished with error", "err", collectorResult.collectErr)
 		}
-	case <-time.After(2 * time.Second):
+		if collectorResult.pfErr != nil {
+			slog.Debug("EITPF upsert finished with error", "err", collectorResult.pfErr)
+		}
 	}
 
 	updatedAt := nowMillis()
@@ -323,13 +362,25 @@ func CollectServiceSnapshots(ctx context.Context, programStore ProgramStore, ser
 		if snapshot.Observed(key) {
 			observed++
 			programs := observedPrograms[key]
-			if !snapshot.ServiceComplete(key) {
+			report := snapshot.CompletionReport(key)
+			basicComplete := snapshot.ServiceComplete(key)
+			observedExtendedComplete := snapshot.ObservedExtendedReady([]ServiceKey{key})
+			missingTitles, titleTotal := programTitleCounts(programs)
+			if !basicComplete {
 				slog.Warn("flushing incomplete EITS collection",
 					"networkId", key.NetworkID,
 					"serviceId", key.ServiceID,
-					"report", snapshot.CompletionReport(key))
+					"report", report)
 			}
-			slog.Info("merging EPG collection", "networkId", key.NetworkID, "serviceId", key.ServiceID, "programs", len(programs))
+			slog.Info("finished EITS collection",
+				"networkId", key.NetworkID,
+				"serviceId", key.ServiceID,
+				"programs", len(programs),
+				"missingTitles", missingTitles,
+				"titleTotal", titleTotal,
+				"basicComplete", basicComplete,
+				"observedExtendedComplete", observedExtendedComplete,
+				"report", report)
 			mergeCtx, mergeSpan := observability.StartSpan(ctx, observability.SpanEPGMergeServicePrograms,
 				observability.AttrEPGNetworkID.Int(int(key.NetworkID)),
 				observability.AttrEPGServiceID.Int(int(key.ServiceID)),
@@ -375,6 +426,9 @@ func CollectServiceSnapshots(ctx context.Context, programStore ProgramStore, ser
 
 func shouldStopEITSCollection(snapshot *Snapshot, expected []ServiceKey) bool {
 	if snapshot == nil || !snapshot.AllReady(expected) {
+		return false
+	}
+	if !snapshot.ObservedExtendedReady(expected) {
 		return false
 	}
 	var programs []*program.Program

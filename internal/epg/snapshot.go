@@ -208,7 +208,15 @@ func (g *snapshotReadyGroup) reset(lastFlagsID int) {
 }
 
 func isCurrentScheduleBase(base uint8) bool {
-	return base == 0x50 || base == 0x60
+	return base == 0x50 || base == 0x58 || base == 0x60 || base == 0x68
+}
+
+func isScheduleBasic(tableID uint8) bool {
+	return (tableID >= 0x50 && tableID <= 0x57) || (tableID >= 0x60 && tableID <= 0x67)
+}
+
+func isScheduleExtended(tableID uint8) bool {
+	return (tableID >= 0x58 && tableID <= 0x5f) || (tableID >= 0x68 && tableID <= 0x6f)
 }
 
 func currentJSTSegment(now time.Time) int {
@@ -219,13 +227,129 @@ func currentJSTSegment(now time.Time) int {
 
 func rebuildServicePrograms(service *snapshotService) {
 	service.programs = make(map[int64]*program.Program)
-	for _, table := range service.tables {
-		for _, programs := range table.sectionPrograms {
-			for _, item := range programs {
-				service.programs[item.ID] = item
+	tableIDs := make([]int, 0, len(service.tables))
+	for tableID := range service.tables {
+		tableIDs = append(tableIDs, int(tableID))
+	}
+	sort.Ints(tableIDs)
+
+	extended := make(map[int64][]*program.Program)
+	for _, id := range tableIDs {
+		tableID := uint8(id)
+		table := service.tables[tableID]
+		sectionNumbers := make([]int, 0, len(table.sectionPrograms))
+		for sectionNumber := range table.sectionPrograms {
+			sectionNumbers = append(sectionNumbers, int(sectionNumber))
+		}
+		sort.Ints(sectionNumbers)
+		for _, sectionNumber := range sectionNumbers {
+			for _, item := range table.sectionPrograms[uint8(sectionNumber)] {
+				if item == nil {
+					continue
+				}
+				switch {
+				case isScheduleBasic(tableID):
+					if service.programs[item.ID] == nil {
+						service.programs[item.ID] = cloneProgram(item)
+					} else {
+						mergeProgram(service.programs[item.ID], item, true)
+					}
+				case isScheduleExtended(tableID):
+					extended[item.ID] = append(extended[item.ID], item)
+				default:
+					service.programs[item.ID] = cloneProgram(item)
+				}
 			}
 		}
 	}
+	for _, id := range sortedProgramIDs(service.programs) {
+		for _, item := range extended[id] {
+			mergeProgram(service.programs[id], item, false)
+		}
+	}
+}
+
+func cloneProgram(src *program.Program) *program.Program {
+	if src == nil {
+		return nil
+	}
+	dst := *src
+	if len(src.Genres) > 0 {
+		dst.Genres = append([]program.Genre(nil), src.Genres...)
+	}
+	if src.Video != nil {
+		video := *src.Video
+		dst.Video = &video
+	}
+	if len(src.Audios) > 0 {
+		dst.Audios = append([]program.Audio(nil), src.Audios...)
+	}
+	if len(src.Extended) > 0 {
+		dst.Extended = cloneStringMap(src.Extended)
+	}
+	if len(src.RelatedItems) > 0 {
+		dst.RelatedItems = append([]program.RelatedItem(nil), src.RelatedItems...)
+	}
+	if src.Series != nil {
+		series := *src.Series
+		dst.Series = &series
+	}
+	return &dst
+}
+
+func mergeProgram(dst, src *program.Program, updateTiming bool) {
+	if dst == nil || src == nil {
+		return
+	}
+	if updateTiming && src.StartAt != 0 {
+		dst.StartAt = src.StartAt
+	}
+	if updateTiming && src.Duration != 0 {
+		dst.Duration = src.Duration
+	}
+	dst.IsFree = src.IsFree
+	if dst.Name == "" && src.Name != "" {
+		dst.Name = src.Name
+	}
+	if dst.Description == "" && src.Description != "" {
+		dst.Description = src.Description
+	}
+	if len(dst.Genres) == 0 && len(src.Genres) > 0 {
+		dst.Genres = append([]program.Genre(nil), src.Genres...)
+	}
+	if dst.Video == nil && src.Video != nil {
+		video := *src.Video
+		dst.Video = &video
+	}
+	if len(dst.Audios) == 0 && len(src.Audios) > 0 {
+		dst.Audios = append([]program.Audio(nil), src.Audios...)
+	}
+	if len(src.Extended) > 0 {
+		if dst.Extended == nil {
+			dst.Extended = make(map[string]string, len(src.Extended))
+		}
+		for key, value := range src.Extended {
+			if dst.Extended[key] == "" && value != "" {
+				dst.Extended[key] = value
+			}
+		}
+	}
+	if len(dst.RelatedItems) == 0 && len(src.RelatedItems) > 0 {
+		dst.RelatedItems = append([]program.RelatedItem(nil), src.RelatedItems...)
+	}
+	if dst.Series == nil && src.Series != nil {
+		series := *src.Series
+		dst.Series = &series
+	}
+}
+
+func sortedProgramIDs(programs map[int64]*program.Program) []int64 {
+	ids := make([]int64, 0, len(programs))
+	for id := range programs {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	return ids
 }
 
 func (s *Snapshot) ServiceComplete(key ServiceKey) bool {
@@ -237,12 +361,17 @@ func (s *Snapshot) ServiceReady(key ServiceKey) bool {
 	if service == nil || len(service.readyGroups) == 0 {
 		return false
 	}
+	hasBasic := false
 	for _, group := range service.readyGroups {
+		if group == nil || !isScheduleBasic(group.base) {
+			continue
+		}
+		hasBasic = true
 		if !group.ready() {
 			return false
 		}
 	}
-	return true
+	return hasBasic
 }
 
 func (g *snapshotReadyGroup) ready() bool {
@@ -429,6 +558,24 @@ func (s *Snapshot) AllReady(expected []ServiceKey) bool {
 	return true
 }
 
+func (s *Snapshot) ObservedExtendedReady(expected []ServiceKey) bool {
+	for _, key := range expected {
+		service := s.services[key]
+		if service == nil {
+			continue
+		}
+		for _, group := range service.readyGroups {
+			if group == nil || !isScheduleExtended(group.base) {
+				continue
+			}
+			if !group.ready() {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 func (s *Snapshot) StableFor(now time.Time, duration time.Duration) bool {
 	return !s.lastProgress.IsZero() && now.Sub(s.lastProgress) >= duration
 }
@@ -439,13 +586,21 @@ func (s *Snapshot) Programs(key ServiceKey) []*program.Program {
 		return nil
 	}
 	result := make([]*program.Program, 0, len(service.programs))
-	for _, item := range service.programs {
-		result = append(result, item)
+	for _, id := range sortedProgramIDs(service.programs) {
+		result = append(result, service.programs[id])
 	}
 	return result
 }
 
 func (s *Snapshot) Observed(key ServiceKey) bool {
 	service := s.services[key]
-	return service != nil && len(service.tables) > 0
+	if service == nil {
+		return false
+	}
+	for tableID := range service.tables {
+		if isScheduleBasic(tableID) {
+			return true
+		}
+	}
+	return false
 }
