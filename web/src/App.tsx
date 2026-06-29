@@ -1,8 +1,12 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { api } from "./api";
 import { useAsync } from "./hooks";
+import activeIconUrl from "./assets/brand/icon-active.svg?url";
+import grayIconUrl from "./assets/brand/icon-gray.svg?url";
+import iconUrl from "./assets/brand/icon.svg?url";
 
 type Page = "overview" | "epg" | "jobs" | "logs" | "integrations";
+type BrandState = "normal" | "active" | "gray";
 
 const Overview = lazy(() => import("./pages/Overview"));
 const EPG = lazy(() => import("./pages/EPG"));
@@ -27,9 +31,30 @@ function navigate(path: string) {
   window.dispatchEvent(new PopStateEvent("popstate"));
 }
 
+function brandStateIcon(state: BrandState) {
+  if (state === "active") return activeIconUrl;
+  if (state === "gray") return grayIconUrl;
+  return iconUrl;
+}
+
+function setFavicon(href: string) {
+  let link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+  if (!link) {
+    link = document.createElement("link");
+    link.rel = "icon";
+    document.head.appendChild(link);
+  }
+  link.type = "image/svg+xml";
+  link.href = href;
+}
+
 export default function App() {
   const [page, setPage] = useState<Page>(() => pageFromPath(window.location.pathname));
   const status = useAsync(api.status);
+  const tuners = useAsync(api.tuners);
+  const brandState: BrandState =
+    status.error || tuners.error ? "gray" : tuners.data?.some((tuner) => tuner.isUsing) ? "active" : "normal";
+  const brandIconUrl = brandStateIcon(brandState);
 
   useEffect(() => {
     const onPopState = () => setPage(pageFromPath(window.location.pathname));
@@ -37,11 +62,15 @@ export default function App() {
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
 
+  useEffect(() => {
+    setFavicon(brandIconUrl);
+  }, [brandIconUrl]);
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand">
-          <div className="brand-mark">M</div>
+          <img className="brand-mark" src={brandIconUrl} alt="Mahiron" />
           <div>
             <strong>Mahiron</strong>
             <span>{status.data?.version ? `v${status.data.version}` : "v-"}</span>
