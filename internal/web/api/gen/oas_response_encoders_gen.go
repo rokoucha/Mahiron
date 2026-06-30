@@ -518,7 +518,7 @@ func encodeGetEventsStreamResponse(response GetEventsStreamRes, w http.ResponseW
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.WriteHeader(200)
 
-		writer := w
+		writer := streamFlushWriter(w)
 		if closer, ok := response.Data.(io.Closer); ok {
 			defer closer.Close()
 		}
