@@ -692,7 +692,7 @@ func TestManagerStartsRemoteProgramEventSyncOutsideSessionLifecycle(t *testing.T
 	}
 }
 
-func TestRawStream(t *testing.T) {
+func TestChannelStreamRawTS(t *testing.T) {
 	devices := &fakeTunerDeviceRecorder{}
 	manager := testManager(t, devices)
 	session, err := manager.GetOrCreate(context.Background(), "GR", "27")
@@ -713,7 +713,7 @@ func TestRawStream(t *testing.T) {
 	}
 }
 
-func TestConcurrentRawStreamsStartOneTunerDevice(t *testing.T) {
+func TestConcurrentChannelStreamsStartOneTunerDevice(t *testing.T) {
 	devices := &fakeTunerDeviceRecorder{}
 	manager := testManager(t, devices)
 	session, err := manager.GetOrCreate(context.Background(), "GR", "27")

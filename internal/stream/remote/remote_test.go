@@ -17,7 +17,7 @@ import (
 	"github.com/21S1298001/mahiron/ts"
 )
 
-func TestRemoteClientCheckAvailableAndBasicAuth(t *testing.T) {
+func TestRemoteClientCheckAvailableForRouteAndBasicAuth(t *testing.T) {
 	var auth string
 	var hasDeadline bool
 	client := NewClient(config.RemoteConfig{
@@ -32,7 +32,7 @@ func TestRemoteClientCheckAvailableAndBasicAuth(t *testing.T) {
 		}
 		return streamtest.StringResponse(http.StatusOK, `[{"types":["GR"],"isAvailable":true,"isFree":true,"isFault":false}]`), nil
 	})}
-	if err := client.CheckAvailable(context.Background(), "GR"); err != nil {
+	if err := client.CheckAvailableForRoute(context.Background(), "GR", "27"); err != nil {
 		t.Fatal(err)
 	}
 	wantAuth := "Basic " + base64.StdEncoding.EncodeToString([]byte("user:pass"))

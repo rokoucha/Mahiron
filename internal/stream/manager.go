@@ -184,10 +184,6 @@ func (m *StreamManager) ActiveSessionCount() int {
 	return m.registry.count()
 }
 
-func (m *StreamManager) ActiveSessionCountByType(channelType string) int {
-	return m.registry.countByType(channelType)
-}
-
 func (m *StreamManager) Shutdown(ctx context.Context) error {
 	var result error
 	if m.remoteEventSyncCancel != nil {

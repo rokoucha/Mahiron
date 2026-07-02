@@ -101,18 +101,6 @@ func (r *sessionRegistry) count() int {
 	return len(r.sessions)
 }
 
-func (r *sessionRegistry) countByType(channelType string) int {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	count := 0
-	for _, entry := range r.sessions {
-		if entry.routeType == channelType {
-			count++
-		}
-	}
-	return count
-}
-
 func (r *sessionRegistry) remove(key sessionKey) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

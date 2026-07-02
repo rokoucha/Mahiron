@@ -70,10 +70,6 @@ func (s *Session) Channel() string {
 	return s.channel
 }
 
-func (s *Session) RawStream(ctx context.Context, dst io.Writer) error {
-	return s.ChannelStream(ctx, false, dst)
-}
-
 func (s *Session) ChannelStream(ctx context.Context, decode bool, dst io.Writer) error {
 	return s.attachEngine(ctx, decode, 0, false, dst)
 }

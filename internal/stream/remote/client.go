@@ -68,10 +68,6 @@ func NewClient(config config.RemoteConfig, opts ...ClientOption) *Client {
 	return client
 }
 
-func (c *Client) CheckAvailable(ctx context.Context, channelType string) error {
-	return c.CheckAvailableForRoute(ctx, channelType, "")
-}
-
 func (c *Client) CheckAvailableForRoute(ctx context.Context, channelType, channel string) (err error) {
 	start := time.Now()
 	defer func() {
