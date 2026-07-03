@@ -8,28 +8,28 @@ import (
 	"time"
 
 	"github.com/21S1298001/mahiron/internal/program"
-	"github.com/21S1298001/mahiron/internal/stream/source"
 	"github.com/21S1298001/mahiron/internal/stream/demux"
+	"github.com/21S1298001/mahiron/internal/stream/source"
 	"github.com/21S1298001/mahiron/internal/tuner"
 	"github.com/21S1298001/mahiron/internal/util"
 	"github.com/21S1298001/mahiron/ts"
 )
 
 type Session struct {
-	broadcast     *source.Broadcast
-	channel       string
-	descrambler   source.Descrambler
-	mu            sync.Mutex
-	stopped       bool
-	typ           string
+	broadcast      *source.Broadcast
+	channel        string
+	descrambler    source.Descrambler
+	mu             sync.Mutex
+	stopped        bool
+	typ            string
 	rawDemuxer     *demux.Demuxer
 	decodedDemuxer *demux.Demuxer
-	eitUpdater    EITSectionUpdater
-	logoUpdater   LogoUpdater
-	logoCarousel  *ts.DSMCCLogoCarousel
-	sectionCancel context.CancelFunc
-	sectionQueue  chan ts.Section
-	carouselQueue chan ts.Section
+	eitUpdater     EITSectionUpdater
+	logoUpdater    LogoUpdater
+	logoCarousel   *ts.DSMCCLogoCarousel
+	sectionCancel  context.CancelFunc
+	sectionQueue   chan ts.Section
+	carouselQueue  chan ts.Section
 }
 
 type Config struct {

@@ -24,9 +24,7 @@ func GetChannels(ctx context.Context, h *Handler, params apigen.GetChannelsParam
 func GetChannelsByType(ctx context.Context, h *Handler, params apigen.GetChannelsByTypeParams) (apigen.GetChannelsByTypeRes, error) {
 	channels := h.serviceManager.GetChannels()
 	filtered := make(config.ChannelsConfig, 0, len(channels))
-	for _, channel := range filterChannels(channels, apigen.NewOptString(params.Type), params.Channel, params.Name) {
-		filtered = append(filtered, channel)
-	}
+	filtered = append(filtered, filterChannels(channels, apigen.NewOptString(params.Type), params.Channel, params.Name)...)
 	items, err := apiChannels(ctx, h, filtered)
 	if err != nil {
 		return nil, err

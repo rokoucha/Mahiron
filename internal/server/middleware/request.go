@@ -8,7 +8,7 @@ import (
 
 const requestInfoMiddlewareContextKey contextKey = "requestInfoMiddlewareContext"
 
-var RequestInfoNotFoundError = errors.New("request info not found")
+var ErrRequestInfoNotFound = errors.New("request info not found")
 
 type RequestInfo struct {
 	RemoteAddr string
@@ -56,5 +56,5 @@ func GetRequestInfo(ctx context.Context) (*RequestInfo, error) {
 	if v, ok := ctx.Value(requestInfoMiddlewareContextKey).(*RequestInfo); ok {
 		return v, nil
 	}
-	return nil, RequestInfoNotFoundError
+	return nil, ErrRequestInfoNotFound
 }

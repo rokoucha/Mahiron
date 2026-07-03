@@ -399,7 +399,7 @@ func TestDynamicMultiWriter_DropsOldChunksForSlowWriter(t *testing.T) {
 	}
 
 	for i := 1; i < dynamicMultiWriterBufferSize+50; i++ {
-		if _, err := d.Write([]byte(fmt.Sprintf("chunk-%03d", i))); err != nil {
+		if _, err := fmt.Fprintf(d, "chunk-%03d", i); err != nil {
 			t.Fatal(err)
 		}
 	}

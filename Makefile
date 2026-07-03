@@ -1,5 +1,7 @@
 .PHONY: build generate test test-race verify web-build web-test
 
+TEST_ENV := $(if $(CI),,GOCACHE=/private/tmp/mahiron-gocache)
+
 build:
 	go build ./cmd/mahiron
 
@@ -16,9 +18,9 @@ generate:
 	go tool sqlc generate
 
 test:
-	GOCACHE=/private/tmp/mahiron-gocache go test ./...
+	$(TEST_ENV) go test ./...
 
 test-race:
-	GOCACHE=/private/tmp/mahiron-gocache go test -race ./internal/job ./internal/stream ./internal/tuner ./internal/util
+	$(TEST_ENV) go test -race ./internal/job ./internal/stream ./internal/tuner ./internal/util
 
 verify: test test-race

@@ -228,7 +228,7 @@ func int64SumWithAttrs(data metricdata.ResourceMetrics, name string, attrs ...at
 func pointHasAttrs(set attribute.Set, attrs ...attribute.KeyValue) bool {
 	for _, attr := range attrs {
 		got, ok := set.Value(attr.Key)
-		if !ok || got.Emit() != attr.Value.Emit() {
+		if !ok || got.String() != attr.Value.String() {
 			return false
 		}
 	}

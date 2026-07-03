@@ -188,11 +188,12 @@ func (s *serviceScanState) handleSDT() {
 			}
 			if logo := LogoDescriptorFromDescriptors(svc.Descriptors); logo != nil {
 				info.LogoId = int64(logo.LogoID)
-				if logo.TransmissionType == LogoTransmissionTypeCDTDirect {
+				switch logo.TransmissionType {
+				case LogoTransmissionTypeCDTDirect:
 					info.LogoVersion = uint16Ptr(logo.LogoVersion)
 					info.LogoDownloadDataId = uint16Ptr(logo.DownloadDataID)
 					directLogos[logo.LogoID] = directLogo{version: logo.LogoVersion, downloadDataID: logo.DownloadDataID}
-				} else if logo.TransmissionType == LogoTransmissionTypeCDTIndirect {
+				case LogoTransmissionTypeCDTIndirect:
 					indirectServices[svc.ServiceID] = logo.LogoID
 				}
 			}

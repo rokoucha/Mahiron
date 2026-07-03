@@ -109,7 +109,7 @@ func buildEIT(t *testing.T, tableID byte, serviceID, tsid, onid uint16, sectionN
 			start = encodeMJDTime(event.start)
 		}
 		copy(s[off+2:off+7], start)
-		duration := []byte{0, 0, 0}
+		var duration []byte
 		if event.undefinedDuration {
 			duration = []byte{0xff, 0xff, 0xff}
 		} else {

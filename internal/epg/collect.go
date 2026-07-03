@@ -226,7 +226,6 @@ func CollectServiceSnapshots(ctx context.Context, programStore ProgramStore, ser
 		}
 	}
 	cancel()
-	dirtyServices = nil
 	pfUpserts.stop()
 	pfUpserts.wait()
 	partialFlushes.stop()

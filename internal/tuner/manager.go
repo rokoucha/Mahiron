@@ -325,8 +325,8 @@ func (d *managedDevice) Start(ctx context.Context, dst io.Writer) error {
 	slog.Info("tuner started", "name", d.tuner.Name())
 	d.manager.markRunning(d.tuner, d)
 	go func() {
-		<-d.Device.Done()
-		if err := d.Device.Err(); err != nil {
+		<-d.Done()
+		if err := d.Err(); err != nil {
 			slog.Warn("tuner stopped with error", "name", d.tuner.Name(), "err", err)
 			d.manager.markFault(d.tuner, d)
 		} else {
