@@ -1,22 +1,23 @@
 # syntax=docker/dockerfile:1
 
-FROM node:24-bookworm-slim AS web
+FROM --platform=$BUILDPLATFORM node:24-bookworm-slim AS web
 WORKDIR /src/web
 RUN --mount=type=bind,source=web,target=/src/web,rw \
     --mount=type=cache,target=/root/.npm \
     npm ci && npm run build
 
-FROM golang:1.26-bookworm AS build
+FROM --platform=$BUILDPLATFORM golang:1.26-bookworm AS build
 WORKDIR /src
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=bind,source=go.mod,target=go.mod \
     --mount=type=bind,source=go.sum,target=go.sum \
     go mod download
+ARG TARGETOS TARGETARCH
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=bind,target=.,rw \
     --mount=type=bind,from=web,source=/src/internal/web/ui/dist/app,target=internal/web/ui/dist/app \
-    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/mahiron ./cmd/mahiron
+    CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /out/mahiron ./cmd/mahiron
 
 FROM debian:bookworm-slim
 RUN apt-get update \
