@@ -11,6 +11,7 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/observability"
+	"github.com/21S1298001/mahiron/internal/runtimecontext"
 	"github.com/21S1298001/mahiron/internal/stream/remote"
 	"github.com/21S1298001/mahiron/internal/tuner"
 	"github.com/google/uuid"
@@ -309,9 +310,13 @@ func (s *tunerLiveSource) WithUser(ctx context.Context, run func(context.Context
 	}
 	user, ok := tuner.UserFromContext(ctx)
 	if !ok {
+		agent := "Mahiron Internal"
+		if info, ok := runtimecontext.JobFromContext(ctx); ok && info.Name != "" {
+			agent = info.Name
+		}
 		user = tuner.User{
 			ID:            uuid.NewString(),
-			Agent:         "Mahiron Internal",
+			Agent:         agent,
 			StreamSetting: tuner.StreamSetting{Channel: s.channel},
 		}
 	}

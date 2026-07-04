@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/21S1298001/mahiron/internal/config"
+	"github.com/21S1298001/mahiron/internal/runtimecontext"
 	"github.com/21S1298001/mahiron/internal/stream/internal/streamtest"
 	"github.com/21S1298001/mahiron/internal/stream/local"
 	"github.com/21S1298001/mahiron/internal/stream/remote"
@@ -51,6 +52,29 @@ func testManagerWithDescrambler(t *testing.T, devices *fakeTunerDeviceRecorder, 
 			devices:        devices,
 		},
 	})
+}
+
+func TestEnsureUserContextUsesJobNameForInternalAgent(t *testing.T) {
+	ctx := runtimecontext.WithJob(context.Background(), runtimecontext.JobInfo{Name: "EPG Gather NID 6"})
+	user, ok := tuner.UserFromContext(ensureUserContext(ctx, "GR", "27"))
+	if !ok {
+		t.Fatal("user context not set")
+	}
+	if user.Agent != "EPG Gather NID 6" {
+		t.Fatalf("agent = %q, want EPG Gather NID 6", user.Agent)
+	}
+}
+
+func TestEnsureUserContextKeepsExplicitUser(t *testing.T) {
+	ctx := runtimecontext.WithJob(context.Background(), runtimecontext.JobInfo{Name: "EPG Gather NID 6"})
+	ctx = tuner.WithUser(ctx, tuner.User{ID: "viewer", Agent: "Viewer"})
+	user, ok := tuner.UserFromContext(ensureUserContext(ctx, "GR", "27"))
+	if !ok {
+		t.Fatal("user context not set")
+	}
+	if user.Agent != "Viewer" {
+		t.Fatalf("agent = %q, want Viewer", user.Agent)
+	}
 }
 
 func TestManagerSharesSessionsByTypeAndChannel(t *testing.T) {

@@ -10,6 +10,7 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/jobreport"
 	"github.com/21S1298001/mahiron/internal/observability"
+	"github.com/21S1298001/mahiron/internal/runtimecontext"
 	"github.com/go-co-op/gocron/v2"
 	"github.com/google/uuid"
 )
@@ -188,6 +189,7 @@ func (m *JobManager) run(ctx context.Context, item *Job) {
 		observability.AttrJobRetryCount.Int(item.RetryCount),
 	)
 	ctx = jobreport.ContextWithReporter(ctx, jobResultReporter{manager: m, item: item})
+	ctx = runtimecontext.WithJob(ctx, runtimecontext.JobInfo{ID: item.ID, Key: item.Key, Name: item.Name})
 	err := item.definition.Handler(ctx)
 	observability.EndSpan(span, err)
 	m.mu.Lock()
