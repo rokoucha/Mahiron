@@ -295,6 +295,31 @@ func TestSharedSessionUsesOneDescramblerForDecodedSubscribers(t *testing.T) {
 	}
 }
 
+func TestSessionStopsSectionUpdatesWhenRawDemuxerStops(t *testing.T) {
+	packet := streamtest.TestPacket(0x0100, 1)
+	packetSource := streamtest.NewFinitePacketSource(packet, streamtest.ClosedStart())
+	var stopped atomic.Bool
+	session := NewSession(Config{
+		Broadcast: source.NewBroadcast(packetSource, nil),
+		Channel:   "27",
+		OnStop:    func() { stopped.Store(true) },
+		Type:      "GR",
+	})
+
+	var out bytes.Buffer
+	if err := session.ChannelStream(t.Context(), false, &out); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-session.sectionDone:
+	case <-time.After(time.Second):
+		t.Fatal("section updater did not stop after raw demuxer stopped")
+	}
+	if !stopped.Load() {
+		t.Fatal("session onStop callback was not called")
+	}
+}
+
 // decodedSubscriberCount and decodedDemuxerStopped read session.decodedDemuxer
 // under the session mutex, since attachDemuxer may concurrently replace that
 // field with a freshly recreated demuxer (see the decoded-demuxer revival

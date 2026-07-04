@@ -16,6 +16,25 @@ type sqliteStore struct {
 	q  *gen.Queries
 }
 
+const upsertProgramSQL = `INSERT INTO programs (id, event_id, service_id, network_id, start_at, duration, is_free,
+                      name, description, genres, video, audios, extended, related_items, series)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+  event_id=excluded.event_id,
+  service_id=excluded.service_id,
+  network_id=excluded.network_id,
+  start_at=excluded.start_at,
+  duration=excluded.duration,
+  is_free=excluded.is_free,
+  name=COALESCE(excluded.name, programs.name),
+  description=COALESCE(excluded.description, programs.description),
+  genres=COALESCE(excluded.genres, programs.genres),
+  video=COALESCE(excluded.video, programs.video),
+  audios=COALESCE(excluded.audios, programs.audios),
+  extended=COALESCE(excluded.extended, programs.extended),
+  related_items=COALESCE(excluded.related_items, programs.related_items),
+  series=COALESCE(excluded.series, programs.series)`
+
 func NewSQLiteStore(db *sql.DB) ProgramStore {
 	return &sqliteStore{
 		db: db,
@@ -39,15 +58,8 @@ func (s *sqliteStore) UpsertAll(ctx context.Context, programs []*Program) (err e
 	}
 	defer tx.Rollback()
 
-	q := s.q.WithTx(tx)
-	for _, p := range programs {
-		params, err := toUpsertProgramParams(p)
-		if err != nil {
-			return err
-		}
-		if err := q.UpsertProgram(ctx, params); err != nil {
-			return fmt.Errorf("upsert program %d: %w", p.ID, err)
-		}
+	if err := upsertPrograms(ctx, tx, programs); err != nil {
+		return err
 	}
 
 	return tx.Commit()
@@ -148,16 +160,49 @@ func (s *sqliteStore) ReplaceServicePrograms(ctx context.Context, networkID, ser
 	}); err != nil {
 		return fmt.Errorf("delete service snapshot: %w", err)
 	}
+	if err := upsertPrograms(ctx, tx, programs); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func upsertPrograms(ctx context.Context, tx *sql.Tx, programs []*Program) error {
+	stmt, err := tx.PrepareContext(ctx, upsertProgramSQL)
+	if err != nil {
+		return fmt.Errorf("prepare upsert program: %w", err)
+	}
+	defer stmt.Close()
 	for _, p := range programs {
 		params, err := toUpsertProgramParams(p)
 		if err != nil {
 			return err
 		}
-		if err := q.UpsertProgram(ctx, params); err != nil {
+		if err := execUpsertProgram(ctx, stmt, params); err != nil {
 			return fmt.Errorf("upsert program %d: %w", p.ID, err)
 		}
 	}
-	return tx.Commit()
+	return nil
+}
+
+func execUpsertProgram(ctx context.Context, stmt *sql.Stmt, arg gen.UpsertProgramParams) error {
+	_, err := stmt.ExecContext(ctx,
+		arg.ID,
+		arg.EventID,
+		arg.ServiceID,
+		arg.NetworkID,
+		arg.StartAt,
+		arg.Duration,
+		arg.IsFree,
+		arg.Name,
+		arg.Description,
+		arg.Genres,
+		arg.Video,
+		arg.Audios,
+		arg.Extended,
+		arg.RelatedItems,
+		arg.Series,
+	)
+	return err
 }
 
 func (s *sqliteStore) Count(ctx context.Context) (int, error) {

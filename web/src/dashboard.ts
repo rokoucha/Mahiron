@@ -68,7 +68,7 @@ export function resourcesToRefresh(event: EventItem): DashboardResource[] {
     case 'job_schedule':
       return ['jobs', 'status']
     case 'program':
-      return ['programs']
+      return []
     default:
       return ['status']
   }
@@ -108,9 +108,7 @@ export function useDashboard(): DashboardState {
     intervalMs: pollIntervalMs,
   })
   const jobs = useAutoResource(api.jobs, { intervalMs: pollIntervalMs })
-  const programs = useAutoResource(api.programs, {
-    intervalMs: pollIntervalMs,
-  })
+  const programs = useAutoResource(api.programs)
   const [streamState, setStreamState] =
     useState<StreamConnectionState>('reconnecting')
   const [streamError, setStreamError] = useState<string | null>(null)
@@ -144,7 +142,6 @@ export function useDashboard(): DashboardState {
         'services',
         'channels',
         'jobs',
-        'programs',
       ],
     ) => {
       for (const resource of resources) {
@@ -189,7 +186,7 @@ export function useDashboard(): DashboardState {
             reconnectDelayMs = 1_000
             setStreamState('connected')
             setStreamError(null)
-            refresh()
+            refresh(['status', 'tuners', 'services', 'channels', 'jobs'])
           })
           if (cancelled || controller.signal.aborted) return
           setStreamState('reconnecting')

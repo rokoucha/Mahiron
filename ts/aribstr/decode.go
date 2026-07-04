@@ -1,14 +1,11 @@
 package aribstr
 
 import (
-	"bytes"
 	"fmt"
-	"io"
 	"strings"
 	"unicode/utf8"
 
 	"golang.org/x/text/encoding/japanese"
-	"golang.org/x/text/transform"
 )
 
 type aribGraphicSet byte
@@ -435,14 +432,15 @@ func (d *aribStringDecoder) skipC1Control(b []byte, i int) int {
 }
 
 func decodeJISX0208Pair(first, second byte) (string, error) {
-	input := []byte{0x1b, 0x24, 0x42, first, second, 0x1b, 0x28, 0x42}
-	reader := transform.NewReader(bytes.NewReader(input), japanese.ISO2022JP.NewDecoder())
-	out, err := io.ReadAll(reader)
+	input := [8]byte{0x1b, 0x24, 0x42, first, second, 0x1b, 0x28, 0x42}
+	var out [utf8.UTFMax]byte
+	nDst, _, err := japanese.ISO2022JP.NewDecoder().Transform(out[:], input[:], true)
 	if err != nil {
 		return "", err
 	}
-	if bytes.ContainsRune(out, utf8.RuneError) {
+	s := string(out[:nDst])
+	if strings.ContainsRune(s, utf8.RuneError) {
 		return "", fmt.Errorf("jis x 0208: undecodable pair %02x %02x", first, second)
 	}
-	return string(out), nil
+	return s, nil
 }

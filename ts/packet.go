@@ -88,11 +88,21 @@ type PacketReader struct {
 
 // NewPacketReader creates a new PacketReader.
 func NewPacketReader(r io.Reader) *PacketReader {
-	return &PacketReader{r: r, tmp: make([]byte, 4096)}
+	return &PacketReader{r: r, buf: make([]byte, 0, 8192), tmp: make([]byte, 4096)}
 }
 
 // Next reads the next valid TS packet. It skips garbage until a sync byte is found.
 func (pr *PacketReader) Next() (Packet, error) {
+	packet := make([]byte, PacketSize)
+	return pr.NextInto(packet)
+}
+
+// NextInto reads the next valid TS packet into dst. It skips garbage until a
+// sync byte is found. dst must be at least PacketSize bytes.
+func (pr *PacketReader) NextInto(dst []byte) (Packet, error) {
+	if len(dst) < PacketSize {
+		return nil, io.ErrShortBuffer
+	}
 	for {
 		if err := pr.fill(minDetectBytes); err != nil && len(pr.buf) == 0 {
 			return nil, err
@@ -103,7 +113,7 @@ func (pr *PacketReader) Next() (Packet, error) {
 
 		if pr.stride != 0 {
 			if pr.packetReadyAt(0, pr.stride) {
-				return pr.consumePacket(0, pr.stride), nil
+				return pr.consumePacketInto(dst, 0, pr.stride), nil
 			}
 			pr.stride = 0
 		}
@@ -122,7 +132,7 @@ func (pr *PacketReader) Next() (Packet, error) {
 			continue
 		}
 		pr.stride = stride
-		return pr.consumePacket(pos, stride), nil
+		return pr.consumePacketInto(dst, pos, stride), nil
 	}
 }
 
@@ -190,6 +200,11 @@ func (pr *PacketReader) packetReadyAt(pos, stride int) bool {
 }
 
 func (pr *PacketReader) consumePacket(pos, stride int) Packet {
+	packet := make([]byte, PacketSize)
+	return pr.consumePacketInto(packet, pos, stride)
+}
+
+func (pr *PacketReader) consumePacketInto(dst []byte, pos, stride int) Packet {
 	start := pos
 	end := pos + stride
 	switch stride {
@@ -198,8 +213,10 @@ func (pr *PacketReader) consumePacket(pos, stride int) Packet {
 	case packetSizeWithParity:
 		end = pos + PacketSize
 	}
-	packet := make([]byte, PacketSize)
+	packet := dst[:PacketSize]
 	copy(packet, pr.buf[start:end])
-	pr.buf = pr.buf[pos+stride:]
+	remaining := pr.buf[pos+stride:]
+	copy(pr.buf, remaining)
+	pr.buf = pr.buf[:len(remaining)]
 	return Packet(packet)
 }

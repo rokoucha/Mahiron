@@ -44,7 +44,7 @@ type Demuxer struct {
 
 func New(source SourceSubscriber, onEmpty func(), onSections ...func(ts.Section)) *Demuxer {
 	return &Demuxer{
-		continuity: &continuityMonitor{last: map[uint16]byte{}},
+		continuity: &continuityMonitor{},
 		demux:      ts.NewDemuxer(),
 		done:       make(chan struct{}),
 		onEmpty:    onEmpty,
@@ -163,7 +163,7 @@ func (e *Demuxer) Stopped() bool {
 func (e *Demuxer) subscribePackets(ctx context.Context, serviceID *uint16, dst io.Writer) error {
 	sub := &packetSubscription{
 		ctx:        ctx,
-		continuity: &continuityMonitor{last: map[uint16]byte{}},
+		continuity: &continuityMonitor{},
 		done:       make(chan struct{}),
 		queue:      make(chan ts.Packet, packetSubscriberBuffer),
 		serviceID:  serviceID,
@@ -246,9 +246,20 @@ func (e *Demuxer) run(ctx context.Context) {
 	}()
 
 	reader := ts.NewPacketReader(r)
+	packetBuf := make([]byte, ts.PacketSize)
 	var runErr error
+	var packetCount int64
+	var byteCount int64
+	flushPackets := func() {
+		if packetCount == 0 && byteCount == 0 {
+			return
+		}
+		observability.RecordStreamPackets(ctx, e.channelType, e.channelID, packetCount, byteCount)
+		packetCount = 0
+		byteCount = 0
+	}
 	for {
-		packet, err := reader.Next()
+		packet, err := reader.NextInto(packetBuf)
 		if err != nil {
 			if !errors.Is(err, io.EOF) && ctx.Err() == nil {
 				runErr = err
@@ -256,7 +267,11 @@ func (e *Demuxer) run(ctx context.Context) {
 			}
 			break
 		}
-		observability.RecordStreamPacket(ctx, e.channelType, e.channelID, int64(len(packet)))
+		packetCount++
+		byteCount += int64(len(packet))
+		if packetCount >= 256 {
+			flushPackets()
+		}
 		if e.continuity.observe(packet) {
 			observability.RecordStreamContinuityCounterError(ctx, e.channelType, e.channelID)
 		}
@@ -268,6 +283,7 @@ func (e *Demuxer) run(ctx context.Context) {
 		}
 		e.dispatch(packet, sections)
 	}
+	flushPackets()
 	_ = r.Close()
 	if err := <-sourceDone; err != nil && ctx.Err() == nil && !errors.Is(err, io.ErrClosedPipe) {
 		runErr = errors.Join(runErr, err)
@@ -276,7 +292,8 @@ func (e *Demuxer) run(ctx context.Context) {
 }
 
 type continuityMonitor struct {
-	last map[uint16]byte
+	seen [ts.PIDNull + 1]bool
+	last [ts.PIDNull + 1]byte
 }
 
 func (m *continuityMonitor) observe(packet ts.Packet) bool {
@@ -285,7 +302,9 @@ func (m *continuityMonitor) observe(packet ts.Packet) bool {
 	}
 	pid := packet.PID()
 	counter := packet.ContinuityCounter()
-	last, ok := m.last[pid]
+	last := m.last[pid]
+	ok := m.seen[pid]
+	m.seen[pid] = true
 	m.last[pid] = counter
 	return ok && counter != ((last+1)&0x0f)
 }
@@ -304,6 +323,7 @@ func (e *Demuxer) dispatch(packet ts.Packet, sections []ts.Section) {
 		if out == nil {
 			continue
 		}
+		out = append(ts.Packet(nil), out...)
 		select {
 		case sub.queue <- out:
 		default:

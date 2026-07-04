@@ -28,6 +28,7 @@ type Session struct {
 	logoUpdater       LogoUpdater
 	logoCarousel      *ts.DSMCCLogoCarousel
 	sectionCancel     context.CancelFunc
+	sectionDone       chan struct{}
 	sectionQueue      chan ts.Section
 	carouselQueue     chan ts.Section
 	sectionUpdateMu   sync.Mutex
@@ -56,10 +57,16 @@ func NewSession(config Config) *Session {
 	}
 	sectionCtx, sectionCancel := context.WithCancel(context.Background())
 	session.sectionCancel = sectionCancel
+	session.sectionDone = make(chan struct{})
 	session.sectionQueue = make(chan ts.Section, sectionQueueSize)
 	session.carouselQueue = make(chan ts.Section, carouselQueueSize)
 	go session.runSectionUpdates(sectionCtx)
-	session.rawDemuxer = demux.New(config.Broadcast.SubscribeRaw, config.OnStop, session.observeSection).WithMetricLabels(config.Type, config.Channel)
+	session.rawDemuxer = demux.New(config.Broadcast.SubscribeRaw, func() {
+		session.stopSectionUpdates()
+		if config.OnStop != nil {
+			config.OnStop()
+		}
+	}, session.observeSection).WithMetricLabels(config.Type, config.Channel)
 	session.decodedDemuxer = demux.New(session.subscribeDecodedMux, nil).WithMetricLabels(config.Type, config.Channel)
 	return session
 }
@@ -158,7 +165,7 @@ func (s *Session) Stop(ctx context.Context) error {
 		rawDemuxer.Stop()
 	}
 	if sectionCancel != nil {
-		sectionCancel()
+		s.stopSectionUpdates()
 	}
 
 	var result error
@@ -166,6 +173,20 @@ func (s *Session) Stop(ctx context.Context) error {
 		result = errors.Join(result, broadcast.Stop(ctx))
 	}
 	return result
+}
+
+func (s *Session) stopSectionUpdates() {
+	s.mu.Lock()
+	cancel := s.sectionCancel
+	done := s.sectionDone
+	s.sectionCancel = nil
+	s.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	if done != nil {
+		<-done
+	}
 }
 
 var (

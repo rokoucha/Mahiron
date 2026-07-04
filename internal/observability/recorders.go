@@ -119,9 +119,16 @@ func RecordTunerAcquire(ctx context.Context, channelType, result string, wait bo
 }
 
 func RecordStreamPacket(ctx context.Context, channelType, channelID string, bytes int64) {
+	RecordStreamPackets(ctx, channelType, channelID, 1, bytes)
+}
+
+func RecordStreamPackets(ctx context.Context, channelType, channelID string, packets, bytes int64) {
+	if packets <= 0 && bytes <= 0 {
+		return
+	}
 	attrs := metric.WithAttributes(AttrChannelType.String(channelType), AttrChannelID.String(channelID))
-	if instruments.streamPackets != nil {
-		instruments.streamPackets.Add(ctx, 1, attrs)
+	if instruments.streamPackets != nil && packets > 0 {
+		instruments.streamPackets.Add(ctx, packets, attrs)
 	}
 	if instruments.streamBytes != nil && bytes > 0 {
 		instruments.streamBytes.Add(ctx, bytes, attrs)

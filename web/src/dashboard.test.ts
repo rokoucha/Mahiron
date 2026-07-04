@@ -29,7 +29,7 @@ describe('resourcesToRefresh', () => {
     ['service', ['services']],
     ['job', ['jobs', 'status']],
     ['job_schedule', ['jobs', 'status']],
-    ['program', ['programs']],
+    ['program', []],
     ['something-unrecognized', ['status']],
   ] as const)('maps resource %s to %j', (resource, expected) => {
     expect(resourcesToRefresh(event({ resource }))).toEqual(expected)

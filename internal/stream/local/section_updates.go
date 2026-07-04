@@ -67,6 +67,9 @@ func (s *Session) observeSection(section ts.Section) {
 }
 
 func (s *Session) runSectionUpdates(ctx context.Context) {
+	if s.sectionDone != nil {
+		defer close(s.sectionDone)
+	}
 	for {
 		select {
 		case <-ctx.Done():

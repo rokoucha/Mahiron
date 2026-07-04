@@ -264,7 +264,7 @@ func TestPacketDemuxerObserveSectionsWaitsForObserverOnCancel(t *testing.T) {
 }
 
 func TestContinuityMonitorDetectsCounterGap(t *testing.T) {
-	monitor := &continuityMonitor{last: map[uint16]byte{}}
+	monitor := &continuityMonitor{}
 	if monitor.observe(streamtest.TestPacket(0x0100, 1)) {
 		t.Fatal("first packet reported continuity error")
 	}
@@ -280,7 +280,7 @@ func TestContinuityMonitorDetectsCounterGap(t *testing.T) {
 }
 
 func TestContinuityMonitorIgnoresInvalidPackets(t *testing.T) {
-	monitor := &continuityMonitor{last: map[uint16]byte{}}
+	monitor := &continuityMonitor{}
 	packet := streamtest.TestPacket(0x0100, 1)
 	packet[0] = 0
 	if monitor.observe(packet) {
