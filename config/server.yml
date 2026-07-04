@@ -13,8 +13,7 @@ serviceScanTimeout: 30000
 
 observability:
   serviceName: mahiron
-  endpoint: localhost:4317
-  insecure: true
+  endpoint: http://localhost:4318
   headers:
     authorization: Bearer sample-token
     x-tenant: sample-home

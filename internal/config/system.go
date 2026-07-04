@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"net/url"
 	"os"
 
 	"sigs.k8s.io/yaml"
@@ -34,7 +35,6 @@ type ServerAddress struct {
 type ObservabilityConfig struct {
 	ServiceName string              `json:"serviceName,omitempty"`
 	Endpoint    string              `json:"endpoint,omitempty"`
-	Insecure    bool                `json:"insecure,omitempty"`
 	Headers     map[string]string   `json:"headers,omitempty"`
 	Logs        ObservabilitySignal `json:"logs,omitempty"`
 	Traces      ObservabilitySignal `json:"traces,omitempty"`
@@ -87,6 +87,12 @@ func LoadAndParseSystemConfig(filePath string) (*SystemConfig, error) {
 	}
 	if config.Observability.ServiceName == "" {
 		config.Observability.ServiceName = "mahiron"
+	}
+	if config.Observability.Endpoint != "" {
+		u, err := url.Parse(config.Observability.Endpoint)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return nil, errors.New("observability endpoint must be a URL like http://localhost:4318")
+		}
 	}
 
 	switch config.LogLevel {

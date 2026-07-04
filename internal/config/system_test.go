@@ -137,6 +137,14 @@ func TestLoadAndParseSystemConfig(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name: "Observability endpoint without scheme",
+			args: args{
+				filePath: "testdata/system-observability-invalid-endpoint.yml",
+			},
+			want:    nil,
+			wantErr: true,
+		},
+		{
 			name: "Configured observability",
 			args: args{filePath: "testdata/system-observability.yml"},
 			want: &SystemConfig{
@@ -144,8 +152,7 @@ func TestLoadAndParseSystemConfig(t *testing.T) {
 				LogLevel:  "info",
 				Observability: ObservabilityConfig{
 					ServiceName: "custom-mahiron",
-					Endpoint:    "localhost:4317",
-					Insecure:    true,
+					Endpoint:    "http://localhost:4318",
 					Headers: map[string]string{
 						"authorization": "Bearer token",
 						"x-tenant":      "test",
