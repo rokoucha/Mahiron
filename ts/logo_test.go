@@ -308,27 +308,27 @@ func buildDSMCCDII(t *testing.T, downloadID uint32, blockSize, moduleID uint16, 
 	body = append(body, moduleVersion, byte(len(moduleInfo)))
 	body = append(body, moduleInfo...)
 	body = append(body, 0, 0)
-	return buildDSMCCSection(t, TableIDDSMCCDII, 0x1002, body)
+	return buildDSMCCSection(t, TableIDDSMCCDII, 0x1002, 1, body)
 }
 
 func buildDSMCCDDB(t *testing.T, downloadID uint32, moduleID uint16, moduleVersion byte, blockNumber uint16, data []byte) Section {
 	t.Helper()
+	// downloadId lives in dsmccDownloadDataHeader(); the payload starts at
+	// moduleId (ARIB STD-B24 Part 3 Tables 6-21 and 6-22).
 	body := make([]byte, 0)
 	var scratch [4]byte
-	binary.BigEndian.PutUint32(scratch[:], downloadID)
-	body = append(body, scratch[:]...)
 	binary.BigEndian.PutUint16(scratch[:2], moduleID)
 	body = append(body, scratch[:2]...)
 	body = append(body, moduleVersion, 0xff)
 	binary.BigEndian.PutUint16(scratch[:2], blockNumber)
 	body = append(body, scratch[:2]...)
 	body = append(body, data...)
-	return buildDSMCCSection(t, TableIDDSMCCDDB, 0x1003, body)
+	return buildDSMCCSection(t, TableIDDSMCCDDB, 0x1003, downloadID, body)
 }
 
-func buildDSMCCSection(t *testing.T, tableID byte, messageID uint16, body []byte) Section {
+func buildDSMCCSection(t *testing.T, tableID byte, messageID uint16, headerID uint32, body []byte) Section {
 	t.Helper()
-	message := []byte{0x11, 0x03, byte(messageID >> 8), byte(messageID), 0, 0, 0, 1, 0xff, 0}
+	message := []byte{0x11, 0x03, byte(messageID >> 8), byte(messageID), byte(headerID >> 24), byte(headerID >> 16), byte(headerID >> 8), byte(headerID), 0xff, 0}
 	message = append(message, byte(len(body)>>8), byte(len(body)))
 	message = append(message, body...)
 	sectionLength := 5 + len(message) + 4

@@ -8,8 +8,12 @@ import (
 const (
 	StreamTypeDSMCCDataCarousel = 0x0D
 
+	// The BS all-receiver common data service (service_id 929, ARIB TR-B15
+	// Part 1 5.2.1) currently rides the NHK BS transport stream on BS-15
+	// (TSID 0x40F1). Used only as a bootstrap hint until an SDTT
+	// announcement reveals the actual location.
 	DefaultCommonLogoOriginalNetworkID uint16 = 0x0004
-	DefaultCommonLogoTransportStreamID uint16 = 0x4031
+	DefaultCommonLogoTransportStreamID uint16 = 0x40f1
 	DefaultCommonLogoServiceID         uint16 = 929
 	NetworkLogoTransportStreamWildcard uint16 = 0xffff
 	NetworkLogoServiceWildcard         uint16 = 0xffff
@@ -181,15 +185,18 @@ func ParseDSMCCDDB(s Section) (*DSMCCDDB, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(body) < 10 {
+	if len(body) < 6 {
 		return nil, ErrInvalidSection
 	}
+	// Unlike the DII message, the DDB message carries downloadId inside
+	// dsmccDownloadDataHeader() and its payload starts at moduleId
+	// (ARIB STD-B24 Part 3 Tables 6-21 and 6-22).
 	return &DSMCCDDB{
-		DownloadID:    binary.BigEndian.Uint32(body[0:4]),
-		ModuleID:      binary.BigEndian.Uint16(body[4:6]),
-		ModuleVersion: body[6],
-		BlockNumber:   binary.BigEndian.Uint16(body[8:10]),
-		Data:          append([]byte(nil), body[10:]...),
+		DownloadID:    binary.BigEndian.Uint32(s[12:16]),
+		ModuleID:      binary.BigEndian.Uint16(body[0:2]),
+		ModuleVersion: body[2],
+		BlockNumber:   binary.BigEndian.Uint16(body[4:6]),
+		Data:          append([]byte(nil), body[6:]...),
 	}, nil
 }
 
