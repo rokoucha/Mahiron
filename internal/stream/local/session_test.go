@@ -3,6 +3,7 @@ package local
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"sync/atomic"
 	"testing"
@@ -82,6 +83,47 @@ func TestSessionSectionUpdaterCarouselOverflowDoesNotBlockSections(t *testing.T)
 	}
 }
 
+func TestSessionSectionUpdaterCoalescesRepeatedEITPF(t *testing.T) {
+	key := epgClockTestKey{networkID: 4, serviceID: 101}
+	section := streamBuildEIT(ts.TableIDEITPF0, key, 10)
+	session := &Session{
+		channel:      "BS01_0",
+		typ:          "BS",
+		sectionQueue: make(chan ts.Section, sectionQueueSize),
+	}
+
+	for range sectionQueueSize + 1 {
+		session.observeSection(section)
+	}
+	if got := len(session.sectionQueue); got != 1 {
+		t.Fatalf("section updater queue length = %d, want repeated EIT p/f coalesced to 1", got)
+	}
+
+	session.observeSection(streamBuildEIT(ts.TableIDEITPF0, key, 11))
+	if got := len(session.sectionQueue); got != 2 {
+		t.Fatalf("section updater queue length = %d, want changed EIT p/f to be queued", got)
+	}
+}
+
+func TestSessionSectionUpdaterRetriesEITPFOnUpsertFailure(t *testing.T) {
+	key := epgClockTestKey{networkID: 4, serviceID: 101}
+	section := streamBuildEIT(ts.TableIDEITPF0, key, 10)
+	session := &Session{
+		channel:      "BS01_0",
+		typ:          "BS",
+		eitUpdater:   failingEITUpdater{},
+		sectionQueue: make(chan ts.Section, sectionQueueSize),
+	}
+
+	session.observeSection(section)
+	queued := <-session.sectionQueue
+	session.updateSection(t.Context(), queued)
+	session.observeSection(section)
+	if got := len(session.sectionQueue); got != 1 {
+		t.Fatalf("section updater queue length = %d, want failed EIT p/f to be retried", got)
+	}
+}
+
 func TestChannelSessionCollectEITWithClockUsesLatestTOT(t *testing.T) {
 	clock := time.Date(2026, 6, 29, 12, 34, 56, 0, time.FixedZone("JST", 9*60*60))
 	key := epgClockTestKey{networkID: 4, serviceID: 101}
@@ -115,6 +157,12 @@ func TestChannelSessionCollectEITWithClockUsesLatestTOT(t *testing.T) {
 type epgClockTestKey struct {
 	networkID uint16
 	serviceID uint16
+}
+
+type failingEITUpdater struct{}
+
+func (failingEITUpdater) UpsertEIT(context.Context, *ts.EIT) error {
+	return errors.New("upsert failed")
 }
 
 func streamBuildTOT(jstTime time.Time) ts.Section {

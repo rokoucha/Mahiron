@@ -16,20 +16,22 @@ import (
 )
 
 type Session struct {
-	broadcast      *source.Broadcast
-	channel        string
-	descrambler    source.Descrambler
-	mu             sync.Mutex
-	stopped        bool
-	typ            string
-	rawDemuxer     *demux.Demuxer
-	decodedDemuxer *demux.Demuxer
-	eitUpdater     EITSectionUpdater
-	logoUpdater    LogoUpdater
-	logoCarousel   *ts.DSMCCLogoCarousel
-	sectionCancel  context.CancelFunc
-	sectionQueue   chan ts.Section
-	carouselQueue  chan ts.Section
+	broadcast         *source.Broadcast
+	channel           string
+	descrambler       source.Descrambler
+	mu                sync.Mutex
+	stopped           bool
+	typ               string
+	rawDemuxer        *demux.Demuxer
+	decodedDemuxer    *demux.Demuxer
+	eitUpdater        EITSectionUpdater
+	logoUpdater       LogoUpdater
+	logoCarousel      *ts.DSMCCLogoCarousel
+	sectionCancel     context.CancelFunc
+	sectionQueue      chan ts.Section
+	carouselQueue     chan ts.Section
+	sectionUpdateMu   sync.Mutex
+	eitPFFingerprints map[eitPFSectionKey]uint32
 }
 
 type Config struct {
