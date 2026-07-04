@@ -65,10 +65,13 @@ func gatherNetwork(ctx context.Context, programStore ProgramStore, serviceStore 
 			collectResult, candidateErr = CollectServiceSnapshots(candidateCtx, programStore, serviceStore, session, remaining, retrievalTime)
 		}
 		observability.EndSpan(candidateSpan, candidateErr)
+		observedInRemaining := 0
 		if collectResult != nil && len(collectResult.Observed) > 0 {
-			observedTotal += len(collectResult.Observed)
+			previousRemaining := len(remaining)
 			programTotal += collectResult.ProgramCount
 			remaining = serviceKeyDifference(remaining, collectResult.Observed)
+			observedInRemaining = previousRemaining - len(remaining)
+			observedTotal += observedInRemaining
 		}
 		item := jobreport.Item{
 			Kind:    "candidate",
@@ -77,14 +80,14 @@ func gatherNetwork(ctx context.Context, programStore ProgramStore, serviceStore 
 				"type":          candidate.Type,
 				"channel":       candidate.Channel,
 				"activeSession": active[candidate],
-				"observed":      0,
+				"observed":      observedInRemaining,
 				"remaining":     len(remaining),
 				"programs":      0,
 				"result":        "success",
 			},
 		}
 		if collectResult != nil {
-			item.Data["observed"] = len(collectResult.Observed)
+			item.Data["observedServices"] = len(collectResult.Observed)
 			item.Data["unobserved"] = len(collectResult.Unobserved)
 			item.Data["programs"] = collectResult.ProgramCount
 		}

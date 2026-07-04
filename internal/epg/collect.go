@@ -280,13 +280,23 @@ func persistObservedSnapshots(ctx context.Context, programStore ProgramStore, se
 	var allObservedPrograms []*program.Program
 	mergeKeys := append([]ServiceKey(nil), expected...)
 	expectedSeen := make(map[ServiceKey]struct{}, len(expected))
+	type serviceIdentity struct {
+		networkID uint16
+		serviceID uint16
+	}
+	expectedTransportStreams := make(map[serviceIdentity]uint16, len(expected))
 	for _, key := range expected {
 		expectedSeen[key] = struct{}{}
+		expectedTransportStreams[serviceIdentity{networkID: key.NetworkID, serviceID: key.ServiceID}] = key.TransportStreamID
 	}
 	for key := range observedServices {
-		if _, ok := expectedSeen[key]; !ok && snapshot.Observed(key) {
-			mergeKeys = append(mergeKeys, key)
+		if _, ok := expectedSeen[key]; ok || !snapshot.Observed(key) {
+			continue
 		}
+		if expectedTSID, ok := expectedTransportStreams[serviceIdentity{networkID: key.NetworkID, serviceID: key.ServiceID}]; ok && expectedTSID != 0 && key.TransportStreamID != expectedTSID {
+			continue
+		}
+		mergeKeys = append(mergeKeys, key)
 	}
 	for _, key := range mergeKeys {
 		if !snapshot.Observed(key) {
@@ -300,8 +310,8 @@ func persistObservedSnapshots(ctx context.Context, programStore ProgramStore, se
 	for _, key := range mergeKeys {
 		_, isExpected := expectedSeen[key]
 		if snapshot.Observed(key) {
+			result.Observed = append(result.Observed, key)
 			if isExpected {
-				result.Observed = append(result.Observed, key)
 				expectedObserved++
 			}
 			observed++
@@ -335,27 +345,21 @@ func persistObservedSnapshots(ctx context.Context, programStore ProgramStore, se
 			err := programStore.UpsertPrograms(mergeCtx, programs)
 			observability.EndSpan(mergeSpan, err)
 			if err != nil {
-				if isExpected {
-					if attemptErr := serviceStore.SetEPGAttempt(ctx, key.NetworkID, key.ServiceID, updatedAt, err.Error()); attemptErr != nil {
-						observability.RecordEPGServiceUpdateError(ctx, "eits", "attempt")
-					}
+				if attemptErr := serviceStore.SetEPGAttempt(ctx, key.NetworkID, key.ServiceID, updatedAt, err.Error()); attemptErr != nil {
+					observability.RecordEPGServiceUpdateError(ctx, "eits", "attempt")
 				}
 				collectErr = errors.Join(collectErr, fmt.Errorf("service %d: merge: %w", key.ServiceID, err))
 				continue
 			}
-			if isExpected {
-				if err := serviceStore.SetEPGSuccess(ctx, key.NetworkID, key.ServiceID, updatedAt); err != nil {
-					observability.RecordEPGServiceUpdateError(ctx, "eits", "success")
-					collectErr = errors.Join(collectErr, err)
-				}
-				if warning := lowQualityProgramWarning(programs); warning != "" {
-					slog.Warn("EITS collection quality is low", "networkId", key.NetworkID, "serviceId", key.ServiceID, "warning", warning)
-					if attemptErr := serviceStore.SetEPGAttempt(ctx, key.NetworkID, key.ServiceID, updatedAt, warning); attemptErr != nil {
-						observability.RecordEPGServiceUpdateError(ctx, "eits", "attempt")
-					}
-				}
-			} else if warning := lowQualityProgramWarning(programs); warning != "" {
+			if err := serviceStore.SetEPGSuccess(ctx, key.NetworkID, key.ServiceID, updatedAt); err != nil {
+				observability.RecordEPGServiceUpdateError(ctx, "eits", "success")
+				collectErr = errors.Join(collectErr, err)
+			}
+			if warning := lowQualityProgramWarning(programs); warning != "" {
 				slog.Warn("EITS collection quality is low", "networkId", key.NetworkID, "serviceId", key.ServiceID, "warning", warning)
+				if attemptErr := serviceStore.SetEPGAttempt(ctx, key.NetworkID, key.ServiceID, updatedAt, warning); attemptErr != nil {
+					observability.RecordEPGServiceUpdateError(ctx, "eits", "attempt")
+				}
 			}
 		} else if isExpected {
 			result.Unobserved = append(result.Unobserved, key)

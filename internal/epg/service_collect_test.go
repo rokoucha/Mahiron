@@ -93,20 +93,48 @@ func TestCollectServiceSnapshotsKeepsSameNetworkServicesOutsideExpected(t *testi
 	expected := ServiceKey{NetworkID: 4, ServiceID: 151, TransportStreamID: 100}
 	extra := ServiceKey{NetworkID: 4, ServiceID: 161, TransportStreamID: 101}
 	store := &collectProgramStore{}
+	status := newRemoteSyncServiceStore()
 	session := &collectEITSession{sections: []*ts.EIT{
 		testEIT(ts.TableIDEITSStart, expected, 10),
 		testEIT(ts.TableIDEITSStart, extra, 20),
 	}}
 
-	result, err := CollectServiceSnapshots(context.Background(), store, newRemoteSyncServiceStore(), session, []ServiceKey{expected}, 20*time.Millisecond)
+	result, err := CollectServiceSnapshots(context.Background(), store, status, session, []ServiceKey{expected}, 20*time.Millisecond)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !equalServiceKeys(result.Observed, []ServiceKey{expected}) {
-		t.Fatalf("observed services = %v, want [%v]", result.Observed, expected)
+	if want := []ServiceKey{expected, extra}; !equalServiceKeys(result.Observed, want) {
+		t.Fatalf("observed services = %v, want %v", result.Observed, want)
 	}
 	if got := store.eventIDs(); !containsEventIDs(got, []uint16{10, 20}) {
 		t.Fatalf("upserted event IDs = %v, want expected and same-network extra events", got)
+	}
+	for _, key := range []ServiceKey{expected, extra} {
+		statusKey := ServiceKey{NetworkID: key.NetworkID, ServiceID: key.ServiceID}
+		if status.successes[statusKey] == 0 {
+			t.Fatalf("service %d did not record success", key.ServiceID)
+		}
+	}
+}
+
+func TestCollectServiceSnapshotsStoresWarningForObservedServiceOutsideExpected(t *testing.T) {
+	expected := ServiceKey{NetworkID: 4, ServiceID: 151, TransportStreamID: 100}
+	extra := ServiceKey{NetworkID: 4, ServiceID: 161, TransportStreamID: 101}
+	status := newRemoteSyncServiceStore()
+	session := &collectEITSession{sections: []*ts.EIT{
+		testEIT(ts.TableIDEITSStart, expected, 10),
+		testSparseEIT(ts.TableIDEITSStart, extra, 10),
+	}}
+
+	if _, err := CollectServiceSnapshots(context.Background(), &collectProgramStore{}, status, session, []ServiceKey{expected}, 20*time.Millisecond); err != nil {
+		t.Fatal(err)
+	}
+	statusKey := ServiceKey{NetworkID: extra.NetworkID, ServiceID: extra.ServiceID}
+	if status.successes[statusKey] == 0 {
+		t.Fatal("extra service did not record success")
+	}
+	if got := status.errors[statusKey]; got != "low quality EITS: 10/10 programs missing titles" {
+		t.Fatalf("extra service warning = %q", got)
 	}
 }
 
