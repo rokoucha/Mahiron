@@ -204,6 +204,37 @@ func TestServiceScanChannelTimesOutAndPreservesStoredServices(t *testing.T) {
 	}
 }
 
+func TestServiceScanTimeoutDoesNotApplyToAcquireContext(t *testing.T) {
+	ctx := context.Background()
+	database, err := db.OpenInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	store := service.NewSQLiteStore(database)
+	manager := service.NewServiceManager(store, nil)
+	scanner := &contextCapturingScanner{services: []ts.ServiceInfo{
+		{Nid: 4, Tsid: 1, Sid: 101, Name: "BS 101", Type: 1},
+	}}
+
+	if _, err := NewService(manager, scanner, nil, time.Minute).ScanChannel(ctx, "BS", "BS01", true); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := scanner.acquireCtx.Deadline(); ok {
+		t.Fatal("acquire context should not inherit service scan timeout")
+	}
+	deadline, ok := scanner.scanCtx.Deadline()
+	if !ok {
+		t.Fatal("scan context should have service scan timeout")
+	}
+	if time.Until(deadline) <= 0 {
+		t.Fatal("scan context deadline is already expired")
+	}
+	if !scanner.wait {
+		t.Fatal("scanner wait = false, want true")
+	}
+}
+
 func TestServiceChannelsExcludesDisabledChannels(t *testing.T) {
 	disabled := true
 	channels := NewService(nil, nil, config.ChannelsConfig{
@@ -237,6 +268,13 @@ type staticScanner struct {
 
 type blockingScanner struct{}
 
+type contextCapturingScanner struct {
+	acquireCtx context.Context
+	scanCtx    context.Context
+	services   []ts.ServiceInfo
+	wait       bool
+}
+
 type captureReporter struct {
 	result *jobreport.Result
 }
@@ -255,6 +293,17 @@ func (s *staticScanner) ScanServices(_ context.Context, _ string, _ string, wait
 	if s.err != nil {
 		return nil, s.err
 	}
+	return s.services, nil
+}
+
+func (s *contextCapturingScanner) ScanServices(context.Context, string, string, bool) ([]ts.ServiceInfo, error) {
+	panic("ScanServices should not be called when ScanServicesWithAcquireContext is implemented")
+}
+
+func (s *contextCapturingScanner) ScanServicesWithAcquireContext(scanCtx, acquireCtx context.Context, _ string, _ string, wait bool) ([]ts.ServiceInfo, error) {
+	s.scanCtx = scanCtx
+	s.acquireCtx = acquireCtx
+	s.wait = wait
 	return s.services, nil
 }
 

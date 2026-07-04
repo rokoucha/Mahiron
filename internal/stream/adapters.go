@@ -71,17 +71,21 @@ func NewServiceScannerAdapter(manager *StreamManager) *ServiceScannerAdapter {
 }
 
 func (a *ServiceScannerAdapter) ScanServices(ctx context.Context, channelType, channelID string, wait bool) ([]ts.ServiceInfo, error) {
+	return a.ScanServicesWithAcquireContext(ctx, ctx, channelType, channelID, wait)
+}
+
+func (a *ServiceScannerAdapter) ScanServicesWithAcquireContext(scanCtx, acquireCtx context.Context, channelType, channelID string, wait bool) ([]ts.ServiceInfo, error) {
 	var (
 		session Session
 		err     error
 	)
 	if wait {
-		session, err = a.manager.GetOrCreateWait(ctx, channelType, channelID)
+		session, err = a.manager.GetOrCreateWait(acquireCtx, channelType, channelID)
 	} else {
-		session, err = a.manager.GetOrCreate(ctx, channelType, channelID)
+		session, err = a.manager.GetOrCreate(acquireCtx, channelType, channelID)
 	}
 	if err != nil {
 		return nil, err
 	}
-	return session.ScanServices(ctx)
+	return session.ScanServices(scanCtx)
 }

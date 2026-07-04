@@ -51,6 +51,102 @@ func TestServiceUpdaterDispatchesPerChannel(t *testing.T) {
 	})
 }
 
+func TestServiceUpdaterScansWithoutWaitingForBusyTuner(t *testing.T) {
+	channels := config.ChannelsConfig{{Type: "EXT1", Channel: "11"}}
+	database, err := db.OpenInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	mgr := newTestManager(t)
+	scanner := &recordingServiceScanner{channels: []servicescan.Channel{{Type: "EXT1", ID: "11"}}}
+	sm := service.NewServiceManager(service.NewSQLiteStore(database), channels)
+	pm := program.NewProgramManager(program.NewSQLiteStore(database))
+	stm := stream.NewStreamManager(stream.StreamManagerConfig{Channels: channels, TunerManager: noTunerManager{}})
+	epgService := epg.NewService(pm, sm, stream.NewEPGCollectorAdapter(stm), channels, 0, 10*time.Minute)
+	RegisterServiceUpdater(mgr, scanner, epgService)
+
+	if _, err := mgr.Enqueue(ServiceUpdaterKey); err != nil {
+		t.Fatal(err)
+	}
+	waitForJobKeys(t, mgr, map[string]bool{
+		ServiceUpdaterKey:      true,
+		"service-scan:EXT1:11": true,
+	})
+	child := waitForFinishedJobKey(t, mgr, "service-scan:EXT1:11")
+	if child.HasFailed {
+		t.Fatalf("service scan failed: %v", child.Error)
+	}
+	if got := scanner.lastWait(); got {
+		t.Fatal("service scan wait = true, want false")
+	}
+}
+
+func TestServiceScanRetriesWhenTunerUnavailable(t *testing.T) {
+	channels := config.ChannelsConfig{{Type: "EXT1", Channel: "11"}}
+	database, err := db.OpenInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	mgr := newTestManager(t)
+	scanner := &recordingServiceScanner{
+		channels: []servicescan.Channel{{Type: "EXT1", ID: "11"}},
+		err:      tuner.ErrTunerUnavailable,
+	}
+	sm := service.NewServiceManager(service.NewSQLiteStore(database), channels)
+	pm := program.NewProgramManager(program.NewSQLiteStore(database))
+	stm := stream.NewStreamManager(stream.StreamManagerConfig{Channels: channels, TunerManager: noTunerManager{}})
+	epgService := epg.NewService(pm, sm, stream.NewEPGCollectorAdapter(stm), channels, 0, 10*time.Minute)
+	RegisterServiceUpdater(mgr, scanner, epgService)
+
+	if _, err := mgr.Enqueue(ServiceUpdaterKey); err != nil {
+		t.Fatal(err)
+	}
+	waitForJobKeys(t, mgr, map[string]bool{
+		ServiceUpdaterKey:      true,
+		"service-scan:EXT1:11": true,
+	})
+	child := waitForJobKeyStatus(t, mgr, "service-scan:EXT1:11", StatusStandby)
+	if child.RetryCount != 1 {
+		t.Fatalf("retry count = %d, want 1", child.RetryCount)
+	}
+}
+
+func TestServiceScanDoesNotRetryChannelNotFound(t *testing.T) {
+	channels := config.ChannelsConfig{{Type: "EXT1", Channel: "29"}}
+	database, err := db.OpenInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	mgr := newTestManager(t)
+	scanner := &recordingServiceScanner{
+		channels: []servicescan.Channel{{Type: "EXT1", ID: "29"}},
+		err:      errors.New("channel not found"),
+	}
+	sm := service.NewServiceManager(service.NewSQLiteStore(database), channels)
+	pm := program.NewProgramManager(program.NewSQLiteStore(database))
+	stm := stream.NewStreamManager(stream.StreamManagerConfig{Channels: channels, TunerManager: noTunerManager{}})
+	epgService := epg.NewService(pm, sm, stream.NewEPGCollectorAdapter(stm), channels, 0, 10*time.Minute)
+	RegisterServiceUpdater(mgr, scanner, epgService)
+
+	if _, err := mgr.Enqueue(ServiceUpdaterKey); err != nil {
+		t.Fatal(err)
+	}
+	waitForJobKeys(t, mgr, map[string]bool{
+		ServiceUpdaterKey:      true,
+		"service-scan:EXT1:29": true,
+	})
+	child := waitForFinishedJobKey(t, mgr, "service-scan:EXT1:29")
+	if !child.HasFailed {
+		t.Fatal("channel not found scan should fail without retry")
+	}
+	if child.RetryCount != 0 {
+		t.Fatalf("retry count = %d, want 0", child.RetryCount)
+	}
+}
+
 func TestEPGGathererDispatchesPerNetwork(t *testing.T) {
 	ctx := context.Background()
 	channels := config.ChannelsConfig{
@@ -292,6 +388,28 @@ func (f fakeScanScanner) ScanServices(context.Context, string, string, bool) ([]
 	return append([]ts.ServiceInfo(nil), f.services...), nil
 }
 
+type recordingServiceScanner struct {
+	channels []servicescan.Channel
+	err      error
+	wait     bool
+}
+
+func (s *recordingServiceScanner) Channels() []servicescan.Channel {
+	return append([]servicescan.Channel(nil), s.channels...)
+}
+
+func (s *recordingServiceScanner) ScanChannel(_ context.Context, _, _ string, wait bool) ([]uint16, error) {
+	s.wait = wait
+	if s.err != nil {
+		return nil, s.err
+	}
+	return nil, nil
+}
+
+func (s *recordingServiceScanner) lastWait() bool {
+	return s.wait
+}
+
 type fakeLogoTargetStore struct {
 	targets []service.LogoTarget
 }
@@ -338,6 +456,30 @@ func waitForJobKeys(t *testing.T, mgr *JobManager, expected map[string]bool) {
 			t.Fatalf("job keys not dispatched: %#v", mgr.GetJobs())
 		}
 	}
+}
+
+func waitForJobKeyStatus(t *testing.T, mgr *JobManager, key string, status JobStatus) *Job {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	for {
+		changed := mgr.Changes()
+		for _, item := range mgr.GetJobs() {
+			if item.Key == key && item.Status == status {
+				return item
+			}
+		}
+		select {
+		case <-changed:
+		case <-ctx.Done():
+			t.Fatalf("job %s did not reach status %s: %#v", key, status, mgr.GetJobs())
+		}
+	}
+}
+
+func waitForFinishedJobKey(t *testing.T, mgr *JobManager, key string) *Job {
+	t.Helper()
+	return waitForJobKeyStatus(t, mgr, key, StatusFinished)
 }
 
 func countFinishedJobs(t *testing.T, mgr *JobManager, key string) int {

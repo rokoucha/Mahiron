@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/21S1298001/mahiron/internal/jobreport"
+	"github.com/21S1298001/mahiron/internal/tuner"
 )
 
 const (
@@ -30,8 +32,12 @@ func RegisterServiceUpdater(registry Registry, scanner ServiceScanner, epgServic
 					Key:          fmt.Sprintf("service-scan:%s:%s", channel.Type, channel.ID),
 					Name:         fmt.Sprintf("Service Scan %s/%s", channel.Type, channel.ID),
 					IsRerunnable: true,
+					RetryDelays:  []time.Duration{10 * time.Second, 30 * time.Second, time.Minute, 2 * time.Minute, 4 * time.Minute},
+					RetryIf: func(err error) bool {
+						return errors.Is(err, tuner.ErrTunerUnavailable)
+					},
 					Handler: func(childCtx context.Context) error {
-						newNIDs, err := scanner.ScanChannel(childCtx, channel.Type, channel.ID, true)
+						newNIDs, err := scanner.ScanChannel(childCtx, channel.Type, channel.ID, false)
 						if err != nil {
 							return err
 						}
