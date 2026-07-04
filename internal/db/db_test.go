@@ -10,7 +10,7 @@ func TestOpenInMemoryAppliesAtlasMigrationsIdempotently(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	if err := Migrate(context.Background(), database); err != nil {
 		t.Fatalf("second migration: %v", err)
 	}
@@ -28,7 +28,7 @@ func TestOpenEnablesForeignKeys(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	var enabled int
 	if err := database.QueryRow("PRAGMA foreign_keys").Scan(&enabled); err != nil {
 		t.Fatal(err)

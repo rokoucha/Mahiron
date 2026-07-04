@@ -25,9 +25,11 @@ func NewMigrator(db *sql.DB) *Migrator {
 	return &Migrator{db: db}
 }
 
-func (m *Migrator) Apply(ctx context.Context) error {
+func (m *Migrator) Apply(ctx context.Context) (err error) {
 	dir := migrate.OpenMemDir(fmt.Sprintf("mahiron-%p", m))
-	defer dir.Close()
+	defer func() {
+		err = errors.Join(err, dir.Close())
+	}()
 	entries, err := fs.ReadDir(migrationsFS, "migrations")
 	if err != nil {
 		return fmt.Errorf("read migrations: %w", err)
@@ -91,12 +93,14 @@ func (s *revisionStore) init(ctx context.Context) error {
 	return nil
 }
 
-func (s *revisionStore) ReadRevisions(ctx context.Context) ([]*migrate.Revision, error) {
+func (s *revisionStore) ReadRevisions(ctx context.Context) (_ []*migrate.Revision, err error) {
 	rows, err := s.db.QueryContext(ctx, revisionSelect+" ORDER BY version")
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		err = errors.Join(err, rows.Close())
+	}()
 	var revisions []*migrate.Revision
 	for rows.Next() {
 		revision, err := scanRevision(rows)

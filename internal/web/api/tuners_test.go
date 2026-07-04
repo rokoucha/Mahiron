@@ -182,7 +182,7 @@ func TestChannelStreamReturnsTrackedTunerUserID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	tunerManager := tuner.NewTunerManager(&tuner.TunerManagerConfig{TunersConfig: config.TunersConfig{
 		{Name: "first", Types: []string{"GR"}, Command: "sleep 10"},
 	}})

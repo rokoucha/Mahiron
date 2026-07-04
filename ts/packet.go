@@ -199,11 +199,6 @@ func (pr *PacketReader) packetReadyAt(pos, stride int) bool {
 	return checks > 0 || pr.eof
 }
 
-func (pr *PacketReader) consumePacket(pos, stride int) Packet {
-	packet := make([]byte, PacketSize)
-	return pr.consumePacketInto(packet, pos, stride)
-}
-
 func (pr *PacketReader) consumePacketInto(dst []byte, pos, stride int) Packet {
 	start := pos
 	end := pos + stride

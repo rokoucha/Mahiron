@@ -25,7 +25,7 @@ func testIPTVHandler(t *testing.T) *Handler {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { database.Close() })
+	t.Cleanup(func() { _ = database.Close() })
 
 	serviceStore := service.NewSQLiteStore(database)
 	services := []*service.Service{

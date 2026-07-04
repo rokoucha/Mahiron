@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -342,7 +343,11 @@ func (s *sqliteStore) ReplaceChannelServices(ctx context.Context, channelType, c
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		if err != nil {
+			err = errors.Join(err, tx.Rollback())
+		}
+	}()
 
 	q := s.q.WithTx(tx)
 	if err := q.DeleteServicesByChannel(ctx, gen.DeleteServicesByChannelParams{
@@ -396,7 +401,7 @@ func (s *sqliteStore) ReplaceChannelServices(ctx context.Context, channelType, c
 	return tx.Commit()
 }
 
-func (s *sqliteStore) PruneChannels(ctx context.Context, active []ChannelKey) error {
+func (s *sqliteStore) PruneChannels(ctx context.Context, active []ChannelKey) (err error) {
 	allowed := make(map[ChannelKey]struct{}, len(active))
 	for _, key := range active {
 		allowed[key] = struct{}{}
@@ -419,7 +424,11 @@ func (s *sqliteStore) PruneChannels(ctx context.Context, active []ChannelKey) er
 	if err != nil {
 		return fmt.Errorf("begin prune tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		if err != nil {
+			err = errors.Join(err, tx.Rollback())
+		}
+	}()
 	q := s.q.WithTx(tx)
 	for key := range stale {
 		if err := q.DeleteServicesByChannel(ctx, gen.DeleteServicesByChannelParams{ChannelType: key.Type, ChannelID: key.ID}); err != nil {

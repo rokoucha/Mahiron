@@ -20,7 +20,7 @@ func TestServiceScanChannelStoresScannedServicesAndReturnsNewNetworks(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	store := service.NewSQLiteStore(database)
 	manager := service.NewServiceManager(store, nil)
 	scanner := &staticScanner{services: []ts.ServiceInfo{
@@ -65,7 +65,7 @@ func TestServiceScanChannelReturnsOnlyNewNetworks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	store := service.NewSQLiteStore(database)
 	manager := service.NewServiceManager(store, nil)
 	if err := store.ReplaceChannelServices(ctx, "BS", "BS01", []*service.Service{
@@ -93,7 +93,7 @@ func TestServiceScanReportsNamedServiceResults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	store := service.NewSQLiteStore(database)
 	manager := service.NewServiceManager(store, nil)
 	if err := store.ReplaceChannelServices(ctx, "BS", "BS01", []*service.Service{
@@ -138,7 +138,7 @@ func TestServiceScanChannelReturnsNoNetworksWhenAllServicesKnown(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	store := service.NewSQLiteStore(database)
 	manager := service.NewServiceManager(store, nil)
 	if err := store.ReplaceChannelServices(ctx, "BS", "BS01", []*service.Service{
@@ -163,7 +163,7 @@ func TestServiceScanChannelReturnsScannerError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	store := service.NewSQLiteStore(database)
 	manager := service.NewServiceManager(store, nil)
 	want := errors.New("scan failed")
@@ -180,7 +180,7 @@ func TestServiceScanChannelTimesOutAndPreservesStoredServices(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	store := service.NewSQLiteStore(database)
 	manager := service.NewServiceManager(store, nil)
 	want := &service.Service{
@@ -210,7 +210,7 @@ func TestServiceScanTimeoutDoesNotApplyToAcquireContext(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	store := service.NewSQLiteStore(database)
 	manager := service.NewServiceManager(store, nil)
 	scanner := &contextCapturingScanner{services: []ts.ServiceInfo{
@@ -264,7 +264,7 @@ func TestServiceScanChannelFiltersToConfiguredServiceId(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	store := service.NewSQLiteStore(database)
 	manager := service.NewServiceManager(store, nil)
 	scanner := &staticScanner{services: []ts.ServiceInfo{
@@ -291,7 +291,7 @@ func TestServiceScanChannelUnionsServiceIdsAcrossMultipleEnabledEntries(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	store := service.NewSQLiteStore(database)
 	manager := service.NewServiceManager(store, nil)
 	scanner := &staticScanner{services: []ts.ServiceInfo{
@@ -326,7 +326,7 @@ func TestServiceScanChannelDoesNotFilterWhenAnyEnabledEntryLacksServiceId(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	store := service.NewSQLiteStore(database)
 	manager := service.NewServiceManager(store, nil)
 	scanner := &staticScanner{services: []ts.ServiceInfo{
@@ -353,7 +353,7 @@ func TestServiceScanChannelIgnoresDisabledEntryServiceId(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	store := service.NewSQLiteStore(database)
 	manager := service.NewServiceManager(store, nil)
 	scanner := &staticScanner{services: []ts.ServiceInfo{

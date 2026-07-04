@@ -46,7 +46,7 @@ func GetProgramStream(ctx context.Context, h *Handler, params apigen.GetProgramS
 
 	fo, fi := io.Pipe()
 	go func() {
-		defer fi.Close()
+		defer func() { _ = fi.Close() }()
 		slog.Info("stream request started", "type", service.ChannelType, "channel", service.ChannelId, "kind", "program", "networkId", networkID, "serviceId", serviceID, "eventId", p.EventID, "decode", decode, "userId", userID)
 		if err := session.ProgramStream(ctx, p, decode, fi); err != nil && !errors.Is(err, io.ErrClosedPipe) && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 			slog.Error("failed to stream program", "program", p.ID, "err", err)

@@ -26,7 +26,7 @@ func GetChannelStream(ctx context.Context, h *Handler, params apigen.GetChannelS
 
 	fo, fi := io.Pipe()
 	go func() {
-		defer fi.Close()
+		defer func() { _ = fi.Close() }()
 		slog.Info("stream request started", "type", params.Type, "channel", params.Channel, "kind", "channel", "decode", decode, "userId", userID)
 		if err := session.ChannelStream(ctx, decode, fi); err != nil && !errors.Is(err, io.ErrClosedPipe) {
 			slog.Error("failed to stream channel", "type", params.Type, "channel", params.Channel, "err", err)
@@ -59,7 +59,7 @@ func GetServiceStreamByChannel(ctx context.Context, h *Handler, params apigen.Ge
 
 	fo, fi := io.Pipe()
 	go func() {
-		defer fi.Close()
+		defer func() { _ = fi.Close() }()
 		slog.Info("stream request started", "type", params.Type, "channel", params.Channel, "kind", "service", "serviceId", serviceID, "decode", decode, "userId", userID)
 		if err := session.ServiceStream(ctx, serviceID, decode, fi); err != nil && !errors.Is(err, io.ErrClosedPipe) {
 			slog.Error("failed to stream service by channel", "type", params.Type, "channel", params.Channel, "service", params.ID, "err", err)

@@ -23,7 +23,7 @@ func testListHandler(t *testing.T) *Handler {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { database.Close() })
+	t.Cleanup(func() { _ = database.Close() })
 	serviceStore := service.NewSQLiteStore(database)
 	services := []*service.Service{
 		{
@@ -167,7 +167,7 @@ func TestServiceListEndpointsReturnServerOrder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { database.Close() })
+	t.Cleanup(func() { _ = database.Close() })
 	store := service.NewSQLiteStore(database)
 	if err := store.ReplaceChannelServices(ctx, "GR", "27", []*service.Service{
 		{
@@ -344,7 +344,7 @@ func TestApiServiceExposesEPGStatus(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			t.Cleanup(func() { database.Close() })
+			t.Cleanup(func() { _ = database.Close() })
 			store := service.NewSQLiteStore(database)
 			if err := store.ReplaceChannelServices(ctx, "GR", "27", []*service.Service{
 				{Id: "0000100101", ServiceId: 101, NetworkId: 1, ChannelType: "GR", ChannelId: "27"},
@@ -390,7 +390,7 @@ func TestApiServiceExposesMirakurunLogoFieldsAndImage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { database.Close() })
+	t.Cleanup(func() { _ = database.Close() })
 	store := service.NewSQLiteStore(database)
 	logoID := int64(42)
 	logoVersion := int64(3)

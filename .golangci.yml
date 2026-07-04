@@ -6,18 +6,11 @@ linters:
     errcheck:
       exclude-functions:
         - (io.Closer).Close
-        - (*database/sql.DB).Close
-        - (*database/sql.Rows).Close
-        - (*database/sql.Tx).Rollback
-        - (*ariga.io/atlas/sql/migrate.MemDir).Close
-        - (net.Listener).Close
-        - (*io.PipeReader).Close
-        - (*io.PipeWriter).Close
   exclusions:
-    rules:
-      - path: _test\.go
-        linters:
-          - unused
+    paths:
+      - internal/db/gen/
+      - internal/web/api/gen/
+      - web/node_modules/
 
 formatters:
   enable:

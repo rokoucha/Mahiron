@@ -22,7 +22,7 @@ func testProgramHandler(t *testing.T) *Handler {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { database.Close() })
+	t.Cleanup(func() { _ = database.Close() })
 	pm := program.NewProgramManager(program.NewSQLiteStore(database))
 	updater := epg.NewUpdater(pm)
 	if err := updater.UpsertEITSection(ctx, &epg.EITSection{
@@ -159,7 +159,7 @@ func TestGetProgramStreamMissingProgramAndService(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { database.Close() })
+	t.Cleanup(func() { _ = database.Close() })
 	pm := program.NewProgramManager(program.NewSQLiteStore(database))
 	if err := pm.ReplaceServicePrograms(ctx, 1, 101, 0, []*program.Program{
 		{ID: program.ProgramID(1, 101, 9), NetworkID: 1, ServiceID: 101, EventID: 9, StartAt: 1000, Duration: 1000},
@@ -199,7 +199,7 @@ func TestProgramsIDStreamHeadOnlyRequiresProgram(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { database.Close() })
+	t.Cleanup(func() { _ = database.Close() })
 	pm := program.NewProgramManager(program.NewSQLiteStore(database))
 	id := program.ProgramID(1, 101, 9)
 	if err := pm.ReplaceServicePrograms(ctx, 1, 101, 0, []*program.Program{
@@ -231,7 +231,7 @@ func TestApiProgramExposesExtendedRelatedAndSeries(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { database.Close() })
+	t.Cleanup(func() { _ = database.Close() })
 	pm := program.NewProgramManager(program.NewSQLiteStore(database))
 	id := program.ProgramID(1, 101, 7)
 	nid := uint16(1)

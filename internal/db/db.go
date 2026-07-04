@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -29,8 +30,7 @@ func Open(path string) (*sql.DB, error) {
 	}
 	for _, pragma := range pragmas {
 		if _, err := database.Exec(pragma); err != nil {
-			database.Close()
-			return nil, fmt.Errorf("%s: %w", pragma, err)
+			return nil, errors.Join(fmt.Errorf("%s: %w", pragma, err), database.Close())
 		}
 	}
 
@@ -58,8 +58,7 @@ func OpenInMemory() (*sql.DB, error) {
 		return nil, err
 	}
 	if err := Migrate(context.Background(), database); err != nil {
-		database.Close()
-		return nil, err
+		return nil, errors.Join(err, database.Close())
 	}
 	return database, nil
 }

@@ -19,7 +19,7 @@ func TestServiceManagerGetChannelsExcludesDisabledChannels(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	manager := NewServiceManager(NewSQLiteStore(database), config.ChannelsConfig{
 		{Name: "NHK", Type: "GR", Channel: "27", IsDisabled: &no},
 		{Name: "Disabled", Type: "GR", Channel: "28", IsDisabled: &yes},
@@ -43,7 +43,7 @@ func TestServiceManagerGetServiceByIdPrefersExactIDOverItemID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	store := NewSQLiteStore(database)
 	manager := NewServiceManager(store, config.ChannelsConfig{})
 	if err := store.ReplaceChannelServices(ctx, "GR", "27", []*Service{
@@ -76,7 +76,7 @@ func TestSQLiteStoreMovesServiceBetweenChannels(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	store := NewSQLiteStore(database)
 	service := &Service{Id: "0000100101", ServiceId: 101, NetworkId: 1, Name: "NHK"}
 	if err := store.ReplaceChannelServices(ctx, "GR", "27", []*Service{service}); err != nil {
@@ -104,7 +104,7 @@ func TestServiceManagerGetServiceByChannelAndIdPrefersExactIDOverItemID(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	store := NewSQLiteStore(database)
 	manager := NewServiceManager(store, config.ChannelsConfig{})
 	if err := store.ReplaceChannelServices(ctx, "GR", "27", []*Service{
@@ -142,7 +142,7 @@ func TestServiceManagerReconcileChannelsPrunesRemovedAndDisabled(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	store := NewSQLiteStore(database)
 	for _, channel := range []ChannelKey{{Type: "GR", ID: "27"}, {Type: "GR", ID: "28"}, {Type: "BS", ID: "101"}} {
 		service := &Service{Id: channel.Type + channel.ID, Name: channel.ID}
@@ -173,7 +173,7 @@ func TestServiceManagerEPGStatus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	store := NewSQLiteStore(database)
 	manager := NewServiceManager(store, config.ChannelsConfig{})
 	if err := store.ReplaceChannelServices(ctx, "GR", "27", []*Service{
@@ -225,7 +225,7 @@ func TestServiceManagerEPGSummary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	store := NewSQLiteStore(database)
 	manager := NewServiceManager(store, config.ChannelsConfig{})
 	if err := store.ReplaceChannelServices(ctx, "GR", "27", []*Service{
@@ -272,7 +272,7 @@ func TestServiceManagerUpsertLogoImageNormalizesARIBPNG(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	store := NewSQLiteStore(database)
 	manager := NewServiceManager(store, config.ChannelsConfig{})
 	logoID := int64(42)
@@ -366,7 +366,7 @@ func TestServiceManagerUpsertLogoImageRequiresSDTConsistency(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	store := NewSQLiteStore(database)
 	manager := NewServiceManager(store, config.ChannelsConfig{})
 	logoID := int64(42)
@@ -446,7 +446,7 @@ func TestSQLiteStoreDeletesStaleLogosWhenServiceLogoMetadataChanges(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	store := NewSQLiteStore(database)
 	logoID := int64(42)
 	oldVersion := int64(3)
@@ -487,7 +487,7 @@ func TestMissingLogoTargetsTracksExactStoredVersion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	store := NewSQLiteStore(database)
 	logoID, version, downloadID := int64(42), int64(3), int64(7)
 	service := &Service{
@@ -516,7 +516,7 @@ func TestLogoGatherTargetsRefreshesRemoteSyntheticTargets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	store := NewSQLiteStore(database)
 
 	remoteLogoID, remoteVersion, remoteDownloadID := int64(12), int64(0), int64(101)
@@ -569,7 +569,7 @@ func TestLogoGatherTargetsUsesONIDForCommonDataInsteadOfChannelType(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	store := NewSQLiteStore(database)
 	if err := store.ReplaceChannelServices(ctx, "anything", "sat-a", []*Service{{
 		Id: "0000400101", NetworkId: 4, TransportStreamId: 0x4010, ServiceId: 101,
@@ -602,7 +602,7 @@ func TestLogoGatherTargetsUsesSDTTAnnouncementChannel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	store := NewSQLiteStore(database)
 	if err := store.ReplaceChannelServices(ctx, "sat", "target", []*Service{{
 		Id: "0000400101", NetworkId: 4, TransportStreamId: 0x4010, ServiceId: 101,
@@ -640,7 +640,7 @@ func TestCommonDataAnnouncementUpsertReplacesOlderRoute(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	store := NewSQLiteStore(database)
 	manager := NewServiceManager(store, config.ChannelsConfig{})
 	announcement := ts.CommonDataAnnouncement{OriginalNetworkID: 4, TransportStreamID: 0x4031, ServiceID: 929, DownloadID: 1, VersionID: 1}
@@ -667,7 +667,7 @@ func TestServiceManagerUpsertCommonLogoImageUpdatesServiceByTSID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	store := NewSQLiteStore(database)
 	manager := NewServiceManager(store, config.ChannelsConfig{})
 	if err := store.ReplaceChannelServices(ctx, "sat", "a", []*Service{

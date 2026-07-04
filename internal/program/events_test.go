@@ -8,9 +8,8 @@ import (
 )
 
 type publishedProgramEvent struct {
-	typ      string
-	data     map[string]any
-	removeID int64
+	typ  string
+	data map[string]any
 }
 
 type fakeProgramEventPublisher struct {
@@ -27,7 +26,7 @@ func TestProgramManagerPublishesCreateUpdateAndRemoveEvents(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	publisher := &fakeProgramEventPublisher{}
 	manager := NewProgramManager(NewSQLiteStore(database), publisher)
 
@@ -66,7 +65,7 @@ func TestProgramManagerPublishesMergedSparseUpdateEvent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	publisher := &fakeProgramEventPublisher{}
 	manager := NewProgramManager(NewSQLiteStore(database), publisher)
 

@@ -5,8 +5,6 @@ package ts
 
 import (
 	"bytes"
-	"errors"
-	"io"
 	"testing"
 )
 
@@ -47,22 +45,6 @@ func TestPacketReaderResyncsAfterGarbage(t *testing.T) {
 	}
 	if got.PID() != 0x0100 {
 		t.Fatalf("PID = %#04x, want 0x0100", got.PID())
-	}
-}
-
-func readAllPackets(t *testing.T, data []byte) []Packet {
-	t.Helper()
-	reader := NewPacketReader(bytes.NewReader(data))
-	var packets []Packet
-	for {
-		packet, err := reader.Next()
-		if errors.Is(err, io.EOF) {
-			return packets
-		}
-		if err != nil {
-			t.Fatal(err)
-		}
-		packets = append(packets, packet)
 	}
 }
 

@@ -26,7 +26,7 @@ func TestServiceManagerPublishesCreateUpdateRemoveAndEPGUpdateEvents(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	publisher := &fakeServiceEventPublisher{}
 	manager := NewServiceManager(NewSQLiteStore(database), config.ChannelsConfig{
 		{Type: "GR", Channel: "27", Name: "NHK"},

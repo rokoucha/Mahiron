@@ -216,7 +216,7 @@ func TestMissingScannedChannelsFindsOnlyConfiguredEmptyChannels(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	store := service.NewSQLiteStore(database)
 	disabled := true
 	channels := config.ChannelsConfig{

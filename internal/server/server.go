@@ -60,7 +60,7 @@ func (s *Server) ListenAndServe(ctx context.Context) {
 					slog.Error("failed to listen UNIX domain socket", "address", addr, "err", err)
 					return
 				}
-				defer l.Close()
+				defer func() { _ = l.Close() }()
 
 				err = srv.Serve(l)
 				if err != nil && !errors.Is(err, http.ErrServerClosed) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -56,7 +57,11 @@ func (s *sqliteStore) UpsertAll(ctx context.Context, programs []*Program) (err e
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		if err != nil {
+			err = errors.Join(err, tx.Rollback())
+		}
+	}()
 
 	if err := upsertPrograms(ctx, tx, programs); err != nil {
 		return err
@@ -151,7 +156,11 @@ func (s *sqliteStore) ReplaceServicePrograms(ctx context.Context, networkID, ser
 	if err != nil {
 		return fmt.Errorf("begin replace: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		if err != nil {
+			err = errors.Join(err, tx.Rollback())
+		}
+	}()
 	q := s.q.WithTx(tx)
 	if err := q.DeleteProgramsByServiceFrom(ctx, gen.DeleteProgramsByServiceFromParams{
 		NetworkID: int64(networkID),
@@ -166,12 +175,14 @@ func (s *sqliteStore) ReplaceServicePrograms(ctx context.Context, networkID, ser
 	return tx.Commit()
 }
 
-func upsertPrograms(ctx context.Context, tx *sql.Tx, programs []*Program) error {
+func upsertPrograms(ctx context.Context, tx *sql.Tx, programs []*Program) (err error) {
 	stmt, err := tx.PrepareContext(ctx, upsertProgramSQL)
 	if err != nil {
 		return fmt.Errorf("prepare upsert program: %w", err)
 	}
-	defer stmt.Close()
+	defer func() {
+		err = errors.Join(err, stmt.Close())
+	}()
 	for _, p := range programs {
 		params, err := toUpsertProgramParams(p)
 		if err != nil {

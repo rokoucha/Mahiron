@@ -14,7 +14,7 @@ func newTestProgramManager(t *testing.T) *program.ProgramManager {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { database.Close() })
+	t.Cleanup(func() { _ = database.Close() })
 	return program.NewProgramManager(program.NewSQLiteStore(database))
 }
 

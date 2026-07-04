@@ -24,7 +24,7 @@ func newStatusHandler(t *testing.T) (*Handler, *job.JobManager, *service.Service
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { database.Close() })
+	t.Cleanup(func() { _ = database.Close() })
 	mgr, err := job.NewManager(job.Config{MaxHistory: 10})
 	if err != nil {
 		t.Fatal(err)

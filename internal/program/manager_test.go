@@ -13,7 +13,7 @@ func newTestManager(t *testing.T) *ProgramManager {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { database.Close() })
+	t.Cleanup(func() { _ = database.Close() })
 	return NewProgramManager(NewSQLiteStore(database))
 }
 
@@ -74,7 +74,7 @@ func TestSQLiteStoreRejectsInvalidJSON(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	id := ProgramID(1, 2, 1)
 	_, err = database.ExecContext(ctx, `INSERT INTO programs
 		(id, event_id, service_id, network_id, start_at, duration, is_free, genres)
