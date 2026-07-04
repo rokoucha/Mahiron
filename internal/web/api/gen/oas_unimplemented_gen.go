@@ -4,6 +4,7 @@ package apigen
 
 import (
 	"context"
+	"net/http"
 
 	ht "github.com/ogen-go/ogen/http"
 )
@@ -12,6 +13,7 @@ import (
 type UnimplementedHandler struct{}
 
 var _ Handler = UnimplementedHandler{}
+var _ RawHandler = UnimplementedHandler{}
 
 // AbortJob implements abortJob operation.
 //
@@ -88,8 +90,8 @@ func (UnimplementedHandler) GetEvents(ctx context.Context) (r GetEventsRes, _ er
 // GetEventsStream implements getEventsStream operation.
 //
 // GET /events/stream
-func (UnimplementedHandler) GetEventsStream(ctx context.Context, params GetEventsStreamParams) (r GetEventsStreamRes, _ error) {
-	return r, ht.ErrNotImplemented
+func (UnimplementedHandler) GetEventsStream(ctx context.Context, params GetEventsStreamParams, w http.ResponseWriter) error {
+	return ht.ErrNotImplemented
 }
 
 // GetJobSchedules implements getJobSchedules operation.

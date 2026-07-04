@@ -4,6 +4,7 @@ package apigen
 
 import (
 	"io"
+	"net/http"
 
 	"github.com/go-faster/errors"
 	"github.com/go-faster/jx"
@@ -884,7 +885,22 @@ func (s GetEventsStreamOK) Read(p []byte) (n int, err error) {
 	return s.Data.Read(p)
 }
 
-func (*GetEventsStreamOK) getEventsStreamRes() {}
+// GetEventsStreamOKRawTextPlain represents raw HTTP response for GetEventsStream text/plain.
+type GetEventsStreamOKRawTextPlain struct {
+	Response *http.Response `json:"-"`
+}
+
+// GetResponse returns the value of Response.
+func (s *GetEventsStreamOKRawTextPlain) GetResponse() *http.Response {
+	return s.Response
+}
+
+// SetResponse sets the value of Response.
+func (s *GetEventsStreamOKRawTextPlain) SetResponse(val *http.Response) {
+	s.Response = val
+}
+
+func (*GetEventsStreamOKRawTextPlain) getEventsStreamRes() {}
 
 type GetEventsStreamResource string
 

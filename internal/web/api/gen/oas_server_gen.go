@@ -4,6 +4,7 @@ package apigen
 
 import (
 	"context"
+	"net/http"
 )
 
 // Handler handles operations described by OpenAPI v3 specification.
@@ -50,10 +51,6 @@ type Handler interface {
 	//
 	// GET /events
 	GetEvents(ctx context.Context) (GetEventsRes, error)
-	// GetEventsStream implements getEventsStream operation.
-	//
-	// GET /events/stream
-	GetEventsStream(ctx context.Context, params GetEventsStreamParams) (GetEventsStreamRes, error)
 	// GetJobSchedules implements getJobSchedules operation.
 	//
 	// GET /job-schedules
@@ -192,21 +189,31 @@ type Handler interface {
 	ServicesIDStreamHead(ctx context.Context, params ServicesIDStreamHeadParams) (ServicesIDStreamHeadRes, error)
 }
 
+// RawHandler handles raw response operations described by OpenAPI v3 specification.
+type RawHandler interface {
+	// GetEventsStream implements getEventsStream operation.
+	//
+	// GET /events/stream
+	GetEventsStream(ctx context.Context, params GetEventsStreamParams, w http.ResponseWriter) error
+}
+
 // Server implements http server based on OpenAPI v3 specification and
 // calls Handler to handle requests.
 type Server struct {
-	h Handler
+	h  Handler
+	rh RawHandler
 	baseServer
 }
 
 // NewServer creates new Server.
-func NewServer(h Handler, opts ...ServerOption) (*Server, error) {
+func NewServer(h Handler, rh RawHandler, opts ...ServerOption) (*Server, error) {
 	s, err := newServerConfig(opts...).baseServer()
 	if err != nil {
 		return nil, err
 	}
 	return &Server{
 		h:          h,
+		rh:         rh,
 		baseServer: s,
 	}, nil
 }

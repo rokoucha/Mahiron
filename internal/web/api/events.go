@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"net/http"
 
 	"github.com/21S1298001/mahiron/internal/event"
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
@@ -15,10 +16,10 @@ func GetEvents(ctx context.Context, h *Handler) (apigen.GetEventsRes, error) {
 	return &res, nil
 }
 
-func GetEventsStream(ctx context.Context, h *Handler, params apigen.GetEventsStreamParams) (apigen.GetEventsStreamRes, error) {
-	return &apigen.GetEventsStreamOK{
-		Data: newEventsStreamReader(ctx, h, params),
-	}, nil
+func GetEventsStream(ctx context.Context, h *Handler, params apigen.GetEventsStreamParams, w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	return writeEventsOpenJSONArrayStream(ctx, flushWriter{w: w}, h, params)
 }
 
 func apiEvents(events []event.Event) []apigen.Event {
@@ -141,4 +142,16 @@ func writeOpenJSONArrayEvent(w io.Writer, event apigen.Event) error {
 	}
 	_, err = w.Write(append(data, '\n', ',', '\n'))
 	return err
+}
+
+type flushWriter struct {
+	w http.ResponseWriter
+}
+
+func (w flushWriter) Write(p []byte) (int, error) {
+	n, err := w.w.Write(p)
+	if n > 0 {
+		_ = http.NewResponseController(w.w).Flush()
+	}
+	return n, err
 }

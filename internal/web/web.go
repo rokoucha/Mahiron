@@ -27,7 +27,7 @@ type WebConfig struct {
 
 func NewWeb(config WebConfig) (http.Handler, error) {
 	mux := http.NewServeMux()
-	api, err := apigen.NewServer(api.NewHandler(api.HandlerConfig{
+	apiHandler := api.NewHandler(api.HandlerConfig{
 		ServiceManager: config.ServiceManager,
 		ProgramManager: config.ProgramManager,
 		StreamManager:  config.StreamManager,
@@ -36,7 +36,8 @@ func NewWeb(config WebConfig) (http.Handler, error) {
 		LogStore:       config.LogStore,
 		EventHub:       config.EventHub,
 		EpgStaleAfter:  config.EpgStaleAfter,
-	}),
+	})
+	api, err := apigen.NewServer(apiHandler, apiHandler,
 		apigen.WithMeterProvider(config.MeterProvider),
 		apigen.WithTracerProvider(observability.NewFilteringTracerProvider(config.TracerProvider, observability.StreamOperationNames)),
 	)

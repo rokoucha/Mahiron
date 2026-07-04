@@ -514,20 +514,6 @@ func encodeGetEventsResponse(response GetEventsRes, w http.ResponseWriter, span 
 
 func encodeGetEventsStreamResponse(response GetEventsStreamRes, w http.ResponseWriter, span trace.Span) error {
 	switch response := response.(type) {
-	case *GetEventsStreamOK:
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		w.WriteHeader(200)
-
-		writer := streamFlushWriter(w)
-		if closer, ok := response.Data.(io.Closer); ok {
-			defer closer.Close()
-		}
-		if _, err := io.Copy(writer, response); err != nil {
-			return errors.Wrap(err, "write")
-		}
-
-		return nil
-
 	case *ErrorStatusCode:
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		code := response.StatusCode

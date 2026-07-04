@@ -1532,8 +1532,6 @@ func (s *Server) handleGetEventsStreamRequest(args [0]string, argsEscaped bool, 
 	}
 
 	var rawBody []byte
-
-	var response GetEventsStreamRes
 	if m := s.cfg.Middleware; m != nil {
 		mreq := middleware.Request{
 			Context:          ctx,
@@ -1558,9 +1556,9 @@ func (s *Server) handleGetEventsStreamRequest(args [0]string, argsEscaped bool, 
 		type (
 			Request  = struct{}
 			Params   = GetEventsStreamParams
-			Response = GetEventsStreamRes
+			Response = struct{}
 		)
-		response, err = middleware.HookMiddleware[
+		_, err = middleware.HookMiddleware[
 			Request,
 			Params,
 			Response,
@@ -1569,24 +1567,16 @@ func (s *Server) handleGetEventsStreamRequest(args [0]string, argsEscaped bool, 
 			mreq,
 			unpackGetEventsStreamParams,
 			func(ctx context.Context, request Request, params Params) (response Response, err error) {
-				response, err = s.h.GetEventsStream(ctx, params)
+				err = s.rh.GetEventsStream(ctx, params, w)
 				return response, err
 			},
 		)
 	} else {
-		response, err = s.h.GetEventsStream(ctx, params)
+		err = s.rh.GetEventsStream(ctx, params, w)
 	}
 	if err != nil {
 		defer recordError("Internal", err)
 		s.cfg.ErrorHandler(ctx, w, r, err)
-		return
-	}
-
-	if err := encodeGetEventsStreamResponse(response, w, span); err != nil {
-		defer recordError("EncodeResponse", err)
-		if !errors.Is(err, ht.ErrInternalServerErrorResponse) {
-			s.cfg.ErrorHandler(ctx, w, r, err)
-		}
 		return
 	}
 }

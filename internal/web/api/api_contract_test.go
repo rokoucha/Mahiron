@@ -37,7 +37,7 @@ func TestOpenAPIDoesNotExposeContainerHostileOperations(t *testing.T) {
 
 func TestXMirakurunPriorityHeaderAcceptsNegativeOne(t *testing.T) {
 	handler, _ := testStreamHeadHandler(t)
-	server, err := apigen.NewServer(handler)
+	server, err := apigen.NewServer(handler, handler)
 	if err != nil {
 		t.Fatal(err)
 	}

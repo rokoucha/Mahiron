@@ -370,6 +370,7 @@ paths:
           description: OK
           content:
             text/plain:
+              x-ogen-raw-response: true
               schema:
                 type: string
         default:

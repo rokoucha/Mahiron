@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net/http"
 
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/event"
@@ -26,6 +27,7 @@ type Handler struct {
 }
 
 var _ apigen.Handler = (*Handler)(nil)
+var _ apigen.RawHandler = (*Handler)(nil)
 
 type HandlerConfig struct {
 	ServiceManager ServiceManager
@@ -143,8 +145,8 @@ func (h *Handler) GetEvents(ctx context.Context) (apigen.GetEventsRes, error) {
 	return GetEvents(ctx, h)
 }
 
-func (h *Handler) GetEventsStream(ctx context.Context, params apigen.GetEventsStreamParams) (apigen.GetEventsStreamRes, error) {
-	return GetEventsStream(ctx, h, params)
+func (h *Handler) GetEventsStream(ctx context.Context, params apigen.GetEventsStreamParams, w http.ResponseWriter) error {
+	return GetEventsStream(ctx, h, params, w)
 }
 
 func (h *Handler) GetJobSchedules(ctx context.Context) (apigen.GetJobSchedulesRes, error) {

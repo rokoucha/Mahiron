@@ -887,14 +887,10 @@ func decodeGetEventsStreamResponse(resp *http.Response) (res GetEventsStreamRes,
 		}
 		switch {
 		case ct == "text/plain":
-			reader := resp.Body
-			b, err := io.ReadAll(reader)
-			if err != nil {
-				return res, err
-			}
-
-			response := GetEventsStreamOK{Data: bytes.NewReader(b)}
-			return &response, nil
+			// Raw response - return the http.Response directly
+			return &GetEventsStreamOKRawTextPlain{
+				Response: resp,
+			}, nil
 		default:
 			return res, validate.InvalidContentType(ct)
 		}

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -210,6 +211,37 @@ func TestGetEventsStreamReceivesEventsPublishedAfterSubscribe(t *testing.T) {
 	}
 }
 
+func TestGetEventsStreamFlushesInitialBytes(t *testing.T) {
+	handler := NewHandler(HandlerConfig{})
+	recorder := newFlushRecorder()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- handler.GetEventsStream(ctx, apigen.GetEventsStreamParams{}, recorder)
+	}()
+
+	select {
+	case flushed := <-recorder.flushes:
+		if flushed != "[\n" {
+			t.Fatalf("flushed body = %q, want open JSON array", flushed)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("stream response did not flush initial bytes")
+	}
+
+	cancel()
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("stream response did not finish after context cancellation")
+	}
+}
+
 func TestGetEventsStreamFiltersSubscribedEvents(t *testing.T) {
 	var buf bytes.Buffer
 	events := []event.Event{
@@ -325,4 +357,34 @@ func mustTestEvent(t *testing.T, resource, typ string, data any) event.Event {
 		t.Fatal(err)
 	}
 	return event.Event{Resource: resource, Type: typ, Data: raw, Time: 1}
+}
+
+type flushRecorder struct {
+	header  http.Header
+	body    bytes.Buffer
+	flushes chan string
+}
+
+func newFlushRecorder() *flushRecorder {
+	return &flushRecorder{
+		header:  make(http.Header),
+		flushes: make(chan string, 1),
+	}
+}
+
+func (r *flushRecorder) Header() http.Header {
+	return r.header
+}
+
+func (r *flushRecorder) WriteHeader(statusCode int) {}
+
+func (r *flushRecorder) Write(p []byte) (int, error) {
+	return r.body.Write(p)
+}
+
+func (r *flushRecorder) Flush() {
+	select {
+	case r.flushes <- r.body.String():
+	default:
+	}
 }
