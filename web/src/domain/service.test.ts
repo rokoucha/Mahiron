@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { Service } from '../api'
+import type { Channel, Service } from '../api'
 import {
   channelKey,
   channelLabel,
@@ -33,6 +33,12 @@ describe('isVisibleService', () => {
 })
 
 describe('sortServicesForDisplay', () => {
+  const channels: Channel[] = [
+    { type: 'GR', channel: '27' },
+    { type: 'BS', channel: '101' },
+    { type: 'BS', channel: '102' },
+    { type: 'CS', channel: '001' },
+  ]
   const sortableService = (name: string, overrides: Partial<Service>) =>
     service({
       id: name.charCodeAt(0),
@@ -43,27 +49,76 @@ describe('sortServicesForDisplay', () => {
       ...overrides,
     })
 
-  it('keeps channel.type groups in the order received', () => {
+  it('groups services by the channel type order from configured channels', () => {
     const services = [
       sortableService('a', {
-        channel: { type: 'BS', channel: '101' },
-        remoteControlKeyId: 2,
+        channel: { type: 'CS', channel: '001' },
       }),
       sortableService('b', {
-        channel: { type: 'GR', channel: '27' },
-        remoteControlKeyId: 1,
+        channel: { type: 'BS', channel: '101' },
       }),
       sortableService('c', {
-        channel: { type: 'BS', channel: '102' },
-        remoteControlKeyId: 1,
+        channel: { type: 'GR', channel: '27' },
       }),
     ]
 
-    expect(sortServicesForDisplay(services).map((item) => item.name)).toEqual([
+    expect(
+      sortServicesForDisplay(services, channels).map((item) => item.name),
+    ).toEqual([
       'c',
-      'a',
       'b',
+      'a',
     ])
+  })
+
+  it('groups scattered configured channel types and keeps channel order within each type', () => {
+    const scatteredChannels = [
+      { type: 'GR', channel: '27' },
+      { type: 'BS', channel: '101' },
+      { type: 'GR', channel: '26' },
+      { type: 'CS', channel: '001' },
+      { type: 'BS', channel: '102' },
+    ]
+    const services = [
+      sortableService('a', { channel: { type: 'BS', channel: '102' } }),
+      sortableService('b', { channel: { type: 'CS', channel: '001' } }),
+      sortableService('c', { channel: { type: 'GR', channel: '26' } }),
+      sortableService('d', { channel: { type: 'BS', channel: '101' } }),
+      sortableService('e', { channel: { type: 'GR', channel: '27' } }),
+    ]
+
+    expect(
+      sortServicesForDisplay(services, scatteredChannels).map(
+        (item) => item.name,
+      ),
+    ).toEqual(['e', 'c', 'd', 'a', 'b'])
+  })
+
+  it('keeps newly added services from changing existing channel type order', () => {
+    const services = [
+      sortableService('a', { channel: { type: 'CS', channel: '001' } }),
+      sortableService('b', { channel: { type: 'BS', channel: '101' } }),
+      sortableService('c', { channel: { type: 'GR', channel: '27' } }),
+      sortableService('d', { channel: { type: 'BS', channel: '102' } }),
+    ]
+
+    expect(
+      sortServicesForDisplay(services, channels).map((item) => item.name),
+    ).toEqual(['c', 'b', 'd', 'a'])
+  })
+
+  it('places unconfigured channel types and channels after configured services', () => {
+    const services = [
+      sortableService('a', { channel: { type: 'SKY', channel: 'SKY001' } }),
+      sortableService('b', { channel: { type: 'BS', channel: '999' } }),
+      sortableService('c', { channel: { type: 'GR', channel: '27' } }),
+      sortableService('d', { channel: { type: 'BS', channel: '101' } }),
+      sortableService('e', { channel: { type: 'CS', channel: '001' } }),
+    ]
+
+    expect(
+      sortServicesForDisplay(services, channels).map((item) => item.name),
+    ).toEqual(['c', 'd', 'e', 'b', 'a'])
   })
 
   it('sorts by remote control key inside a channel.type group', () => {
@@ -73,11 +128,9 @@ describe('sortServicesForDisplay', () => {
       sortableService('c', { remoteControlKeyId: 3 }),
     ]
 
-    expect(sortServicesForDisplay(services).map((item) => item.name)).toEqual([
-      'b',
-      'c',
-      'a',
-    ])
+    expect(
+      sortServicesForDisplay(services, channels).map((item) => item.name),
+    ).toEqual(['b', 'c', 'a'])
   })
 
   it('sorts services with the same remote key by the ARIB three-digit channel components', () => {
@@ -87,11 +140,9 @@ describe('sortServicesForDisplay', () => {
       sortableService('c', { remoteControlKeyId: 2, serviceId: 0x0000 }),
     ]
 
-    expect(sortServicesForDisplay(services).map((item) => item.name)).toEqual([
-      'c',
-      'b',
-      'a',
-    ])
+    expect(
+      sortServicesForDisplay(services, channels).map((item) => item.name),
+    ).toEqual(['c', 'b', 'a'])
   })
 
   it('keeps services from the same terrestrial network together when remote keys conflict', () => {
@@ -118,12 +169,9 @@ describe('sortServicesForDisplay', () => {
       }),
     ]
 
-    expect(sortServicesForDisplay(services).map((item) => item.name)).toEqual([
-      'd',
-      'b',
-      'a',
-      'c',
-    ])
+    expect(
+      sortServicesForDisplay(services, channels).map((item) => item.name),
+    ).toEqual(['d', 'b', 'a', 'c'])
   })
 
   it('uses stable fallbacks when channel or remote key is missing', () => {
@@ -148,11 +196,9 @@ describe('sortServicesForDisplay', () => {
       }),
     ]
 
-    expect(sortServicesForDisplay(services).map((item) => item.name)).toEqual([
-      'c',
-      'b',
-      'a',
-    ])
+    expect(
+      sortServicesForDisplay(services, channels).map((item) => item.name),
+    ).toEqual(['c', 'b', 'a'])
   })
 })
 

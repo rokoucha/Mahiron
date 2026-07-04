@@ -4,6 +4,7 @@ import {
   parseProgramEventData,
   streamEvents,
   type EventItem,
+  type Channel,
   type Job,
   type Program,
   type ProgramEventData,
@@ -16,12 +17,13 @@ import { useAutoResource } from './hooks'
 export type StreamConnectionState =
   'connected' | 'reconnecting' | 'disconnected'
 export type DashboardResource =
-  'status' | 'tuners' | 'services' | 'jobs' | 'programs'
+  'status' | 'tuners' | 'services' | 'jobs' | 'programs' | 'channels'
 
 export type DashboardData = {
   status: Status | null
   tuners: Tuner[] | null
   services: Service[] | null
+  channels: Channel[] | null
   jobs: Job[] | null
   programs: Program[] | null
 }
@@ -38,6 +40,7 @@ export type DashboardState = {
   status: DashboardResourceState<Status>
   tuners: DashboardResourceState<Tuner[]>
   services: DashboardResourceState<Service[]>
+  channels: DashboardResourceState<Channel[]>
   jobs: DashboardResourceState<Job[]>
   programs: DashboardResourceState<Program[]>
   streamState: StreamConnectionState
@@ -101,6 +104,9 @@ export function useDashboard(): DashboardState {
   const services = useAutoResource(api.services, {
     intervalMs: pollIntervalMs,
   })
+  const channels = useAutoResource(api.channels, {
+    intervalMs: pollIntervalMs,
+  })
   const jobs = useAutoResource(api.jobs, { intervalMs: pollIntervalMs })
   const programs = useAutoResource(api.programs, {
     intervalMs: pollIntervalMs,
@@ -116,11 +122,13 @@ export function useDashboard(): DashboardState {
       status: status.reload,
       tuners: tuners.reload,
       services: services.reload,
+      channels: channels.reload,
       jobs: jobs.reload,
       programs: programs.reload,
     }),
     [
       jobs.reload,
+      channels.reload,
       programs.reload,
       services.reload,
       status.reload,
@@ -134,6 +142,7 @@ export function useDashboard(): DashboardState {
         'status',
         'tuners',
         'services',
+        'channels',
         'jobs',
         'programs',
       ],
@@ -218,12 +227,14 @@ export function useDashboard(): DashboardState {
       status: status.data,
       tuners: tuners.data,
       services: services.data,
+      channels: channels.data,
       jobs: jobs.data,
       programs: programs.data,
     },
     status,
     tuners,
     services,
+    channels,
     jobs,
     programs,
     streamState,

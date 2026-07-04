@@ -212,6 +212,7 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   status: () => apiFetch<Status>('/api/status'),
+  channels: () => apiFetch<Channel[]>('/api/channels'),
   services: () => apiFetch<Service[]>('/api/services'),
   programs: () => apiFetch<Program[]>('/api/programs'),
   tuners: () => apiFetch<Tuner[]>('/api/tuners'),

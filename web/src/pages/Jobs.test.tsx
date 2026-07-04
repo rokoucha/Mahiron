@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
-import type { Job, Program, Service, Status, Tuner } from '../api'
+import type { Channel, Job, Program, Service, Status, Tuner } from '../api'
 import type { DashboardResourceState, DashboardState } from '../dashboard'
 import Jobs from './Jobs'
 
@@ -11,12 +11,14 @@ describe('Jobs', () => {
         status: null,
         tuners: null,
         services: null,
+        channels: null,
         jobs: null,
         programs: null,
       },
       status: resource<Status>(null),
       tuners: resource<Tuner[]>(null),
       services: resource<Service[]>(null),
+      channels: resource<Channel[]>(null),
       jobs: resource<Job[]>([
         {
           id: 'job-1',

@@ -56,7 +56,7 @@ function userMeta(user: Tuner['users'][number]) {
 }
 
 export default function Overview({ dashboard }: { dashboard: DashboardState }) {
-  const { status, tuners, services, jobs } = dashboard
+  const { status, tuners, services, channels, jobs } = dashboard
   const activeTuners = tuners.data?.filter((tuner) => tuner.isUsing).length ?? 0
   const faultTuners = tuners.data?.filter((tuner) => tuner.isFault).length ?? 0
   const activeJobs =
@@ -68,8 +68,11 @@ export default function Overview({ dashboard }: { dashboard: DashboardState }) {
   const epgGathering = gatheringNetworks.length > 0
   const visibleServices = useMemo(
     () =>
-      sortServicesForDisplay((services.data ?? []).filter(isVisibleService)),
-    [services.data],
+      sortServicesForDisplay(
+        (services.data ?? []).filter(isVisibleService),
+        channels.data ?? [],
+      ),
+    [channels.data, services.data],
   )
   const openServices = useMemo(
     () => openServiceMap(tuners.data ?? []),

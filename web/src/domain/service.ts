@@ -4,21 +4,28 @@ export function isVisibleService(service: Service) {
   return service.type === 0x01 || service.type === 0xad
 }
 
-export function sortServicesForDisplay(services: Service[]) {
-  const channelTypeOrder = new Map<string, number>()
-  for (const service of services) {
-    const type = service.channel?.type ?? ''
-    if (!channelTypeOrder.has(type)) {
-      channelTypeOrder.set(type, channelTypeOrder.size)
-    }
-  }
+export function sortServicesForDisplay(
+  services: Service[],
+  channels: Channel[],
+) {
+  const { channelOrder, channelTypeOrder } = displayOrder(channels)
 
   return [...services].sort(
     (a, b) =>
       compareNumbers(
-        channelTypeOrder.get(a.channel?.type ?? '') ?? 0,
-        channelTypeOrder.get(b.channel?.type ?? '') ?? 0,
+        configuredChannelSortNumber(a, channelOrder),
+        configuredChannelSortNumber(b, channelOrder),
       ) ||
+      compareNumbers(
+        channelTypeSortNumber(a, channelTypeOrder),
+        channelTypeSortNumber(b, channelTypeOrder),
+      ) ||
+      compareStrings(a.channel?.type ?? '', b.channel?.type ?? '') ||
+      compareNumbers(
+        channelSortNumber(a, channelOrder),
+        channelSortNumber(b, channelOrder),
+      ) ||
+      compareStrings(a.channel?.channel ?? '', b.channel?.channel ?? '') ||
       compareOptionalNumbers(a.remoteControlKeyId, b.remoteControlKeyId) ||
       compareTerrestrialNetworkIds(a, b) ||
       compareNumbers(
@@ -29,6 +36,44 @@ export function sortServicesForDisplay(services: Service[]) {
       compareNumbers(a.networkId, b.networkId) ||
       compareNumbers(a.id, b.id),
   )
+}
+
+function displayOrder(channels: Channel[]) {
+  const channelTypeOrder = new Map<string, number>()
+  const channelOrder = new Map<string, number>()
+  const channelOrderByType = new Map<string, number>()
+
+  for (const channel of channels) {
+    if (!channelTypeOrder.has(channel.type)) {
+      channelTypeOrder.set(channel.type, channelTypeOrder.size)
+    }
+    const key = channelKey(channel)
+    if (!channelOrder.has(key)) {
+      const typeOrder = channelOrderByType.get(channel.type) ?? 0
+      channelOrder.set(key, typeOrder)
+      channelOrderByType.set(channel.type, typeOrder + 1)
+    }
+  }
+
+  return { channelOrder, channelTypeOrder }
+}
+
+function channelTypeSortNumber(
+  service: Service,
+  channelTypeOrder: Map<string, number>,
+) {
+  return channelTypeOrder.get(service.channel?.type ?? '') ?? Number.MAX_VALUE
+}
+
+function channelSortNumber(service: Service, channelOrder: Map<string, number>) {
+  return channelOrder.get(channelKey(service.channel)) ?? Number.MAX_VALUE
+}
+
+function configuredChannelSortNumber(
+  service: Service,
+  channelOrder: Map<string, number>,
+) {
+  return channelOrder.has(channelKey(service.channel)) ? 0 : 1
 }
 
 export function isTerrestrialService(service: Service) {
@@ -109,4 +154,8 @@ function compareOptionalNumbers(a: number | undefined, b: number | undefined) {
 
 function compareNumbers(a: number, b: number) {
   return a - b
+}
+
+function compareStrings(a: string, b: string) {
+  return a.localeCompare(b)
 }

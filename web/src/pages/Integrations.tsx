@@ -9,11 +9,14 @@ export default function Integrations({
 }: {
   dashboard: DashboardState
 }) {
-  const { services } = dashboard
+  const { services, channels } = dashboard
   const visibleServices = useMemo(
     () =>
-      sortServicesForDisplay((services.data ?? []).filter(isVisibleService)),
-    [services.data],
+      sortServicesForDisplay(
+        (services.data ?? []).filter(isVisibleService),
+        channels.data ?? [],
+      ),
+    [channels.data, services.data],
   )
   const origin = window.location.origin
   const links = [
