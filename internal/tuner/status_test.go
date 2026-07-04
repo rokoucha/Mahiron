@@ -3,6 +3,7 @@ package tuner
 import (
 	"context"
 	"io"
+	"slices"
 	"testing"
 	"time"
 
@@ -111,6 +112,17 @@ func TestDisabledAndDVBTunerStatus(t *testing.T) {
 	}
 	if _, ok := mgr.Status(2); ok {
 		t.Fatal("out-of-range tuner status found")
+	}
+}
+
+func TestTunerStatusSortsTypes(t *testing.T) {
+	mgr := NewTunerManager(&TunerManagerConfig{TunersConfig: config.TunersConfig{
+		{Name: "test", Types: []string{"SKY", "GR", "BS", "GR"}, Command: "sleep 1"},
+	}})
+	statuses := mgr.Statuses()
+	want := []string{"BS", "GR", "SKY"}
+	if !slices.Equal(statuses[0].Types, want) {
+		t.Fatalf("types = %#v, want %#v", statuses[0].Types, want)
 	}
 }
 

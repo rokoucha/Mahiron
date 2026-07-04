@@ -1,6 +1,7 @@
 package tuner
 
 import (
+	"sort"
 	"time"
 
 	"github.com/21S1298001/mahiron/internal/config"
@@ -38,6 +39,7 @@ func (t *Tuner) Groups() []string {
 	for group := range groups {
 		groupList = append(groupList, group)
 	}
+	sort.Strings(groupList)
 	return groupList
 }
 

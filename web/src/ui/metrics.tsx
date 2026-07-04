@@ -31,7 +31,7 @@ export function StatusPill({ tuner }: { tuner: Tuner }) {
     ? 'bad'
     : tuner.isUsing
       ? 'warn'
-      : tuner.isAvailable && tuner.isFree
+      : tuner.isFree
         ? 'ok'
         : 'neutral'
   const label = tuner.isFault
@@ -40,7 +40,9 @@ export function StatusPill({ tuner }: { tuner: Tuner }) {
       ? '使用中'
       : tuner.isFree
         ? '空き'
-        : 'ビジー'
+        : tuner.isAvailable
+          ? 'ビジー'
+          : '利用不可'
   return <span className={`badge ${tone}`}>{label}</span>
 }
 

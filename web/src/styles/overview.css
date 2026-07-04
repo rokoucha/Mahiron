@@ -26,10 +26,6 @@
   border-radius: 6px;
 }
 
-.overview-tuner {
-  grid-template-columns: minmax(0, 1fr) auto;
-}
-
 .overview-tuner strong,
 .overview-tuner span,
 .overview-service strong,
@@ -38,6 +34,7 @@
 }
 
 .overview-tuner span,
+.overview-tuner-user span,
 .overview-service-main span,
 .overview-service-meta {
   margin-top: 2px;
@@ -45,7 +42,8 @@
   font-size: 11px;
 }
 
-.overview-tuner code {
+.overview-tuner code,
+.overview-tuner-user code {
   display: block;
   margin-top: 6px;
   padding: 5px 6px;
@@ -58,14 +56,42 @@
   border-radius: 4px;
 }
 
-.overview-services {
+.overview-tuners {
   margin: 12px 0;
 }
 
 .overview-service-list {
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  max-height: 390px;
-  overflow: auto;
+}
+
+.overview-tuner-main {
+  min-width: 0;
+}
+
+.overview-tuner-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 8px;
+}
+
+.overview-tuner-users {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.overview-tuner-user {
+  min-width: 0;
+  padding: 7px 8px;
+  background: #ffffff;
+  border: 1px solid #dfe6ec;
+  border-radius: 6px;
+}
+
+.overview-tuner-user strong {
+  overflow-wrap: anywhere;
 }
 
 .overview-service {

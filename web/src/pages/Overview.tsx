@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import type { Tuner } from '../api'
 import type { DashboardState } from '../dashboard'
 import { currentGatheringNetworks } from '../domain/job'
 import { channelLabel, isVisibleService } from '../domain/service'
@@ -8,6 +9,47 @@ import { formatDate } from '../format/date'
 import { Empty, Logo, PageFrame, Panel } from '../ui/layout'
 import { ErrorList } from '../ui/logs'
 import { Definition, Metric, StatusPill } from '../ui/metrics'
+
+function sortedTunerTypes(tuner: Tuner) {
+  return [...tuner.types].sort((a, b) => a.localeCompare(b))
+}
+
+function userName(user: Tuner['users'][number]) {
+  return user.agent || user.id
+}
+
+function userRoute(user: Tuner['users'][number]) {
+  const setting = user.streamSetting
+  if (!setting) return null
+  if (setting.channel) {
+    return channelLabel(setting.channel.type, setting.channel.channel)
+  }
+  if (setting.networkId !== undefined && setting.serviceId !== undefined) {
+    return `${setting.networkId}/${setting.serviceId}`
+  }
+  return null
+}
+
+function userStreamInfo(user: Tuner['users'][number]) {
+  if (!user.streamInfo) return []
+  return Object.entries(user.streamInfo)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, info]) => `${key}: ${info.packet}pkt / ${info.drop}drop`)
+}
+
+function userMeta(user: Tuner['users'][number]) {
+  const values = [`priority ${user.priority}`]
+  if (user.disableDecoder) values.push('decoder off')
+  const route = userRoute(user)
+  if (route) values.push(route)
+  if (user.streamSetting?.serviceId !== undefined) {
+    values.push(`service ${user.streamSetting.serviceId}`)
+  }
+  if (user.streamSetting?.eventId !== undefined) {
+    values.push(`event ${user.streamSetting.eventId}`)
+  }
+  return values
+}
 
 export default function Overview({ dashboard }: { dashboard: DashboardState }) {
   const { status, tuners, services, jobs } = dashboard
@@ -114,36 +156,6 @@ export default function Overview({ dashboard }: { dashboard: DashboardState }) {
             value={formatNumber(status.data?.epg?.storedEvents)}
           />
         </Panel>
-        <Panel title={`チューナー (${tuners.data?.length ?? 0})`}>
-          <div className="overview-tuner-list">
-            {(tuners.data ?? []).map((tuner) => (
-              <div className="overview-tuner" key={tuner.index}>
-                <div>
-                  <strong>
-                    #{tuner.index} {tuner.name}
-                  </strong>
-                  <span>
-                    {tuner.types.join(', ') || '-'} ·{' '}
-                    {channelLabel(
-                      tuner.currentChannelType,
-                      tuner.currentChannel,
-                    )}{' '}
-                    · {tuner.users.length}利用
-                  </span>
-                  {tuner.isUsing && tuner.command && (
-                    <code>{tuner.command}</code>
-                  )}
-                </div>
-                <StatusPill tuner={tuner} />
-              </div>
-            ))}
-            {!tuners.loading && tuners.data?.length === 0 && (
-              <Empty message="チューナーが設定されていません。" />
-            )}
-          </div>
-        </Panel>
-      </div>
-      <div className="overview-services">
         <Panel
           title={`サービス (${visibleServices.length})`}
           action={
@@ -182,6 +194,54 @@ export default function Overview({ dashboard }: { dashboard: DashboardState }) {
             })}
             {!services.loading && visibleServices.length === 0 && (
               <Empty message="表示対象のテレビサービスがありません。" />
+            )}
+          </div>
+        </Panel>
+      </div>
+      <div className="overview-tuners">
+        <Panel title={`チューナー (${tuners.data?.length ?? 0})`}>
+          <div className="overview-tuner-list">
+            {(tuners.data ?? []).map((tuner) => (
+              <div className="overview-tuner" key={tuner.index}>
+                <div className="overview-tuner-main">
+                  <div className="overview-tuner-header">
+                    <div>
+                      <strong>
+                        #{tuner.index} {tuner.name}
+                      </strong>
+                      <span>
+                        {sortedTunerTypes(tuner).join(', ') || '-'} ·{' '}
+                        {channelLabel(
+                          tuner.currentChannelType,
+                          tuner.currentChannel,
+                        )}{' '}
+                        · {tuner.users.length}利用
+                      </span>
+                    </div>
+                    <StatusPill tuner={tuner} />
+                  </div>
+                  {tuner.isUsing && tuner.command && (
+                    <code>{tuner.command}</code>
+                  )}
+                  {tuner.users.length > 0 && (
+                    <div className="overview-tuner-users">
+                      {tuner.users.map((user) => (
+                        <div className="overview-tuner-user" key={user.id}>
+                          <strong>{userName(user)}</strong>
+                          <span>{userMeta(user).join(' · ')}</span>
+                          {user.url && <code>{user.url}</code>}
+                          {userStreamInfo(user).map((info) => (
+                            <span key={info}>{info}</span>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+            {!tuners.loading && tuners.data?.length === 0 && (
+              <Empty message="チューナーが設定されていません。" />
             )}
           </div>
         </Panel>
