@@ -2,10 +2,7 @@ import { useMemo } from 'react'
 import type { Tuner } from '../api'
 import type { DashboardState } from '../dashboard'
 import { currentGatheringNetworks } from '../domain/job'
-import {
-  channelLabel,
-  isVisibleService,
-} from '../domain/service'
+import { channelLabel, isVisibleService } from '../domain/service'
 import { openServiceMap, openServiceUsers } from '../domain/tuner'
 import { formatNumber } from '../format/common'
 import { formatDate } from '../format/date'
