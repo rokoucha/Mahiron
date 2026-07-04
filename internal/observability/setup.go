@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net/url"
 	"os"
+	"path"
 
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/version"
@@ -87,8 +89,31 @@ func Setup(ctx context.Context, cfg config.ObservabilityConfig, level slog.Level
 	}
 }
 
+// otlpTarget splits the configured base endpoint URL into the host, the
+// signal-specific URL path (the OTLP path appended to any base path, matching
+// OTEL_EXPORTER_OTLP_ENDPOINT semantics), and whether to use plain HTTP.
+// otlploghttp.WithEndpointURL does not fall back to the default signal path
+// when the URL has no path, so the path is always built explicitly here.
+func otlpTarget(endpoint, signalPath string) (host, urlPath string, insecure bool, err error) {
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		return "", "", false, err
+	}
+	return u.Host, path.Join("/", u.Path, signalPath), u.Scheme != "https", nil
+}
+
 func newOTelLogHandler(ctx context.Context, cfg config.ObservabilityConfig) (slog.Handler, func(context.Context) error, error) {
-	options := []otlploghttp.Option{otlploghttp.WithEndpointURL(cfg.Endpoint)}
+	host, urlPath, insecure, err := otlpTarget(cfg.Endpoint, "v1/logs")
+	if err != nil {
+		return nil, nil, err
+	}
+	options := []otlploghttp.Option{
+		otlploghttp.WithEndpoint(host),
+		otlploghttp.WithURLPath(urlPath),
+	}
+	if insecure {
+		options = append(options, otlploghttp.WithInsecure())
+	}
 	if len(cfg.Headers) > 0 {
 		options = append(options, otlploghttp.WithHeaders(cfg.Headers))
 	}
@@ -112,7 +137,17 @@ func newOTelLogHandler(ctx context.Context, cfg config.ObservabilityConfig) (slo
 }
 
 func newOTelTracerProvider(ctx context.Context, cfg config.ObservabilityConfig) (trace.TracerProvider, func(context.Context) error, error) {
-	options := []otlptracehttp.Option{otlptracehttp.WithEndpointURL(cfg.Endpoint)}
+	host, urlPath, insecure, err := otlpTarget(cfg.Endpoint, "v1/traces")
+	if err != nil {
+		return nil, nil, err
+	}
+	options := []otlptracehttp.Option{
+		otlptracehttp.WithEndpoint(host),
+		otlptracehttp.WithURLPath(urlPath),
+	}
+	if insecure {
+		options = append(options, otlptracehttp.WithInsecure())
+	}
 	if len(cfg.Headers) > 0 {
 		options = append(options, otlptracehttp.WithHeaders(cfg.Headers))
 	}
@@ -133,7 +168,17 @@ func newOTelTracerProvider(ctx context.Context, cfg config.ObservabilityConfig) 
 }
 
 func newOTelMeterProvider(ctx context.Context, cfg config.ObservabilityConfig) (otelmetric.MeterProvider, func(context.Context) error, error) {
-	options := []otlpmetrichttp.Option{otlpmetrichttp.WithEndpointURL(cfg.Endpoint)}
+	host, urlPath, insecure, err := otlpTarget(cfg.Endpoint, "v1/metrics")
+	if err != nil {
+		return nil, nil, err
+	}
+	options := []otlpmetrichttp.Option{
+		otlpmetrichttp.WithEndpoint(host),
+		otlpmetrichttp.WithURLPath(urlPath),
+	}
+	if insecure {
+		options = append(options, otlpmetrichttp.WithInsecure())
+	}
 	if len(cfg.Headers) > 0 {
 		options = append(options, otlpmetrichttp.WithHeaders(cfg.Headers))
 	}
