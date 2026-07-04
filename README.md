@@ -1,6 +1,6 @@
 # Mahiron 5
 
-![logo](https://avatars.githubusercontent.com/u/127649250)
+<img width="1655" height="1350" alt="Dashboard example" src="https://github.com/user-attachments/assets/19e84d6b-b257-4626-9917-386719cf5365" />
 
 Yet another DVR Tuner Server for Japanese TV.
 
