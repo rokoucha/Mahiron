@@ -185,19 +185,24 @@ func CollectServiceSnapshots(ctx context.Context, programStore ProgramStore, ser
 	defer flushTicker.Stop()
 	dirtyServices := make(map[ServiceKey]struct{})
 	observedServices := make(map[ServiceKey]struct{})
+	var eitpfSections int
+	var eitsSections int
+	var ignoredSections int
 	handleSection := func(section *EITSection) {
 		if section == nil || !index.matchesCollectionNetwork(section) {
+			ignoredSections++
 			return
 		}
 		if ts.IsEITPF(section.TableID) {
 			if !index.matchesExpected(section) {
+				ignoredSections++
 				return
 			}
-			slog.Debug("upserting EIT section", "source", "eitpf", "networkId", section.OriginalNetworkID, "serviceId", section.ServiceID, "tableId", section.TableID, "sectionNumber", section.SectionNumber, "lastSectionNumber", section.LastSectionNumber, "version", section.VersionNumber, "events", len(section.Events))
+			eitpfSections++
 			pfUpserts.enqueue(section.Programs())
 			return
 		}
-		slog.Debug("observed EIT section", "source", "eits", "networkId", section.OriginalNetworkID, "serviceId", section.ServiceID, "tableId", section.TableID, "sectionNumber", section.SectionNumber, "lastSectionNumber", section.LastSectionNumber, "version", section.VersionNumber, "events", len(section.Events))
+		eitsSections++
 		snapshot.Observe(section, clock.now())
 		key := ServiceKey{NetworkID: section.OriginalNetworkID, ServiceID: section.ServiceID, TransportStreamID: section.TransportStreamID}
 		dirtyServices[key] = struct{}{}
@@ -263,6 +268,12 @@ func CollectServiceSnapshots(ctx context.Context, programStore ProgramStore, ser
 			slog.Debug("EITPF upsert finished with error", "err", pfErr)
 		}
 	}
+	slog.Debug("EPG collection sections observed",
+		"eitpfSections", eitpfSections,
+		"eitsSections", eitsSections,
+		"ignoredSections", ignoredSections,
+		"observedServices", len(observedServices),
+		"expectedServices", len(expected))
 
 	collectErr := persistObservedSnapshots(ctx, programStore, serviceStore, snapshot, expected, observedServices, clock.nowMillis(), result)
 	return result, collectErr
