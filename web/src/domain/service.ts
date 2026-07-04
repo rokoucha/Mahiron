@@ -21,19 +21,10 @@ export function sortServicesForDisplay(
         channelTypeSortNumber(b, channelTypeOrder),
       ) ||
       compareStrings(a.channel?.type ?? '', b.channel?.type ?? '') ||
-      compareNumbers(
-        channelSortNumber(a, channelOrder),
-        channelSortNumber(b, channelOrder),
-      ) ||
-      compareStrings(a.channel?.channel ?? '', b.channel?.channel ?? '') ||
-      compareOptionalNumbers(a.remoteControlKeyId, b.remoteControlKeyId) ||
-      compareTerrestrialNetworkIds(a, b) ||
-      compareNumbers(
-        logicalChannelSortNumber(a),
-        logicalChannelSortNumber(b),
-      ) ||
+      compareDisplayRemoteControlKeys(a, b) ||
       compareNumbers(a.serviceId, b.serviceId) ||
       compareNumbers(a.networkId, b.networkId) ||
+      compareOptionalNumbers(a.transportStreamId, b.transportStreamId) ||
       compareNumbers(a.id, b.id),
   )
 }
@@ -65,13 +56,6 @@ function channelTypeSortNumber(
   return channelTypeOrder.get(service.channel?.type ?? '') ?? Number.MAX_VALUE
 }
 
-function channelSortNumber(
-  service: Service,
-  channelOrder: Map<string, number>,
-) {
-  return channelOrder.get(channelKey(service.channel)) ?? Number.MAX_VALUE
-}
-
 function configuredChannelSortNumber(
   service: Service,
   channelOrder: Map<string, number>,
@@ -81,7 +65,15 @@ function configuredChannelSortNumber(
 
 export function isTerrestrialService(service: Service) {
   // remoteControlKeyId is set from TSInformationDescriptor (tag 0xCD), terrestrial NIT only
-  return service.remoteControlKeyId != null
+  return !isSatelliteService(service) && service.remoteControlKeyId != null
+}
+
+function isSatelliteService(service: Pick<Service, 'networkId'>) {
+  return (
+    service.networkId === 0x0004 ||
+    service.networkId === 0x0006 ||
+    service.networkId === 0x0007
+  )
 }
 
 export function isStableEpgService(service: Service) {
@@ -134,18 +126,15 @@ export function channelKey(channel?: Pick<Channel, 'type' | 'channel'>) {
   return `channel:${channel.type}:${channel.channel}`
 }
 
-function compareTerrestrialNetworkIds(a: Service, b: Service) {
-  if (!isTerrestrialService(a) || !isTerrestrialService(b)) {
-    return 0
-  }
-  return compareNumbers(a.networkId, b.networkId)
+function compareDisplayRemoteControlKeys(a: Service, b: Service) {
+  return compareOptionalNumbers(
+    displayRemoteControlKeyId(a),
+    displayRemoteControlKeyId(b),
+  )
 }
 
-function logicalChannelSortNumber(service: Service) {
-  const serviceType = (service.serviceId >> 7) & 0x03
-  const serviceNumber = service.serviceId & 0x07
-  const remoteControlKeyId = service.remoteControlKeyId ?? 0
-  return serviceType * 200 + remoteControlKeyId * 10 + serviceNumber + 1
+function displayRemoteControlKeyId(service: Service) {
+  return isTerrestrialService(service) ? service.remoteControlKeyId : undefined
 }
 
 function compareOptionalNumbers(a: number | undefined, b: number | undefined) {

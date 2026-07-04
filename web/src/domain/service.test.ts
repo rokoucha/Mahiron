@@ -67,7 +67,7 @@ describe('sortServicesForDisplay', () => {
     ).toEqual(['c', 'b', 'a'])
   })
 
-  it('groups scattered configured channel types and keeps channel order within each type', () => {
+  it('groups scattered configured channel types and sorts services within each type', () => {
     const scatteredChannels = [
       { type: 'GR', channel: '27' },
       { type: 'BS', channel: '101' },
@@ -87,7 +87,7 @@ describe('sortServicesForDisplay', () => {
       sortServicesForDisplay(services, scatteredChannels).map(
         (item) => item.name,
       ),
-    ).toEqual(['e', 'c', 'd', 'a', 'b'])
+    ).toEqual(['c', 'e', 'a', 'd', 'b'])
   })
 
   it('keeps newly added services from changing existing channel type order', () => {
@@ -170,6 +170,134 @@ describe('sortServicesForDisplay', () => {
     ).toEqual(['d', 'b', 'a', 'c'])
   })
 
+  it('sorts BS services by logical channel number without relying on channel.type', () => {
+    const userChannels = [{ type: 'USER_DEFINED', channel: 'SAT' }]
+    const services = [
+      sortableService('a', {
+        networkId: 0x0004,
+        serviceId: 151,
+        channel: { type: 'USER_DEFINED', channel: 'SAT' },
+      }),
+      sortableService('b', {
+        networkId: 0x0004,
+        serviceId: 102,
+        channel: { type: 'USER_DEFINED', channel: 'SAT' },
+      }),
+      sortableService('c', {
+        networkId: 0x0004,
+        serviceId: 143,
+        channel: { type: 'USER_DEFINED', channel: 'SAT' },
+      }),
+      sortableService('d', {
+        networkId: 0x0004,
+        serviceId: 101,
+        channel: { type: 'USER_DEFINED', channel: 'SAT' },
+      }),
+      sortableService('e', {
+        networkId: 0x0004,
+        serviceId: 141,
+        channel: { type: 'USER_DEFINED', channel: 'SAT' },
+      }),
+      sortableService('f', {
+        networkId: 0x0004,
+        serviceId: 103,
+        channel: { type: 'USER_DEFINED', channel: 'SAT' },
+      }),
+      sortableService('g', {
+        networkId: 0x0004,
+        serviceId: 142,
+        channel: { type: 'USER_DEFINED', channel: 'SAT' },
+      }),
+    ]
+
+    expect(
+      sortServicesForDisplay(services, userChannels).map(
+        (item) => item.serviceId,
+      ),
+    ).toEqual([101, 102, 103, 141, 142, 143, 151])
+  })
+
+  it('sorts BS services by broadcast logical channel before configured channel order', () => {
+    const bsChannels = [
+      { type: 'USER_DEFINED', channel: 'BS151_0' },
+      { type: 'USER_DEFINED', channel: 'BS141_0' },
+      { type: 'USER_DEFINED', channel: 'BS101_0' },
+    ]
+    const services = [
+      sortableService('a', {
+        networkId: 0x0004,
+        serviceId: 151,
+        channel: { type: 'USER_DEFINED', channel: 'BS151_0' },
+      }),
+      sortableService('b', {
+        networkId: 0x0004,
+        serviceId: 141,
+        channel: { type: 'USER_DEFINED', channel: 'BS141_0' },
+      }),
+      sortableService('c', {
+        networkId: 0x0004,
+        serviceId: 101,
+        channel: { type: 'USER_DEFINED', channel: 'BS101_0' },
+      }),
+    ]
+
+    expect(
+      sortServicesForDisplay(services, bsChannels).map(
+        (item) => item.serviceId,
+      ),
+    ).toEqual([101, 141, 151])
+  })
+
+  it('sorts CS satellite services by logical channel number', () => {
+    const userChannels = [{ type: 'USER_DEFINED', channel: 'CS' }]
+    const services = [
+      sortableService('a', {
+        networkId: 0x0007,
+        serviceId: 294,
+        channel: { type: 'USER_DEFINED', channel: 'CS' },
+      }),
+      sortableService('b', {
+        networkId: 0x0006,
+        serviceId: 296,
+        channel: { type: 'USER_DEFINED', channel: 'CS' },
+      }),
+      sortableService('c', {
+        networkId: 0x0007,
+        serviceId: 250,
+        channel: { type: 'USER_DEFINED', channel: 'CS' },
+      }),
+    ]
+
+    expect(
+      sortServicesForDisplay(services, userChannels).map(
+        (item) => item.serviceId,
+      ),
+    ).toEqual([250, 294, 296])
+  })
+
+  it('does not let satellite remote control keys override logical channel order', () => {
+    const userChannels = [{ type: 'USER_DEFINED', channel: 'SAT' }]
+    const services = [
+      sortableService('a', {
+        networkId: 0x0004,
+        serviceId: 141,
+        remoteControlKeyId: 0,
+        channel: { type: 'USER_DEFINED', channel: 'SAT' },
+      }),
+      sortableService('b', {
+        networkId: 0x0004,
+        serviceId: 101,
+        channel: { type: 'USER_DEFINED', channel: 'SAT' },
+      }),
+    ]
+
+    expect(
+      sortServicesForDisplay(services, userChannels).map(
+        (item) => item.serviceId,
+      ),
+    ).toEqual([101, 141])
+  })
+
   it('uses stable fallbacks when channel or remote key is missing', () => {
     const services = [
       sortableService('a', {
@@ -202,6 +330,14 @@ describe('isTerrestrialService', () => {
   it('is true only when remoteControlKeyId is set', () => {
     expect(isTerrestrialService(service({ remoteControlKeyId: 5 }))).toBe(true)
     expect(isTerrestrialService(service({}))).toBe(false)
+  })
+
+  it('is false for satellite services even when remoteControlKeyId is present', () => {
+    expect(
+      isTerrestrialService(
+        service({ networkId: 0x0004, remoteControlKeyId: 0 }),
+      ),
+    ).toBe(false)
   })
 })
 
