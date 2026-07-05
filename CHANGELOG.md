@@ -1,5 +1,10 @@
 # Changelog
 
+## [v5.0.4](https://github.com/rokoucha/Mahiron/compare/v5.0.3...v5.0.4) - 2026-07-05
+
+- Protect service logos during refresh by @rokoucha in https://github.com/rokoucha/Mahiron/pull/14
+- Add data broadcast API by @rokoucha in https://github.com/rokoucha/Mahiron/pull/16
+
 ## [v5.0.3](https://github.com/rokoucha/Mahiron/compare/v5.0.2...v5.0.3) - 2026-07-05
 
 ## [v5.0.2](https://github.com/21S1298001/Mahiron5/compare/v5.0.1...v5.0.2) - 2026-07-04
