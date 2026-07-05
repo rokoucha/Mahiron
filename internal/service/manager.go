@@ -219,9 +219,6 @@ func (s *ServiceManager) LogoGatherTargets(ctx context.Context) ([]LogoTarget, e
 		return nil, err
 	}
 	for _, target := range known {
-		if !s.shouldRefreshLogoTarget(target) {
-			continue
-		}
 		if _, ok := seen[target]; ok {
 			continue
 		}
@@ -248,27 +245,20 @@ func (s *ServiceManager) appendCommonLogoTargets(ctx context.Context, targets []
 	for _, target := range targets {
 		seen[commonLogoTargetKey(target)] = struct{}{}
 	}
+	var refreshTarget *LogoTarget
 	for _, svc := range services {
-		if !ts.IsSatelliteOriginalNetworkID(svc.NetworkId) || svc.HasLogoData {
+		if !ts.IsSatelliteOriginalNetworkID(svc.NetworkId) {
 			continue
 		}
 		if _, ok := commonServices[commonDataServiceKey{svc.NetworkId, svc.TransportStreamId, svc.ServiceId}]; ok {
 			continue
 		}
-		channel := ChannelKey{Type: svc.ChannelType, ID: svc.ChannelId}
-		isProbe := true
-		if commonChannel != nil {
-			channel = *commonChannel
-			isProbe = false
+		target := commonLogoTargetForService(svc, commonChannel)
+		if commonChannel != nil && refreshTarget == nil {
+			refreshTarget = &target
 		}
-		target := LogoTarget{
-			NetworkId:         svc.NetworkId,
-			ServiceId:         svc.ServiceId,
-			TransportStreamId: svc.TransportStreamId,
-			ChannelType:       channel.Type,
-			ChannelId:         channel.ID,
-			IsCommonData:      true,
-			IsSDTTProbe:       isProbe,
+		if svc.HasLogoData {
+			continue
 		}
 		key := commonLogoTargetKey(target)
 		if _, ok := seen[key]; ok {
@@ -277,7 +267,31 @@ func (s *ServiceManager) appendCommonLogoTargets(ctx context.Context, targets []
 		targets = append(targets, target)
 		seen[key] = struct{}{}
 	}
+	if refreshTarget != nil {
+		key := commonLogoTargetKey(*refreshTarget)
+		if _, ok := seen[key]; !ok {
+			targets = append(targets, *refreshTarget)
+		}
+	}
 	return targets, nil
+}
+
+func commonLogoTargetForService(svc *Service, commonChannel *ChannelKey) LogoTarget {
+	channel := ChannelKey{Type: svc.ChannelType, ID: svc.ChannelId}
+	isProbe := true
+	if commonChannel != nil {
+		channel = *commonChannel
+		isProbe = false
+	}
+	return LogoTarget{
+		NetworkId:         svc.NetworkId,
+		ServiceId:         svc.ServiceId,
+		TransportStreamId: svc.TransportStreamId,
+		ChannelType:       channel.Type,
+		ChannelId:         channel.ID,
+		IsCommonData:      true,
+		IsSDTTProbe:       isProbe,
+	}
 }
 
 type commonDataServiceKey struct {
@@ -401,11 +415,11 @@ func (s *ServiceManager) UpsertCommonLogoImage(ctx context.Context, image ts.Com
 		if target.TransportStreamID == ts.NetworkLogoTransportStreamWildcard || target.ServiceID == ts.NetworkLogoServiceWildcard {
 			continue
 		}
-		updated, err := s.store.UpdateServiceLogoMetadata(ctx, target.OriginalNetworkID, target.TransportStreamID, target.ServiceID, logoID, logoVersion, downloadID)
+		svc, err := s.store.GetByTriplet(ctx, target.OriginalNetworkID, target.TransportStreamID, target.ServiceID)
 		if err != nil {
 			return err
 		}
-		if !updated {
+		if svc == nil {
 			continue
 		}
 		if image.IsDeleted {
@@ -416,6 +430,13 @@ func (s *ServiceManager) UpsertCommonLogoImage(ctx context.Context, image ts.Com
 		}
 		if err := s.UpsertLogo(ctx, target.OriginalNetworkID, target.TransportStreamID, target.ServiceID, logoID, logoType, logoVersion, downloadID, data, now); err != nil {
 			return err
+		}
+		updated, err := s.store.UpdateServiceLogoMetadata(ctx, target.OriginalNetworkID, target.TransportStreamID, target.ServiceID, logoID, logoVersion, downloadID)
+		if err != nil {
+			return err
+		}
+		if updated {
+			s.publishServiceByKey(ctx, eventTypeUpdate, target.OriginalNetworkID, target.ServiceID)
 		}
 	}
 	return nil
@@ -432,22 +453,6 @@ func (s *ServiceManager) UpsertCommonDataAnnouncement(ctx context.Context, annou
 		ObservedChannelID:   channelID,
 		SeenAt:              time.Now().UnixMilli(),
 	})
-}
-
-func (s *ServiceManager) shouldRefreshLogoTarget(target LogoTarget) bool {
-	if target.LogoVersion != 0 || target.LogoDownloadDataId != int64(target.ServiceId) {
-		return false
-	}
-	channel := s.GetChannel(target.ChannelType, target.ChannelId)
-	if channel == nil {
-		return false
-	}
-	for _, route := range channel.RoutesOrDefault() {
-		if route.Remote != "" && !config.IsChannelDisabled(channel.RouteChannelConfig(route)) {
-			return true
-		}
-	}
-	return false
 }
 
 func sameServiceCore(a, b *Service) bool {

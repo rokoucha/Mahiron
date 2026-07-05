@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"hash/crc32"
 	"testing"
 
@@ -440,7 +441,7 @@ func TestServiceManagerUpsertLogoImageRequiresSDTConsistency(t *testing.T) {
 	}
 }
 
-func TestSQLiteStoreDeletesStaleLogosWhenServiceLogoMetadataChanges(t *testing.T) {
+func TestSQLiteStorePreservesLogoRowsWhenServiceLogoMetadataChanges(t *testing.T) {
 	ctx := context.Background()
 	database, err := db.OpenInMemory()
 	if err != nil {
@@ -477,7 +478,55 @@ func TestSQLiteStoreDeletesStaleLogosWhenServiceLogoMetadataChanges(t *testing.T
 		t.Fatal(err)
 	}
 	if svc.HasLogoData {
-		t.Fatal("HasLogoData = true after service logo version changed and stale cache was deleted")
+		t.Fatal("HasLogoData = true after service logo version changed")
+	}
+	service.LogoVersion = &oldVersion
+	if err := store.ReplaceChannelServices(ctx, "GR", "27", []*Service{service}); err != nil {
+		t.Fatal(err)
+	}
+	svc, err = store.GetByItemID(ctx, 100101)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !svc.HasLogoData {
+		t.Fatal("HasLogoData = false after restoring service logo metadata")
+	}
+}
+
+func TestSQLiteStorePreservesExistingLogoMetadataWhenScanOmitsLogo(t *testing.T) {
+	ctx := context.Background()
+	database, err := db.OpenInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = database.Close() }()
+	store := NewSQLiteStore(database)
+	logoID := int64(42)
+	logoVersion := int64(3)
+	downloadDataID := int64(0x1234)
+	if err := store.ReplaceChannelServices(ctx, "BS", "BS01", []*Service{{
+		Id: "0000400101", NetworkId: 4, TransportStreamId: 0x4010, ServiceId: 101,
+		LogoId: &logoID, LogoVersion: &logoVersion, LogoDownloadDataId: &downloadDataID,
+		ChannelType: "BS", ChannelId: "BS01",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpsertLogo(ctx, 4, 0x4010, 101, logoID, 5, logoVersion, downloadDataID, []byte("png"), 1000); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.ReplaceChannelServices(ctx, "BS", "BS01", []*Service{{
+		Id: "0000400101", NetworkId: 4, TransportStreamId: 0x4010, ServiceId: 101,
+		ChannelType: "BS", ChannelId: "BS01",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	svc, err := store.GetByItemID(ctx, 400101)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if svc.LogoId == nil || *svc.LogoId != logoID || svc.LogoVersion == nil || *svc.LogoVersion != logoVersion ||
+		svc.LogoDownloadDataId == nil || *svc.LogoDownloadDataId != downloadDataID || !svc.HasLogoData {
+		t.Fatalf("service logo metadata = %#v, want preserved metadata and data", svc)
 	}
 }
 
@@ -510,7 +559,7 @@ func TestMissingLogoTargetsTracksExactStoredVersion(t *testing.T) {
 	}
 }
 
-func TestLogoGatherTargetsRefreshesRemoteSyntheticTargets(t *testing.T) {
+func TestLogoGatherTargetsRefreshesKnownLogos(t *testing.T) {
 	ctx := context.Background()
 	database, err := db.OpenInMemory()
 	if err != nil {
@@ -555,11 +604,14 @@ func TestLogoGatherTargetsRefreshesRemoteSyntheticTargets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(targets) != 1 {
-		t.Fatalf("logo gather targets = %#v, want remote synthetic target", targets)
+	if len(targets) != 2 {
+		t.Fatalf("logo gather targets = %#v, want known logo targets", targets)
 	}
-	if targets[0].ChannelType != "GR" || targets[0].ChannelId != "27" || targets[0].LogoId != remoteLogoID {
+	if !hasLogoTarget(targets, "GR", "27", remoteLogoID, false) {
 		t.Fatalf("logo gather target = %#v, want remote synthetic target", targets[0])
+	}
+	if !hasLogoTarget(targets, "BS", "BS01", localLogoID, false) {
+		t.Fatalf("logo gather targets = %#v, want local known target", targets)
 	}
 }
 
@@ -634,6 +686,64 @@ func TestLogoGatherTargetsUsesSDTTAnnouncementChannel(t *testing.T) {
 	}
 }
 
+func TestLogoGatherTargetsRefreshesCommonDataWhenLogosArePresent(t *testing.T) {
+	ctx := context.Background()
+	database, err := db.OpenInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = database.Close() }()
+	store := NewSQLiteStore(database)
+	logoID, logoVersion, downloadID := int64(12), int64(3), int64(7)
+	if err := store.ReplaceChannelServices(ctx, "sat", "service", []*Service{{
+		Id: "0000400101", NetworkId: 4, TransportStreamId: 0x4010, ServiceId: 101,
+		LogoId: &logoID, LogoVersion: &logoVersion, LogoDownloadDataId: &downloadID,
+		ChannelType: "sat", ChannelId: "service",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpsertLogo(ctx, 4, 0x4010, 101, logoID, 5, logoVersion, downloadID, []byte("png"), 1000); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.ReplaceChannelServices(ctx, "sat", "common", []*Service{{
+		Id: "0000492900", NetworkId: 4, TransportStreamId: 0x40f1, ServiceId: 929,
+		ChannelType: "sat", ChannelId: "common",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	manager := NewServiceManager(store, config.ChannelsConfig{})
+
+	missing, err := manager.MissingLogoTargets(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(missing) != 0 {
+		t.Fatalf("missing targets = %#v, want none", missing)
+	}
+	targets, err := manager.LogoGatherTargets(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(targets) != 2 {
+		t.Fatalf("targets = %#v, want known logo and common-data refresh targets", targets)
+	}
+	if !hasLogoTarget(targets, "sat", "service", logoID, false) {
+		t.Fatalf("targets = %#v, want known service logo refresh target", targets)
+	}
+	if !hasLogoTarget(targets, "sat", "common", 0, true) {
+		t.Fatalf("target = %#v, want common-data refresh target", targets[0])
+	}
+}
+
+func hasLogoTarget(targets []LogoTarget, channelType, channelID string, logoID int64, common bool) bool {
+	for _, target := range targets {
+		if target.ChannelType == channelType && target.ChannelId == channelID && target.LogoId == logoID && target.IsCommonData == common {
+			return true
+		}
+	}
+	return false
+}
+
 func TestCommonDataAnnouncementUpsertReplacesOlderRoute(t *testing.T) {
 	ctx := context.Background()
 	database, err := db.OpenInMemory()
@@ -697,4 +807,51 @@ func TestServiceManagerUpsertCommonLogoImageUpdatesServiceByTSID(t *testing.T) {
 	if unmatched.HasLogoData || unmatched.LogoId != nil {
 		t.Fatalf("unmatched service = %#v, want no logo", unmatched)
 	}
+}
+
+func TestServiceManagerUpsertCommonLogoImageKeepsOldMetadataWhenLogoStoreFails(t *testing.T) {
+	ctx := context.Background()
+	database, err := db.OpenInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = database.Close() }()
+	store := NewSQLiteStore(database)
+	oldLogoID, oldVersion, oldDownloadID := int64(11), int64(1), int64(0x1111)
+	if err := store.ReplaceChannelServices(ctx, "sat", "a", []*Service{{
+		Id: "0000400101", NetworkId: 4, TransportStreamId: 0x4010, ServiceId: 101,
+		LogoId: &oldLogoID, LogoVersion: &oldVersion, LogoDownloadDataId: &oldDownloadID,
+		ChannelType: "sat", ChannelId: "a",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpsertLogo(ctx, 4, 0x4010, 101, oldLogoID, 5, oldVersion, oldDownloadID, buildServiceTestPalettePNG(true), 1000); err != nil {
+		t.Fatal(err)
+	}
+	manager := NewServiceManager(failingLogoStore{Store: store, err: errors.New("store failed")}, config.ChannelsConfig{})
+
+	err = manager.UpsertCommonLogoImage(ctx, ts.CommonLogoImage{
+		LogoID: 12, LogoType: 5, LogoVersion: 2, DownloadID: 0x2222, Data: buildServiceTestPalettePNG(true),
+		Services: []ts.CommonLogoService{{OriginalNetworkID: 4, TransportStreamID: 0x4010, ServiceID: 101}},
+	})
+	if err == nil {
+		t.Fatal("UpsertCommonLogoImage error = nil, want store failure")
+	}
+	svc, err := store.GetByItemID(ctx, 400101)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if svc.LogoId == nil || *svc.LogoId != oldLogoID || svc.LogoVersion == nil || *svc.LogoVersion != oldVersion ||
+		svc.LogoDownloadDataId == nil || *svc.LogoDownloadDataId != oldDownloadID || !svc.HasLogoData {
+		t.Fatalf("service logo metadata = %#v, want old metadata and logo data preserved", svc)
+	}
+}
+
+type failingLogoStore struct {
+	Store
+	err error
+}
+
+func (s failingLogoStore) UpsertLogo(context.Context, uint16, uint16, uint16, int64, int64, int64, int64, []byte, int64) error {
+	return s.err
 }

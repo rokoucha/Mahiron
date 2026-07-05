@@ -350,6 +350,29 @@ func (s *sqliteStore) ReplaceChannelServices(ctx context.Context, channelType, c
 	}()
 
 	q := s.q.WithTx(tx)
+	existingRows, err := q.GetServicesByChannel(ctx, gen.GetServicesByChannelParams{
+		ChannelType: channelType,
+		ChannelID:   channelId,
+	})
+	if err != nil {
+		return fmt.Errorf("load existing services: %w", err)
+	}
+	existingLogos := make(map[serviceTriplet]logoMetadata, len(existingRows))
+	for _, row := range existingRows {
+		if row.LogoID == nil || row.LogoVersion == nil || row.LogoDownloadDataID == nil {
+			continue
+		}
+		existingLogos[serviceTriplet{
+			networkID:         uint16(row.NetworkID),
+			transportStreamID: uint16(row.TransportStreamID),
+			serviceID:         uint16(row.ServiceID),
+		}] = logoMetadata{
+			logoID:         *row.LogoID,
+			logoVersion:    *row.LogoVersion,
+			downloadDataID: *row.LogoDownloadDataID,
+		}
+	}
+
 	if err := q.DeleteServicesByChannel(ctx, gen.DeleteServicesByChannelParams{
 		ChannelType: channelType,
 		ChannelID:   channelId,
@@ -358,6 +381,7 @@ func (s *sqliteStore) ReplaceChannelServices(ctx context.Context, channelType, c
 	}
 
 	for _, svc := range services {
+		preserveServiceLogoMetadata(svc, existingLogos)
 		if err := q.UpsertService(ctx, gen.UpsertServiceParams{
 			ID:                  svc.Id,
 			ServiceID:           int64(svc.ServiceId),
@@ -376,29 +400,43 @@ func (s *sqliteStore) ReplaceChannelServices(ctx context.Context, channelType, c
 		}); err != nil {
 			return fmt.Errorf("upsert service %s: %w", svc.Id, err)
 		}
-		if svc.LogoId != nil && svc.LogoVersion != nil && svc.LogoDownloadDataId != nil {
-			if err := q.DeleteStaleServiceLogosForService(ctx, gen.DeleteStaleServiceLogosForServiceParams{
-				NetworkID:         int64(svc.NetworkId),
-				TransportStreamID: int64(svc.TransportStreamId),
-				ServiceID:         int64(svc.ServiceId),
-				LogoID:            *svc.LogoId,
-				LogoVersion:       *svc.LogoVersion,
-				DownloadDataID:    *svc.LogoDownloadDataId,
-			}); err != nil {
-				return fmt.Errorf("delete stale service logos %s: %w", svc.Id, err)
-			}
-		} else {
-			if err := q.DeleteServiceLogosForService(ctx, gen.DeleteServiceLogosForServiceParams{
-				NetworkID:         int64(svc.NetworkId),
-				TransportStreamID: int64(svc.TransportStreamId),
-				ServiceID:         int64(svc.ServiceId),
-			}); err != nil {
-				return fmt.Errorf("delete service logos %s: %w", svc.Id, err)
-			}
-		}
 	}
 
 	return tx.Commit()
+}
+
+type serviceTriplet struct {
+	networkID, transportStreamID, serviceID uint16
+}
+
+type logoMetadata struct {
+	logoID, logoVersion, downloadDataID int64
+}
+
+func preserveServiceLogoMetadata(svc *Service, existing map[serviceTriplet]logoMetadata) {
+	if svc.LogoId != nil && svc.LogoVersion != nil && svc.LogoDownloadDataId != nil {
+		return
+	}
+	metadata, ok := existing[serviceTriplet{
+		networkID:         svc.NetworkId,
+		transportStreamID: svc.TransportStreamId,
+		serviceID:         svc.ServiceId,
+	}]
+	if !ok {
+		return
+	}
+	if svc.LogoId == nil {
+		v := metadata.logoID
+		svc.LogoId = &v
+	}
+	if svc.LogoVersion == nil {
+		v := metadata.logoVersion
+		svc.LogoVersion = &v
+	}
+	if svc.LogoDownloadDataId == nil {
+		v := metadata.downloadDataID
+		svc.LogoDownloadDataId = &v
+	}
 }
 
 func (s *sqliteStore) PruneChannels(ctx context.Context, active []ChannelKey) (err error) {
