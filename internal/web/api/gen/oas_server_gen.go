@@ -195,6 +195,14 @@ type RawHandler interface {
 	//
 	// GET /events/stream
 	GetEventsStream(ctx context.Context, params GetEventsStreamParams, w http.ResponseWriter) error
+	// GetServiceDataBroadcastEvents implements getServiceDataBroadcastEvents operation.
+	//
+	// GET /services/{id}/data-broadcast/events
+	GetServiceDataBroadcastEvents(ctx context.Context, params GetServiceDataBroadcastEventsParams, w http.ResponseWriter) error
+	// GetServiceDataBroadcastModule implements getServiceDataBroadcastModule operation.
+	//
+	// GET /services/{id}/data-broadcast/modules/{componentTag}/{moduleId}
+	GetServiceDataBroadcastModule(ctx context.Context, params GetServiceDataBroadcastModuleParams, w http.ResponseWriter) error
 }
 
 // Server implements http server based on OpenAPI v3 specification and

@@ -81,6 +81,14 @@ type GetServiceByChannelRes interface {
 	getServiceByChannelRes()
 }
 
+type GetServiceDataBroadcastEventsRes interface {
+	getServiceDataBroadcastEventsRes()
+}
+
+type GetServiceDataBroadcastModuleRes interface {
+	getServiceDataBroadcastModuleRes()
+}
+
 type GetServiceProgramsRes interface {
 	getServiceProgramsRes()
 }

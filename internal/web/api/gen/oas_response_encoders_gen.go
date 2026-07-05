@@ -1008,6 +1008,73 @@ func encodeGetServiceByChannelResponse(response GetServiceByChannelRes, w http.R
 	}
 }
 
+func encodeGetServiceDataBroadcastEventsResponse(response GetServiceDataBroadcastEventsRes, w http.ResponseWriter, span trace.Span) error {
+	switch response := response.(type) {
+	case *GetServiceDataBroadcastEventsNotFound:
+		w.WriteHeader(404)
+
+		return nil
+
+	case *GetServiceDataBroadcastEventsServiceUnavailable:
+		w.WriteHeader(503)
+		span.SetStatus(codes.Error, http.StatusText(503))
+
+		return nil
+
+	case *GetServiceDataBroadcastEventsDef:
+		code := response.StatusCode
+		if code == 0 {
+			// Set default status code.
+			code = http.StatusOK
+		}
+		w.WriteHeader(code)
+		if code >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(code))
+		}
+
+		if code >= http.StatusInternalServerError {
+			return errors.Wrapf(ht.ErrInternalServerErrorResponse, "code: %d, message: %s", code, http.StatusText(code))
+		}
+		return nil
+
+	default:
+		return errors.Errorf("unexpected response type: %T", response)
+	}
+}
+
+func encodeGetServiceDataBroadcastModuleResponse(response GetServiceDataBroadcastModuleRes, w http.ResponseWriter, span trace.Span) error {
+	switch response := response.(type) {
+	case *GetServiceDataBroadcastModuleNotModified:
+		w.WriteHeader(304)
+
+		return nil
+
+	case *GetServiceDataBroadcastModuleNotFound:
+		w.WriteHeader(404)
+
+		return nil
+
+	case *GetServiceDataBroadcastModuleDef:
+		code := response.StatusCode
+		if code == 0 {
+			// Set default status code.
+			code = http.StatusOK
+		}
+		w.WriteHeader(code)
+		if code >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(code))
+		}
+
+		if code >= http.StatusInternalServerError {
+			return errors.Wrapf(ht.ErrInternalServerErrorResponse, "code: %d, message: %s", code, http.StatusText(code))
+		}
+		return nil
+
+	default:
+		return errors.Errorf("unexpected response type: %T", response)
+	}
+}
+
 func encodeGetServiceProgramsResponse(response GetServiceProgramsRes, w http.ResponseWriter, span trace.Span) error {
 	switch response := response.(type) {
 	case *GetServiceProgramsOKApplicationJSON:

@@ -11,6 +11,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/job/run"
 	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/internal/program"
+	"github.com/21S1298001/mahiron/internal/stream/databroadcast"
 	"github.com/21S1298001/mahiron/internal/stream/remote"
 	"github.com/21S1298001/mahiron/internal/stream/source"
 	"github.com/21S1298001/mahiron/internal/tuner"
@@ -49,6 +50,8 @@ type Session interface {
 	ScanServices(context.Context) ([]ts.ServiceInfo, error)
 	CollectEIT(context.Context, func(*ts.EIT) error) error
 	ObserveLogos(context.Context, func(*ts.LogoImage) error) error
+	ObserveDataBroadcast(context.Context, uint16, bool, func(databroadcast.DataBroadcastEvent) error) error
+	DataBroadcastModule(uint16, byte, uint16) (databroadcast.DataBroadcastModule, bool)
 	Stop(context.Context) error
 }
 
@@ -210,6 +213,14 @@ func sessionAlive(session Session) bool {
 
 func (m *StreamManager) HasSession(channelType, channel string) bool {
 	return m.registry.has(sessionKey{typ: channelType, channel: channel})
+}
+
+func (m *StreamManager) GetExisting(channelType, channel string) (Session, bool) {
+	session, ok := m.registry.get(sessionKey{typ: channelType, channel: channel})
+	if !ok || !sessionAlive(session) {
+		return nil, false
+	}
+	return session, true
 }
 
 func (m *StreamManager) ActiveSessionCount() int {

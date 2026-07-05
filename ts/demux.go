@@ -40,6 +40,12 @@ type Demuxer struct {
 	services      map[uint16]*demuxServiceOutput
 }
 
+// PIDSection is a complete PSI/SI section with the PID it was assembled from.
+type PIDSection struct {
+	PID     uint16
+	Section Section
+}
+
 type demuxProgram struct {
 	pmtPID      uint16
 	pids        map[uint16]bool
@@ -77,6 +83,20 @@ func NewDemuxer() *Demuxer {
 // PSI/SI section assembled from it. The returned sections have already passed
 // CRC validation.
 func (d *Demuxer) Feed(packet Packet) ([]Section, error) {
+	pidSections, err := d.FeedWithPID(packet)
+	if err != nil {
+		return nil, err
+	}
+	sections := make([]Section, 0, len(pidSections))
+	for _, section := range pidSections {
+		sections = append(sections, section.Section)
+	}
+	return sections, nil
+}
+
+// FeedWithPID is like Feed, but retains the PID that carried each completed
+// section.
+func (d *Demuxer) FeedWithPID(packet Packet) ([]PIDSection, error) {
 	if len(packet) != PacketSize || packet.TransportErrorIndicator() || packet.IsNull() || !packet.ValidPayloadOffset() {
 		return nil, nil
 	}
@@ -93,7 +113,9 @@ func (d *Demuxer) Feed(packet Packet) ([]Section, error) {
 	if err != nil {
 		return nil, err
 	}
+	result := make([]PIDSection, 0, len(sections))
 	for _, section := range sections {
+		result = append(result, PIDSection{PID: pid, Section: section})
 		switch section.TableID() {
 		case TableIDPAT:
 			if pid == PIDPAT {
@@ -109,7 +131,7 @@ func (d *Demuxer) Feed(packet Packet) ([]Section, error) {
 			}
 		}
 	}
-	return sections, nil
+	return result, nil
 }
 
 // ServicePacket returns the packet to emit for serviceID, or nil when the

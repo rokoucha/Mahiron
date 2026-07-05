@@ -1202,6 +1202,185 @@ type GetProgramsOKApplicationJSON []Program
 
 func (*GetProgramsOKApplicationJSON) getProgramsRes() {}
 
+// GetServiceDataBroadcastEventsDef is default response for GetServiceDataBroadcastEvents operation.
+type GetServiceDataBroadcastEventsDef struct {
+	StatusCode int
+}
+
+// GetStatusCode returns the value of StatusCode.
+func (s *GetServiceDataBroadcastEventsDef) GetStatusCode() int {
+	return s.StatusCode
+}
+
+// SetStatusCode sets the value of StatusCode.
+func (s *GetServiceDataBroadcastEventsDef) SetStatusCode(val int) {
+	s.StatusCode = val
+}
+
+func (*GetServiceDataBroadcastEventsDef) getServiceDataBroadcastEventsRes() {}
+
+// GetServiceDataBroadcastEventsNotFound is response for GetServiceDataBroadcastEvents operation.
+type GetServiceDataBroadcastEventsNotFound struct{}
+
+func (*GetServiceDataBroadcastEventsNotFound) getServiceDataBroadcastEventsRes() {}
+
+type GetServiceDataBroadcastEventsOK struct {
+	Data io.Reader
+}
+
+// Read reads data from the Data reader.
+//
+// Kept to satisfy the io.Reader interface.
+func (s GetServiceDataBroadcastEventsOK) Read(p []byte) (n int, err error) {
+	if s.Data == nil {
+		return 0, io.EOF
+	}
+	return s.Data.Read(p)
+}
+
+// GetServiceDataBroadcastEventsOKHeaders wraps GetServiceDataBroadcastEventsOK with response headers.
+type GetServiceDataBroadcastEventsOKHeaders struct {
+	XMirakurunTunerUserID OptString
+	Response              GetServiceDataBroadcastEventsOK
+}
+
+// GetXMirakurunTunerUserID returns the value of XMirakurunTunerUserID.
+func (s *GetServiceDataBroadcastEventsOKHeaders) GetXMirakurunTunerUserID() OptString {
+	return s.XMirakurunTunerUserID
+}
+
+// GetResponse returns the value of Response.
+func (s *GetServiceDataBroadcastEventsOKHeaders) GetResponse() GetServiceDataBroadcastEventsOK {
+	return s.Response
+}
+
+// SetXMirakurunTunerUserID sets the value of XMirakurunTunerUserID.
+func (s *GetServiceDataBroadcastEventsOKHeaders) SetXMirakurunTunerUserID(val OptString) {
+	s.XMirakurunTunerUserID = val
+}
+
+// SetResponse sets the value of Response.
+func (s *GetServiceDataBroadcastEventsOKHeaders) SetResponse(val GetServiceDataBroadcastEventsOK) {
+	s.Response = val
+}
+
+// GetServiceDataBroadcastEventsOKRawTextEventStream represents raw HTTP response for GetServiceDataBroadcastEvents text/event-stream.
+type GetServiceDataBroadcastEventsOKRawTextEventStream struct {
+	Response *http.Response `json:"-"`
+}
+
+// GetResponse returns the value of Response.
+func (s *GetServiceDataBroadcastEventsOKRawTextEventStream) GetResponse() *http.Response {
+	return s.Response
+}
+
+// SetResponse sets the value of Response.
+func (s *GetServiceDataBroadcastEventsOKRawTextEventStream) SetResponse(val *http.Response) {
+	s.Response = val
+}
+
+func (*GetServiceDataBroadcastEventsOKRawTextEventStream) getServiceDataBroadcastEventsRes() {}
+
+// GetServiceDataBroadcastEventsServiceUnavailable is response for GetServiceDataBroadcastEvents operation.
+type GetServiceDataBroadcastEventsServiceUnavailable struct{}
+
+func (*GetServiceDataBroadcastEventsServiceUnavailable) getServiceDataBroadcastEventsRes() {}
+
+// GetServiceDataBroadcastModuleDef is default response for GetServiceDataBroadcastModule operation.
+type GetServiceDataBroadcastModuleDef struct {
+	StatusCode int
+}
+
+// GetStatusCode returns the value of StatusCode.
+func (s *GetServiceDataBroadcastModuleDef) GetStatusCode() int {
+	return s.StatusCode
+}
+
+// SetStatusCode sets the value of StatusCode.
+func (s *GetServiceDataBroadcastModuleDef) SetStatusCode(val int) {
+	s.StatusCode = val
+}
+
+func (*GetServiceDataBroadcastModuleDef) getServiceDataBroadcastModuleRes() {}
+
+// GetServiceDataBroadcastModuleNotFound is response for GetServiceDataBroadcastModule operation.
+type GetServiceDataBroadcastModuleNotFound struct{}
+
+func (*GetServiceDataBroadcastModuleNotFound) getServiceDataBroadcastModuleRes() {}
+
+// GetServiceDataBroadcastModuleNotModified is response for GetServiceDataBroadcastModule operation.
+type GetServiceDataBroadcastModuleNotModified struct{}
+
+func (*GetServiceDataBroadcastModuleNotModified) getServiceDataBroadcastModuleRes() {}
+
+type GetServiceDataBroadcastModuleOK struct {
+	Data io.Reader
+}
+
+// Read reads data from the Data reader.
+//
+// Kept to satisfy the io.Reader interface.
+func (s GetServiceDataBroadcastModuleOK) Read(p []byte) (n int, err error) {
+	if s.Data == nil {
+		return 0, io.EOF
+	}
+	return s.Data.Read(p)
+}
+
+// GetServiceDataBroadcastModuleOKHeaders wraps GetServiceDataBroadcastModuleOK with response headers.
+type GetServiceDataBroadcastModuleOKHeaders struct {
+	CacheControl OptString
+	ETag         OptString
+	Response     GetServiceDataBroadcastModuleOK
+}
+
+// GetCacheControl returns the value of CacheControl.
+func (s *GetServiceDataBroadcastModuleOKHeaders) GetCacheControl() OptString {
+	return s.CacheControl
+}
+
+// GetETag returns the value of ETag.
+func (s *GetServiceDataBroadcastModuleOKHeaders) GetETag() OptString {
+	return s.ETag
+}
+
+// GetResponse returns the value of Response.
+func (s *GetServiceDataBroadcastModuleOKHeaders) GetResponse() GetServiceDataBroadcastModuleOK {
+	return s.Response
+}
+
+// SetCacheControl sets the value of CacheControl.
+func (s *GetServiceDataBroadcastModuleOKHeaders) SetCacheControl(val OptString) {
+	s.CacheControl = val
+}
+
+// SetETag sets the value of ETag.
+func (s *GetServiceDataBroadcastModuleOKHeaders) SetETag(val OptString) {
+	s.ETag = val
+}
+
+// SetResponse sets the value of Response.
+func (s *GetServiceDataBroadcastModuleOKHeaders) SetResponse(val GetServiceDataBroadcastModuleOK) {
+	s.Response = val
+}
+
+// GetServiceDataBroadcastModuleOKRawApplicationOctetStream represents raw HTTP response for GetServiceDataBroadcastModule application/octet-stream.
+type GetServiceDataBroadcastModuleOKRawApplicationOctetStream struct {
+	Response *http.Response `json:"-"`
+}
+
+// GetResponse returns the value of Response.
+func (s *GetServiceDataBroadcastModuleOKRawApplicationOctetStream) GetResponse() *http.Response {
+	return s.Response
+}
+
+// SetResponse sets the value of Response.
+func (s *GetServiceDataBroadcastModuleOKRawApplicationOctetStream) SetResponse(val *http.Response) {
+	s.Response = val
+}
+
+func (*GetServiceDataBroadcastModuleOKRawApplicationOctetStream) getServiceDataBroadcastModuleRes() {}
+
 type GetServiceProgramsOKApplicationJSON []Program
 
 func (*GetServiceProgramsOKApplicationJSON) getServiceProgramsRes() {}

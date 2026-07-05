@@ -23,30 +23,38 @@ var (
 type SourceSubscriber func(context.Context, io.Writer) error
 
 type Demuxer struct {
-	cancel      context.CancelFunc
-	channelID   string
-	channelType string
-	continuity  *continuityMonitor
-	demux       *ts.Demuxer
-	done        chan struct{}
-	err         error
-	mu          sync.Mutex
-	nextID      uint64
-	onEmpty     func()
-	onSections  []func(ts.Section)
-	packets     map[uint64]*packetSubscription
-	packetSubs  []packetSubscriptionEntry
-	sections    map[uint64]*sectionSubscription
-	sectionSubs []sectionSubscriptionEntry
-	source      SourceSubscriber
-	started     bool
-	stopped     bool
-	stopOnce    sync.Once
+	cancel        context.CancelFunc
+	channelID     string
+	channelType   string
+	continuity    *continuityMonitor
+	demux         *ts.Demuxer
+	done          chan struct{}
+	err           error
+	mu            sync.Mutex
+	nextID        uint64
+	onEmpty       func()
+	onPIDSections []func(ts.PIDSection)
+	onSections    []func(ts.Section)
+	packets       map[uint64]*packetSubscription
+	packetSubs    []packetSubscriptionEntry
+	sections      map[uint64]*sectionSubscription
+	sectionSubs   []sectionSubscriptionEntry
+	source        SourceSubscriber
+	started       bool
+	stopped       bool
+	stopOnce      sync.Once
 }
 
 type packetSubscriptionEntry struct {
 	id  uint64
 	sub *packetSubscription
+}
+
+func (e *Demuxer) WithPIDSections(onSections ...func(ts.PIDSection)) *Demuxer {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.onPIDSections = append(e.onPIDSections, onSections...)
+	return e
 }
 
 type sectionSubscriptionEntry struct {
@@ -289,7 +297,7 @@ func (e *Demuxer) run(ctx context.Context) {
 		if e.continuity.observe(packet) {
 			observability.RecordStreamContinuityCounterError(ctx, e.channelType, e.channelID)
 		}
-		sections, err := e.demux.Feed(packet)
+		sections, err := e.demux.FeedWithPID(packet)
 		if err != nil {
 			runErr = err
 			observability.RecordStreamPacketError(ctx, e.channelType, e.channelID, "demux")
@@ -323,7 +331,7 @@ func (m *continuityMonitor) observe(packet ts.Packet) bool {
 	return ok && counter != ((last+1)&0x0f)
 }
 
-func (e *Demuxer) dispatch(packet ts.Packet, sections []ts.Section) {
+func (e *Demuxer) dispatch(packet ts.Packet, sections []ts.PIDSection) {
 	e.mu.Lock()
 	var rawPacket ts.Packet
 	for i := 0; i < len(e.packetSubs); {
@@ -358,7 +366,11 @@ func (e *Demuxer) dispatch(packet ts.Packet, sections []ts.Section) {
 			e.finishPacketLocked(id, ErrSubscriberOverflow)
 		}
 	}
-	for _, section := range sections {
+	for _, pidSection := range sections {
+		section := pidSection.Section
+		for _, hook := range e.onPIDSections {
+			hook(pidSection)
+		}
 		for _, hook := range e.onSections {
 			hook(section)
 		}

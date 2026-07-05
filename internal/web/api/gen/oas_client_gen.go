@@ -114,6 +114,14 @@ type Invoker interface {
 	//
 	// GET /channels/{type}/{channel}/services/{id}
 	GetServiceByChannel(ctx context.Context, params GetServiceByChannelParams) (GetServiceByChannelRes, error)
+	// GetServiceDataBroadcastEvents invokes getServiceDataBroadcastEvents operation.
+	//
+	// GET /services/{id}/data-broadcast/events
+	GetServiceDataBroadcastEvents(ctx context.Context, params GetServiceDataBroadcastEventsParams) (GetServiceDataBroadcastEventsRes, error)
+	// GetServiceDataBroadcastModule invokes getServiceDataBroadcastModule operation.
+	//
+	// GET /services/{id}/data-broadcast/modules/{componentTag}/{moduleId}
+	GetServiceDataBroadcastModule(ctx context.Context, params GetServiceDataBroadcastModuleParams) (GetServiceDataBroadcastModuleRes, error)
 	// GetServicePrograms invokes getServicePrograms operation.
 	//
 	// GET /services/{id}/programs
@@ -2549,6 +2557,276 @@ func (c *Client) sendGetServiceByChannel(ctx context.Context, params GetServiceB
 
 	stage = "DecodeResponse"
 	result, err := decodeGetServiceByChannelResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// GetServiceDataBroadcastEvents invokes getServiceDataBroadcastEvents operation.
+//
+// GET /services/{id}/data-broadcast/events
+func (c *Client) GetServiceDataBroadcastEvents(ctx context.Context, params GetServiceDataBroadcastEventsParams) (GetServiceDataBroadcastEventsRes, error) {
+	res, err := c.sendGetServiceDataBroadcastEvents(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendGetServiceDataBroadcastEvents(ctx context.Context, params GetServiceDataBroadcastEventsParams) (res GetServiceDataBroadcastEventsRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("getServiceDataBroadcastEvents"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/services/{id}/data-broadcast/events"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, GetServiceDataBroadcastEventsOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/services/"
+	{
+		// Encode "id" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "id",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.Int64ToString(params.ID))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/data-broadcast/events"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeQueryParams"
+	q := uri.NewQueryEncoder()
+	{
+		// Encode "decode" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "decode",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.Decode.Get(); ok {
+				return e.EncodeValue(conv.IntToString(val))
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	u.RawQuery = q.Values().Encode()
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	stage = "EncodeHeaderParams"
+	h := uri.NewHeaderEncoder(r.Header)
+	{
+		cfg := uri.HeaderParameterEncodingConfig{
+			Name:    "X-Mirakurun-Priority",
+			Explode: false,
+		}
+		if err := h.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.XMirakurunPriority.Get(); ok {
+				return e.EncodeValue(conv.IntToString(val))
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode header")
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+
+	stage = "DecodeResponse"
+	result, err := decodeGetServiceDataBroadcastEventsResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// GetServiceDataBroadcastModule invokes getServiceDataBroadcastModule operation.
+//
+// GET /services/{id}/data-broadcast/modules/{componentTag}/{moduleId}
+func (c *Client) GetServiceDataBroadcastModule(ctx context.Context, params GetServiceDataBroadcastModuleParams) (GetServiceDataBroadcastModuleRes, error) {
+	res, err := c.sendGetServiceDataBroadcastModule(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendGetServiceDataBroadcastModule(ctx context.Context, params GetServiceDataBroadcastModuleParams) (res GetServiceDataBroadcastModuleRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("getServiceDataBroadcastModule"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/services/{id}/data-broadcast/modules/{componentTag}/{moduleId}"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, GetServiceDataBroadcastModuleOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [6]string
+	pathParts[0] = "/services/"
+	{
+		// Encode "id" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "id",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.Int64ToString(params.ID))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/data-broadcast/modules/"
+	{
+		// Encode "componentTag" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "componentTag",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.IntToString(params.ComponentTag))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[3] = encoded
+	}
+	pathParts[4] = "/"
+	{
+		// Encode "moduleId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "moduleId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.IntToString(params.ModuleId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[5] = encoded
+	}
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	stage = "EncodeHeaderParams"
+	h := uri.NewHeaderEncoder(r.Header)
+	{
+		cfg := uri.HeaderParameterEncodingConfig{
+			Name:    "If-None-Match",
+			Explode: false,
+		}
+		if err := h.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.IfNoneMatch.Get(); ok {
+				return e.EncodeValue(conv.StringToString(val))
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode header")
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+
+	stage = "DecodeResponse"
+	result, err := decodeGetServiceDataBroadcastModuleResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}

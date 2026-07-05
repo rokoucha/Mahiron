@@ -11,4 +11,5 @@ var ErrChannelNotFound = errors.New("channel not found")
 var (
 	ErrEITObservationUnsupported  = errors.New("EIT observation is not supported by remote sessions")
 	ErrLogoObservationUnsupported = errors.New("logo observation is not supported by remote sessions")
+	ErrDataBroadcastUnsupported   = errors.New("data broadcast observation is not supported by remote sessions")
 )

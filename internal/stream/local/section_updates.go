@@ -66,6 +66,12 @@ func (s *Session) observeSection(section ts.Section) {
 	}
 }
 
+func (s *Session) observePIDSection(section ts.PIDSection) {
+	if s.dataBroadcast != nil {
+		s.dataBroadcast.Observe(section)
+	}
+}
+
 func (s *Session) runSectionUpdates(ctx context.Context) {
 	if s.sectionDone != nil {
 		defer close(s.sectionDone)

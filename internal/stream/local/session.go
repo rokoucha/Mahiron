@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/21S1298001/mahiron/internal/program"
+	"github.com/21S1298001/mahiron/internal/stream/databroadcast"
 	"github.com/21S1298001/mahiron/internal/stream/demux"
 	"github.com/21S1298001/mahiron/internal/stream/source"
 	"github.com/21S1298001/mahiron/internal/tuner"
@@ -27,6 +28,7 @@ type Session struct {
 	eitUpdater        EITSectionUpdater
 	logoUpdater       LogoUpdater
 	logoCarousel      *ts.DSMCCLogoCarousel
+	dataBroadcast     *databroadcast.DataBroadcastHub
 	sectionCancel     context.CancelFunc
 	sectionDone       chan struct{}
 	sectionQueue      chan ts.Section
@@ -47,13 +49,14 @@ type Config struct {
 
 func NewSession(config Config) *Session {
 	session := &Session{
-		broadcast:    config.Broadcast,
-		channel:      config.Channel,
-		descrambler:  config.Descrambler,
-		typ:          config.Type,
-		eitUpdater:   config.EITUpdater,
-		logoUpdater:  config.LogoUpdater,
-		logoCarousel: ts.NewDSMCCLogoCarousel(),
+		broadcast:     config.Broadcast,
+		channel:       config.Channel,
+		descrambler:   config.Descrambler,
+		typ:           config.Type,
+		eitUpdater:    config.EITUpdater,
+		logoUpdater:   config.LogoUpdater,
+		logoCarousel:  ts.NewDSMCCLogoCarousel(),
+		dataBroadcast: databroadcast.NewDataBroadcastHub(),
 	}
 	sectionCtx, sectionCancel := context.WithCancel(context.Background())
 	session.sectionCancel = sectionCancel
@@ -66,7 +69,7 @@ func NewSession(config Config) *Session {
 		if config.OnStop != nil {
 			config.OnStop()
 		}
-	}, session.observeSection).WithMetricLabels(config.Type, config.Channel)
+	}, session.observeSection).WithPIDSections(session.observePIDSection).WithMetricLabels(config.Type, config.Channel)
 	session.decodedDemuxer = demux.New(session.subscribeDecodedMux, nil).WithMetricLabels(config.Type, config.Channel)
 	return session
 }
@@ -143,6 +146,55 @@ func (s *Session) ObserveLogos(ctx context.Context, observe func(*ts.LogoImage) 
 			return observe(image)
 		})
 	})
+}
+
+func (s *Session) ObserveDataBroadcast(ctx context.Context, serviceID uint16, decode bool, observe func(databroadcast.DataBroadcastEvent) error) error {
+	if s.dataBroadcast == nil {
+		return waitContext(ctx)
+	}
+	return s.broadcast.WithUser(ctx, func(ctx context.Context) error {
+		snapshot, events, unsubscribe := s.dataBroadcast.Subscribe(ctx, serviceID)
+		defer unsubscribe()
+		if err := observe(databroadcast.DataBroadcastEvent{Type: "snapshot", Snapshot: snapshot}); err != nil {
+			return err
+		}
+		observeCtx, cancel := context.WithCancel(ctx)
+		defer cancel()
+		done := make(chan error, 1)
+		go func() {
+			done <- s.rawDemuxer.ObserveSections(observeCtx, acceptDataBroadcastSection, func(ts.Section) error {
+				return nil
+			})
+		}()
+		for {
+			select {
+			case <-ctx.Done():
+				cancel()
+				<-done
+				return nil
+			case err := <-done:
+				return err
+			case event, ok := <-events:
+				if !ok {
+					cancel()
+					<-done
+					return nil
+				}
+				if err := observe(event); err != nil {
+					cancel()
+					<-done
+					return err
+				}
+			}
+		}
+	})
+}
+
+func (s *Session) DataBroadcastModule(serviceID uint16, componentTag byte, moduleID uint16) (databroadcast.DataBroadcastModule, bool) {
+	if s.dataBroadcast == nil {
+		return databroadcast.DataBroadcastModule{}, false
+	}
+	return s.dataBroadcast.Module(serviceID, componentTag, moduleID)
 }
 
 func (s *Session) Stop(ctx context.Context) error {
@@ -248,6 +300,23 @@ func (s *Session) subscribeDecodedMux(ctx context.Context, dst io.Writer) error 
 		rawErr = nil
 	}
 	return errors.Join(err, rawErr)
+}
+
+func acceptDataBroadcastSection(section ts.Section) bool {
+	switch section.TableID() {
+	case ts.TableIDPMT, ts.TableIDDSMCCDII, ts.TableIDDSMCCDDB, ts.TableIDTOT:
+		return true
+	default:
+		return ts.IsEITPF(section.TableID())
+	}
+}
+
+func waitContext(ctx context.Context) error {
+	<-ctx.Done()
+	if err := ctx.Err(); err != nil && err != context.Canceled {
+		return err
+	}
+	return nil
 }
 
 func (s *Session) observeEIT(ctx context.Context, observe func(*ts.EIT, time.Time) error) error {

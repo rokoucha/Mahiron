@@ -11,6 +11,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/job"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/service"
+	"github.com/21S1298001/mahiron/internal/stream"
 	"github.com/21S1298001/mahiron/internal/tuner"
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 )
@@ -63,7 +64,16 @@ type StreamManager interface {
 		ChannelStream(context.Context, bool, io.Writer) error
 		ProgramStream(context.Context, *program.Program, bool, io.Writer) error
 		ServiceStream(context.Context, uint16, bool, io.Writer) error
+		ObserveDataBroadcast(context.Context, uint16, bool, func(stream.DataBroadcastEvent) error) error
+		DataBroadcastModule(uint16, byte, uint16) (stream.DataBroadcastModule, bool)
 	}, error)
+	GetExisting(string, string) (interface {
+		ChannelStream(context.Context, bool, io.Writer) error
+		ProgramStream(context.Context, *program.Program, bool, io.Writer) error
+		ServiceStream(context.Context, uint16, bool, io.Writer) error
+		ObserveDataBroadcast(context.Context, uint16, bool, func(stream.DataBroadcastEvent) error) error
+		DataBroadcastModule(uint16, byte, uint16) (stream.DataBroadcastModule, bool)
+	}, bool)
 	ActiveSessionCount() int
 }
 
@@ -187,6 +197,14 @@ func (h *Handler) GetService(ctx context.Context, params apigen.GetServiceParams
 
 func (h *Handler) GetServiceByChannel(ctx context.Context, params apigen.GetServiceByChannelParams) (apigen.GetServiceByChannelRes, error) {
 	return GetServiceByChannel(ctx, h, params)
+}
+
+func (h *Handler) GetServiceDataBroadcastEvents(ctx context.Context, params apigen.GetServiceDataBroadcastEventsParams, w http.ResponseWriter) error {
+	return GetServiceDataBroadcastEvents(ctx, h, params, w)
+}
+
+func (h *Handler) GetServiceDataBroadcastModule(ctx context.Context, params apigen.GetServiceDataBroadcastModuleParams, w http.ResponseWriter) error {
+	return GetServiceDataBroadcastModule(ctx, h, params, w)
 }
 
 func (h *Handler) GetServicePrograms(ctx context.Context, params apigen.GetServiceProgramsParams) (apigen.GetServiceProgramsRes, error) {

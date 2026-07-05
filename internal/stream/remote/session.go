@@ -6,6 +6,7 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/program"
+	"github.com/21S1298001/mahiron/internal/stream/databroadcast"
 	"github.com/21S1298001/mahiron/ts"
 )
 
@@ -79,6 +80,14 @@ func (s *Session) ObserveLogos(ctx context.Context, observe func(*ts.LogoImage) 
 		}
 	}
 	return nil
+}
+
+func (s *Session) ObserveDataBroadcast(context.Context, uint16, bool, func(databroadcast.DataBroadcastEvent) error) error {
+	return ErrDataBroadcastUnsupported
+}
+
+func (s *Session) DataBroadcastModule(uint16, byte, uint16) (databroadcast.DataBroadcastModule, bool) {
+	return databroadcast.DataBroadcastModule{}, false
 }
 
 func (s *Session) Stop(context.Context) error {

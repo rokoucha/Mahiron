@@ -609,6 +609,109 @@ paths:
         default:
           description: Unexpected Error
           content: {}
+  /services/{id}/data-broadcast/events:
+    get:
+      tags:
+        - services
+        - stream
+      operationId: getServiceDataBroadcastEvents
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            maximum: 6553565535
+            type: integer
+            format: int64
+        - name: X-Mirakurun-Priority
+          in: header
+          schema:
+            minimum: -1
+            type: integer
+        - name: decode
+          in: query
+          schema:
+            maximum: 1
+            minimum: 0
+            type: integer
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Mirakurun-Tuner-User-ID:
+              schema:
+                type: string
+          content:
+            text/event-stream:
+              x-ogen-raw-response: true
+              schema:
+                type: string
+        "404":
+          description: Not Found
+          content: {}
+        "503":
+          description: Tuner Resource Unavailable
+          content: {}
+        default:
+          description: Unexpected Error
+          content: {}
+  /services/{id}/data-broadcast/modules/{componentTag}/{moduleId}:
+    get:
+      tags:
+        - services
+        - stream
+      operationId: getServiceDataBroadcastModule
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            maximum: 6553565535
+            type: integer
+            format: int64
+        - name: componentTag
+          in: path
+          required: true
+          schema:
+            maximum: 255
+            minimum: 0
+            type: integer
+        - name: moduleId
+          in: path
+          required: true
+          schema:
+            maximum: 65535
+            minimum: 0
+            type: integer
+        - name: If-None-Match
+          in: header
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          headers:
+            ETag:
+              schema:
+                type: string
+            Cache-Control:
+              schema:
+                type: string
+          content:
+            application/octet-stream:
+              x-ogen-raw-response: true
+              schema:
+                type: string
+                format: binary
+        "304":
+          description: Not Modified
+          content: {}
+        "404":
+          description: Not Found
+          content: {}
+        default:
+          description: Unexpected Error
+          content: {}
   /services/{id}/programs:
     get:
       tags:

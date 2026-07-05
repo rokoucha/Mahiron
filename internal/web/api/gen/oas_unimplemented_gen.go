@@ -164,6 +164,20 @@ func (UnimplementedHandler) GetServiceByChannel(ctx context.Context, params GetS
 	return r, ht.ErrNotImplemented
 }
 
+// GetServiceDataBroadcastEvents implements getServiceDataBroadcastEvents operation.
+//
+// GET /services/{id}/data-broadcast/events
+func (UnimplementedHandler) GetServiceDataBroadcastEvents(ctx context.Context, params GetServiceDataBroadcastEventsParams, w http.ResponseWriter) error {
+	return ht.ErrNotImplemented
+}
+
+// GetServiceDataBroadcastModule implements getServiceDataBroadcastModule operation.
+//
+// GET /services/{id}/data-broadcast/modules/{componentTag}/{moduleId}
+func (UnimplementedHandler) GetServiceDataBroadcastModule(ctx context.Context, params GetServiceDataBroadcastModuleParams, w http.ResponseWriter) error {
+	return ht.ErrNotImplemented
+}
+
 // GetServicePrograms implements getServicePrograms operation.
 //
 // GET /services/{id}/programs

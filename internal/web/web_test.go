@@ -206,8 +206,20 @@ func (testStreamManager) GetOrCreate(context.Context, string, string) (interface
 	ChannelStream(context.Context, bool, io.Writer) error
 	ProgramStream(context.Context, *program.Program, bool, io.Writer) error
 	ServiceStream(context.Context, uint16, bool, io.Writer) error
+	ObserveDataBroadcast(context.Context, uint16, bool, func(stream.DataBroadcastEvent) error) error
+	DataBroadcastModule(uint16, byte, uint16) (stream.DataBroadcastModule, bool)
 }, error) {
 	return nil, stream.ErrChannelNotFound
+}
+
+func (testStreamManager) GetExisting(string, string) (interface {
+	ChannelStream(context.Context, bool, io.Writer) error
+	ProgramStream(context.Context, *program.Program, bool, io.Writer) error
+	ServiceStream(context.Context, uint16, bool, io.Writer) error
+	ObserveDataBroadcast(context.Context, uint16, bool, func(stream.DataBroadcastEvent) error) error
+	DataBroadcastModule(uint16, byte, uint16) (stream.DataBroadcastModule, bool)
+}, bool) {
+	return nil, false
 }
 
 func (testStreamManager) ActiveSessionCount() int { return 0 }

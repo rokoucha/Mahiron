@@ -356,6 +356,12 @@ func (fakeDeadSession) CollectEIT(context.Context, func(*ts.EIT) error) error   
 func (fakeDeadSession) ObserveLogos(context.Context, func(*ts.LogoImage) error) error {
 	return nil
 }
+func (fakeDeadSession) ObserveDataBroadcast(context.Context, uint16, bool, func(DataBroadcastEvent) error) error {
+	return nil
+}
+func (fakeDeadSession) DataBroadcastModule(uint16, byte, uint16) (DataBroadcastModule, bool) {
+	return DataBroadcastModule{}, false
+}
 func (fakeDeadSession) Stop(context.Context) error { return nil }
 func (fakeDeadSession) Alive() bool                { return false }
 

@@ -23,7 +23,13 @@ var (
 		"GET":  "X-Mirakurun-Priority",
 		"HEAD": "X-Mirakurun-Priority",
 	}
-	rn33AllowedHeaders = map[string]string{
+	rn32AllowedHeaders = map[string]string{
+		"GET": "X-Mirakurun-Priority",
+	}
+	rn37AllowedHeaders = map[string]string{
+		"GET": "If-None-Match",
+	}
+	rn39AllowedHeaders = map[string]string{
 		"GET":  "X-Mirakurun-Priority",
 		"HEAD": "X-Mirakurun-Priority",
 	}
@@ -995,6 +1001,108 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 								break
 							}
 							switch elem[0] {
+							case 'd': // Prefix: "data-broadcast/"
+
+								if l := len("data-broadcast/"); len(elem) >= l && elem[0:l] == "data-broadcast/" {
+									elem = elem[l:]
+								} else {
+									break
+								}
+
+								if len(elem) == 0 {
+									break
+								}
+								switch elem[0] {
+								case 'e': // Prefix: "events"
+
+									if l := len("events"); len(elem) >= l && elem[0:l] == "events" {
+										elem = elem[l:]
+									} else {
+										break
+									}
+
+									if len(elem) == 0 {
+										// Leaf node.
+										switch r.Method {
+										case "GET":
+											s.handleGetServiceDataBroadcastEventsRequest([1]string{
+												args[0],
+											}, elemIsEscaped, w, r)
+										default:
+											s.notAllowed(w, r, notAllowedParams{
+												allowedMethods: "GET",
+												allowedHeaders: rn32AllowedHeaders,
+												acceptPost:     "",
+												acceptPatch:    "",
+											})
+										}
+
+										return
+									}
+
+								case 'm': // Prefix: "modules/"
+
+									if l := len("modules/"); len(elem) >= l && elem[0:l] == "modules/" {
+										elem = elem[l:]
+									} else {
+										break
+									}
+
+									// Param: "componentTag"
+									// Match until "/"
+									idx := strings.IndexByte(elem, '/')
+									if idx < 0 {
+										idx = len(elem)
+									}
+									args[1] = elem[:idx]
+									elem = elem[idx:]
+
+									if len(elem) == 0 {
+										break
+									}
+									switch elem[0] {
+									case '/': // Prefix: "/"
+
+										if l := len("/"); len(elem) >= l && elem[0:l] == "/" {
+											elem = elem[l:]
+										} else {
+											break
+										}
+
+										// Param: "moduleId"
+										// Leaf parameter, slashes are prohibited
+										idx := strings.IndexByte(elem, '/')
+										if idx >= 0 {
+											break
+										}
+										args[2] = elem
+										elem = ""
+
+										if len(elem) == 0 {
+											// Leaf node.
+											switch r.Method {
+											case "GET":
+												s.handleGetServiceDataBroadcastModuleRequest([3]string{
+													args[0],
+													args[1],
+													args[2],
+												}, elemIsEscaped, w, r)
+											default:
+												s.notAllowed(w, r, notAllowedParams{
+													allowedMethods: "GET",
+													allowedHeaders: rn37AllowedHeaders,
+													acceptPost:     "",
+													acceptPatch:    "",
+												})
+											}
+
+											return
+										}
+
+									}
+
+								}
+
 							case 'l': // Prefix: "logo"
 
 								if l := len("logo"); len(elem) >= l && elem[0:l] == "logo" {
@@ -1071,7 +1179,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 									default:
 										s.notAllowed(w, r, notAllowedParams{
 											allowedMethods: "GET,HEAD",
-											allowedHeaders: rn33AllowedHeaders,
+											allowedHeaders: rn39AllowedHeaders,
 											acceptPost:     "",
 											acceptPatch:    "",
 										})
@@ -2228,6 +2336,102 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 								break
 							}
 							switch elem[0] {
+							case 'd': // Prefix: "data-broadcast/"
+
+								if l := len("data-broadcast/"); len(elem) >= l && elem[0:l] == "data-broadcast/" {
+									elem = elem[l:]
+								} else {
+									break
+								}
+
+								if len(elem) == 0 {
+									break
+								}
+								switch elem[0] {
+								case 'e': // Prefix: "events"
+
+									if l := len("events"); len(elem) >= l && elem[0:l] == "events" {
+										elem = elem[l:]
+									} else {
+										break
+									}
+
+									if len(elem) == 0 {
+										// Leaf node.
+										switch method {
+										case "GET":
+											r.name = GetServiceDataBroadcastEventsOperation
+											r.summary = ""
+											r.operationID = "getServiceDataBroadcastEvents"
+											r.operationGroup = ""
+											r.pathPattern = "/services/{id}/data-broadcast/events"
+											r.args = args
+											r.count = 1
+											return r, true
+										default:
+											return
+										}
+									}
+
+								case 'm': // Prefix: "modules/"
+
+									if l := len("modules/"); len(elem) >= l && elem[0:l] == "modules/" {
+										elem = elem[l:]
+									} else {
+										break
+									}
+
+									// Param: "componentTag"
+									// Match until "/"
+									idx := strings.IndexByte(elem, '/')
+									if idx < 0 {
+										idx = len(elem)
+									}
+									args[1] = elem[:idx]
+									elem = elem[idx:]
+
+									if len(elem) == 0 {
+										break
+									}
+									switch elem[0] {
+									case '/': // Prefix: "/"
+
+										if l := len("/"); len(elem) >= l && elem[0:l] == "/" {
+											elem = elem[l:]
+										} else {
+											break
+										}
+
+										// Param: "moduleId"
+										// Leaf parameter, slashes are prohibited
+										idx := strings.IndexByte(elem, '/')
+										if idx >= 0 {
+											break
+										}
+										args[2] = elem
+										elem = ""
+
+										if len(elem) == 0 {
+											// Leaf node.
+											switch method {
+											case "GET":
+												r.name = GetServiceDataBroadcastModuleOperation
+												r.summary = ""
+												r.operationID = "getServiceDataBroadcastModule"
+												r.operationGroup = ""
+												r.pathPattern = "/services/{id}/data-broadcast/modules/{componentTag}/{moduleId}"
+												r.args = args
+												r.count = 3
+												return r, true
+											default:
+												return
+											}
+										}
+
+									}
+
+								}
+
 							case 'l': // Prefix: "logo"
 
 								if l := len("logo"); len(elem) >= l && elem[0:l] == "logo" {

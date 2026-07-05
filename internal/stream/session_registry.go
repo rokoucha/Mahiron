@@ -95,6 +95,13 @@ func (r *sessionRegistry) has(key sessionKey) bool {
 	return ok
 }
 
+func (r *sessionRegistry) get(key sessionKey) (Session, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	entry, ok := r.sessions[key]
+	return entry.session, ok
+}
+
 func (r *sessionRegistry) count() int {
 	r.mu.Lock()
 	defer r.mu.Unlock()

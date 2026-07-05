@@ -247,7 +247,7 @@ func TestPacketDemuxerObserveSectionsWaitsForObserverOnCancel(t *testing.T) {
 	}()
 	<-attached
 
-	engine.dispatch(nil, []ts.Section{{ts.TableIDEITSStart, 0, 0}})
+	engine.dispatch(nil, []ts.PIDSection{{PID: ts.PIDEIT, Section: ts.Section{ts.TableIDEITSStart, 0, 0}}})
 	<-entered
 	cancel()
 

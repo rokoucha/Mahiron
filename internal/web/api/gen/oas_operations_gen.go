@@ -27,6 +27,8 @@ const (
 	GetProgramsOperation                             OperationName = "GetPrograms"
 	GetServiceOperation                              OperationName = "GetService"
 	GetServiceByChannelOperation                     OperationName = "GetServiceByChannel"
+	GetServiceDataBroadcastEventsOperation           OperationName = "GetServiceDataBroadcastEvents"
+	GetServiceDataBroadcastModuleOperation           OperationName = "GetServiceDataBroadcastModule"
 	GetServiceProgramsOperation                      OperationName = "GetServicePrograms"
 	GetServiceStreamOperation                        OperationName = "GetServiceStream"
 	GetServiceStreamByChannelOperation               OperationName = "GetServiceStreamByChannel"

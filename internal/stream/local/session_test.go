@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/21S1298001/mahiron/internal/stream/databroadcast"
 	"github.com/21S1298001/mahiron/internal/stream/internal/streamtest"
 	"github.com/21S1298001/mahiron/internal/stream/source"
 	"github.com/21S1298001/mahiron/ts"
@@ -154,6 +155,54 @@ func TestChannelSessionCollectEITWithClockUsesLatestTOT(t *testing.T) {
 	}
 }
 
+func TestSessionObserveDataBroadcastEmitsSnapshotAndModule(t *testing.T) {
+	serviceID := uint16(101)
+	pmtPID := uint16(0x0100)
+	carouselPID := uint16(0x0200)
+	componentTag := byte(0x40)
+	moduleData := []byte("bml")
+	input := append(streamSectionPackets(ts.PIDPAT, streamBuildPAT(1, serviceID, pmtPID), 0), streamSectionPackets(pmtPID, streamBuildDataBroadcastPMT(serviceID, carouselPID, componentTag), 1)...)
+	input = append(input, streamSectionPackets(carouselPID, streamBuildDSMCCDII(t, 1, uint16(len(moduleData)), 2, uint32(len(moduleData)), 1, []byte("index.bml")), 2)...)
+	input = append(input, streamSectionPackets(carouselPID, streamBuildDSMCCDDB(t, 1, 2, 1, 0, moduleData), 3)...)
+	session := NewSession(Config{
+		Broadcast: source.NewBroadcast(streamtest.NewFinitePacketSource(input, streamtest.ClosedStart()), nil),
+		Channel:   "27",
+		Type:      "GR",
+	})
+
+	var events []databroadcast.DataBroadcastEvent
+	err := session.ObserveDataBroadcast(t.Context(), serviceID, false, func(event databroadcast.DataBroadcastEvent) error {
+		events = append(events, event)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) == 0 || events[0].Type != "snapshot" {
+		t.Fatalf("first event = %#v, want snapshot", events)
+	}
+	var gotModule *databroadcast.DataBroadcastModule
+	for i := range events {
+		if events[i].Type == "moduleUpdated" {
+			gotModule = events[i].Module
+			break
+		}
+	}
+	if gotModule == nil {
+		t.Fatalf("events did not include moduleUpdated: %#v", events)
+	}
+	if gotModule.ComponentTag != componentTag || gotModule.ModuleID != 2 {
+		t.Fatalf("module = componentTag:%#x moduleID:%#x", gotModule.ComponentTag, gotModule.ModuleID)
+	}
+	stored, ok := session.DataBroadcastModule(serviceID, componentTag, 2)
+	if !ok {
+		t.Fatal("module was not retained in live session")
+	}
+	if string(stored.Data) != string(moduleData) {
+		t.Fatalf("module data = %q, want %q", stored.Data, moduleData)
+	}
+}
+
 type epgClockTestKey struct {
 	networkID uint16
 	serviceID uint16
@@ -175,6 +224,87 @@ func streamBuildTOT(jstTime time.Time) ts.Section {
 	copy(s[3:8], encodedTime)
 	s[8] = 0xf0
 	s[9] = 0
+	streamWriteCRC(s)
+	return ts.Section(s)
+}
+
+func streamBuildPAT(tsid, serviceID, pmtPID uint16) ts.Section {
+	length := 5 + 4 + 4
+	s := make([]byte, 3+length)
+	s[0] = ts.TableIDPAT
+	s[1] = 0xb0 | byte(length>>8)
+	s[2] = byte(length)
+	s[3] = byte(tsid >> 8)
+	s[4] = byte(tsid)
+	s[5] = 0xc1
+	s[8] = byte(serviceID >> 8)
+	s[9] = byte(serviceID)
+	s[10] = 0xe0 | byte(pmtPID>>8)
+	s[11] = byte(pmtPID)
+	streamWriteCRC(s)
+	return ts.Section(s)
+}
+
+func streamBuildDataBroadcastPMT(serviceID, carouselPID uint16, componentTag byte) ts.Section {
+	esInfo := []byte{0x52, 0x01, componentTag}
+	length := 9 + 5 + len(esInfo) + 4
+	s := make([]byte, 3+length)
+	s[0] = ts.TableIDPMT
+	s[1] = 0xb0 | byte(length>>8)
+	s[2] = byte(length)
+	s[3] = byte(serviceID >> 8)
+	s[4] = byte(serviceID)
+	s[5] = 0xc1
+	s[8] = 0x1f
+	s[9] = 0xff
+	off := 12
+	s[off] = ts.StreamTypeDSMCCDataCarousel
+	s[off+1] = 0xe0 | byte(carouselPID>>8)
+	s[off+2] = byte(carouselPID)
+	s[off+3] = 0xf0 | byte(len(esInfo)>>8)
+	s[off+4] = byte(len(esInfo))
+	copy(s[off+5:], esInfo)
+	streamWriteCRC(s)
+	return ts.Section(s)
+}
+
+func streamBuildDSMCCDII(t *testing.T, downloadID uint32, blockSize, moduleID uint16, moduleSize uint32, moduleVersion byte, moduleInfo []byte) ts.Section {
+	t.Helper()
+	body := []byte{
+		byte(downloadID >> 24), byte(downloadID >> 16), byte(downloadID >> 8), byte(downloadID),
+		byte(blockSize >> 8), byte(blockSize),
+		0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		0, 0,
+		0, 1,
+		byte(moduleID >> 8), byte(moduleID),
+		byte(moduleSize >> 24), byte(moduleSize >> 16), byte(moduleSize >> 8), byte(moduleSize),
+		moduleVersion,
+		byte(len(moduleInfo)),
+	}
+	body = append(body, moduleInfo...)
+	return streamBuildDSMCCSection(ts.TableIDDSMCCDII, 0x1002, 1, body)
+}
+
+func streamBuildDSMCCDDB(t *testing.T, downloadID uint32, moduleID uint16, moduleVersion byte, blockNumber uint16, data []byte) ts.Section {
+	t.Helper()
+	body := []byte{byte(moduleID >> 8), byte(moduleID), moduleVersion, 0, byte(blockNumber >> 8), byte(blockNumber)}
+	body = append(body, data...)
+	return streamBuildDSMCCSection(ts.TableIDDSMCCDDB, 0x1003, downloadID, body)
+}
+
+func streamBuildDSMCCSection(tableID byte, messageID uint16, headerID uint32, body []byte) ts.Section {
+	message := []byte{0x11, 0x03, byte(messageID >> 8), byte(messageID), byte(headerID >> 24), byte(headerID >> 16), byte(headerID >> 8), byte(headerID), 0xff, 0}
+	message = append(message, byte(len(body)>>8), byte(len(body)))
+	message = append(message, body...)
+	length := 5 + len(message) + 4
+	s := make([]byte, 3+length)
+	s[0] = tableID
+	s[1] = 0xb0 | byte(length>>8)
+	s[2] = byte(length)
+	s[3] = 0
+	s[4] = 1
+	s[5] = 0xc1
+	copy(s[8:], message)
 	streamWriteCRC(s)
 	return ts.Section(s)
 }

@@ -1750,6 +1750,78 @@ func decodeGetServiceByChannelResponse(resp *http.Response) (res GetServiceByCha
 	return res, nil
 }
 
+func decodeGetServiceDataBroadcastEventsResponse(resp *http.Response) (res GetServiceDataBroadcastEventsRes, _ error) {
+	switch resp.StatusCode {
+	case 200:
+		// Code 200.
+		ct, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+		if err != nil {
+			return res, errors.Wrap(err, "parse media type")
+		}
+		switch {
+		case ct == "text/event-stream":
+			// Raw response - return the http.Response directly
+			return &GetServiceDataBroadcastEventsOKRawTextEventStream{
+				Response: resp,
+			}, nil
+		default:
+			return res, validate.InvalidContentType(ct)
+		}
+	case 404:
+		// Code 404.
+		return &GetServiceDataBroadcastEventsNotFound{}, nil
+	case 503:
+		// Code 503.
+		return &GetServiceDataBroadcastEventsServiceUnavailable{}, nil
+	}
+	// Default response.
+	res, err := func() (res GetServiceDataBroadcastEventsRes, err error) {
+		return &GetServiceDataBroadcastEventsDef{
+			StatusCode: resp.StatusCode,
+		}, nil
+	}()
+	if err != nil {
+		return res, errors.Wrapf(err, "default (code %d)", resp.StatusCode)
+	}
+	return res, nil
+}
+
+func decodeGetServiceDataBroadcastModuleResponse(resp *http.Response) (res GetServiceDataBroadcastModuleRes, _ error) {
+	switch resp.StatusCode {
+	case 200:
+		// Code 200.
+		ct, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+		if err != nil {
+			return res, errors.Wrap(err, "parse media type")
+		}
+		switch {
+		case ct == "application/octet-stream":
+			// Raw response - return the http.Response directly
+			return &GetServiceDataBroadcastModuleOKRawApplicationOctetStream{
+				Response: resp,
+			}, nil
+		default:
+			return res, validate.InvalidContentType(ct)
+		}
+	case 304:
+		// Code 304.
+		return &GetServiceDataBroadcastModuleNotModified{}, nil
+	case 404:
+		// Code 404.
+		return &GetServiceDataBroadcastModuleNotFound{}, nil
+	}
+	// Default response.
+	res, err := func() (res GetServiceDataBroadcastModuleRes, err error) {
+		return &GetServiceDataBroadcastModuleDef{
+			StatusCode: resp.StatusCode,
+		}, nil
+	}()
+	if err != nil {
+		return res, errors.Wrapf(err, "default (code %d)", resp.StatusCode)
+	}
+	return res, nil
+}
+
 func decodeGetServiceProgramsResponse(resp *http.Response) (res GetServiceProgramsRes, _ error) {
 	switch resp.StatusCode {
 	case 200:

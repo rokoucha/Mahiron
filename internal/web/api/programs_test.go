@@ -360,11 +360,23 @@ func (m fakeProgramStreamManager) GetOrCreate(context.Context, string, string) (
 	ChannelStream(context.Context, bool, io.Writer) error
 	ProgramStream(context.Context, *program.Program, bool, io.Writer) error
 	ServiceStream(context.Context, uint16, bool, io.Writer) error
+	ObserveDataBroadcast(context.Context, uint16, bool, func(stream.DataBroadcastEvent) error) error
+	DataBroadcastModule(uint16, byte, uint16) (stream.DataBroadcastModule, bool)
 }, error) {
 	if m.err != nil {
 		return nil, m.err
 	}
 	return m.session, nil
+}
+
+func (m fakeProgramStreamManager) GetExisting(string, string) (interface {
+	ChannelStream(context.Context, bool, io.Writer) error
+	ProgramStream(context.Context, *program.Program, bool, io.Writer) error
+	ServiceStream(context.Context, uint16, bool, io.Writer) error
+	ObserveDataBroadcast(context.Context, uint16, bool, func(stream.DataBroadcastEvent) error) error
+	DataBroadcastModule(uint16, byte, uint16) (stream.DataBroadcastModule, bool)
+}, bool) {
+	return m.session, m.err == nil
 }
 
 func (m fakeProgramStreamManager) ActiveSessionCount() int {
@@ -390,6 +402,14 @@ func (s fakeProgramStreamSession) ProgramStream(_ context.Context, _ *program.Pr
 	}
 	_, err := io.WriteString(dst, s.data)
 	return err
+}
+
+func (s fakeProgramStreamSession) ObserveDataBroadcast(context.Context, uint16, bool, func(stream.DataBroadcastEvent) error) error {
+	return errors.New("unexpected ObserveDataBroadcast call")
+}
+
+func (s fakeProgramStreamSession) DataBroadcastModule(uint16, byte, uint16) (stream.DataBroadcastModule, bool) {
+	return stream.DataBroadcastModule{}, false
 }
 
 func TestApiProgramRelatedItemsEmptyWhenNone(t *testing.T) {
