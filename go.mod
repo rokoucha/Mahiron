@@ -20,7 +20,7 @@ require (
 	go.opentelemetry.io/otel/sdk/log v0.20.0
 	go.opentelemetry.io/otel/sdk/metric v1.44.0
 	go.opentelemetry.io/otel/trace v1.44.0
-	golang.org/x/sync v0.21.0
+	golang.org/x/sync v0.22.0
 	golang.org/x/text v0.38.0
 	modernc.org/sqlite v1.53.0
 	sigs.k8s.io/yaml v1.6.0
