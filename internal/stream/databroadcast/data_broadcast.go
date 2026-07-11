@@ -364,9 +364,10 @@ func (h *DataBroadcastHub) observeES(section ts.PIDSection) {
 			continue
 		}
 		eventType := "event"
-		if item.TimeMode == 0 {
+		switch item.TimeMode {
+		case 0:
 			eventType = "immediateEvent"
-		} else if item.TimeMode == 2 {
+		case 2:
 			eventType = "nptEvent"
 		}
 		event := DataBroadcastGeneralEvent{Type: eventType, EventMessageGroupID: item.EventMessageGroupID, TimeMode: item.TimeMode, TimeValueHex: hex.EncodeToString(item.TimeValue), EventMessageType: item.EventMessageType, EventMessageID: item.EventMessageID, PrivateData: item.PrivateData}
