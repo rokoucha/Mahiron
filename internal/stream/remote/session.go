@@ -9,6 +9,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/stream/databroadcast"
+	"github.com/21S1298001/mahiron/internal/stream/demux"
 	"github.com/21S1298001/mahiron/internal/tuner"
 	"github.com/21S1298001/mahiron/ts"
 )
@@ -21,12 +22,13 @@ type SessionConfig struct {
 }
 
 type Session struct {
-	channel      *config.ChannelConfig
-	client       *Client
-	remote       string
-	routeChannel *config.ChannelConfig
-	mu           sync.Mutex
-	users        map[string]remoteUser
+	channel       *config.ChannelConfig
+	client        *Client
+	remote        string
+	routeChannel  *config.ChannelConfig
+	mu            sync.Mutex
+	users         map[string]remoteUser
+	dataBroadcast *databroadcast.DataBroadcastHub
 }
 
 type remoteUser struct {
@@ -36,11 +38,12 @@ type remoteUser struct {
 
 func NewSession(config SessionConfig) *Session {
 	return &Session{
-		channel:      config.Channel,
-		client:       config.Client,
-		remote:       config.Remote,
-		routeChannel: config.RouteChannel,
-		users:        map[string]remoteUser{},
+		channel:       config.Channel,
+		client:        config.Client,
+		remote:        config.Remote,
+		routeChannel:  config.RouteChannel,
+		users:         map[string]remoteUser{},
+		dataBroadcast: databroadcast.NewDataBroadcastHub(),
 	}
 }
 
@@ -154,12 +157,65 @@ func (s *Session) ObserveLogos(ctx context.Context, observe func(*ts.LogoImage) 
 	return nil
 }
 
-func (s *Session) ObserveDataBroadcast(context.Context, uint16, bool, func(databroadcast.DataBroadcastEvent) error) error {
-	return ErrDataBroadcastUnsupported
+func (s *Session) ObserveDataBroadcast(ctx context.Context, serviceID uint16, decode bool, observe func(databroadcast.DataBroadcastEvent) error) error {
+	// Keep the requesting client associated with this remote session for the
+	// full lifetime of the observation. The demuxer's source context is
+	// intentionally detached from the HTTP request context.
+	return s.withUser(ctx, func() error {
+		return s.observeDataBroadcast(ctx, serviceID, decode, observe)
+	})
 }
 
-func (s *Session) DataBroadcastModule(uint16, byte, uint16) (databroadcast.DataBroadcastModule, bool) {
-	return databroadcast.DataBroadcastModule{}, false
+func (s *Session) observeDataBroadcast(ctx context.Context, serviceID uint16, decode bool, observe func(databroadcast.DataBroadcastEvent) error) error {
+	snapshot, events, unsubscribe := s.dataBroadcast.Subscribe(ctx, serviceID)
+	defer unsubscribe()
+	if err := observe(databroadcast.DataBroadcastEvent{Type: "snapshot", Snapshot: snapshot}); err != nil {
+		return err
+	}
+
+	// Remotes only need Mirakurun-compatible stream endpoints. Decode the
+	// received transport stream here, just as local sessions do.
+	demuxer := demux.New(func(streamCtx context.Context, dst io.Writer) error {
+		return s.client.ChannelStream(streamCtx, s.routeChannel.Type, s.routeChannel.Channel, decode, dst)
+	}, nil).WithPIDSections(s.dataBroadcast.Observe)
+	defer demuxer.Stop()
+
+	observeCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		done <- demuxer.ObserveSections(observeCtx, acceptDataBroadcastSection, func(ts.Section) error {
+			return nil
+		})
+	}()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case err := <-done:
+			return err
+		case event, ok := <-events:
+			if !ok {
+				return nil
+			}
+			if err := observe(event); err != nil {
+				return err
+			}
+		}
+	}
+}
+
+func (s *Session) DataBroadcastModule(serviceID uint16, componentTag byte, moduleID uint16) (databroadcast.DataBroadcastModule, bool) {
+	return s.dataBroadcast.Module(serviceID, componentTag, moduleID)
+}
+
+func acceptDataBroadcastSection(section ts.Section) bool {
+	switch section.TableID() {
+	case ts.TableIDPMT, ts.TableIDDSMCCDII, ts.TableIDDSMCCDDB, ts.TableIDTOT:
+		return true
+	default:
+		return ts.IsEITPF(section.TableID())
+	}
 }
 
 func (s *Session) Stop(context.Context) error {

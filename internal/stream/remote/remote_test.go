@@ -12,6 +12,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/service"
+	"github.com/21S1298001/mahiron/internal/stream/databroadcast"
 	"github.com/21S1298001/mahiron/internal/stream/internal/streamtest"
 	"github.com/21S1298001/mahiron/internal/tuner"
 	"github.com/21S1298001/mahiron/ts"
@@ -228,6 +229,29 @@ func TestRemoteSessionTracksLocalUsers(t *testing.T) {
 	session.removeUser(user.ID)
 	if got := session.Users(); len(got) != 0 {
 		t.Fatalf("users after all removals = %+v", got)
+	}
+}
+
+func TestRemoteSessionTracksDataBroadcastObserver(t *testing.T) {
+	session := NewSession(SessionConfig{
+		Remote:       "living",
+		RouteChannel: &config.ChannelConfig{Type: "GR", Channel: "27"},
+	})
+	user := tuner.User{ID: "data-broadcast", Agent: "data broadcast client"}
+	err := session.ObserveDataBroadcast(tuner.WithUser(context.Background(), user), 101, false, func(event databroadcast.DataBroadcastEvent) error {
+		if event.Type != "snapshot" {
+			t.Fatalf("event type = %q, want snapshot", event.Type)
+		}
+		if got := session.Users(); len(got) != 1 || got[0].ID != user.ID {
+			t.Fatalf("users during observation = %+v", got)
+		}
+		return io.EOF
+	})
+	if err != io.EOF {
+		t.Fatalf("ObserveDataBroadcast error = %v, want EOF", err)
+	}
+	if got := session.Users(); len(got) != 0 {
+		t.Fatalf("users after observation = %+v", got)
 	}
 }
 
