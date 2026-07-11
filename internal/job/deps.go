@@ -30,6 +30,7 @@ type LogoCollector interface {
 
 type LogoStore interface {
 	MissingLogoTargets(context.Context) ([]service.LogoTarget, error)
+	UpsertLogoImage(context.Context, *ts.LogoImage) error
 }
 
 type LogoGatherTargetStore interface {

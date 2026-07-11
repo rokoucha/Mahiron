@@ -83,6 +83,12 @@ func enqueueLogoGatherTargets(ctx context.Context, registry Registry, collector 
 				count := 0
 				hasRemainingTargets := len(remaining) > 0
 				err := collector.ObserveLogos(gatherCtx, channelType, channelID, func(image *ts.LogoImage) error {
+					// Local sessions persist CDT logos as they are decoded. Remote
+					// sessions obtain the same images through the API, so persist here
+					// as well to keep both acquisition paths equivalent.
+					if err := store.UpsertLogoImage(gatherCtx, image); err != nil {
+						return err
+					}
 					if image.IsDeleted {
 						return nil
 					}

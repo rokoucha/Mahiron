@@ -256,7 +256,8 @@ func TestLogoGathererDispatchesOnlyMissingChannelsAndCompletesWhenSatisfied(t *t
 	collector := &fakeLogoObserver{image: &ts.LogoImage{
 		OriginalNetworkID: 4, LogoID: 12, LogoVersion: 3, DownloadDataID: 7,
 	}}
-	RegisterLogoGatherer(mgr, collector, fakeLogoTargetStore{targets: []service.LogoTarget{target}}, 20*time.Minute)
+	store := &fakeLogoTargetStore{targets: []service.LogoTarget{target}}
+	RegisterLogoGatherer(mgr, collector, store, 20*time.Minute)
 
 	parentID, err := mgr.Enqueue(LogoGathererKey)
 	if err != nil {
@@ -275,12 +276,15 @@ func TestLogoGathererDispatchesOnlyMissingChannelsAndCompletesWhenSatisfied(t *t
 	if collector.calls != 1 {
 		t.Fatalf("ObserveLogos calls = %d, want 1", collector.calls)
 	}
+	if len(store.images) != 1 || store.images[0] != collector.image {
+		t.Fatalf("persisted images = %#v, want observed image", store.images)
+	}
 }
 
 func TestLogoGathererSkipsChannelsWithoutMissingTargets(t *testing.T) {
 	mgr := newTestManager(t)
 	collector := &fakeLogoObserver{}
-	RegisterLogoGatherer(mgr, collector, fakeLogoTargetStore{}, 20*time.Minute)
+	RegisterLogoGatherer(mgr, collector, &fakeLogoTargetStore{}, 20*time.Minute)
 	id, err := mgr.Enqueue(LogoGathererKey)
 	if err != nil {
 		t.Fatal(err)
@@ -300,7 +304,7 @@ func TestLogoGatherTimeoutIsSuccessful(t *testing.T) {
 	mgr := newTestManager(t)
 	target := service.LogoTarget{NetworkId: 4, ServiceId: 101, ChannelType: "BS", ChannelId: "BS01", LogoId: 12, LogoVersion: 3, LogoDownloadDataId: 7}
 	collector := &fakeLogoObserver{waitForContext: true}
-	RegisterLogoGatherer(mgr, collector, fakeLogoTargetStore{targets: []service.LogoTarget{target}}, time.Millisecond)
+	RegisterLogoGatherer(mgr, collector, &fakeLogoTargetStore{targets: []service.LogoTarget{target}}, time.Millisecond)
 	parentID, err := mgr.Enqueue(LogoGathererKey)
 	if err != nil {
 		t.Fatal(err)
@@ -409,10 +413,16 @@ func (fakeEPGGatherer) Cleanup(context.Context, time.Time) error {
 
 type fakeLogoTargetStore struct {
 	targets []service.LogoTarget
+	images  []*ts.LogoImage
 }
 
 func (s fakeLogoTargetStore) MissingLogoTargets(context.Context) ([]service.LogoTarget, error) {
 	return append([]service.LogoTarget(nil), s.targets...), nil
+}
+
+func (s *fakeLogoTargetStore) UpsertLogoImage(_ context.Context, image *ts.LogoImage) error {
+	s.images = append(s.images, image)
+	return nil
 }
 
 type fakeLogoObserver struct {
