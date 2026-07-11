@@ -91,6 +91,7 @@ func (p *Pool) remoteLease(channelType, channel string, selected routeSelection)
 				Type:    channelType,
 				Channel: channel,
 			},
+			Remote:       selected.route.Remote,
 			RouteChannel: &selected.channel,
 		}),
 	}, nil

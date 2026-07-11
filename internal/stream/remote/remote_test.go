@@ -202,6 +202,35 @@ func TestRemoteSessionStreamsChannelServiceAndProgram(t *testing.T) {
 	}
 }
 
+func TestRemoteSessionTracksLocalUsers(t *testing.T) {
+	session := NewSession(SessionConfig{
+		Remote:       "living",
+		RouteChannel: &config.ChannelConfig{Type: "GR", Channel: "27"},
+	})
+	user := tuner.User{ID: "viewer", Agent: "local viewer"}
+	session.addUser(user)
+	session.addUser(user)
+
+	if got := session.Users(); len(got) != 1 || got[0].Agent != "local viewer" {
+		t.Fatalf("users = %+v", got)
+	}
+	if !session.MatchesTuner(tuner.Status{CurrentChannelType: "GR", CurrentChannel: "27"}) {
+		t.Fatal("session does not match its remote tuner")
+	}
+	if session.RemoteName() != "living" {
+		t.Fatalf("remote name = %q, want living", session.RemoteName())
+	}
+
+	session.removeUser(user.ID)
+	if got := session.Users(); len(got) != 1 {
+		t.Fatalf("users after one removal = %+v", got)
+	}
+	session.removeUser(user.ID)
+	if got := session.Users(); len(got) != 0 {
+		t.Fatalf("users after all removals = %+v", got)
+	}
+}
+
 func TestRemoteProgramStreamMapsStatusErrors(t *testing.T) {
 	client := NewClient(config.RemoteConfig{URL: "http://remote.local/api"})
 	client.httpClient = &http.Client{Transport: streamtest.RoundTripFunc(func(r *http.Request) (*http.Response, error) {

@@ -279,6 +279,7 @@ func (m *StreamManager) RemoteTunerStatuses(ctx context.Context) []RemoteTunerSt
 	var collected []RemoteTunerStatus
 	for item := range results {
 		for _, status := range item.statuses {
+			status.Users = m.remoteSessionUsers(item.name, status)
 			collected = append(collected, RemoteTunerStatus{Remote: item.name, Status: status})
 		}
 	}
@@ -289,6 +290,18 @@ func (m *StreamManager) RemoteTunerStatuses(ctx context.Context) []RemoteTunerSt
 		return cmp.Compare(a.Status.Index, b.Status.Index)
 	})
 	return collected
+}
+
+func (m *StreamManager) remoteSessionUsers(remoteName string, status tuner.Status) []tuner.User {
+	var users []tuner.User
+	for _, session := range m.registry.activeSessions() {
+		remoteSession, ok := session.(*remote.Session)
+		if !ok || remoteSession.RemoteName() != remoteName || !remoteSession.MatchesTuner(status) {
+			continue
+		}
+		users = append(users, remoteSession.Users()...)
+	}
+	return users
 }
 
 func (m *StreamManager) configuredRemoteTuners(remoteName string, statuses []tuner.Status) []tuner.Status {
