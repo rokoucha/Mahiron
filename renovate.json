@@ -7,5 +7,10 @@
     "customManagers:githubActionsVersions",
     "customManagers:dockerfileVersions"
   ],
+  "automerge": true,
+  "automergeType": "branch",
+  "lockFileMaintenance": {
+    "enabled": true
+  },
   "minimumReleaseAge": "1 day"
 }
