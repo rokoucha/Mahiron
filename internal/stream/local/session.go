@@ -304,7 +304,7 @@ func (s *Session) subscribeDecodedMux(ctx context.Context, dst io.Writer) error 
 
 func acceptDataBroadcastSection(section ts.Section) bool {
 	switch section.TableID() {
-	case ts.TableIDPMT, ts.TableIDDSMCCDII, ts.TableIDDSMCCDDB, ts.TableIDTOT:
+	case ts.TableIDPMT, ts.TableIDDSMCCDII, ts.TableIDDSMCCDDB, ts.TableIDDSMCCStream, ts.TableIDTOT:
 		return true
 	default:
 		return ts.IsEITPF(section.TableID())

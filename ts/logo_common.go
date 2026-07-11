@@ -6,7 +6,9 @@ import (
 )
 
 const (
-	StreamTypeDSMCCDataCarousel = 0x0D
+	StreamTypeDSMCCUNMessages        = 0x0B
+	StreamTypeDSMCCDataCarousel      = 0x0D
+	StreamTypeDSMCCStreamDescriptors = 0x0C
 
 	// The BS all-receiver common data service (service_id 929, ARIB TR-B15
 	// Part 1 5.2.1) currently rides the NHK BS transport stream on BS-15

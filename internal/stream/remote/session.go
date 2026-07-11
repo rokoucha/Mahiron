@@ -211,7 +211,7 @@ func (s *Session) DataBroadcastModule(serviceID uint16, componentTag byte, modul
 
 func acceptDataBroadcastSection(section ts.Section) bool {
 	switch section.TableID() {
-	case ts.TableIDPMT, ts.TableIDDSMCCDII, ts.TableIDDSMCCDDB, ts.TableIDTOT:
+	case ts.TableIDPMT, ts.TableIDDSMCCDII, ts.TableIDDSMCCDDB, ts.TableIDDSMCCStream, ts.TableIDTOT:
 		return true
 	default:
 		return ts.IsEITPF(section.TableID())

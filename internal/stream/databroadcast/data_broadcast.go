@@ -20,6 +20,7 @@ type DataBroadcastEvent struct {
 	Module      *DataBroadcastModule
 	ProgramInfo *DataBroadcastProgramInfo
 	CurrentTime *DataBroadcastCurrentTime
+	ESEvent     *DataBroadcastESEvent
 }
 
 type DataBroadcastSnapshot struct {
@@ -72,6 +73,25 @@ type DataBroadcastProgramInfo struct {
 
 type DataBroadcastCurrentTime struct {
 	JSTTimeUnixMilli int64
+}
+
+type DataBroadcastESEvent struct {
+	ComponentTag        byte
+	DataEventID         byte
+	EventMessageGroupID uint16
+	Version             byte
+	SectionNumber       byte
+	Events              []DataBroadcastGeneralEvent
+	RawSectionHex       string
+}
+
+type DataBroadcastGeneralEvent struct {
+	EventMessageGroupID uint16
+	TimeMode            byte
+	TimeValueHex        string
+	EventMessageType    byte
+	EventMessageID      uint16
+	PrivateData         []byte
 }
 
 type DataBroadcastHub struct {
@@ -131,6 +151,8 @@ func (h *DataBroadcastHub) Observe(section ts.PIDSection) {
 		h.observeDII(section)
 	case ts.TableIDDSMCCDDB:
 		h.observeDDB(section)
+	case ts.TableIDDSMCCStream:
+		h.observeES(section)
 	case ts.TableIDEITPF0, ts.TableIDEITPF1:
 		h.observeEIT(section.Section)
 	case ts.TableIDTOT:
@@ -164,7 +186,7 @@ func (h *DataBroadcastHub) observePMT(section ts.PIDSection) {
 	components := make([]DataBroadcastComponent, 0)
 	pidToTag := map[uint16]byte{}
 	for _, elem := range pmt.Elements {
-		if elem.StreamType != ts.StreamTypeDSMCCDataCarousel {
+		if elem.StreamType != ts.StreamTypeDSMCCUNMessages && elem.StreamType != ts.StreamTypeDSMCCDataCarousel && elem.StreamType != ts.StreamTypeDSMCCStreamDescriptors {
 			continue
 		}
 		tag, ok := streamIdentifierComponentTag(elem.Descriptors)
@@ -206,6 +228,29 @@ func (h *DataBroadcastHub) observePMT(section ts.PIDSection) {
 	}
 	event := DataBroadcastEvent{Type: "pmt", PMT: clonePMT(service.pmt)}
 	h.broadcastLocked(pmt.ProgramNumber, event)
+	h.mu.Unlock()
+}
+
+func (h *DataBroadcastHub) observeES(section ts.PIDSection) {
+	stream, err := ts.ParseDSMCCStream(section.Section)
+	if err != nil || !stream.CurrentNext {
+		return
+	}
+	h.mu.Lock()
+	serviceID, componentTag, _, ok := h.carouselByPIDLocked(section.PID)
+	if !ok {
+		h.mu.Unlock()
+		return
+	}
+	e := &DataBroadcastESEvent{ComponentTag: componentTag, DataEventID: stream.DataEventID, EventMessageGroupID: stream.EventMessageGroupID, Version: stream.VersionNumber, SectionNumber: stream.SectionNumber, RawSectionHex: hex.EncodeToString(section.Section)}
+	for _, descriptor := range stream.Descriptors {
+		item, ok := ts.ParseDSMCCGeneralEvent(descriptor)
+		if !ok {
+			continue
+		}
+		e.Events = append(e.Events, DataBroadcastGeneralEvent{EventMessageGroupID: item.EventMessageGroupID, TimeMode: item.TimeMode, TimeValueHex: hex.EncodeToString(item.TimeValue), EventMessageType: item.EventMessageType, EventMessageID: item.EventMessageID, PrivateData: item.PrivateData})
+	}
+	h.broadcastLocked(serviceID, DataBroadcastEvent{Type: "esEventUpdated", ESEvent: e})
 	h.mu.Unlock()
 }
 

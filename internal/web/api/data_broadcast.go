@@ -113,6 +113,8 @@ func apiDataBroadcastEvent(serviceItemID int64, event stream.DataBroadcastEvent)
 		result["programInfo"] = event.ProgramInfo
 	case "currentTime":
 		result["currentTime"] = event.CurrentTime
+	case "esEventUpdated":
+		result["esEvent"] = event.ESEvent
 	}
 	return result
 }

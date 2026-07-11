@@ -22,6 +22,7 @@ const (
 	TableIDCDT            = 0xC8 // common data table
 	TableIDDSMCCDII       = 0x3B // DSM-CC DownloadInfoIndication
 	TableIDDSMCCDDB       = 0x3C // DSM-CC DownloadDataBlock
+	TableIDDSMCCStream    = 0x3D // DSM-CC stream descriptors (event messages/NPT)
 	TableIDNIT0           = 0x40 // actual network
 	TableIDNIT1           = 0x41 // other network
 )

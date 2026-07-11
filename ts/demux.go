@@ -297,7 +297,7 @@ func (d *Demuxer) observePMT(serviceID uint16, section Section) {
 	}
 	for _, elem := range pmt.Elements {
 		pids[elem.ElementaryPID] = true
-		if elem.StreamType == StreamTypeDSMCCDataCarousel {
+		if elem.StreamType == StreamTypeDSMCCUNMessages || elem.StreamType == StreamTypeDSMCCDataCarousel || elem.StreamType == StreamTypeDSMCCStreamDescriptors {
 			sectionPIDs[elem.ElementaryPID] = true
 		}
 		for _, desc := range elem.Descriptors {
