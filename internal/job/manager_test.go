@@ -496,6 +496,46 @@ func TestMaxConcurrentJobsQueuesExcessHandlers(t *testing.T) {
 	release <- struct{}{}
 }
 
+func TestJobWaitsForDependenciesWhileOtherJobsCanRun(t *testing.T) {
+	mgr, err := NewManager(Config{MaxConcurrentJobs: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = mgr.Shutdown(context.Background()) }()
+
+	release := make(chan struct{})
+	started := make(chan string, 2)
+	if _, err := mgr.EnqueueDefinition(JobDefinition{Key: "scan", Handler: func(context.Context) error {
+		started <- "scan"
+		<-release
+		return nil
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if got := <-started; got != "scan" {
+		t.Fatalf("started job = %q, want scan", got)
+	}
+	if _, err := mgr.EnqueueDefinition(JobDefinition{Key: "gather", DependsOn: []string{"scan"}, Handler: func(context.Context) error {
+		started <- "gather"
+		return nil
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := mgr.EnqueueDefinition(JobDefinition{Key: "independent", Handler: func(context.Context) error {
+		started <- "independent"
+		return nil
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if got := <-started; got != "independent" {
+		t.Fatalf("started job while scan is blocked = %q, want independent", got)
+	}
+	close(release)
+	if got := <-started; got != "gather" {
+		t.Fatalf("dependent started job = %q, want gather", got)
+	}
+}
+
 func TestRetryStandbyReleasesConcurrencySlot(t *testing.T) {
 	mgr, err := NewManager(Config{MaxHistory: 10, MaxConcurrentJobs: 1})
 	if err != nil {

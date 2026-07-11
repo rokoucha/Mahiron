@@ -26,11 +26,12 @@ func RegisterEPGGatherer(registry Registry, programStore EPGProgramStore, servic
 
 func RegisterEPGGathererService(registry Registry, service EPGGatherer) {
 	registry.Register(JobDefinition{
-		Key:          EPGGathererKey,
-		Name:         EPGGathererName,
-		Handler:      epgGathererHandler(registry, service),
-		IsRerunnable: true,
-		RetryDelays:  []time.Duration{time.Minute, 2 * time.Minute, 4 * time.Minute},
+		Key:           EPGGathererKey,
+		Name:          EPGGathererName,
+		Handler:       epgGathererHandler(registry, service),
+		ExclusiveKeys: []string{"epg-service-topology"},
+		IsRerunnable:  true,
+		RetryDelays:   []time.Duration{time.Minute, 2 * time.Minute, 4 * time.Minute},
 	})
 }
 
@@ -100,6 +101,7 @@ func enqueueEPGGatherForNetwork(ctx context.Context, registry Registry, service 
 	networkServices := append([]epg.ServiceKey(nil), serviceKeys...)
 	definition := JobDefinition{
 		Key: fmt.Sprintf("epg-gather:nid:%d", nid), Name: fmt.Sprintf("EPG Gather NID %d", nid), IsRerunnable: true,
+		ExclusiveKeys: []string{"epg-service-topology"},
 		Handler: func(childCtx context.Context) error {
 			return service.GatherNetwork(childCtx, nid, networkCandidates, networkServices)
 		},

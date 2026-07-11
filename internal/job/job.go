@@ -38,12 +38,14 @@ type Job struct {
 }
 
 type JobDefinition struct {
-	Key          string
-	Name         string
-	Handler      func(ctx context.Context) error
-	IsRerunnable bool
-	RetryDelays  []time.Duration
-	RetryIf      func(error) bool
+	Key           string
+	Name          string
+	Handler       func(ctx context.Context) error
+	DependsOn     []string
+	ExclusiveKeys []string
+	IsRerunnable  bool
+	RetryDelays   []time.Duration
+	RetryIf       func(error) bool
 }
 
 type ScheduleInfo struct {

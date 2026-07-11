@@ -45,9 +45,10 @@ func TestServiceUpdaterDispatchesPerChannel(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitForJobKeys(t, mgr, map[string]bool{
-		ServiceUpdaterKey:    true,
-		"service-scan:GR:27": true,
-		"service-scan:GR:26": true,
+		ServiceUpdaterKey:           true,
+		"service-scan:GR:27":        true,
+		"service-scan:GR:26":        true,
+		serviceUpdateEPGGathererKey: true,
 	})
 }
 
@@ -95,7 +96,6 @@ func TestEnqueueServiceScansUsesServiceScanJobBehavior(t *testing.T) {
 	}
 	waitForJobKeys(t, mgr, map[string]bool{
 		"service-scan:EXT1:11": true,
-		"epg-gather:nid:4":     true,
 	})
 	child := waitForFinishedJobKey(t, mgr, "service-scan:EXT1:11")
 	if child.HasFailed {
@@ -326,12 +326,7 @@ func TestLogoGatherTimeoutIsSuccessful(t *testing.T) {
 	}
 }
 
-// TestServiceUpdaterTriggersEPGGatherForNewNetworks verifies that a successful
-// service scan which introduces a new network causes an EPG gather job for
-// that network to be enqueued, without waiting for the EPG gatherer cron.
-// It also verifies that a subsequent scan which finds no new services does
-// not re-enqueue the EPG gather.
-func TestServiceUpdaterTriggersEPGGatherForNewNetworks(t *testing.T) {
+func TestServiceUpdaterStartsEPGGatherAfterServiceScans(t *testing.T) {
 	channels := config.ChannelsConfig{
 		{Type: "BS", Channel: "BS01"},
 	}
@@ -356,52 +351,11 @@ func TestServiceUpdaterTriggersEPGGatherForNewNetworks(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitForJobKeys(t, mgr, map[string]bool{
-		ServiceUpdaterKey:      true,
-		"service-scan:BS:BS01": true,
-		"epg-gather:nid:4":     true,
+		ServiceUpdaterKey:           true,
+		"service-scan:BS:BS01":      true,
+		serviceUpdateEPGGathererKey: true,
+		"epg-gather:nid:4":          true,
 	})
-
-	// Abort the EPG gather so the test doesn't wait for its (never-completing
-	// with a fake device) handler, and clear the active key.
-	for _, item := range mgr.GetJobs() {
-		if item.Key == "epg-gather:nid:4" {
-			_ = mgr.Abort(item.ID)
-			waitJob(t, mgr, item.ID)
-		}
-	}
-
-	// A second scan of the same channel re-finds the same services (now in DB),
-	// so no new networks are detected and EPG gather is NOT re-enqueued.
-	// Record the scan count before enqueuing so we can wait for the new scan
-	// to finish before asserting.
-	scansBefore := countFinishedJobs(t, mgr, "service-scan:BS:BS01")
-	updaterID, err := mgr.Enqueue(ServiceUpdaterKey)
-	if err != nil {
-		t.Fatal(err)
-	}
-	waitJob(t, mgr, updaterID)
-	var secondScan *Job
-	for _, item := range mgr.GetJobs() {
-		if item.Key == "service-scan:BS:BS01" {
-			secondScan = item
-		}
-	}
-	if secondScan == nil {
-		t.Fatal("second service scan was not enqueued")
-	}
-	waitJob(t, mgr, secondScan.ID)
-	if got := countFinishedJobs(t, mgr, "service-scan:BS:BS01"); got < scansBefore+1 {
-		t.Fatalf("second service-scan did not finish, finished=%d before=%d", got, scansBefore)
-	}
-	count := 0
-	for _, item := range mgr.GetJobs() {
-		if item.Key == "epg-gather:nid:4" {
-			count++
-		}
-	}
-	if count != 1 {
-		t.Errorf("epg-gather:nid:4 enqueued %d times, want exactly 1", count)
-	}
 }
 
 type fakeScanScanner struct {

@@ -20,22 +20,23 @@ type eventPublisher interface {
 }
 
 type JobManager struct {
-	scheduler      gocron.Scheduler
-	definitions    map[string]*JobDefinition
-	gocronIDs      map[string]uuid.UUID
-	history        []*Job
-	queue          []*Job
-	active         map[string]context.CancelFunc
-	activeKeys     map[string]bool
-	running        int
-	maxConcurrent  int
-	maxHistory     int
-	mu             sync.Mutex
-	wg             sync.WaitGroup
-	shutdownCtx    context.Context
-	shutdownCancel context.CancelFunc
-	changed        chan struct{}
-	events         eventPublisher
+	scheduler           gocron.Scheduler
+	definitions         map[string]*JobDefinition
+	gocronIDs           map[string]uuid.UUID
+	history             []*Job
+	queue               []*Job
+	active              map[string]context.CancelFunc
+	activeKeys          map[string]bool
+	activeExclusiveKeys map[string]bool
+	running             int
+	maxConcurrent       int
+	maxHistory          int
+	mu                  sync.Mutex
+	wg                  sync.WaitGroup
+	shutdownCtx         context.Context
+	shutdownCancel      context.CancelFunc
+	changed             chan struct{}
+	events              eventPublisher
 }
 
 type Config struct {
@@ -60,17 +61,18 @@ func NewManager(cfg Config, events ...eventPublisher) (*JobManager, error) {
 		publisher = events[0]
 	}
 	return &JobManager{
-		scheduler:      scheduler,
-		definitions:    make(map[string]*JobDefinition),
-		gocronIDs:      make(map[string]uuid.UUID),
-		active:         make(map[string]context.CancelFunc),
-		activeKeys:     make(map[string]bool),
-		maxConcurrent:  cfg.MaxConcurrentJobs,
-		maxHistory:     cfg.MaxHistory,
-		shutdownCtx:    shutdownCtx,
-		shutdownCancel: shutdownCancel,
-		changed:        make(chan struct{}),
-		events:         publisher,
+		scheduler:           scheduler,
+		definitions:         make(map[string]*JobDefinition),
+		gocronIDs:           make(map[string]uuid.UUID),
+		active:              make(map[string]context.CancelFunc),
+		activeKeys:          make(map[string]bool),
+		activeExclusiveKeys: make(map[string]bool),
+		maxConcurrent:       cfg.MaxConcurrentJobs,
+		maxHistory:          cfg.MaxHistory,
+		shutdownCtx:         shutdownCtx,
+		shutdownCancel:      shutdownCancel,
+		changed:             make(chan struct{}),
+		events:              publisher,
 	}, nil
 }
 
@@ -173,7 +175,10 @@ func (m *JobManager) enqueueLocked(def *JobDefinition) (string, error) {
 
 func (m *JobManager) dispatchLocked() {
 	for m.running < m.maxConcurrent && len(m.queue) > 0 && m.shutdownCtx.Err() == nil {
-		item := m.popQueueLocked()
+		item := m.popRunnableQueueLocked()
+		if item == nil {
+			return
+		}
 		ctx := m.startJobLocked(item)
 		go m.run(ctx, item)
 	}
@@ -283,10 +288,29 @@ func (m *JobManager) enqueueItemLocked(item *Job) {
 	m.queue = append(m.queue, item)
 }
 
-func (m *JobManager) popQueueLocked() *Job {
-	item := m.queue[0]
-	m.queue = m.queue[1:]
-	return item
+func (m *JobManager) popRunnableQueueLocked() *Job {
+	for i, item := range m.queue {
+		if !m.dependenciesSatisfiedLocked(item.definition.DependsOn, item.definition.ExclusiveKeys) {
+			continue
+		}
+		m.queue = append(m.queue[:i], m.queue[i+1:]...)
+		return item
+	}
+	return nil
+}
+
+func (m *JobManager) dependenciesSatisfiedLocked(dependencies, exclusiveKeys []string) bool {
+	for _, key := range dependencies {
+		if m.activeKeys[key] {
+			return false
+		}
+	}
+	for _, key := range exclusiveKeys {
+		if m.activeExclusiveKeys[key] {
+			return false
+		}
+	}
+	return true
 }
 
 func (m *JobManager) startJobLocked(item *Job) context.Context {
@@ -296,6 +320,9 @@ func (m *JobManager) startJobLocked(item *Job) context.Context {
 	item.UpdatedAt = now
 	ctx, cancel := context.WithCancel(m.shutdownCtx)
 	m.active[item.ID] = cancel
+	for _, key := range item.definition.ExclusiveKeys {
+		m.activeExclusiveKeys[key] = true
+	}
 	m.running++
 	m.publishJobChangeLocked("update", item)
 	m.wg.Add(1)
@@ -305,6 +332,9 @@ func (m *JobManager) startJobLocked(item *Job) context.Context {
 
 func (m *JobManager) completeActiveLocked(item *Job) {
 	delete(m.active, item.ID)
+	for _, key := range item.definition.ExclusiveKeys {
+		delete(m.activeExclusiveKeys, key)
+	}
 	m.running--
 }
 
