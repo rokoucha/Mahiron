@@ -7,7 +7,9 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/program"
@@ -150,22 +152,14 @@ func TestRemoteClientTunerStatuses(t *testing.T) {
 func TestRemoteSessionStreamsChannelServiceAndProgram(t *testing.T) {
 	paths := []string{}
 	queries := []string{}
+	packet := streamtest.TestPacket(0x0100, 1)
 	client := NewClient(config.RemoteConfig{URL: "http://remote.local/api"})
 	client.httpClient = &http.Client{Transport: streamtest.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		paths = append(paths, r.URL.Path)
 		queries = append(queries, r.URL.RawQuery)
 		switch r.URL.Path {
 		case "/api/channels/GR/27/stream":
-			return streamtest.StringResponse(http.StatusOK, "channel-ts"), nil
-		case "/api/services":
-			if got := r.URL.Query(); got.Get("channel.type") != "GR" || got.Get("channel.channel") != "27" {
-				t.Fatalf("query = %q, want channel.type=GR and channel.channel=27", r.URL.RawQuery)
-			}
-			return streamtest.StringResponse(http.StatusOK, `[{"networkId":32736,"serviceId":1024}]`), nil
-		case "/api/services/3273601024/stream":
-			return streamtest.StringResponse(http.StatusOK, "service-ts"), nil
-		case "/api/programs/10100009/stream":
-			return streamtest.StringResponse(http.StatusOK, "program-ts"), nil
+			return streamtest.StringResponse(http.StatusOK, string(packet)), nil
 		default:
 			return streamtest.StringResponse(http.StatusNotFound, ""), nil
 		}
@@ -188,19 +182,144 @@ func TestRemoteSessionStreamsChannelServiceAndProgram(t *testing.T) {
 	if err := session.ProgramStream(context.Background(), &program.Program{ID: 10100009}, true, &programOut); err != nil {
 		t.Fatal(err)
 	}
-	if channelOut.String() != "channel-ts" || serviceOut.String() != "service-ts" || programOut.String() != "program-ts" {
-		t.Fatalf("streams = %q/%q/%q", channelOut.String(), serviceOut.String(), programOut.String())
+	if !bytes.Equal(channelOut.Bytes(), packet) || serviceOut.Len() != 0 || programOut.Len() != 0 {
+		t.Fatalf("stream lengths = %d/%d/%d", channelOut.Len(), serviceOut.Len(), programOut.Len())
 	}
-	wantPaths := []string{"/api/channels/GR/27/stream", "/api/services", "/api/services/3273601024/stream", "/api/programs/10100009/stream"}
-	wantQueries := []string{"", "channel.channel=27&channel.type=GR", "decode=1", "decode=1"}
-	if len(paths) != len(wantPaths) || len(queries) != len(wantQueries) {
+	if len(paths) < 3 || len(paths) != len(queries) {
 		t.Fatalf("requests = %#v?%#v", paths, queries)
 	}
-	for i := range wantPaths {
-		if paths[i] != wantPaths[i] || queries[i] != wantQueries[i] {
-			t.Fatalf("request[%d] = %s?%s, want %s?%s", i, paths[i], queries[i], wantPaths[i], wantQueries[i])
+	for i := range paths {
+		if paths[i] != "/api/channels/GR/27/stream" {
+			t.Fatalf("request[%d] = %s?%s, want channel stream", i, paths[i], queries[i])
 		}
 	}
+}
+
+func TestRemoteSessionSharesSameDecodeUpstreamWhileActive(t *testing.T) {
+	upstream := newBlockingStreamTransport()
+	session := newTestRemoteSession(upstream)
+	t.Cleanup(func() { _ = session.Stop(context.Background()) })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 2)
+	go func() { done <- session.ChannelStream(ctx, false, io.Discard) }()
+	if !streamtest.Eventually(time.Second, func() bool { return upstream.requestCount() == 1 }) {
+		t.Fatal("raw upstream did not start")
+	}
+	go func() { done <- session.ServiceStream(ctx, 101, false, io.Discard) }()
+	if !streamtest.Eventually(time.Second, func() bool { return session.rawDemuxer.PacketSubscriberCount() == 2 }) {
+		t.Fatal("same-decode subscribers did not share the raw demuxer")
+	}
+	if got := upstream.requestCount(); got != 1 {
+		t.Fatalf("upstream requests = %d, want 1", got)
+	}
+
+	cancel()
+	upstream.close()
+	for range 2 {
+		if err := <-done; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !streamtest.Eventually(time.Second, session.rawDemuxer.Stopped) {
+		t.Fatal("raw demuxer did not stop after its subscribers detached")
+	}
+
+	nextCtx, nextCancel := context.WithCancel(context.Background())
+	nextDone := make(chan error, 1)
+	go func() { nextDone <- session.ChannelStream(nextCtx, false, io.Discard) }()
+	if !streamtest.Eventually(time.Second, func() bool { return upstream.requestCount() == 2 }) {
+		t.Fatalf("upstream requests after re-subscribe = %d, want 2", upstream.requestCount())
+	}
+	nextCancel()
+	upstream.close()
+	if err := <-nextDone; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRemoteSessionSeparatesRawAndDecodedUpstreams(t *testing.T) {
+	upstream := newBlockingStreamTransport()
+	session := newTestRemoteSession(upstream)
+	t.Cleanup(func() { _ = session.Stop(context.Background()) })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 2)
+	go func() { done <- session.ChannelStream(ctx, false, io.Discard) }()
+	go func() { done <- session.ServiceStream(ctx, 101, true, io.Discard) }()
+	if !streamtest.Eventually(time.Second, func() bool { return upstream.requestCount() == 2 }) {
+		t.Fatalf("upstream requests = %d, want 2", upstream.requestCount())
+	}
+	queries := upstream.queries()
+	if len(queries) != 2 || queries[0] == queries[1] || !containsString(queries, "") || !containsString(queries, "decode=1") {
+		t.Fatalf("upstream queries = %#v, want raw and decode=1", queries)
+	}
+
+	cancel()
+	upstream.close()
+	for range 2 {
+		if err := <-done; err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+type blockingStreamTransport struct {
+	mu          sync.Mutex
+	queriesSeen []string
+	writers     []*io.PipeWriter
+}
+
+func newBlockingStreamTransport() *blockingStreamTransport { return &blockingStreamTransport{} }
+
+func (t *blockingStreamTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	reader, writer := io.Pipe()
+	t.mu.Lock()
+	t.queriesSeen = append(t.queriesSeen, r.URL.RawQuery)
+	t.writers = append(t.writers, writer)
+	t.mu.Unlock()
+	return &http.Response{StatusCode: http.StatusOK, Status: "200 OK", Body: reader, Header: make(http.Header), Request: r}, nil
+}
+
+func (t *blockingStreamTransport) requestCount() int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return len(t.queriesSeen)
+}
+
+func (t *blockingStreamTransport) queries() []string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return append([]string(nil), t.queriesSeen...)
+}
+
+func (t *blockingStreamTransport) close() {
+	t.mu.Lock()
+	writers := append([]*io.PipeWriter(nil), t.writers...)
+	t.mu.Unlock()
+	for _, writer := range writers {
+		_ = writer.Close()
+	}
+}
+
+func newTestRemoteSession(transport http.RoundTripper) *Session {
+	client := NewClient(config.RemoteConfig{URL: "http://remote.local/api"}, WithHTTPClient(&http.Client{Transport: transport}))
+	return NewSession(SessionConfig{
+		Client:       client,
+		Channel:      &config.ChannelConfig{Type: "GR", Channel: "27"},
+		RouteChannel: &config.ChannelConfig{Type: "GR", Channel: "27"},
+	})
+}
+
+func containsString(values []string, value string) bool {
+	for _, candidate := range values {
+		if candidate == value {
+			return true
+		}
+	}
+	return false
 }
 
 func TestRemoteSessionTracksLocalUsers(t *testing.T) {

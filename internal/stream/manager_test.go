@@ -588,6 +588,7 @@ func TestManagerShutdownWaitsForInflightSessionWithoutHoldingLock(t *testing.T) 
 }
 
 func TestManagerSelectsRemoteRouteWhenLocalUnavailable(t *testing.T) {
+	packet := streamtest.TestPacket(0x0100, 1)
 	no := false
 	priorityLocal := 10
 	priorityRemote := 20
@@ -599,7 +600,7 @@ func TestManagerSelectsRemoteRouteWhenLocalUnavailable(t *testing.T) {
 			case "/api/tuners":
 				return streamtest.StringResponse(http.StatusOK, `[{"types":["GR"],"isAvailable":true,"isFree":true,"isFault":false}]`), nil
 			case "/api/channels/GR/27/stream":
-				return streamtest.StringResponse(http.StatusOK, "remote-ts"), nil
+				return streamtest.StringResponse(http.StatusOK, string(packet)), nil
 			default:
 				return streamtest.StringResponse(http.StatusNotFound, ""), nil
 			}
@@ -633,12 +634,13 @@ func TestManagerSelectsRemoteRouteWhenLocalUnavailable(t *testing.T) {
 	if err := session.ChannelStream(context.Background(), false, &out); err != nil {
 		t.Fatal(err)
 	}
-	if got, want := out.String(), "remote-ts"; got != want {
-		t.Fatalf("remote stream = %q, want %q", got, want)
+	if !bytes.Equal(out.Bytes(), packet) {
+		t.Fatalf("remote stream length = %d, want %d", out.Len(), len(packet))
 	}
 }
 
 func TestManagerSelectsRemoteRouteWhenRemoteAlreadyTunedToSameRoute(t *testing.T) {
+	packet := streamtest.TestPacket(0x0100, 1)
 	no := false
 	previousNewRemoteClient := newRemoteClient
 	t.Cleanup(func() { newRemoteClient = previousNewRemoteClient })
@@ -655,7 +657,7 @@ func TestManagerSelectsRemoteRouteWhenRemoteAlreadyTunedToSameRoute(t *testing.T
 					"tunedChannel":"C27"
 				}]`), nil
 			case "/api/channels/CATV/C27/stream":
-				return streamtest.StringResponse(http.StatusOK, "remote-ts"), nil
+				return streamtest.StringResponse(http.StatusOK, string(packet)), nil
 			default:
 				return streamtest.StringResponse(http.StatusNotFound, ""), nil
 			}
@@ -683,8 +685,8 @@ func TestManagerSelectsRemoteRouteWhenRemoteAlreadyTunedToSameRoute(t *testing.T
 	if err := session.ChannelStream(context.Background(), false, &out); err != nil {
 		t.Fatal(err)
 	}
-	if got, want := out.String(), "remote-ts"; got != want {
-		t.Fatalf("remote stream = %q, want %q", got, want)
+	if !bytes.Equal(out.Bytes(), packet) {
+		t.Fatalf("remote stream length = %d, want %d", out.Len(), len(packet))
 	}
 }
 

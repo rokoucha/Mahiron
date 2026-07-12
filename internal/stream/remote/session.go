@@ -22,13 +22,16 @@ type SessionConfig struct {
 }
 
 type Session struct {
-	channel       *config.ChannelConfig
-	client        *Client
-	remote        string
-	routeChannel  *config.ChannelConfig
-	mu            sync.Mutex
-	users         map[string]remoteUser
-	dataBroadcast *databroadcast.DataBroadcastHub
+	channel        *config.ChannelConfig
+	client         *Client
+	remote         string
+	routeChannel   *config.ChannelConfig
+	mu             sync.Mutex
+	users          map[string]remoteUser
+	dataBroadcast  *databroadcast.DataBroadcastHub
+	rawDemuxer     *demux.Demuxer
+	decodedDemuxer *demux.Demuxer
+	stopped        bool
 }
 
 type remoteUser struct {
@@ -37,7 +40,7 @@ type remoteUser struct {
 }
 
 func NewSession(config SessionConfig) *Session {
-	return &Session{
+	s := &Session{
 		channel:       config.Channel,
 		client:        config.Client,
 		remote:        config.Remote,
@@ -45,24 +48,79 @@ func NewSession(config SessionConfig) *Session {
 		users:         map[string]remoteUser{},
 		dataBroadcast: databroadcast.NewDataBroadcastHub(),
 	}
+	s.rawDemuxer = s.newDemuxer(false)
+	s.decodedDemuxer = s.newDemuxer(true)
+	return s
 }
 
 func (s *Session) ChannelStream(ctx context.Context, decode bool, dst io.Writer) error {
 	return s.withUser(ctx, func() error {
-		return s.client.ChannelStream(ctx, s.routeChannel.Type, s.routeChannel.Channel, decode, dst)
+		d, err := s.demuxer(decode)
+		if err != nil {
+			return err
+		}
+		return d.SubscribeChannel(ctx, dst)
 	})
 }
 
 func (s *Session) ServiceStream(ctx context.Context, serviceID uint16, decode bool, dst io.Writer) error {
 	return s.withUser(ctx, func() error {
-		return s.client.ServiceStream(ctx, s.routeChannel.Type, s.routeChannel.Channel, serviceID, decode, dst)
+		d, err := s.demuxer(decode)
+		if err != nil {
+			return err
+		}
+		return d.SubscribeService(ctx, serviceID, dst)
 	})
 }
 
 func (s *Session) ProgramStream(ctx context.Context, p *program.Program, decode bool, dst io.Writer) error {
 	return s.withUser(ctx, func() error {
-		return s.client.ProgramStream(ctx, p.ID, decode, dst)
+		raw, err := s.demuxer(false)
+		if err != nil {
+			return err
+		}
+		stream, err := s.demuxer(decode)
+		if err != nil {
+			return err
+		}
+		return raw.SubscribeProgram(ctx, stream, p, dst)
 	})
+}
+
+func (s *Session) newDemuxer(decode bool) *demux.Demuxer {
+	d := demux.New(func(ctx context.Context, dst io.Writer) error {
+		return s.client.ChannelStream(ctx, s.routeChannel.Type, s.routeChannel.Channel, decode, dst)
+	}, nil)
+	// Data broadcast state has one canonical input even when raw and decoded
+	// subscriptions are active concurrently, matching local session behavior.
+	if !decode {
+		d.WithPIDSections(s.dataBroadcast.Observe).WithPackets(s.dataBroadcast.ObservePacket)
+	}
+	if s.channel != nil {
+		d.WithMetricLabels(s.channel.Type, s.channel.Channel)
+	}
+	return d
+}
+
+func (s *Session) demuxer(decode bool) (*demux.Demuxer, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.stopped {
+		return nil, demux.ErrDemuxerStopped
+	}
+	d := s.rawDemuxer
+	if decode {
+		d = s.decodedDemuxer
+	}
+	if d.Stopped() {
+		d = s.newDemuxer(decode)
+		if decode {
+			s.decodedDemuxer = d
+		} else {
+			s.rawDemuxer = d
+		}
+	}
+	return d, nil
 }
 
 // RemoteName identifies the configured remote used by this session.
@@ -157,28 +215,26 @@ func (s *Session) ObserveLogos(ctx context.Context, observe func(*ts.LogoImage) 
 	return nil
 }
 
-func (s *Session) ObserveDataBroadcast(ctx context.Context, serviceID uint16, decode bool, observe func(databroadcast.DataBroadcastEvent) error) error {
+func (s *Session) ObserveDataBroadcast(ctx context.Context, serviceID uint16, _ bool, observe func(databroadcast.DataBroadcastEvent) error) error {
 	// Keep the requesting client associated with this remote session for the
 	// full lifetime of the observation. The demuxer's source context is
 	// intentionally detached from the HTTP request context.
 	return s.withUser(ctx, func() error {
-		return s.observeDataBroadcast(ctx, serviceID, decode, observe)
+		return s.observeDataBroadcast(ctx, serviceID, observe)
 	})
 }
 
-func (s *Session) observeDataBroadcast(ctx context.Context, serviceID uint16, decode bool, observe func(databroadcast.DataBroadcastEvent) error) error {
+func (s *Session) observeDataBroadcast(ctx context.Context, serviceID uint16, observe func(databroadcast.DataBroadcastEvent) error) error {
 	snapshot, events, unsubscribe := s.dataBroadcast.Subscribe(ctx, serviceID)
 	defer unsubscribe()
 	if err := observe(databroadcast.DataBroadcastEvent{Type: "snapshot", Snapshot: snapshot}); err != nil {
 		return err
 	}
 
-	// Remotes only need Mirakurun-compatible stream endpoints. Decode the
-	// received transport stream here, just as local sessions do.
-	demuxer := demux.New(func(streamCtx context.Context, dst io.Writer) error {
-		return s.client.ChannelStream(streamCtx, s.routeChannel.Type, s.routeChannel.Channel, decode, dst)
-	}, nil).WithPIDSections(s.dataBroadcast.Observe).WithPackets(s.dataBroadcast.ObservePacket)
-	defer demuxer.Stop()
+	demuxer, err := s.demuxer(false)
+	if err != nil {
+		return err
+	}
 
 	observeCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -219,5 +275,15 @@ func acceptDataBroadcastSection(section ts.Section) bool {
 }
 
 func (s *Session) Stop(context.Context) error {
+	s.mu.Lock()
+	if s.stopped {
+		s.mu.Unlock()
+		return nil
+	}
+	s.stopped = true
+	raw, decoded := s.rawDemuxer, s.decodedDemuxer
+	s.mu.Unlock()
+	raw.Stop()
+	decoded.Stop()
 	return nil
 }
