@@ -87,11 +87,7 @@ func NewServiceScannerAdapter(manager *StreamManager) *ServiceScannerAdapter {
 	return &ServiceScannerAdapter{manager: manager}
 }
 
-func (a *ServiceScannerAdapter) ScanServices(ctx context.Context, channelType, channelID string, wait bool) ([]ts.ServiceInfo, error) {
-	return a.ScanServicesWithAcquireContext(ctx, ctx, channelType, channelID, wait)
-}
-
-func (a *ServiceScannerAdapter) ScanServicesWithAcquireContext(scanCtx, acquireCtx context.Context, channelType, channelID string, wait bool) ([]ts.ServiceInfo, error) {
+func (a *ServiceScannerAdapter) ScanServices(scanCtx, acquireCtx context.Context, channelType, channelID string, wait bool) ([]ts.ServiceInfo, error) {
 	var (
 		session Session
 		err     error

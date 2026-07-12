@@ -208,7 +208,8 @@ func TestEPGGathererDispatchesPerNetwork(t *testing.T) {
 	defer func() { _ = programDatabase.Close() }()
 	mgr := newTestManager(t)
 	stm := stream.NewStreamManager(stream.StreamManagerConfig{Channels: channels, TunerManager: noTunerManager{}})
-	RegisterEPGGatherer(mgr, program.NewProgramManager(program.NewSQLiteStore(programDatabase)), sm, stream.NewEPGCollectorAdapter(stm), channels, 3, 10*time.Minute)
+	epgService := epg.NewService(program.NewProgramManager(program.NewSQLiteStore(programDatabase)), sm, stream.NewEPGCollectorAdapter(stm), channels, 3, 10*time.Minute)
+	RegisterEPGGathererService(mgr, epgService)
 	if _, err := mgr.Enqueue(EPGGathererKey); err != nil {
 		t.Fatal(err)
 	}
@@ -366,7 +367,7 @@ type fakeScanScanner struct {
 	services []ts.ServiceInfo
 }
 
-func (f fakeScanScanner) ScanServices(context.Context, string, string, bool) ([]ts.ServiceInfo, error) {
+func (f fakeScanScanner) ScanServices(context.Context, context.Context, string, string, bool) ([]ts.ServiceInfo, error) {
 	return append([]ts.ServiceInfo(nil), f.services...), nil
 }
 

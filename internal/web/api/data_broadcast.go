@@ -10,6 +10,7 @@ import (
 	"strconv"
 
 	"github.com/21S1298001/mahiron/internal/stream"
+	"github.com/21S1298001/mahiron/internal/stream/databroadcast"
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 )
 
@@ -43,7 +44,7 @@ func GetServiceDataBroadcastEvents(ctx context.Context, h *Handler, params apige
 	w.Header().Set("X-Mirakurun-Tuner-User-ID", userID)
 	w.WriteHeader(http.StatusOK)
 	flusher := flushWriter{w: w}
-	return session.ObserveDataBroadcast(ctx, service.ServiceId, decode, func(event stream.DataBroadcastEvent) error {
+	return session.ObserveDataBroadcast(ctx, service.ServiceId, decode, func(event databroadcast.DataBroadcastEvent) error {
 		return writeDataBroadcastSSE(flusher, params.ID, event)
 	})
 }
@@ -79,7 +80,7 @@ func GetServiceDataBroadcastModule(ctx context.Context, h *Handler, params apige
 	return err
 }
 
-func writeDataBroadcastSSE(w io.Writer, serviceItemID int64, event stream.DataBroadcastEvent) error {
+func writeDataBroadcastSSE(w io.Writer, serviceItemID int64, event databroadcast.DataBroadcastEvent) error {
 	payload := apiDataBroadcastEvent(serviceItemID, event)
 	data, err := json.Marshal(payload)
 	if err != nil {
@@ -98,7 +99,7 @@ func writeDataBroadcastSSE(w io.Writer, serviceItemID int64, event stream.DataBr
 	return err
 }
 
-func apiDataBroadcastEvent(serviceItemID int64, event stream.DataBroadcastEvent) map[string]any {
+func apiDataBroadcastEvent(serviceItemID int64, event databroadcast.DataBroadcastEvent) map[string]any {
 	result := map[string]any{"type": event.Type}
 	switch event.Type {
 	case "snapshot":
@@ -123,7 +124,7 @@ func apiDataBroadcastEvent(serviceItemID int64, event stream.DataBroadcastEvent)
 	return result
 }
 
-func apiDataBroadcastSnapshot(serviceItemID int64, snapshot stream.DataBroadcastSnapshot) map[string]any {
+func apiDataBroadcastSnapshot(serviceItemID int64, snapshot databroadcast.DataBroadcastSnapshot) map[string]any {
 	return map[string]any{
 		"serviceId":   snapshot.ServiceID,
 		"pmt":         apiDataBroadcastPMT(serviceItemID, snapshot.PMT),
@@ -135,14 +136,14 @@ func apiDataBroadcastSnapshot(serviceItemID int64, snapshot stream.DataBroadcast
 	}
 }
 
-func apiDataBroadcastPCR(pcr *stream.DataBroadcastPCR) any {
+func apiDataBroadcastPCR(pcr *databroadcast.DataBroadcastPCR) any {
 	if pcr == nil {
 		return nil
 	}
 	return map[string]any{"pcrBase": pcr.PCRBase, "pcrExtension": pcr.PCRExtension}
 }
 
-func apiDataBroadcastESEvent(event *stream.DataBroadcastESEvent) any {
+func apiDataBroadcastESEvent(event *databroadcast.DataBroadcastESEvent) any {
 	if event == nil {
 		return nil
 	}
@@ -171,7 +172,7 @@ func apiDataBroadcastESEvent(event *stream.DataBroadcastESEvent) any {
 	return map[string]any{"componentId": event.ComponentTag, "dataEventId": event.DataEventID, "events": events}
 }
 
-func apiDataBroadcastBIT(bit *stream.DataBroadcastBIT) any {
+func apiDataBroadcastBIT(bit *databroadcast.DataBroadcastBIT) any {
 	if bit == nil {
 		return nil
 	}
@@ -202,7 +203,7 @@ func bytesToNumbers(values []byte) []int {
 	return result
 }
 
-func apiDataBroadcastPMT(serviceItemID int64, pmt *stream.DataBroadcastPMT) any {
+func apiDataBroadcastPMT(serviceItemID int64, pmt *databroadcast.DataBroadcastPMT) any {
 	if pmt == nil {
 		return nil
 	}
@@ -215,7 +216,7 @@ func apiDataBroadcastPMT(serviceItemID int64, pmt *stream.DataBroadcastPMT) any 
 	}
 }
 
-func apiDataBroadcastComponents(serviceItemID int64, components []stream.DataBroadcastComponent) []map[string]any {
+func apiDataBroadcastComponents(serviceItemID int64, components []databroadcast.DataBroadcastComponent) []map[string]any {
 	result := make([]map[string]any, 0, len(components))
 	for _, component := range components {
 		modules := make([]map[string]any, 0, len(component.Modules))
@@ -232,7 +233,7 @@ func apiDataBroadcastComponents(serviceItemID int64, components []stream.DataBro
 	return result
 }
 
-func apiDataBroadcastModuleList(serviceItemID int64, list *stream.DataBroadcastModuleList) any {
+func apiDataBroadcastModuleList(serviceItemID int64, list *databroadcast.DataBroadcastModuleList) any {
 	if list == nil {
 		return nil
 	}
@@ -248,7 +249,7 @@ func apiDataBroadcastModuleList(serviceItemID int64, list *stream.DataBroadcastM
 	}
 }
 
-func apiDataBroadcastModule(serviceItemID int64, module *stream.DataBroadcastModule) map[string]any {
+func apiDataBroadcastModule(serviceItemID int64, module *databroadcast.DataBroadcastModule) map[string]any {
 	if module == nil {
 		return nil
 	}

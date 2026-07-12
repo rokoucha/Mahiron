@@ -11,14 +11,13 @@ import (
 	"testing"
 
 	"github.com/21S1298001/mahiron/internal/program"
-	"github.com/21S1298001/mahiron/internal/stream"
 	"github.com/21S1298001/mahiron/internal/stream/databroadcast"
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 )
 
 func TestAPIDataBroadcastBITUsesWebBMLFieldNames(t *testing.T) {
 	name := "局"
-	payload := apiDataBroadcastEvent(1, stream.DataBroadcastEvent{Type: "bit", BIT: &stream.DataBroadcastBIT{OriginalNetworkID: 0x7fe0, Broadcasters: []stream.DataBroadcastBroadcaster{{BroadcasterID: 0xff, BroadcasterName: &name, Affiliations: []byte{1, 2}, Services: []stream.DataBroadcastService{{ServiceID: 101, ServiceType: 1}}}}}})
+	payload := apiDataBroadcastEvent(1, databroadcast.DataBroadcastEvent{Type: "bit", BIT: &databroadcast.DataBroadcastBIT{OriginalNetworkID: 0x7fe0, Broadcasters: []databroadcast.DataBroadcastBroadcaster{{BroadcasterID: 0xff, BroadcasterName: &name, Affiliations: []byte{1, 2}, Services: []databroadcast.DataBroadcastService{{ServiceID: 101, ServiceType: 1}}}}}})
 	bit, ok := payload["bit"].(map[string]any)
 	if !ok || bit["originalNetworkId"] != uint16(0x7fe0) {
 		t.Fatalf("bit = %#v", payload["bit"])
@@ -31,7 +30,7 @@ func TestAPIDataBroadcastBITUsesWebBMLFieldNames(t *testing.T) {
 
 func TestAPIDataBroadcastPCRAndNPTUseWebBMLFieldNames(t *testing.T) {
 	npt := uint64(0x112345678)
-	event := apiDataBroadcastEvent(1, stream.DataBroadcastEvent{Type: "esEventUpdated", ESEvent: &stream.DataBroadcastESEvent{ComponentTag: 0x40, DataEventID: 3, Events: []databroadcast.DataBroadcastGeneralEvent{{Type: "nptEvent", TimeMode: 2, EventMessageNPT: &npt}}}})
+	event := apiDataBroadcastEvent(1, databroadcast.DataBroadcastEvent{Type: "esEventUpdated", ESEvent: &databroadcast.DataBroadcastESEvent{ComponentTag: 0x40, DataEventID: 3, Events: []databroadcast.DataBroadcastGeneralEvent{{Type: "nptEvent", TimeMode: 2, EventMessageNPT: &npt}}}})
 	es := event["esEvent"].(map[string]any)
 	if es["componentId"] != byte(0x40) || es["dataEventId"] != byte(3) {
 		t.Fatalf("esEvent = %#v", es)
@@ -40,7 +39,7 @@ func TestAPIDataBroadcastPCRAndNPTUseWebBMLFieldNames(t *testing.T) {
 	if len(events) != 1 || events[0]["eventMessageNPT"] != npt {
 		t.Fatalf("events = %#v", events)
 	}
-	pcr := apiDataBroadcastEvent(1, stream.DataBroadcastEvent{Type: "pcr", PCR: &stream.DataBroadcastPCR{PCRBase: 10, PCRExtension: 20}})["pcr"].(map[string]any)
+	pcr := apiDataBroadcastEvent(1, databroadcast.DataBroadcastEvent{Type: "pcr", PCR: &databroadcast.DataBroadcastPCR{PCRBase: 10, PCRExtension: 20}})["pcr"].(map[string]any)
 	if pcr["pcrBase"] != uint64(10) || pcr["pcrExtension"] != uint16(20) {
 		t.Fatalf("pcr = %#v", pcr)
 	}
@@ -48,8 +47,8 @@ func TestAPIDataBroadcastPCRAndNPTUseWebBMLFieldNames(t *testing.T) {
 
 func TestAPIDataBroadcastByteFieldsEncodeAsNumberArrays(t *testing.T) {
 	payloads := []map[string]any{
-		apiDataBroadcastEvent(1, stream.DataBroadcastEvent{Type: "bit", BIT: &stream.DataBroadcastBIT{Broadcasters: []stream.DataBroadcastBroadcaster{{Affiliations: []byte{1, 128, 255}}}}}),
-		apiDataBroadcastEvent(1, stream.DataBroadcastEvent{Type: "esEventUpdated", ESEvent: &stream.DataBroadcastESEvent{Events: []databroadcast.DataBroadcastGeneralEvent{{Type: "immediateEvent", PrivateData: []byte{0, 127, 255}}}}}),
+		apiDataBroadcastEvent(1, databroadcast.DataBroadcastEvent{Type: "bit", BIT: &databroadcast.DataBroadcastBIT{Broadcasters: []databroadcast.DataBroadcastBroadcaster{{Affiliations: []byte{1, 128, 255}}}}}),
+		apiDataBroadcastEvent(1, databroadcast.DataBroadcastEvent{Type: "esEventUpdated", ESEvent: &databroadcast.DataBroadcastESEvent{Events: []databroadcast.DataBroadcastGeneralEvent{{Type: "immediateEvent", PrivateData: []byte{0, 127, 255}}}}}),
 	}
 	for _, payload := range payloads {
 		encoded, err := json.Marshal(payload)
@@ -99,7 +98,7 @@ func TestGetServiceDataBroadcastEventsWritesSnapshot(t *testing.T) {
 
 func TestGetServiceDataBroadcastModuleReturnsETagAndNotModified(t *testing.T) {
 	handler := testProgramHandler(t)
-	session := fakeDataBroadcastSession{module: stream.DataBroadcastModule{
+	session := fakeDataBroadcastSession{module: databroadcast.DataBroadcastModule{
 		ComponentTag: 0x40,
 		ModuleID:     2,
 		ETag:         `"dsmcc-test"`,
@@ -168,8 +167,8 @@ func (m fakeDataBroadcastStreamManager) GetOrCreate(context.Context, string, str
 	ChannelStream(context.Context, bool, io.Writer) error
 	ProgramStream(context.Context, *program.Program, bool, io.Writer) error
 	ServiceStream(context.Context, uint16, bool, io.Writer) error
-	ObserveDataBroadcast(context.Context, uint16, bool, func(stream.DataBroadcastEvent) error) error
-	DataBroadcastModule(uint16, byte, uint16) (stream.DataBroadcastModule, bool)
+	ObserveDataBroadcast(context.Context, uint16, bool, func(databroadcast.DataBroadcastEvent) error) error
+	DataBroadcastModule(uint16, byte, uint16) (databroadcast.DataBroadcastModule, bool)
 }, error) {
 	if m.err != nil {
 		return nil, m.err
@@ -181,8 +180,8 @@ func (m fakeDataBroadcastStreamManager) GetExisting(string, string) (interface {
 	ChannelStream(context.Context, bool, io.Writer) error
 	ProgramStream(context.Context, *program.Program, bool, io.Writer) error
 	ServiceStream(context.Context, uint16, bool, io.Writer) error
-	ObserveDataBroadcast(context.Context, uint16, bool, func(stream.DataBroadcastEvent) error) error
-	DataBroadcastModule(uint16, byte, uint16) (stream.DataBroadcastModule, bool)
+	ObserveDataBroadcast(context.Context, uint16, bool, func(databroadcast.DataBroadcastEvent) error) error
+	DataBroadcastModule(uint16, byte, uint16) (databroadcast.DataBroadcastModule, bool)
 }, bool) {
 	return m.session, m.existing
 }
@@ -190,7 +189,7 @@ func (m fakeDataBroadcastStreamManager) GetExisting(string, string) (interface {
 func (m fakeDataBroadcastStreamManager) ActiveSessionCount() int { return 0 }
 
 type fakeDataBroadcastSession struct {
-	module stream.DataBroadcastModule
+	module databroadcast.DataBroadcastModule
 }
 
 func (s fakeDataBroadcastSession) ChannelStream(context.Context, bool, io.Writer) error {
@@ -205,18 +204,18 @@ func (s fakeDataBroadcastSession) ServiceStream(context.Context, uint16, bool, i
 	return errors.New("unexpected ServiceStream call")
 }
 
-func (s fakeDataBroadcastSession) ObserveDataBroadcast(_ context.Context, serviceID uint16, _ bool, observe func(stream.DataBroadcastEvent) error) error {
-	return observe(stream.DataBroadcastEvent{
+func (s fakeDataBroadcastSession) ObserveDataBroadcast(_ context.Context, serviceID uint16, _ bool, observe func(databroadcast.DataBroadcastEvent) error) error {
+	return observe(databroadcast.DataBroadcastEvent{
 		Type: "snapshot",
-		Snapshot: stream.DataBroadcastSnapshot{
+		Snapshot: databroadcast.DataBroadcastSnapshot{
 			ServiceID: serviceID,
 		},
 	})
 }
 
-func (s fakeDataBroadcastSession) DataBroadcastModule(_ uint16, componentTag byte, moduleID uint16) (stream.DataBroadcastModule, bool) {
+func (s fakeDataBroadcastSession) DataBroadcastModule(_ uint16, componentTag byte, moduleID uint16) (databroadcast.DataBroadcastModule, bool) {
 	if s.module.ComponentTag != componentTag || s.module.ModuleID != moduleID {
-		return stream.DataBroadcastModule{}, false
+		return databroadcast.DataBroadcastModule{}, false
 	}
 	return s.module, true
 }

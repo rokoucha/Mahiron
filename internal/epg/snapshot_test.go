@@ -42,8 +42,8 @@ func readyTestTime(segment int) time.Time {
 	return time.Date(2026, 1, 1, segment*3, 0, 0, 0, snapshotTestJST)
 }
 
-func TestEITSnapshotObserveBuildsPrograms(t *testing.T) {
-	snap := NewEITSnapshot()
+func TestSnapshotObserveBuildsPrograms(t *testing.T) {
+	snap := NewSnapshot()
 	now := time.Unix(0, 0)
 	snap.Observe(makeSection(1, 100, 2, 0x50, 0, 1, 1, ev(1, 1000, 1000)), now)
 	snap.Observe(makeSection(1, 100, 2, 0x50, 1, 1, 1, ev(2, 2000, 1000)), now)
@@ -53,8 +53,8 @@ func TestEITSnapshotObserveBuildsPrograms(t *testing.T) {
 	}
 }
 
-func TestEITSSnapshotServiceCompleteHappyPath(t *testing.T) {
-	snap := NewEITSnapshot()
+func TestEITSSnapshotServiceReadyHappyPath(t *testing.T) {
+	snap := NewSnapshot()
 	now := readyTestTime(0)
 	section0 := makeSection(1, 100, 2, 0x50, 0, 1, 1, ev(1, 1000, 1000))
 	section0.LastTableID = 0x51
@@ -63,30 +63,30 @@ func TestEITSSnapshotServiceCompleteHappyPath(t *testing.T) {
 	snap.Observe(section0, now)
 	snap.Observe(section1, now)
 	snap.Observe(makeSection(1, 100, 2, 0x51, 0, 0, 1, ev(3, 2000, 1000)), now)
-	if !snap.ServiceComplete(ServiceKey{NetworkID: 1, ServiceID: 100, TransportStreamID: 2}) {
-		t.Fatal("ServiceComplete should be true for two complete sub-tables")
+	if !snap.ServiceReady(ServiceKey{NetworkID: 1, ServiceID: 100, TransportStreamID: 2}) {
+		t.Fatal("ServiceReady should be true for two complete sub-tables")
 	}
 }
 
-func TestEITSnapshotServiceCompleteFalseOnMissingSegment(t *testing.T) {
-	snap := NewEITSnapshot()
+func TestSnapshotServiceReadyFalseOnMissingSegment(t *testing.T) {
+	snap := NewSnapshot()
 	now := readyTestTime(0)
 	snap.Observe(makeSection(1, 100, 2, 0x50, 0, 1, 1, ev(1, 1000, 1000)), now)
-	if snap.ServiceComplete(ServiceKey{NetworkID: 1, ServiceID: 100, TransportStreamID: 2}) {
-		t.Fatal("ServiceComplete should be false when section 1 is missing")
+	if snap.ServiceReady(ServiceKey{NetworkID: 1, ServiceID: 100, TransportStreamID: 2}) {
+		t.Fatal("ServiceReady should be false when section 1 is missing")
 	}
 }
 
-func TestEITSnapshotServiceCompleteUsesLastTableID(t *testing.T) {
-	snap := NewEITSnapshot()
+func TestSnapshotServiceReadyUsesLastTableID(t *testing.T) {
+	snap := NewSnapshot()
 	now := time.Unix(0, 0)
 	section := makeSection(1, 100, 2, 0x50, 0, 0, 1, ev(1, 1000, 1000))
 	section.LastTableID = 0x51
 	snap.Observe(section, now)
 
 	key := ServiceKey{NetworkID: 1, ServiceID: 100, TransportStreamID: 2}
-	if snap.ServiceComplete(key) {
-		t.Fatal("ServiceComplete should require tables through last_table_id")
+	if snap.ServiceReady(key) {
+		t.Fatal("ServiceReady should require tables through last_table_id")
 	}
 	report := snap.CompletionReport(key)
 	if len(report.MissingTableIDs) != 1 || report.MissingTableIDs[0] != 0x51 {
@@ -94,8 +94,8 @@ func TestEITSnapshotServiceCompleteUsesLastTableID(t *testing.T) {
 	}
 }
 
-func TestEITSnapshotServiceCompleteAllowsElapsedLeadingSegments(t *testing.T) {
-	snap := NewEITSnapshot()
+func TestSnapshotServiceReadyAllowsElapsedLeadingSegments(t *testing.T) {
+	snap := NewSnapshot()
 	now := readyTestTime(7)
 	for segment := uint8(7); segment < 32; segment++ {
 		section := segment * 8
@@ -105,8 +105,8 @@ func TestEITSnapshotServiceCompleteAllowsElapsedLeadingSegments(t *testing.T) {
 	}
 
 	key := ServiceKey{NetworkID: 1, ServiceID: 100, TransportStreamID: 2}
-	if !snap.ServiceComplete(key) {
-		t.Fatalf("ServiceComplete should allow elapsed leading segments: %+v", snap.CompletionReport(key))
+	if !snap.ServiceReady(key) {
+		t.Fatalf("ServiceReady should allow elapsed leading segments: %+v", snap.CompletionReport(key))
 	}
 	report := snap.CompletionReport(key)
 	if got := report.Tables[0].MissingSections; len(got) != 0 {
@@ -114,8 +114,8 @@ func TestEITSnapshotServiceCompleteAllowsElapsedLeadingSegments(t *testing.T) {
 	}
 }
 
-func TestEITSnapshotServiceCompleteRejectsMissingMiddleSegment(t *testing.T) {
-	snap := NewEITSnapshot()
+func TestSnapshotServiceReadyRejectsMissingMiddleSegment(t *testing.T) {
+	snap := NewSnapshot()
 	now := readyTestTime(7)
 	for segment := uint8(7); segment < 32; segment++ {
 		if segment == 12 {
@@ -128,8 +128,8 @@ func TestEITSnapshotServiceCompleteRejectsMissingMiddleSegment(t *testing.T) {
 	}
 
 	key := ServiceKey{NetworkID: 1, ServiceID: 100, TransportStreamID: 2}
-	if snap.ServiceComplete(key) {
-		t.Fatal("ServiceComplete should reject a missing middle segment")
+	if snap.ServiceReady(key) {
+		t.Fatal("ServiceReady should reject a missing middle segment")
 	}
 	report := snap.CompletionReport(key)
 	if got := report.Tables[0].MissingSections; len(got) != 8 || got[0] != 96 || got[7] != 103 {
@@ -137,8 +137,8 @@ func TestEITSnapshotServiceCompleteRejectsMissingMiddleSegment(t *testing.T) {
 	}
 }
 
-func TestEITSnapshotCompletionReport(t *testing.T) {
-	snap := NewEITSnapshot()
+func TestSnapshotCompletionReport(t *testing.T) {
+	snap := NewSnapshot()
 	now := readyTestTime(0)
 	section := makeSection(1, 100, 2, 0x51, 0, 9, 3, ev(1, 1000, 1000))
 	section.SegmentLastSectionNumber = 1
@@ -163,27 +163,27 @@ func TestEITSnapshotCompletionReport(t *testing.T) {
 	}
 }
 
-func TestEITSnapshotCompletionReportForUnobservedService(t *testing.T) {
-	report := NewEITSnapshot().CompletionReport(ServiceKey{NetworkID: 1, ServiceID: 100, TransportStreamID: 2})
+func TestSnapshotCompletionReportForUnobservedService(t *testing.T) {
+	report := NewSnapshot().CompletionReport(ServiceKey{NetworkID: 1, ServiceID: 100, TransportStreamID: 2})
 	if report.ObservedTables != 0 || len(report.Tables) != 0 {
 		t.Fatalf("report = %+v, want empty", report)
 	}
 }
 
-func TestEITSnapshotServiceCompleteFalseOnUnknownTable(t *testing.T) {
-	snap := NewEITSnapshot()
+func TestSnapshotServiceReadyFalseOnUnknownTable(t *testing.T) {
+	snap := NewSnapshot()
 	now := time.Unix(0, 0)
 	snap.Observe(makeSection(1, 100, 2, 0x40, 0, 0, 1, ev(1, 1000, 1000)), now)
-	if snap.ServiceComplete(ServiceKey{NetworkID: 1, ServiceID: 100, TransportStreamID: 2}) {
-		t.Fatal("ServiceComplete should be false when only unknown tables observed")
+	if snap.ServiceReady(ServiceKey{NetworkID: 1, ServiceID: 100, TransportStreamID: 2}) {
+		t.Fatal("ServiceReady should be false when only unknown tables observed")
 	}
 	if got := len(snap.Programs(ServiceKey{NetworkID: 1, ServiceID: 100, TransportStreamID: 2})); got != 0 {
 		t.Fatalf("unknown table programs = %d, want 0", got)
 	}
 }
 
-func TestEITSnapshotVersionChangeReplacesOnlyItsSection(t *testing.T) {
-	snap := NewEITSnapshot()
+func TestSnapshotVersionChangeReplacesOnlyItsSection(t *testing.T) {
+	snap := NewSnapshot()
 	now := time.Unix(0, 0)
 	snap.Observe(makeSection(1, 100, 2, 0x50, 0, 1, 1, ev(1, 1000, 1000)), now)
 	snap.Observe(makeSection(1, 100, 2, 0x50, 1, 1, 1, ev(2, 2000, 1000)), now)
@@ -205,8 +205,8 @@ func TestEITSnapshotVersionChangeReplacesOnlyItsSection(t *testing.T) {
 	}
 }
 
-func TestEITSnapshotEmptySectionReplacementRemovesOnlyThatSection(t *testing.T) {
-	snap := NewEITSnapshot()
+func TestSnapshotEmptySectionReplacementRemovesOnlyThatSection(t *testing.T) {
+	snap := NewSnapshot()
 	now := time.Unix(0, 0)
 	snap.Observe(makeSection(1, 100, 2, 0x50, 0, 1, 1, ev(1, 1000, 1000)), now)
 	snap.Observe(makeSection(1, 100, 2, 0x50, 1, 1, 1, ev(2, 2000, 1000)), now)
@@ -219,38 +219,38 @@ func TestEITSnapshotEmptySectionReplacementRemovesOnlyThatSection(t *testing.T) 
 }
 
 func TestEITSSnapshotDuplicateSectionIsIdempotent(t *testing.T) {
-	snap := NewEITSnapshot()
+	snap := NewSnapshot()
 	now := readyTestTime(0)
 	snap.Observe(makeSection(1, 100, 2, 0x50, 0, 1, 1, ev(1, 1000, 1000)), now)
 	snap.Observe(makeSection(1, 100, 2, 0x50, 0, 1, 1, ev(1, 1000, 1000)), now)
 	snap.Observe(makeSection(1, 100, 2, 0x50, 1, 1, 1, ev(2, 2000, 1000)), now)
-	if !snap.ServiceComplete(ServiceKey{NetworkID: 1, ServiceID: 100, TransportStreamID: 2}) {
-		t.Fatal("ServiceComplete should be true after duplicates")
+	if !snap.ServiceReady(ServiceKey{NetworkID: 1, ServiceID: 100, TransportStreamID: 2}) {
+		t.Fatal("ServiceReady should be true after duplicates")
 	}
 	if got, want := len(snap.Programs(ServiceKey{NetworkID: 1, ServiceID: 100, TransportStreamID: 2})), 2; got != want {
 		t.Fatalf("programs = %d, want %d", got, want)
 	}
 }
 
-func TestEITSnapshotAllComplete(t *testing.T) {
-	snap := NewEITSnapshot()
+func TestSnapshotAllReady(t *testing.T) {
+	snap := NewSnapshot()
 	now := readyTestTime(0)
 	snap.Observe(makeSection(1, 100, 2, 0x50, 0, 0, 1, ev(1, 1000, 1000)), now)
 	expected := []ServiceKey{
 		{NetworkID: 1, ServiceID: 100, TransportStreamID: 2},
 		{NetworkID: 1, ServiceID: 101, TransportStreamID: 2},
 	}
-	if snap.AllComplete(expected) {
-		t.Fatal("AllComplete should be false when one service is unobserved")
+	if snap.AllReady(expected) {
+		t.Fatal("AllReady should be false when one service is unobserved")
 	}
 	snap.Observe(makeSection(1, 101, 2, 0x50, 0, 0, 1, ev(2, 1000, 1000)), now)
-	if !snap.AllComplete(expected) {
-		t.Fatal("AllComplete should be true when both services complete 0x50")
+	if !snap.AllReady(expected) {
+		t.Fatal("AllReady should be true when both services complete 0x50")
 	}
 }
 
-func TestEITSnapshotReadyDoesNotRequireUnobservedExtendedTable(t *testing.T) {
-	snap := NewEITSnapshot()
+func TestSnapshotReadyDoesNotRequireUnobservedExtendedTable(t *testing.T) {
+	snap := NewSnapshot()
 	now := readyTestTime(0)
 	snap.Observe(makeSection(1, 100, 2, 0x50, 0, 0, 1, namedEv(1, 1000, 1000, "news")), now)
 
@@ -259,8 +259,8 @@ func TestEITSnapshotReadyDoesNotRequireUnobservedExtendedTable(t *testing.T) {
 	}
 }
 
-func TestEITSnapshotReadyIgnoresIncompleteExtendedTable(t *testing.T) {
-	snap := NewEITSnapshot()
+func TestSnapshotReadyIgnoresIncompleteExtendedTable(t *testing.T) {
+	snap := NewSnapshot()
 	now := readyTestTime(0)
 	snap.Observe(makeSection(1, 100, 2, 0x50, 0, 0, 1, namedEv(1, 1000, 1000, "news")), now)
 	snap.Observe(makeSection(1, 100, 2, 0x58, 0, 1, 1, ev(2, 2000, 1000)), now)
@@ -273,8 +273,8 @@ func TestEITSnapshotReadyIgnoresIncompleteExtendedTable(t *testing.T) {
 	}
 }
 
-func TestEITSnapshotExtendedOnlyDoesNotBuildProgramsOrReadiness(t *testing.T) {
-	snap := NewEITSnapshot()
+func TestSnapshotExtendedOnlyDoesNotBuildProgramsOrReadiness(t *testing.T) {
+	snap := NewSnapshot()
 	now := readyTestTime(0)
 	snap.Observe(makeSection(1, 100, 2, 0x58, 0, 0, 1, extendedEv(1, 1000, 1000, "概要", "detail")), now)
 
@@ -287,7 +287,7 @@ func TestEITSnapshotExtendedOnlyDoesNotBuildProgramsOrReadiness(t *testing.T) {
 	}
 }
 
-func TestEITSnapshotMergesBasicAndExtendedInEitherOrder(t *testing.T) {
+func TestSnapshotMergesBasicAndExtendedInEitherOrder(t *testing.T) {
 	for _, tt := range []struct {
 		name     string
 		sections []*EITSection
@@ -305,7 +305,7 @@ func TestEITSnapshotMergesBasicAndExtendedInEitherOrder(t *testing.T) {
 		},
 	}} {
 		t.Run(tt.name, func(t *testing.T) {
-			snap := NewEITSnapshot()
+			snap := NewSnapshot()
 			now := readyTestTime(0)
 			for _, section := range tt.sections {
 				snap.Observe(section, now)
@@ -325,8 +325,8 @@ func TestEITSnapshotMergesBasicAndExtendedInEitherOrder(t *testing.T) {
 	}
 }
 
-func TestEITSnapshotCurrentExtendedAllowsElapsedLeadingSegments(t *testing.T) {
-	snap := NewEITSnapshot()
+func TestSnapshotCurrentExtendedAllowsElapsedLeadingSegments(t *testing.T) {
+	snap := NewSnapshot()
 	now := readyTestTime(5)
 	snap.Observe(makeSection(1, 100, 2, 0x50, 40, 40, 1, namedEv(1, 1000, 1000, "news")), now)
 	extended := makeSection(1, 100, 2, 0x58, 40, 40, 1, extendedEv(1, 1000, 1000, "概要", "detail"))
@@ -341,7 +341,7 @@ func TestEITSnapshotCurrentExtendedAllowsElapsedLeadingSegments(t *testing.T) {
 }
 
 func TestShouldStopEITSCollectionStopsWhenReadyAndQualityIsAcceptable(t *testing.T) {
-	snap := NewEITSnapshot()
+	snap := NewSnapshot()
 	now := readyTestTime(0)
 	snap.Observe(makeSection(1, 100, 2, 0x50, 0, 0, 1, namedEv(1, 1000, 1000, "news")), now)
 
@@ -351,7 +351,7 @@ func TestShouldStopEITSCollectionStopsWhenReadyAndQualityIsAcceptable(t *testing
 }
 
 func TestShouldStopEITSCollectionWaitsForObservedExtendedTable(t *testing.T) {
-	snap := NewEITSnapshot()
+	snap := NewSnapshot()
 	now := readyTestTime(0)
 	snap.Observe(makeSection(1, 100, 2, 0x50, 0, 0, 1, namedEv(1, 1000, 1000, "news")), now)
 	snap.Observe(makeSection(1, 100, 2, 0x58, 0, 1, 1, extendedEv(1, 1000, 1000, "概要", "detail")), now)
@@ -366,7 +366,7 @@ func TestShouldStopEITSCollectionWaitsForObservedExtendedTable(t *testing.T) {
 }
 
 func TestShouldStopEITSCollectionKeepsCollectingLowQualitySnapshot(t *testing.T) {
-	snap := NewEITSnapshot()
+	snap := NewSnapshot()
 	now := readyTestTime(0)
 	events := make([]EITEvent, 0, 10)
 	for i := 0; i < 10; i++ {
@@ -380,7 +380,7 @@ func TestShouldStopEITSCollectionKeepsCollectingLowQualitySnapshot(t *testing.T)
 }
 
 func TestEITSSnapshotStableFor(t *testing.T) {
-	snap := NewEITSnapshot()
+	snap := NewSnapshot()
 	now := time.Unix(0, 0)
 	if snap.StableFor(now, time.Second) {
 		t.Fatal("StableFor should be false before any progress")
@@ -394,13 +394,13 @@ func TestEITSSnapshotStableFor(t *testing.T) {
 	}
 }
 
-func TestEITSnapshotMixedVersionsRetainProgramsAndResetReadiness(t *testing.T) {
-	snap := NewEITSnapshot()
+func TestSnapshotMixedVersionsRetainProgramsAndResetReadiness(t *testing.T) {
+	snap := NewSnapshot()
 	now := readyTestTime(0)
 	snap.Observe(makeSection(1, 100, 2, 0x50, 0, 1, 1, ev(10, 1000, 1000)), now)
 	snap.Observe(makeSection(1, 100, 2, 0x50, 1, 1, 1, ev(11, 2000, 1000)), now)
-	if !snap.ServiceComplete(ServiceKey{NetworkID: 1, ServiceID: 100, TransportStreamID: 2}) {
-		t.Fatal("setup: ServiceComplete should be true after observing all sections")
+	if !snap.ServiceReady(ServiceKey{NetworkID: 1, ServiceID: 100, TransportStreamID: 2}) {
+		t.Fatal("setup: ServiceReady should be true after observing all sections")
 	}
 	progs := snap.Programs(ServiceKey{NetworkID: 1, ServiceID: 100, TransportStreamID: 2})
 	if len(progs) != 2 {
@@ -413,7 +413,7 @@ func TestEITSnapshotMixedVersionsRetainProgramsAndResetReadiness(t *testing.T) {
 	if len(progs) != 2 {
 		t.Fatalf("during version roll programs = %d, want 2", len(progs))
 	}
-	if snap.ServiceComplete(ServiceKey{NetworkID: 1, ServiceID: 100, TransportStreamID: 2}) {
+	if snap.ServiceReady(ServiceKey{NetworkID: 1, ServiceID: 100, TransportStreamID: 2}) {
 		t.Fatal("mixed-version table should reset readiness until replacement sections arrive")
 	}
 }

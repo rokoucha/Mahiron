@@ -14,6 +14,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/job/run"
 	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/internal/program"
+	"github.com/21S1298001/mahiron/internal/stream/channel"
 	"github.com/21S1298001/mahiron/internal/stream/databroadcast"
 	"github.com/21S1298001/mahiron/internal/stream/remote"
 	"github.com/21S1298001/mahiron/internal/stream/source"
@@ -23,8 +24,8 @@ import (
 )
 
 type StreamManager struct {
-	eitUpdater            EITSectionUpdater
-	logoUpdater           LogoUpdater
+	eitUpdater            channel.EITSectionUpdater
+	logoUpdater           channel.LogoUpdater
 	programUpdater        ProgramUpdater
 	remoteEventSyncCancel context.CancelFunc
 	remoteEventSyncOnce   sync.Once
@@ -45,13 +46,13 @@ type RemoteTunerStatus struct {
 
 type StreamManagerConfig struct {
 	Channels           config.ChannelsConfig
-	DescramblerFactory DescramblerFactory
-	EITUpdater         EITSectionUpdater
+	DescramblerFactory source.DescramblerFactory
+	EITUpdater         channel.EITSectionUpdater
 	Remotes            config.RemotesConfig
-	LogoUpdater        LogoUpdater
+	LogoUpdater        channel.LogoUpdater
 	ProgramUpdater     ProgramUpdater
 	ServiceLister      ServiceLister
-	TunerManager       TunerManager
+	TunerManager       source.TunerManager
 }
 
 type Session interface {
@@ -69,7 +70,7 @@ type Session interface {
 func NewStreamManager(cfg StreamManagerConfig) *StreamManager {
 	descramblerFactory := cfg.DescramblerFactory
 	if descramblerFactory == nil {
-		descramblerFactory = NewCommandDescrambler
+		descramblerFactory = source.NewCommandDescrambler
 	}
 	remotes := make(map[string]*remote.Client, len(cfg.Remotes))
 	for _, remoteConfig := range cfg.Remotes {

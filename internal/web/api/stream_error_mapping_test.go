@@ -8,6 +8,7 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/stream"
+	"github.com/21S1298001/mahiron/internal/stream/databroadcast"
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 )
 
@@ -19,8 +20,8 @@ func (s *stubStreamManager) GetOrCreate(context.Context, string, string) (interf
 	ChannelStream(context.Context, bool, io.Writer) error
 	ProgramStream(context.Context, *program.Program, bool, io.Writer) error
 	ServiceStream(context.Context, uint16, bool, io.Writer) error
-	ObserveDataBroadcast(context.Context, uint16, bool, func(stream.DataBroadcastEvent) error) error
-	DataBroadcastModule(uint16, byte, uint16) (stream.DataBroadcastModule, bool)
+	ObserveDataBroadcast(context.Context, uint16, bool, func(databroadcast.DataBroadcastEvent) error) error
+	DataBroadcastModule(uint16, byte, uint16) (databroadcast.DataBroadcastModule, bool)
 }, error) {
 	return nil, s.err
 }
@@ -29,8 +30,8 @@ func (s *stubStreamManager) GetExisting(string, string) (interface {
 	ChannelStream(context.Context, bool, io.Writer) error
 	ProgramStream(context.Context, *program.Program, bool, io.Writer) error
 	ServiceStream(context.Context, uint16, bool, io.Writer) error
-	ObserveDataBroadcast(context.Context, uint16, bool, func(stream.DataBroadcastEvent) error) error
-	DataBroadcastModule(uint16, byte, uint16) (stream.DataBroadcastModule, bool)
+	ObserveDataBroadcast(context.Context, uint16, bool, func(databroadcast.DataBroadcastEvent) error) error
+	DataBroadcastModule(uint16, byte, uint16) (databroadcast.DataBroadcastModule, bool)
 }, bool) {
 	return nil, false
 }

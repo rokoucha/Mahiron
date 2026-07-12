@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/epg"
 	"github.com/21S1298001/mahiron/internal/job/run"
 )
@@ -18,11 +17,6 @@ const (
 
 	EPGGathererDefaultSchedule = "20,50 * * * *"
 )
-
-func RegisterEPGGatherer(registry Registry, programStore EPGProgramStore, serviceStore EPGServiceStore, epgStreams EPGStreamManager, channels config.ChannelsConfig, epgRetentionDays int, retrievalTime time.Duration) {
-	service := epg.NewService(programStore, serviceStore, epgStreams, channels, epgRetentionDays, retrievalTime)
-	RegisterEPGGathererService(registry, service)
-}
 
 func RegisterEPGGathererService(registry Registry, service EPGGatherer) {
 	registry.Register(JobDefinition{
