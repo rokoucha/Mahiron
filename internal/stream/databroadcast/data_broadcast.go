@@ -531,7 +531,7 @@ func (h *DataBroadcastHub) observeDDB(section ts.PIDSection) {
 		h.recordCarousel("ddb", "unmapped")
 		return
 	}
-	module, complete, err, result := carousel.ObserveDDBWithResult(ddb)
+	module, complete, result, err := carousel.ObserveDDBWithResult(ddb)
 	if err != nil || !complete {
 		h.mu.Unlock()
 		if err != nil {

@@ -124,25 +124,25 @@ func (c *DSMCCCarousel) ObserveDII(dii *DSMCCDII) []DSMCCModuleInfo {
 }
 
 func (c *DSMCCCarousel) ObserveDDB(ddb *DSMCCDDB) (*DSMCCModule, bool, error) {
-	module, complete, err, _ := c.ObserveDDBWithResult(ddb)
+	module, complete, _, err := c.ObserveDDBWithResult(ddb)
 	return module, complete, err
 }
 
 // ObserveDDBWithResult observes a data block and also reports whether it was
 // new, duplicate, ignored, or completed a module. The result is intended for
 // receiver diagnostics and does not change the assembly semantics.
-func (c *DSMCCCarousel) ObserveDDBWithResult(ddb *DSMCCDDB) (*DSMCCModule, bool, error, DSMCCDDBResult) {
+func (c *DSMCCCarousel) ObserveDDBWithResult(ddb *DSMCCDDB) (*DSMCCModule, bool, DSMCCDDBResult, error) {
 	state := c.modules[ddb.ModuleID]
 	if state == nil || state.completed || state.downloadID != ddb.DownloadID || state.info.Version != ddb.ModuleVersion || state.blockSize == 0 {
-		return nil, false, nil, DSMCCDDBIgnored
+		return nil, false, DSMCCDDBIgnored, nil
 	}
 	blockNumber := int(ddb.BlockNumber)
 	if blockNumber >= len(state.received) {
-		return nil, false, nil, DSMCCDDBIgnored
+		return nil, false, DSMCCDDBIgnored, nil
 	}
 	off := blockNumber * int(state.blockSize)
 	if off >= len(state.data) {
-		return nil, false, nil, DSMCCDDBIgnored
+		return nil, false, DSMCCDDBIgnored, nil
 	}
 	end := off + len(ddb.Data)
 	if end > len(state.data) {
@@ -156,9 +156,9 @@ func (c *DSMCCCarousel) ObserveDDBWithResult(ddb *DSMCCDDB) (*DSMCCModule, bool,
 	copy(state.data[off:end], ddb.Data[:end-off])
 	if state.count < len(state.received) {
 		if duplicate {
-			return nil, false, nil, DSMCCDDBDuplicate
+			return nil, false, DSMCCDDBDuplicate, nil
 		}
-		return nil, false, nil, DSMCCDDBBlock
+		return nil, false, DSMCCDDBBlock, nil
 	}
 	state.completed = true
 	state.received = nil
@@ -168,10 +168,10 @@ func (c *DSMCCCarousel) ObserveDDBWithResult(ddb *DSMCCDDB) (*DSMCCModule, bool,
 	}
 	if c.completedBytes > c.limits.MaxCompletedBytes {
 		c.remove(ddb.ModuleID)
-		return nil, false, ErrDSMCCCarouselBudgetExceeded, DSMCCDDBIgnored
+		return nil, false, DSMCCDDBIgnored, ErrDSMCCCarouselBudgetExceeded
 	}
 	module := state.module()
-	return &module, true, nil, DSMCCDDBCompleted
+	return &module, true, DSMCCDDBCompleted, nil
 }
 
 func (c *DSMCCCarousel) Module(moduleID uint16) (DSMCCModule, bool) {

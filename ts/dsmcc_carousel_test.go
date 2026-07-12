@@ -52,10 +52,10 @@ func TestDSMCCCarouselIgnoresDuplicateBlocks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok, err, result := carousel.ObserveDDBWithResult(ddb); err != nil || ok || result != DSMCCDDBBlock {
+	if _, ok, result, err := carousel.ObserveDDBWithResult(ddb); err != nil || ok || result != DSMCCDDBBlock {
 		t.Fatalf("first block = %v, %v", ok, err)
 	}
-	if _, ok, err, result := carousel.ObserveDDBWithResult(ddb); err != nil || ok || result != DSMCCDDBDuplicate {
+	if _, ok, result, err := carousel.ObserveDDBWithResult(ddb); err != nil || ok || result != DSMCCDDBDuplicate {
 		t.Fatalf("duplicate block = %v, %v", ok, err)
 	}
 	ddb, err = ParseDSMCCDDB(buildDSMCCDDB(t, 1, 2, 1, 1, []byte("cd")))
