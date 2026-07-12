@@ -113,7 +113,7 @@ func (e *Demuxer) observeSections(ctx context.Context, accept func(ts.Section) b
 		queue:      make(chan ts.Section, sectionSubscriberBuffer),
 		writerDone: make(chan struct{}),
 	}
-	id, err := e.attachSection(sub, start)
+	id, err := e.attachSection(ctx, sub, start)
 	if err != nil {
 		return err
 	}
@@ -198,7 +198,7 @@ func (e *Demuxer) subscribePackets(ctx context.Context, serviceID *uint16, dst i
 		statsKey:   e.streamInfoKey(serviceID),
 		writerDone: make(chan struct{}),
 	}
-	id, err := e.attachPacket(sub)
+	id, err := e.attachPacket(ctx, sub)
 	if err != nil {
 		return err
 	}
@@ -224,7 +224,7 @@ func (e *Demuxer) subscribePackets(ctx context.Context, serviceID *uint16, dst i
 	}
 }
 
-func (e *Demuxer) attachPacket(sub *packetSubscription) (uint64, error) {
+func (e *Demuxer) attachPacket(ctx context.Context, sub *packetSubscription) (uint64, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if e.stopped {
@@ -237,11 +237,11 @@ func (e *Demuxer) attachPacket(sub *packetSubscription) (uint64, error) {
 	}
 	e.packets[id] = sub
 	e.packetSubs = append(e.packetSubs, packetSubscriptionEntry{id: id, sub: sub})
-	e.startLocked()
+	e.startLocked(ctx)
 	return id, nil
 }
 
-func (e *Demuxer) attachSection(sub *sectionSubscription, start bool) (uint64, error) {
+func (e *Demuxer) attachSection(ctx context.Context, sub *sectionSubscription, start bool) (uint64, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if e.stopped {
@@ -252,16 +252,16 @@ func (e *Demuxer) attachSection(sub *sectionSubscription, start bool) (uint64, e
 	e.sections[id] = sub
 	e.sectionSubs = append(e.sectionSubs, sectionSubscriptionEntry{id: id, sub: sub})
 	if start {
-		e.startLocked()
+		e.startLocked(ctx)
 	}
 	return id, nil
 }
 
-func (e *Demuxer) startLocked() {
+func (e *Demuxer) startLocked(sourceCtx context.Context) {
 	if e.started {
 		return
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(context.WithoutCancel(sourceCtx))
 	e.cancel = cancel
 	e.started = true
 	go e.run(ctx)

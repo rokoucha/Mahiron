@@ -256,10 +256,23 @@ func (s *Session) Alive() bool {
 }
 
 func (s *Session) attachDemuxer(ctx context.Context, decode bool, serviceID uint16, service bool, dst io.Writer) error {
+	demuxer, err := s.streamDemuxer(decode)
+	if err != nil {
+		return err
+	}
+	return s.broadcast.WithUser(ctx, func(ctx context.Context) error {
+		if service {
+			return demuxer.SubscribeService(ctx, serviceID, dst)
+		}
+		return demuxer.SubscribeChannel(ctx, dst)
+	})
+}
+
+func (s *Session) streamDemuxer(decode bool) (*demux.Demuxer, error) {
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.stopped {
-		s.mu.Unlock()
-		return ErrSessionStopped
+		return nil, ErrSessionStopped
 	}
 	demuxer := s.rawDemuxer
 	if decode && s.descrambler != nil {
@@ -268,13 +281,7 @@ func (s *Session) attachDemuxer(ctx context.Context, decode bool, serviceID uint
 		}
 		demuxer = s.decodedDemuxer
 	}
-	s.mu.Unlock()
-	return s.broadcast.WithUser(ctx, func(ctx context.Context) error {
-		if service {
-			return demuxer.SubscribeService(ctx, serviceID, dst)
-		}
-		return demuxer.SubscribeChannel(ctx, dst)
-	})
+	return demuxer, nil
 }
 
 func (s *Session) subscribeDecodedMux(ctx context.Context, dst io.Writer) error {
