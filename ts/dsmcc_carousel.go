@@ -192,6 +192,28 @@ func (c *DSMCCCarousel) ModuleInfo(moduleID uint16) (DSMCCModuleInfo, bool) {
 	return cloneDSMCCModuleInfo(state.info), true
 }
 
+// Restore completes an announced module from a receiver cache. It succeeds
+// only when all DII identity fields match the current in-flight state.
+func (c *DSMCCCarousel) Restore(module DSMCCModule) bool {
+	state := c.modules[module.ModuleID]
+	if state == nil || state.completed || state.downloadID != module.DownloadID || state.info.Version != module.Version || state.info.ModuleSize != module.Size || uint32(len(module.Data)) != module.Size {
+		return false
+	}
+	state.data = append(state.data[:0], module.Data...)
+	state.received = nil
+	state.count = 0
+	state.completed = true
+	c.inFlightBytes -= uint64(state.info.ModuleSize)
+	c.completedBytes += uint64(state.info.ModuleSize)
+	for c.completedBytes > c.limits.MaxCompletedBytes && c.evictOldestCompletedExcept(module.ModuleID) {
+	}
+	if c.completedBytes > c.limits.MaxCompletedBytes {
+		c.remove(module.ModuleID)
+		return false
+	}
+	return true
+}
+
 func (c *DSMCCCarousel) Modules() []DSMCCModule {
 	result := make([]DSMCCModule, 0, len(c.modules))
 	for _, state := range c.modules {

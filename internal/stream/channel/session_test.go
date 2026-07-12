@@ -181,6 +181,38 @@ func TestSessionPrioritizesEntryDocumentDDB(t *testing.T) {
 	session.dataBroadcastWG.Done()
 }
 
+func TestSessionRestoresDataBroadcastModuleAcrossSessions(t *testing.T) {
+	serviceID, pmtPID, carouselPID := uint16(101), uint16(0x0100), uint16(0x0200)
+	componentTag := byte(0x40)
+	moduleData := []byte("bml")
+	cache := databroadcast.NewModuleCache(1024)
+	base := append(streamSectionPackets(ts.PIDPAT, streamBuildPAT(1, serviceID, pmtPID), 0), streamSectionPackets(pmtPID, streamBuildDataBroadcastPMT(serviceID, carouselPID, componentTag), 1)...)
+	base = append(base, streamSectionPackets(carouselPID, streamBuildDSMCCDII(t, 1, uint16(len(moduleData)), 2, uint32(len(moduleData)), 1, []byte("index.bml")), 2)...)
+	firstInput := append(append([]byte(nil), base...), streamSectionPackets(carouselPID, streamBuildDSMCCDDB(t, 1, 2, 1, 0, moduleData), 3)...)
+	first := NewSession(Config{Broadcast: source.NewBroadcast(streamtest.NewFinitePacketSource(firstInput, streamtest.ClosedStart()), nil), Channel: "27", Type: "GR", ModuleCache: cache})
+	if err := first.ObserveDataBroadcast(t.Context(), serviceID, false, func(databroadcast.DataBroadcastEvent) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+
+	second := NewSession(Config{Broadcast: source.NewBroadcast(streamtest.NewFinitePacketSource(base, streamtest.ClosedStart()), nil), Channel: "27", Type: "GR", ModuleCache: cache})
+	restored := false
+	if err := second.ObserveDataBroadcast(t.Context(), serviceID, false, func(event databroadcast.DataBroadcastEvent) error {
+		if event.Type == "moduleUpdated" && event.Module != nil && event.Module.ModuleID == 2 {
+			restored = true
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !restored {
+		t.Fatal("second session did not restore completed module from cache")
+	}
+	module, ok := second.DataBroadcastModule(serviceID, componentTag, 2)
+	if !ok || string(module.Data) != string(moduleData) {
+		t.Fatalf("restored module = %q, %v", module.Data, ok)
+	}
+}
+
 func TestSessionSectionUpdaterRetriesEITPFOnUpsertFailure(t *testing.T) {
 	key := epgClockTestKey{networkID: 4, serviceID: 101}
 	section := streamBuildEIT(ts.TableIDEITPF0, key, 10)

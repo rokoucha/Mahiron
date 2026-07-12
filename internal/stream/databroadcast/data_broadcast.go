@@ -152,6 +152,7 @@ type DataBroadcastHub struct {
 	bit         *DataBroadcastBIT
 	channelType string
 	channelID   string
+	moduleCache *ModuleCache
 }
 
 type dataBroadcastService struct {
@@ -183,6 +184,11 @@ func NewDataBroadcastHub() *DataBroadcastHub {
 func (h *DataBroadcastHub) WithMetricLabels(channelType, channelID string) *DataBroadcastHub {
 	h.channelType = channelType
 	h.channelID = channelID
+	return h
+}
+
+func (h *DataBroadcastHub) WithModuleCache(cache *ModuleCache) *DataBroadcastHub {
+	h.moduleCache = cache
 	return h
 }
 
@@ -471,6 +477,7 @@ func (h *DataBroadcastHub) observeDII(section ts.PIDSection) {
 		}
 	}
 	modules := make([]DataBroadcastModule, 0, len(infos))
+	restored := make([]DataBroadcastModule, 0)
 	for _, info := range infos {
 		key := dataBroadcastModuleKey{componentTag: componentTag, downloadID: dii.DownloadID, moduleID: info.ModuleID, version: info.Version}
 		service.moduleStarts[key] = now
@@ -487,6 +494,15 @@ func (h *DataBroadcastHub) observeDII(section ts.PIDSection) {
 			module.Metadata = &metadata
 		}
 		modules = append(modules, module)
+		cacheKey := h.moduleCacheKey(serviceID, componentTag, dii.DownloadID, info.ModuleID, info.Version, info.ModuleSize)
+		if cached, found := h.moduleCache.Get(cacheKey); found && carousel.Restore(cached) {
+			modules[len(modules)-1].Complete = true
+			restored = append(restored, apiModule(componentTag, cached, false))
+			delete(service.moduleStarts, dataBroadcastModuleKey{componentTag: componentTag, downloadID: dii.DownloadID, moduleID: info.ModuleID, version: info.Version})
+			h.recordCarousel("cache", "hit")
+		} else if h.moduleCache != nil {
+			h.recordCarousel("cache", "miss")
+		}
 	}
 	event := DataBroadcastEvent{Type: "moduleListUpdated", ModuleList: &DataBroadcastModuleList{
 		ComponentTag: componentTag,
@@ -495,6 +511,9 @@ func (h *DataBroadcastHub) observeDII(section ts.PIDSection) {
 		Modules:      modules,
 	}}
 	h.broadcastLocked(serviceID, event)
+	for i := range restored {
+		h.broadcastLocked(serviceID, DataBroadcastEvent{Type: "moduleUpdated", Module: &restored[i]})
+	}
 	h.mu.Unlock()
 	h.recordCarousel("dii", "accepted")
 }
@@ -526,12 +545,17 @@ func (h *DataBroadcastHub) observeDDB(section ts.PIDSection) {
 	started, timed := h.services[serviceID].moduleStarts[key]
 	delete(h.services[serviceID].moduleStarts, key)
 	event := DataBroadcastEvent{Type: "moduleUpdated", Module: ptr(apiModule(componentTag, *module, false))}
+	h.moduleCache.Put(h.moduleCacheKey(serviceID, componentTag, module.DownloadID, module.ModuleID, module.Version, module.Size), *module)
 	h.broadcastLocked(serviceID, event)
 	h.mu.Unlock()
 	h.recordCarousel("ddb", "completed")
 	if timed {
 		observability.RecordDataBroadcastModuleDuration(context.Background(), h.channelType, h.channelID, time.Since(started).Milliseconds())
 	}
+}
+
+func (h *DataBroadcastHub) moduleCacheKey(serviceID uint16, componentTag byte, downloadID uint32, moduleID uint16, version byte, size uint32) ModuleCacheKey {
+	return ModuleCacheKey{ChannelType: h.channelType, ChannelID: h.channelID, ServiceID: serviceID, ComponentTag: componentTag, DownloadID: downloadID, ModuleID: moduleID, Version: version, Size: size}
 }
 
 func (h *DataBroadcastHub) observeEIT(section ts.Section) {

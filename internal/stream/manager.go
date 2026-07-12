@@ -35,6 +35,7 @@ type StreamManager struct {
 	serviceLister         ServiceLister
 	registry              *sessionRegistry
 	sources               *source.Pool
+	dataBroadcastCache    *databroadcast.ModuleCache
 }
 
 // RemoteTunerStatus identifies a tuner that belongs to a configured remote
@@ -92,14 +93,15 @@ func NewStreamManager(cfg StreamManagerConfig) *StreamManager {
 		}
 	}
 	return &StreamManager{
-		eitUpdater:       cfg.EITUpdater,
-		logoUpdater:      cfg.LogoUpdater,
-		programUpdater:   cfg.ProgramUpdater,
-		remotes:          remotes,
-		remoteTunerTypes: remoteTunerTypes,
-		serviceLister:    cfg.ServiceLister,
-		registry:         newSessionRegistry(),
-		sources:          source.NewPool(cfg.Channels, cfg.TunerManager, descramblerFactory, remoteClients(remotes)),
+		eitUpdater:         cfg.EITUpdater,
+		logoUpdater:        cfg.LogoUpdater,
+		programUpdater:     cfg.ProgramUpdater,
+		remotes:            remotes,
+		remoteTunerTypes:   remoteTunerTypes,
+		serviceLister:      cfg.ServiceLister,
+		registry:           newSessionRegistry(),
+		sources:            source.NewPool(cfg.Channels, cfg.TunerManager, descramblerFactory, remoteClients(remotes)),
+		dataBroadcastCache: databroadcast.NewModuleCache(0),
 	}
 }
 

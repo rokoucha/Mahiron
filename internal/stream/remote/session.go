@@ -7,14 +7,16 @@ import (
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/stream/channel"
+	"github.com/21S1298001/mahiron/internal/stream/databroadcast"
 	"github.com/21S1298001/mahiron/internal/stream/source"
 	"github.com/21S1298001/mahiron/internal/tuner"
 	"github.com/21S1298001/mahiron/ts"
 )
 
 type SessionConfig struct {
-	Client *Client
-	Handle source.InputHandle
+	Client      *Client
+	Handle      source.InputHandle
+	ModuleCache *databroadcast.ModuleCache
 }
 
 // Session adds remote API-backed operations to the shared TS ChannelSession.
@@ -29,7 +31,7 @@ type Session struct {
 func NewSession(config SessionConfig) *Session {
 	metadata := config.Handle.Metadata()
 	return &Session{
-		ChannelSession: channel.NewChannelSession(channel.Config{Channel: metadata.PublicChannel.Channel, Handle: config.Handle, Type: metadata.PublicChannel.Type}),
+		ChannelSession: channel.NewChannelSession(channel.Config{Channel: metadata.PublicChannel.Channel, Handle: config.Handle, Type: metadata.PublicChannel.Type, ModuleCache: config.ModuleCache}),
 		client:         config.Client,
 		input:          config.Handle.Input(),
 		remote:         metadata.Remote,

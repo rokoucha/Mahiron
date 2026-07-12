@@ -55,6 +55,7 @@ type Config struct {
 	LogoUpdater LogoUpdater
 	OnStop      func()
 	Type        string
+	ModuleCache *databroadcast.ModuleCache
 }
 
 func NewSession(config Config) *Session {
@@ -74,7 +75,7 @@ func NewSession(config Config) *Session {
 		eitUpdater:    config.EITUpdater,
 		logoUpdater:   config.LogoUpdater,
 		logoCarousel:  ts.NewDSMCCLogoCarousel(),
-		dataBroadcast: databroadcast.NewDataBroadcastHub().WithMetricLabels(config.Type, config.Channel),
+		dataBroadcast: databroadcast.NewDataBroadcastHub().WithMetricLabels(config.Type, config.Channel).WithModuleCache(config.ModuleCache),
 	}
 	session.sectionQueue = make(chan ts.Section, sectionQueueSize)
 	session.carouselQueue = make(chan ts.Section, carouselQueueSize)
