@@ -69,6 +69,7 @@ type DataBroadcastModule struct {
 	Complete     bool
 	ETag         string
 	Data         []byte
+	Metadata     *ts.DSMCCModuleMetadata
 }
 
 type DataBroadcastProgramInfo struct {
@@ -442,7 +443,7 @@ func (h *DataBroadcastHub) observeDII(section ts.PIDSection) {
 	for _, info := range infos {
 		key := dataBroadcastModuleKey{componentTag: componentTag, downloadID: dii.DownloadID, moduleID: info.ModuleID, version: info.Version}
 		service.moduleStarts[key] = now
-		modules = append(modules, DataBroadcastModule{
+		module := DataBroadcastModule{
 			ComponentTag: componentTag,
 			ModuleID:     info.ModuleID,
 			DownloadID:   dii.DownloadID,
@@ -450,7 +451,11 @@ func (h *DataBroadcastHub) observeDII(section ts.PIDSection) {
 			Size:         info.ModuleSize,
 			Info:         append([]byte(nil), info.Info...),
 			ETag:         moduleETag(dii.DownloadID, info.ModuleID, info.Version, info.ModuleSize),
-		})
+		}
+		if metadata, ok := info.Metadata(); ok {
+			module.Metadata = &metadata
+		}
+		modules = append(modules, module)
 	}
 	event := DataBroadcastEvent{Type: "moduleListUpdated", ModuleList: &DataBroadcastModuleList{
 		ComponentTag: componentTag,
@@ -626,6 +631,9 @@ func apiModule(componentTag byte, module ts.DSMCCModule, includeData bool) DataB
 		Complete:     true,
 		ETag:         moduleETag(module.DownloadID, module.ModuleID, module.Version, module.Size),
 	}
+	if metadata, ok := (ts.DSMCCModuleInfo{Info: module.Info}).Metadata(); ok {
+		result.Metadata = &metadata
+	}
 	if includeData {
 		result.Data = append([]byte(nil), module.Data...)
 	}
@@ -660,6 +668,12 @@ func cloneModules(modules []DataBroadcastModule) []DataBroadcastModule {
 		result[i] = module
 		result[i].Info = append([]byte(nil), module.Info...)
 		result[i].Data = append([]byte(nil), module.Data...)
+		if module.Metadata != nil {
+			metadata := *module.Metadata
+			metadata.ExpireData = append([]byte(nil), metadata.ExpireData...)
+			metadata.ActivationData = append([]byte(nil), metadata.ActivationData...)
+			result[i].Metadata = &metadata
+		}
 	}
 	return result
 }

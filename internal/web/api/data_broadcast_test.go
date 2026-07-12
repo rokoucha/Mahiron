@@ -14,6 +14,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/stream"
 	"github.com/21S1298001/mahiron/internal/stream/databroadcast"
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
+	"github.com/21S1298001/mahiron/ts"
 )
 
 func TestAPIDataBroadcastBITUsesWebBMLFieldNames(t *testing.T) {
@@ -72,6 +73,17 @@ func TestAPIDataBroadcastByteFieldsEncodeAsNumberArrays(t *testing.T) {
 				t.Fatalf("privateDataByte encoded as %T: %s", privateData, encoded)
 			}
 		}
+	}
+}
+
+func TestAPIDataBroadcastModuleExposesParsedMetadata(t *testing.T) {
+	priority := byte(80)
+	payload := apiDataBroadcastModule(100101, &databroadcast.DataBroadcastModule{
+		Metadata: &ts.DSMCCModuleMetadata{Name: "index.bml", Type: "text/bml", CachingPriority: &priority},
+	})
+	metadata := payload["metadata"].(map[string]any)
+	if metadata["name"] != "index.bml" || metadata["type"] != "text/bml" || metadata["cachingPriority"] != &priority {
+		t.Fatalf("metadata = %#v", metadata)
 	}
 }
 

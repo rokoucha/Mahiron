@@ -13,6 +13,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/stream"
 	"github.com/21S1298001/mahiron/internal/stream/databroadcast"
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
+	"github.com/21S1298001/mahiron/ts"
 )
 
 func GetServiceDataBroadcastEvents(ctx context.Context, h *Handler, params apigen.GetServiceDataBroadcastEventsParams, w http.ResponseWriter) error {
@@ -275,8 +276,28 @@ func apiDataBroadcastModule(serviceItemID int64, module *databroadcast.DataBroad
 		"version":      module.Version,
 		"size":         module.Size,
 		"info":         module.Info,
+		"metadata":     apiDataBroadcastModuleMetadata(module.Metadata),
 		"complete":     module.Complete,
 		"etag":         module.ETag,
 		"url":          fmt.Sprintf("/api/services/%d/data-broadcast/modules/%d/%d", serviceItemID, module.ComponentTag, module.ModuleID),
+	}
+}
+
+func apiDataBroadcastModuleMetadata(metadata *ts.DSMCCModuleMetadata) any {
+	if metadata == nil {
+		return nil
+	}
+	return map[string]any{
+		"type":                     metadata.Type,
+		"name":                     metadata.Name,
+		"crc32":                    metadata.CRC32,
+		"estimatedDownloadSeconds": metadata.EstimatedDownloadSeconds,
+		"cachingPriority":          metadata.CachingPriority,
+		"expireMode":               metadata.ExpireMode,
+		"expireDataByte":           bytesToNumbers(metadata.ExpireData),
+		"activationMode":           metadata.ActivationMode,
+		"activationDataByte":       bytesToNumbers(metadata.ActivationData),
+		"compressionType":          metadata.CompressionType,
+		"originalSize":             metadata.OriginalSize,
 	}
 }
