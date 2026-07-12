@@ -22,11 +22,7 @@ type Store interface {
 }
 
 type StreamScanner interface {
-	ScanServices(context.Context, string, string, bool) ([]ts.ServiceInfo, error)
-}
-
-type acquireContextStreamScanner interface {
-	ScanServicesWithAcquireContext(scanCtx, acquireCtx context.Context, channelType, channelID string, wait bool) ([]ts.ServiceInfo, error)
+	ScanServices(scanCtx, acquireCtx context.Context, channelType, channelID string, wait bool) ([]ts.ServiceInfo, error)
 }
 
 type Service struct {
@@ -133,12 +129,7 @@ func (s *Service) ScanChannel(ctx context.Context, channelType string, channelID
 		scanCtx, cancel = context.WithTimeout(scanCtx, s.scanTimeout)
 		defer cancel()
 	}
-	var services []ts.ServiceInfo
-	if scanner, ok := s.scanner.(acquireContextStreamScanner); ok {
-		services, err = scanner.ScanServicesWithAcquireContext(scanCtx, ctx, channelType, channelID, wait)
-	} else {
-		services, err = s.scanner.ScanServices(scanCtx, channelType, channelID, wait)
-	}
+	services, err := s.scanner.ScanServices(scanCtx, ctx, channelType, channelID, wait)
 	observability.EndSpan(scanSpan, err)
 	if err != nil {
 		slog.Warn("service scan failed", "type", channelType, "channel", channelID, "duration", time.Since(startedAt), "err", err)

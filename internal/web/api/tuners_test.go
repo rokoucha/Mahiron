@@ -53,7 +53,7 @@ func TestGetTunersIncludesRemoteTuners(t *testing.T) {
 	localTuners := tuner.NewTunerManager(&tuner.TunerManagerConfig{TunersConfig: config.TunersConfig{
 		{Name: "local-first", Types: []string{"BS"}, Command: "sleep 1"},
 	}})
-	streamManager := remoteTunerStatusProvider{APIStreamAdapter: stream.NewAPIStreamAdapter(stream.NewStreamManager(stream.StreamManagerConfig{TunerManager: localTuners}))}
+	streamManager := remoteTunerStatusProvider{StreamManager: stream.NewStreamManager(stream.StreamManagerConfig{TunerManager: localTuners})}
 	handler := NewHandler(HandlerConfig{TunerManager: localTuners, StreamManager: streamManager})
 
 	res, err := handler.GetTuners(context.Background())
@@ -73,7 +73,7 @@ func TestGetTunersIncludesRemoteTuners(t *testing.T) {
 	}
 }
 
-type remoteTunerStatusProvider struct{ *stream.APIStreamAdapter }
+type remoteTunerStatusProvider struct{ *stream.StreamManager }
 
 func (remoteTunerStatusProvider) RemoteTunerStatuses(context.Context) []stream.RemoteTunerStatus {
 	return []stream.RemoteTunerStatus{{
@@ -226,9 +226,9 @@ func TestChannelStreamReturnsTrackedTunerUserID(t *testing.T) {
 	handler := NewHandler(HandlerConfig{
 		TunerManager:   tunerManager,
 		ServiceManager: service.NewServiceManager(service.NewSQLiteStore(database), channels),
-		StreamManager: stream.NewAPIStreamAdapter(stream.NewStreamManager(stream.StreamManagerConfig{
+		StreamManager: stream.NewStreamManager(stream.StreamManagerConfig{
 			Channels: channels, TunerManager: tunerManager,
-		})),
+		}),
 	})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

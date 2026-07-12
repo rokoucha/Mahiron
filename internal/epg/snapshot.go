@@ -19,8 +19,6 @@ type Snapshot struct {
 	lastProgress time.Time
 }
 
-type EITSnapshot = Snapshot
-
 type snapshotService struct {
 	tables      map[uint8]*snapshotTable
 	programs    map[int64]*program.Program
@@ -69,10 +67,6 @@ type SnapshotTableReport struct {
 
 func NewSnapshot() *Snapshot {
 	return &Snapshot{services: make(map[ServiceKey]*snapshotService)}
-}
-
-func NewEITSnapshot() *Snapshot {
-	return NewSnapshot()
 }
 
 func (s *Snapshot) Observe(section *EITSection, now time.Time) bool {
@@ -226,10 +220,6 @@ func currentJSTSegment(now time.Time) int {
 	return int(((now.UnixMilli() + jstOffsetMillis) / segmentDurationMillis) & 0x07)
 }
 
-func (s *Snapshot) ServiceComplete(key ServiceKey) bool {
-	return s.ServiceReady(key)
-}
-
 func (s *Snapshot) ServiceReady(key ServiceKey) bool {
 	service := s.services[key]
 	if service == nil || len(service.readyGroups) == 0 {
@@ -337,10 +327,6 @@ func readyMissingSections(group *snapshotReadyGroup, tableID uint8) []int {
 		}
 	}
 	return missing
-}
-
-func (s *Snapshot) AllComplete(expected []ServiceKey) bool {
-	return s.AllReady(expected)
 }
 
 func (s *Snapshot) AllReady(expected []ServiceKey) bool {

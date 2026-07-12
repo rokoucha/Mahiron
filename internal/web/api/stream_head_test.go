@@ -71,7 +71,7 @@ func testStreamHeadHandler(t *testing.T) (*Handler, *service.ServiceManager) {
 	handler := NewHandler(HandlerConfig{
 		ServiceManager: sm,
 		ProgramManager: pm,
-		StreamManager:  stream.NewAPIStreamAdapter(stm),
+		StreamManager:  stm,
 		TunerManager:   tunerManager,
 	})
 	return handler, sm

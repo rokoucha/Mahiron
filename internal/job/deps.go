@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/21S1298001/mahiron/internal/epg"
-	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/service"
 	"github.com/21S1298001/mahiron/internal/servicescan"
 	"github.com/21S1298001/mahiron/ts"
@@ -42,23 +41,4 @@ type EPGGatherer interface {
 	BuildNetworkInputs(context.Context, uint16) ([]epg.Candidate, []epg.ServiceKey, error)
 	GatherNetwork(context.Context, uint16, []epg.Candidate, []epg.ServiceKey) error
 	Cleanup(context.Context, time.Time) error
-}
-
-type EPGServiceStore interface {
-	GetServices(context.Context) ([]*service.Service, error)
-	SetEPGAttempt(context.Context, uint16, uint16, int64, string) error
-	SetEPGSuccess(context.Context, uint16, uint16, int64) error
-}
-
-type EPGProgramStore interface {
-	UpsertPrograms(context.Context, []*program.Program) error
-	DeleteEndedBefore(context.Context, int64) error
-	ReplaceServicePrograms(context.Context, uint16, uint16, int64, []*program.Program) error
-}
-
-type EPGStreamManager interface {
-	HasSession(string, string) bool
-	GetOrCreateWait(context.Context, string, string) (interface {
-		CollectEIT(context.Context, func(*ts.EIT) error) error
-	}, error)
 }

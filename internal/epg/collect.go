@@ -329,7 +329,7 @@ func persistObservedSnapshots(ctx context.Context, programStore ProgramStore, se
 			programs := observedPrograms[key]
 			result.ProgramCount += len(programs)
 			report := snapshot.CompletionReport(key)
-			basicComplete := snapshot.ServiceComplete(key)
+			basicComplete := snapshot.ServiceReady(key)
 			observedExtendedComplete := snapshot.ObservedExtendedReady([]ServiceKey{key})
 			missingTitles, titleTotal := programTitleCounts(programs)
 			if !basicComplete {

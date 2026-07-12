@@ -60,20 +60,8 @@ type ProgramManager interface {
 }
 
 type StreamManager interface {
-	GetOrCreate(context.Context, string, string) (interface {
-		ChannelStream(context.Context, bool, io.Writer) error
-		ProgramStream(context.Context, *program.Program, bool, io.Writer) error
-		ServiceStream(context.Context, uint16, bool, io.Writer) error
-		ObserveDataBroadcast(context.Context, uint16, bool, func(stream.DataBroadcastEvent) error) error
-		DataBroadcastModule(uint16, byte, uint16) (stream.DataBroadcastModule, bool)
-	}, error)
-	GetExisting(string, string) (interface {
-		ChannelStream(context.Context, bool, io.Writer) error
-		ProgramStream(context.Context, *program.Program, bool, io.Writer) error
-		ServiceStream(context.Context, uint16, bool, io.Writer) error
-		ObserveDataBroadcast(context.Context, uint16, bool, func(stream.DataBroadcastEvent) error) error
-		DataBroadcastModule(uint16, byte, uint16) (stream.DataBroadcastModule, bool)
-	}, bool)
+	GetOrCreate(context.Context, string, string) (stream.Session, error)
+	GetExisting(string, string) (stream.Session, bool)
 	ActiveSessionCount() int
 }
 

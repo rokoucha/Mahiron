@@ -124,19 +124,6 @@ func LoadAndParseChannelsConfig(filePath string) (ChannelsConfig, error) {
 func normalizeRoutes(channel ChannelConfig) ([]ChannelRouteConfig, error) {
 	no := false
 	routes := channel.Routes
-	if len(routes) == 0 {
-		routes = []ChannelRouteConfig{
-			{
-				Id:          "default",
-				Type:        channel.Type,
-				Channel:     channel.Channel,
-				ServiceId:   channel.ServiceId,
-				TsmfRelTs:   channel.TsmfRelTs,
-				CommandVars: channel.CommandVars,
-				IsDisabled:  channel.IsDisabled,
-			},
-		}
-	}
 
 	seen := make(map[string]struct{}, len(routes))
 	for i := range routes {

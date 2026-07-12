@@ -159,10 +159,8 @@ func buildRuntime(cfg *config.Config, database *sql.DB, obs observability.SetupR
 	})
 	serviceScanner := stream.NewServiceScannerAdapter(streams)
 	logoCollector := stream.NewLogoCollectorAdapter(streams)
-	epgStreams := stream.NewEPGCollectorAdapter(streams)
-	apiStreams := stream.NewAPIStreamAdapter(streams)
 	scanService := servicescan.NewService(services, serviceScanner, cfg.Channels, time.Duration(cfg.System.ServiceScanTimeout)*time.Millisecond)
-	epgService := epg.NewService(programs, services, epgStreams, cfg.Channels, cfg.System.EpgRetentionDays, time.Duration(cfg.System.EpgRetrievalTime)*time.Millisecond)
+	epgService := epg.NewService(programs, services, streams, cfg.Channels, cfg.System.EpgRetentionDays, time.Duration(cfg.System.EpgRetrievalTime)*time.Millisecond)
 
 	jobs, err := job.NewManager(job.Config{MaxHistory: 100, MaxConcurrentJobs: cfg.System.MaxConcurrentJobs}, events)
 	if err != nil {
@@ -192,7 +190,7 @@ func buildRuntime(cfg *config.Config, database *sql.DB, obs observability.SetupR
 	handler, err := web.NewWeb(web.WebConfig{
 		ServiceManager: services,
 		ProgramManager: programs,
-		StreamManager:  apiStreams,
+		StreamManager:  streams,
 		TunerManager:   tuners,
 		JobManager:     jobs,
 		LogStore:       obs.LogStore,

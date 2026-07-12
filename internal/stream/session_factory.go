@@ -23,7 +23,7 @@ func (m *StreamManager) createSession(ctx context.Context, key sessionKey, chann
 	metadata := handle.Metadata()
 	if metadata.Remote != "" {
 		client := m.remotes[metadata.Remote]
-		return remote.NewSession(remote.SessionConfig{Client: client, Channel: &metadata.PublicChannel, Handle: handle, Remote: metadata.Remote, RouteChannel: &metadata.RouteChannel}), handle.RouteType(), handle.SourceLabel(), nil
+		return remote.NewSession(remote.SessionConfig{Client: client, Handle: handle}), handle.RouteType(), handle.SourceLabel(), nil
 	}
 
 	session := channelstream.NewChannelSession(channelstream.Config{

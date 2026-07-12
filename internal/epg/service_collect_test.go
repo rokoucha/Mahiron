@@ -10,6 +10,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/internal/program"
 	servicepkg "github.com/21S1298001/mahiron/internal/service"
+	"github.com/21S1298001/mahiron/internal/stream"
 	"github.com/21S1298001/mahiron/ts"
 )
 
@@ -280,9 +281,7 @@ func TestGatherNetworkCarriesUnobservedServicesToNextCandidate(t *testing.T) {
 		testEIT(ts.TableIDEITSStart, tsB, 20),
 	}}
 	status := newRemoteSyncServiceStore()
-	streams := keyedEPGStreams{sessions: map[Candidate]interface {
-		CollectEIT(context.Context, func(*ts.EIT) error) error
-	}{
+	streams := keyedEPGStreams{sessions: map[Candidate]stream.Session{
 		{Type: "BS", Channel: "BS01_0"}: sessionA,
 		{Type: "BS", Channel: "BS01_1"}: sessionB,
 	}}
@@ -547,24 +546,18 @@ type blockingEPGStreams struct{}
 
 func (blockingEPGStreams) HasSession(string, string) bool { return false }
 
-func (blockingEPGStreams) GetOrCreateWait(ctx context.Context, _, _ string) (interface {
-	CollectEIT(context.Context, func(*ts.EIT) error) error
-}, error) {
+func (blockingEPGStreams) GetOrCreateWait(ctx context.Context, _, _ string) (stream.Session, error) {
 	<-ctx.Done()
 	return nil, ctx.Err()
 }
 
 type staticEPGStreams struct {
-	session interface {
-		CollectEIT(context.Context, func(*ts.EIT) error) error
-	}
+	session stream.Session
 }
 
 func (staticEPGStreams) HasSession(string, string) bool { return false }
 
-func (s staticEPGStreams) GetOrCreateWait(ctx context.Context, _, _ string) (interface {
-	CollectEIT(context.Context, func(*ts.EIT) error) error
-}, error) {
+func (s staticEPGStreams) GetOrCreateWait(ctx context.Context, _, _ string) (stream.Session, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -572,16 +565,12 @@ func (s staticEPGStreams) GetOrCreateWait(ctx context.Context, _, _ string) (int
 }
 
 type keyedEPGStreams struct {
-	sessions map[Candidate]interface {
-		CollectEIT(context.Context, func(*ts.EIT) error) error
-	}
+	sessions map[Candidate]stream.Session
 }
 
 func (keyedEPGStreams) HasSession(string, string) bool { return false }
 
-func (s keyedEPGStreams) GetOrCreateWait(ctx context.Context, typ, ch string) (interface {
-	CollectEIT(context.Context, func(*ts.EIT) error) error
-}, error) {
+func (s keyedEPGStreams) GetOrCreateWait(ctx context.Context, typ, ch string) (stream.Session, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -593,6 +582,7 @@ func (s keyedEPGStreams) GetOrCreateWait(ctx context.Context, typ, ch string) (i
 }
 
 type collectEITSession struct {
+	stream.Session
 	sections     []*ts.EIT
 	collectCalls int
 }

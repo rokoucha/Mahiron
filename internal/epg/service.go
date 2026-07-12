@@ -11,7 +11,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/service"
-	"github.com/21S1298001/mahiron/ts"
+	"github.com/21S1298001/mahiron/internal/stream"
 )
 
 type ServiceStore interface {
@@ -22,9 +22,7 @@ type ServiceStore interface {
 
 type StreamManager interface {
 	HasSession(string, string) bool
-	GetOrCreateWait(context.Context, string, string) (interface {
-		CollectEIT(context.Context, func(*ts.EIT) error) error
-	}, error)
+	GetOrCreateWait(context.Context, string, string) (stream.Session, error)
 }
 
 type StoredProgramLister interface {

@@ -21,8 +21,12 @@ func TestLoadAndParseChannelsConfigNormalizesDefaults(t *testing.T) {
 	if len(first.CommandVars) != 0 {
 		t.Fatalf("first CommandVars = %#v, want empty", first.CommandVars)
 	}
-	if len(first.Routes) != 1 || first.Routes[0].Id != "default" || first.Routes[0].Type != first.Type || first.Routes[0].Channel != first.Channel {
-		t.Fatalf("first routes = %#v, want default route matching channel", first.Routes)
+	if len(first.Routes) != 0 {
+		t.Fatalf("first routes = %#v, want implicit default route", first.Routes)
+	}
+	routes := first.RoutesOrDefault()
+	if len(routes) != 1 || routes[0].Id != "default" || routes[0].Type != first.Type || routes[0].Channel != first.Channel {
+		t.Fatalf("effective routes = %#v, want default route matching channel", routes)
 	}
 
 	legacy := got[4]

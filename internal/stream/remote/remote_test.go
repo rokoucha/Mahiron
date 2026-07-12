@@ -16,6 +16,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/service"
 	"github.com/21S1298001/mahiron/internal/stream/databroadcast"
 	"github.com/21S1298001/mahiron/internal/stream/internal/streamtest"
+	"github.com/21S1298001/mahiron/internal/stream/source"
 	"github.com/21S1298001/mahiron/internal/tuner"
 	"github.com/21S1298001/mahiron/ts"
 )
@@ -165,10 +166,8 @@ func TestRemoteSessionStreamsChannelServiceAndProgram(t *testing.T) {
 		}
 	})}
 
-	session := NewSession(SessionConfig{
-		Client:       client,
-		RouteChannel: &config.ChannelConfig{Type: "GR", Channel: "27"},
-	})
+	channel := config.ChannelConfig{Type: "GR", Channel: "27"}
+	session := newTestSession(client, channel, channel, "")
 
 	var channelOut bytes.Buffer
 	if err := session.ChannelStream(context.Background(), false, &channelOut); err != nil {
@@ -300,11 +299,13 @@ func (t *blockingStreamTransport) close() {
 
 func newTestRemoteSession(transport http.RoundTripper) *Session {
 	client := NewClient(config.RemoteConfig{URL: "http://remote.local/api"}, WithHTTPClient(&http.Client{Transport: transport}))
-	return NewSession(SessionConfig{
-		Client:       client,
-		Channel:      &config.ChannelConfig{Type: "GR", Channel: "27"},
-		RouteChannel: &config.ChannelConfig{Type: "GR", Channel: "27"},
-	})
+	channel := config.ChannelConfig{Type: "GR", Channel: "27"}
+	return newTestSession(client, channel, channel, "")
+}
+
+func newTestSession(client *Client, channel, routeChannel config.ChannelConfig, remote string) *Session {
+	handle := source.NewRemoteInputHandle(client, channel, routeChannel, remote, routeChannel.Type)
+	return NewSession(SessionConfig{Client: client, Handle: handle})
 }
 
 func containsString(values []string, value string) bool {
@@ -317,11 +318,9 @@ func containsString(values []string, value string) bool {
 }
 
 func TestRemoteSessionTracksDataBroadcastObserver(t *testing.T) {
-	session := NewSession(SessionConfig{
-		Client:       NewClient(config.RemoteConfig{URL: "http://remote.local"}),
-		Remote:       "living",
-		RouteChannel: &config.ChannelConfig{Type: "GR", Channel: "27"},
-	})
+	client := NewClient(config.RemoteConfig{URL: "http://remote.local"})
+	channel := config.ChannelConfig{Type: "GR", Channel: "27"}
+	session := newTestSession(client, channel, channel, "living")
 	user := tuner.User{ID: "data-broadcast", Agent: "data broadcast client"}
 	err := session.ObserveDataBroadcast(tuner.WithUser(context.Background(), user), 101, false, func(event databroadcast.DataBroadcastEvent) error {
 		if event.Type != "snapshot" {
@@ -411,10 +410,8 @@ func TestRemoteSessionScanServicesUsesRemoteAPI(t *testing.T) {
 			"remoteControlKeyId": 5
 		}]`), nil
 	})}
-	session := NewSession(SessionConfig{
-		Client:       client,
-		RouteChannel: &config.ChannelConfig{Type: "GR", Channel: "27"},
-	})
+	channel := config.ChannelConfig{Type: "GR", Channel: "27"}
+	session := newTestSession(client, channel, channel, "")
 
 	got, err := session.ScanServices(context.Background())
 	if err != nil {
@@ -478,10 +475,8 @@ func TestRemoteSessionObserveLogosUsesRemoteAPI(t *testing.T) {
 			return streamtest.StringResponse(http.StatusNotFound, ""), nil
 		}
 	})}
-	session := NewSession(SessionConfig{
-		Client:       client,
-		RouteChannel: &config.ChannelConfig{Type: "GR", Channel: "27"},
-	})
+	channel := config.ChannelConfig{Type: "GR", Channel: "27"}
+	session := newTestSession(client, channel, channel, "")
 
 	var observed int
 	err := session.ObserveLogos(context.Background(), func(image *ts.LogoImage) error {

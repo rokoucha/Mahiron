@@ -414,12 +414,12 @@ func (r *captureReporter) SetJobResult(result run.Result) {
 	r.result = run.Clone(&result)
 }
 
-func (blockingScanner) ScanServices(ctx context.Context, _, _ string, _ bool) ([]ts.ServiceInfo, error) {
+func (blockingScanner) ScanServices(ctx, _ context.Context, _, _ string, _ bool) ([]ts.ServiceInfo, error) {
 	<-ctx.Done()
 	return nil, ctx.Err()
 }
 
-func (s *staticScanner) ScanServices(_ context.Context, _ string, _ string, wait bool) ([]ts.ServiceInfo, error) {
+func (s *staticScanner) ScanServices(_, _ context.Context, _ string, _ string, wait bool) ([]ts.ServiceInfo, error) {
 	s.wait = wait
 	if s.err != nil {
 		return nil, s.err
@@ -427,11 +427,7 @@ func (s *staticScanner) ScanServices(_ context.Context, _ string, _ string, wait
 	return s.services, nil
 }
 
-func (s *contextCapturingScanner) ScanServices(context.Context, string, string, bool) ([]ts.ServiceInfo, error) {
-	panic("ScanServices should not be called when ScanServicesWithAcquireContext is implemented")
-}
-
-func (s *contextCapturingScanner) ScanServicesWithAcquireContext(scanCtx, acquireCtx context.Context, _ string, _ string, wait bool) ([]ts.ServiceInfo, error) {
+func (s *contextCapturingScanner) ScanServices(scanCtx, acquireCtx context.Context, _ string, _ string, wait bool) ([]ts.ServiceInfo, error) {
 	s.scanCtx = scanCtx
 	s.acquireCtx = acquireCtx
 	s.wait = wait

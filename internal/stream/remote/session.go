@@ -13,52 +13,28 @@ import (
 )
 
 type SessionConfig struct {
-	Client       *Client
-	Channel      *config.ChannelConfig
-	Handle       source.InputHandle
-	Remote       string
-	RouteChannel *config.ChannelConfig
+	Client *Client
+	Handle source.InputHandle
 }
 
 // Session adds remote API-backed operations to the shared TS ChannelSession.
 type Session struct {
 	*channel.ChannelSession
-	channel      *config.ChannelConfig
 	client       *Client
 	input        source.ChannelInput
 	remote       string
-	routeChannel *config.ChannelConfig
+	routeChannel config.ChannelConfig
 }
 
 func NewSession(config SessionConfig) *Session {
-	if config.Handle == nil && config.Client != nil && config.RouteChannel != nil {
-		publicChannel := config.RouteChannel
-		if config.Channel != nil {
-			publicChannel = config.Channel
-		}
-		config.Handle = source.NewRemoteInputHandle(config.Client, *publicChannel, *config.RouteChannel, config.Remote, config.RouteChannel.Type)
-	}
-	input := source.ChannelInput(nil)
-	if config.Handle != nil {
-		input = config.Handle.Input()
-	}
+	metadata := config.Handle.Metadata()
 	return &Session{
-		ChannelSession: channel.NewChannelSession(channel.Config{Channel: channelID(config.Channel), Handle: config.Handle, Type: channelType(config.Channel)}),
-		channel:        config.Channel, client: config.Client, input: input, remote: config.Remote, routeChannel: config.RouteChannel,
+		ChannelSession: channel.NewChannelSession(channel.Config{Channel: metadata.PublicChannel.Channel, Handle: config.Handle, Type: metadata.PublicChannel.Type}),
+		client:         config.Client,
+		input:          config.Handle.Input(),
+		remote:         metadata.Remote,
+		routeChannel:   metadata.RouteChannel,
 	}
-}
-
-func channelType(channel *config.ChannelConfig) string {
-	if channel == nil {
-		return ""
-	}
-	return channel.Type
-}
-func channelID(channel *config.ChannelConfig) string {
-	if channel == nil {
-		return ""
-	}
-	return channel.Channel
 }
 
 func (s *Session) RemoteName() string { return s.remote }
