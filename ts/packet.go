@@ -47,6 +47,12 @@ func (p Packet) AdaptationFieldLength() int {
 	return int(p[4])
 }
 
+// DiscontinuityIndicator reports whether the adaptation field marks a
+// discontinuity. A zero-length or malformed adaptation field has no flags.
+func (p Packet) DiscontinuityIndicator() bool {
+	return len(p) >= PacketSize && p.HasAdaptationField() && p.AdaptationFieldLength() >= 1 && p[5]&0x80 != 0
+}
+
 // PayloadOffset returns the byte offset where the payload begins.
 func (p Packet) PayloadOffset() int {
 	if !p.HasAdaptationField() {

@@ -47,6 +47,23 @@ func TestPacketProgramClockReference(t *testing.T) {
 	}
 }
 
+func TestPacketDiscontinuityIndicator(t *testing.T) {
+	packet := payloadPacket(0x0100, []byte{1}, 0)
+	if packet.DiscontinuityIndicator() {
+		t.Fatal("payload-only packet has discontinuity indicator")
+	}
+	packet[3] = 0x30
+	packet[4] = 1
+	packet[5] = 0x80
+	if !packet.DiscontinuityIndicator() {
+		t.Fatal("adaptation field discontinuity indicator was not detected")
+	}
+	packet[4] = 0
+	if packet.DiscontinuityIndicator() {
+		t.Fatal("zero-length adaptation field has discontinuity indicator")
+	}
+}
+
 func TestPacketReaderResyncsAfterGarbage(t *testing.T) {
 	packet := payloadPacket(0x0100, []byte{1}, 0)
 	input := append([]byte{0, 1, 2, 3, 4}, packet...)

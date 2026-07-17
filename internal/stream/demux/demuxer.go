@@ -1,6 +1,7 @@
 package demux
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -323,20 +324,40 @@ func (e *Demuxer) run(ctx context.Context) {
 }
 
 type continuityMonitor struct {
-	seen [ts.PIDNull + 1]bool
-	last [ts.PIDNull + 1]byte
+	seen          [ts.PIDNull + 1]bool
+	last          [ts.PIDNull + 1]byte
+	duplicateSeen [ts.PIDNull + 1]bool
+	lastPacket    map[uint16]ts.Packet
 }
 
 func (m *continuityMonitor) observe(packet ts.Packet) *continuityDrop {
-	if len(packet) != ts.PacketSize || packet.TransportErrorIndicator() || packet.IsNull() || !packet.ValidPayloadOffset() || !packet.HasPayload() {
+	if len(packet) != ts.PacketSize || packet[0] != ts.SyncByte || packet.TransportErrorIndicator() || packet.IsNull() || !packet.ValidPayloadOffset() {
 		return nil
 	}
 	pid := packet.PID()
+	if packet.DiscontinuityIndicator() {
+		m.seen[pid] = false
+		m.duplicateSeen[pid] = false
+		if m.lastPacket != nil {
+			delete(m.lastPacket, pid)
+		}
+	}
+	if !packet.HasPayload() {
+		return nil
+	}
 	counter := packet.ContinuityCounter()
 	last := m.last[pid]
 	ok := m.seen[pid]
 	m.seen[pid] = true
 	m.last[pid] = counter
+
+	if ok && counter == last && !m.duplicateSeen[pid] && m.sameAsLast(pid, packet) {
+		m.duplicateSeen[pid] = true
+		return nil
+	}
+	m.duplicateSeen[pid] = false
+	m.remember(pid, packet)
+
 	expected := (last + 1) & 0x0f
 	if ok && counter != expected {
 		return &continuityDrop{
@@ -346,6 +367,23 @@ func (m *continuityMonitor) observe(packet ts.Packet) *continuityDrop {
 		}
 	}
 	return nil
+}
+
+func (m *continuityMonitor) sameAsLast(pid uint16, packet ts.Packet) bool {
+	previous := m.lastPacket[pid]
+	return len(previous) == ts.PacketSize && bytes.Equal(previous, packet)
+}
+
+func (m *continuityMonitor) remember(pid uint16, packet ts.Packet) {
+	if m.lastPacket == nil {
+		m.lastPacket = make(map[uint16]ts.Packet)
+	}
+	previous := m.lastPacket[pid]
+	if len(previous) != ts.PacketSize {
+		previous = make(ts.Packet, ts.PacketSize)
+	}
+	copy(previous, packet)
+	m.lastPacket[pid] = previous
 }
 
 func (e *Demuxer) dispatch(packet ts.Packet, sections []ts.PIDSection) {
