@@ -290,6 +290,70 @@ func TestContinuityMonitorIgnoresInvalidPackets(t *testing.T) {
 	if monitor.observe(packet) != nil {
 		t.Fatal("invalid packet reported continuity error")
 	}
+	if monitor.seen[0x0100] {
+		t.Fatal("invalid packet changed continuity state")
+	}
+}
+
+func TestContinuityMonitorAcceptsSignaledDiscontinuity(t *testing.T) {
+	monitor := &continuityMonitor{}
+	if monitor.observe(streamtest.TestPacket(0x0100, 1)) != nil {
+		t.Fatal("first packet reported continuity error")
+	}
+	packet := streamtest.TestPacket(0x0100, 9)
+	packet[3] = 0x30 | 9
+	packet[4] = 1
+	packet[5] = 0x80
+	if monitor.observe(packet) != nil {
+		t.Fatal("signaled discontinuity reported continuity error")
+	}
+	if monitor.observe(streamtest.TestPacket(0x0100, 10)) != nil {
+		t.Fatal("packet following signaled discontinuity reported continuity error")
+	}
+}
+
+func TestContinuityMonitorAcceptsSignaledDiscontinuityWithoutPayload(t *testing.T) {
+	monitor := &continuityMonitor{}
+	if monitor.observe(streamtest.TestPacket(0x0100, 1)) != nil {
+		t.Fatal("first packet reported continuity error")
+	}
+	packet := streamtest.TestPacket(0x0100, 1)
+	packet[3] = 0x20 | 1
+	packet[4] = 1
+	packet[5] = 0x80
+	if monitor.observe(packet) != nil {
+		t.Fatal("adaptation-only discontinuity reported continuity error")
+	}
+	if monitor.observe(streamtest.TestPacket(0x0100, 9)) != nil {
+		t.Fatal("packet following adaptation-only discontinuity reported continuity error")
+	}
+}
+
+func TestContinuityMonitorAcceptsOneIdenticalDuplicate(t *testing.T) {
+	monitor := &continuityMonitor{}
+	packet := streamtest.TestPacket(0x0100, 1)
+	if monitor.observe(packet) != nil || monitor.observe(packet) != nil {
+		t.Fatal("identical duplicate reported continuity error")
+	}
+	if monitor.observe(packet) == nil {
+		t.Fatal("second identical duplicate did not report continuity error")
+	}
+	if monitor.observe(streamtest.TestPacket(0x0100, 2)) != nil {
+		t.Fatal("sequential packet after duplicate reported continuity error")
+	}
+}
+
+func TestContinuityMonitorRejectsChangedPacketWithSameCounter(t *testing.T) {
+	monitor := &continuityMonitor{}
+	packet := streamtest.TestPacket(0x0100, 1)
+	if monitor.observe(packet) != nil {
+		t.Fatal("first packet reported continuity error")
+	}
+	changed := append(ts.Packet(nil), packet...)
+	changed[10] = 0
+	if monitor.observe(changed) == nil {
+		t.Fatal("changed packet with repeated counter did not report continuity error")
+	}
 }
 
 type blockingWriter struct {
