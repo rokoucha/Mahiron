@@ -265,16 +265,20 @@ func TestPacketDemuxerObserveSectionsWaitsForObserverOnCancel(t *testing.T) {
 
 func TestContinuityMonitorDetectsCounterGap(t *testing.T) {
 	monitor := &continuityMonitor{}
-	if monitor.observe(streamtest.TestPacket(0x0100, 1)) {
+	if monitor.observe(streamtest.TestPacket(0x0100, 1)) != nil {
 		t.Fatal("first packet reported continuity error")
 	}
-	if monitor.observe(streamtest.TestPacket(0x0100, 2)) {
+	if monitor.observe(streamtest.TestPacket(0x0100, 2)) != nil {
 		t.Fatal("sequential packet reported continuity error")
 	}
-	if !monitor.observe(streamtest.TestPacket(0x0100, 4)) {
+	drop := monitor.observe(streamtest.TestPacket(0x0100, 4))
+	if drop == nil {
 		t.Fatal("counter gap did not report continuity error")
 	}
-	if monitor.observe(streamtest.TestPacket(0x0101, 9)) {
+	if drop.PID != 0x0100 || drop.ExpectedCounter != 3 || drop.ActualCounter != 4 {
+		t.Fatalf("drop = %+v, want pid=0x0100 expected=3 actual=4", drop)
+	}
+	if monitor.observe(streamtest.TestPacket(0x0101, 9)) != nil {
 		t.Fatal("first packet for another PID reported continuity error")
 	}
 }
@@ -283,7 +287,7 @@ func TestContinuityMonitorIgnoresInvalidPackets(t *testing.T) {
 	monitor := &continuityMonitor{}
 	packet := streamtest.TestPacket(0x0100, 1)
 	packet[0] = 0
-	if monitor.observe(packet) {
+	if monitor.observe(packet) != nil {
 		t.Fatal("invalid packet reported continuity error")
 	}
 }

@@ -302,8 +302,9 @@ func (e *Demuxer) run(ctx context.Context) {
 		if packetCount >= 256 {
 			flushPackets()
 		}
-		if e.continuity.observe(packet) {
+		if drop := e.continuity.observe(packet); drop != nil {
 			observability.RecordStreamContinuityCounterError(ctx, e.channelType, e.channelID)
+			logStreamDrop(e.channelType, e.channelID, "", *drop)
 		}
 		sections, err := e.demux.FeedWithPID(packet)
 		if err != nil {
@@ -326,9 +327,9 @@ type continuityMonitor struct {
 	last [ts.PIDNull + 1]byte
 }
 
-func (m *continuityMonitor) observe(packet ts.Packet) bool {
+func (m *continuityMonitor) observe(packet ts.Packet) *continuityDrop {
 	if len(packet) != ts.PacketSize || packet.TransportErrorIndicator() || packet.IsNull() || !packet.ValidPayloadOffset() || !packet.HasPayload() {
-		return false
+		return nil
 	}
 	pid := packet.PID()
 	counter := packet.ContinuityCounter()
@@ -336,7 +337,15 @@ func (m *continuityMonitor) observe(packet ts.Packet) bool {
 	ok := m.seen[pid]
 	m.seen[pid] = true
 	m.last[pid] = counter
-	return ok && counter != ((last+1)&0x0f)
+	expected := (last + 1) & 0x0f
+	if ok && counter != expected {
+		return &continuityDrop{
+			PID:             pid,
+			ExpectedCounter: expected,
+			ActualCounter:   counter,
+		}
+	}
+	return nil
 }
 
 func (e *Demuxer) dispatch(packet ts.Packet, sections []ts.PIDSection) {

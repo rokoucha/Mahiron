@@ -43,8 +43,9 @@ func (e *Demuxer) writePackets(id uint64, sub *packetSubscription, dst io.Writer
 	for packet := range sub.queue {
 		buf = append(buf[:0], packet...)
 		sub.stats.Packet++
-		if sub.continuity.observe(packet) {
+		if drop := sub.continuity.observe(packet); drop != nil {
 			sub.stats.Drop++
+			logStreamDrop(e.channelType, e.channelID, sub.statsKey, *drop)
 		}
 	drain:
 		for len(buf)+ts.PacketSize <= packetWriteBatchBytes {
@@ -55,8 +56,9 @@ func (e *Demuxer) writePackets(id uint64, sub *packetSubscription, dst io.Writer
 				}
 				buf = append(buf, p...)
 				sub.stats.Packet++
-				if sub.continuity.observe(p) {
+				if drop := sub.continuity.observe(p); drop != nil {
 					sub.stats.Drop++
+					logStreamDrop(e.channelType, e.channelID, sub.statsKey, *drop)
 				}
 			default:
 				break drain
