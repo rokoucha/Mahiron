@@ -609,6 +609,34 @@ paths:
         default:
           description: Unexpected Error
           content: {}
+  /services/{id}/data-broadcast/state:
+    get:
+      tags:
+        - services
+        - stream
+      operationId: getServiceDataBroadcastState
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            maximum: 6553565535
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              x-ogen-raw-response: true
+              schema:
+                type: string
+        "404":
+          description: Not Found
+          content: {}
+        default:
+          description: Unexpected Error
+          content: {}
   /services/{id}/data-broadcast/events:
     get:
       tags:
@@ -655,12 +683,12 @@ paths:
         default:
           description: Unexpected Error
           content: {}
-  /services/{id}/data-broadcast/modules/{componentTag}/{moduleId}:
+  /services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}:
     get:
       tags:
         - services
         - stream
-      operationId: getServiceDataBroadcastModule
+      operationId: getServiceDataBroadcastModuleVersion
       parameters:
         - name: id
           in: path
@@ -676,6 +704,14 @@ paths:
             maximum: 255
             minimum: 0
             type: integer
+        - name: downloadId
+          in: path
+          required: true
+          schema:
+            maximum: 4294967295
+            minimum: 0
+            type: integer
+            format: int64
         - name: moduleId
           in: path
           required: true
@@ -683,10 +719,14 @@ paths:
             maximum: 65535
             minimum: 0
             type: integer
-        - name: If-None-Match
-          in: header
+        - name: moduleVersion
+          in: path
+          required: true
           schema:
-            type: string
+            maximum: 255
+            minimum: 0
+            type: integer
+        - $ref: "#/components/parameters/IfNoneMatch"
       responses:
         "200":
           description: OK
@@ -698,20 +738,81 @@ paths:
               schema:
                 type: string
           content:
-            application/octet-stream:
+            application/json:
               x-ogen-raw-response: true
               schema:
                 type: string
-                format: binary
+        "404":
+          description: Unknown or superseded module generation
+          content: {}
         "304":
           description: Not Modified
           content: {}
-        "404":
-          description: Not Found
+        "410":
+          description: Module generation was evicted from the completed-module cache
+          content: {}
+        "425":
+          description: Module generation announced but not complete
+          content: {}
+        "507":
+          description: Module exceeds receiver resource limits
+          content: {}
+        "422":
+          description: Module entity cannot be decoded into logical resources
           content: {}
         default:
           description: Unexpected Error
           content: {}
+  /services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}/raw:
+    get:
+      tags: [services, stream]
+      operationId: getServiceDataBroadcastModuleRaw
+      parameters:
+        - $ref: "#/components/parameters/DataBroadcastServiceID"
+        - $ref: "#/components/parameters/DataBroadcastComponentTag"
+        - $ref: "#/components/parameters/DataBroadcastDownloadID"
+        - $ref: "#/components/parameters/DataBroadcastModuleID"
+        - $ref: "#/components/parameters/DataBroadcastModuleVersion"
+        - $ref: "#/components/parameters/IfNoneMatch"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/octet-stream:
+              x-ogen-raw-response: true
+              schema: {type: string, format: binary}
+        "404": {description: Unknown module generation}
+        "304": {description: Not Modified}
+        "410": {description: Module generation was evicted from the completed-module cache}
+        "425": {description: Module generation announced but not complete}
+  /services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}/resources/{resourceId}:
+    get:
+      tags: [services, stream]
+      operationId: getServiceDataBroadcastModuleResource
+      parameters:
+        - $ref: "#/components/parameters/DataBroadcastServiceID"
+        - $ref: "#/components/parameters/DataBroadcastComponentTag"
+        - $ref: "#/components/parameters/DataBroadcastDownloadID"
+        - $ref: "#/components/parameters/DataBroadcastModuleID"
+        - $ref: "#/components/parameters/DataBroadcastModuleVersion"
+        - name: resourceId
+          in: path
+          required: true
+          schema: {type: string}
+        - $ref: "#/components/parameters/IfNoneMatch"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/octet-stream:
+              x-ogen-raw-response: true
+              schema: {type: string, format: binary}
+        "404": {description: Unknown module generation or resource}
+        "304": {description: Not Modified}
+        "410": {description: Module generation was evicted from the completed-module cache}
+        "425": {description: Module generation announced but not complete}
+        "507": {description: Module exceeds receiver resource limits}
+        "422": {description: Module entity cannot be decoded into logical resources}
   /services/{id}/programs:
     get:
       tags:
@@ -1347,6 +1448,36 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 components:
+  parameters:
+    DataBroadcastServiceID:
+      name: id
+      in: path
+      required: true
+      schema: {type: integer, format: int64, minimum: 0, maximum: 6553565535}
+    DataBroadcastComponentTag:
+      name: componentTag
+      in: path
+      required: true
+      schema: {type: integer, minimum: 0, maximum: 255}
+    DataBroadcastDownloadID:
+      name: downloadId
+      in: path
+      required: true
+      schema: {type: integer, format: int64, minimum: 0, maximum: 4294967295}
+    DataBroadcastModuleID:
+      name: moduleId
+      in: path
+      required: true
+      schema: {type: integer, minimum: 0, maximum: 65535}
+    DataBroadcastModuleVersion:
+      name: moduleVersion
+      in: path
+      required: true
+      schema: {type: integer, minimum: 0, maximum: 255}
+    IfNoneMatch:
+      name: If-None-Match
+      in: header
+      schema: {type: string}
   schemas:
     Error:
       type: object

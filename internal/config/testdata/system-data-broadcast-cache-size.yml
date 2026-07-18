@@ -1,0 +1,3 @@
+dataBroadcastCacheBytes: 33554432
+dataBroadcastCacheMaxAgeDays: 2
+dataBroadcastCachePath: /var/cache/mahiron/data-broadcast.db

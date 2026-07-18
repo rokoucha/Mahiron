@@ -17,7 +17,11 @@ import (
 const dataBroadcastSubscriberBuffer = 64
 
 type DataBroadcastEvent struct {
-	Type        string
+	Type string
+	// Sequence orders notifications in one SSE connection. It is not a state
+	// version: PCR notifications, for example, do not change the snapshot.
+	Sequence    uint64
+	Revision    uint64
 	Snapshot    DataBroadcastSnapshot
 	PMT         *DataBroadcastPMT
 	ModuleList  *DataBroadcastModuleList
@@ -31,6 +35,7 @@ type DataBroadcastEvent struct {
 
 type DataBroadcastSnapshot struct {
 	ServiceID   uint16
+	Revision    uint64
 	PMT         *DataBroadcastPMT
 	Components  []DataBroadcastComponent
 	ProgramInfo *DataBroadcastProgramInfo
@@ -48,30 +53,43 @@ type DataBroadcastPMT struct {
 }
 
 type DataBroadcastComponent struct {
-	ComponentTag byte
-	PID          uint16
-	StreamType   byte
-	Modules      []DataBroadcastModule
+	ComponentTag       byte
+	PID                uint16
+	StreamType         byte
+	DataComponentID    *uint16
+	BXMLInfo           *ts.AdditionalAribBXMLInfo
+	DataEventID        byte
+	ReturnToEntry      *bool
+	CarouselStatus     string
+	CarouselDownloadID *uint32
+	CarouselBlockSize  *uint16
+	Modules            []DataBroadcastModule
 }
 
 type DataBroadcastModuleList struct {
-	ComponentTag byte
-	DownloadID   uint32
-	BlockSize    uint16
-	Modules      []DataBroadcastModule
+	ComponentTag  byte
+	DownloadID    uint32
+	BlockSize     uint16
+	DataEventID   byte
+	ReturnToEntry *bool
+	Modules       []DataBroadcastModule
 }
 
 type DataBroadcastModule struct {
-	ComponentTag byte
-	ModuleID     uint16
-	DownloadID   uint32
-	Version      byte
-	Size         uint32
-	Info         []byte
-	Complete     bool
-	ETag         string
-	Data         []byte
-	Metadata     *ts.DSMCCModuleMetadata
+	ComponentTag    byte
+	ModuleID        uint16
+	DownloadID      uint32
+	Version         byte
+	Size            uint32
+	Info            []byte
+	Complete        bool
+	Status          string
+	RejectionReason *string
+	ReceivedBlocks  int
+	TotalBlocks     int
+	ETag            string
+	Data            []byte
+	Metadata        *ts.DSMCCModuleMetadata
 }
 
 type DataBroadcastProgramInfo struct {
@@ -148,23 +166,36 @@ type DataBroadcastAffiliatedBroadcaster struct {
 type DataBroadcastHub struct {
 	mu          sync.Mutex
 	services    map[uint16]*dataBroadcastService
-	subs        map[uint16]map[chan DataBroadcastEvent]struct{}
+	subs        map[uint16]map[chan DataBroadcastEvent]*dataBroadcastSubscriber
 	bit         *DataBroadcastBIT
 	channelType string
 	channelID   string
-	moduleCache *ModuleCache
+	moduleStore ModuleStore
 }
 
 type dataBroadcastService struct {
-	pmt          *DataBroadcastPMT
-	pmtSection   string
-	pidToTag     map[uint16]byte
-	carousels    map[byte]*ts.DSMCCCarousel
-	diiSections  map[byte]string
-	moduleStarts map[dataBroadcastModuleKey]time.Time
-	programInfo  *DataBroadcastProgramInfo
-	currentTime  *DataBroadcastCurrentTime
-	pcr          *DataBroadcastPCR
+	pmt            *DataBroadcastPMT
+	pmtSection     string
+	pidToTag       map[uint16]byte
+	carousels      map[byte]*ts.DSMCCCarousel
+	diiSections    map[byte]string
+	moduleStarts   map[dataBroadcastModuleKey]time.Time
+	carouselStates map[byte]dataBroadcastCarouselState
+	programInfo    *DataBroadcastProgramInfo
+	currentTime    *DataBroadcastCurrentTime
+	pcr            *DataBroadcastPCR
+	revision       uint64
+	sequence       uint64
+}
+
+type dataBroadcastCarouselState struct {
+	status     string
+	downloadID uint32
+	blockSize  uint16
+}
+
+type dataBroadcastSubscriber struct {
+	closed bool
 }
 
 type dataBroadcastModuleKey struct {
@@ -177,7 +208,7 @@ type dataBroadcastModuleKey struct {
 func NewDataBroadcastHub() *DataBroadcastHub {
 	return &DataBroadcastHub{
 		services: map[uint16]*dataBroadcastService{},
-		subs:     map[uint16]map[chan DataBroadcastEvent]struct{}{},
+		subs:     map[uint16]map[chan DataBroadcastEvent]*dataBroadcastSubscriber{},
 	}
 }
 
@@ -188,7 +219,12 @@ func (h *DataBroadcastHub) WithMetricLabels(channelType, channelID string) *Data
 }
 
 func (h *DataBroadcastHub) WithModuleCache(cache *ModuleCache) *DataBroadcastHub {
-	h.moduleCache = cache
+	return h.WithModuleStore(cache)
+
+}
+
+func (h *DataBroadcastHub) WithModuleStore(store ModuleStore) *DataBroadcastHub {
+	h.moduleStore = store
 	return h
 }
 
@@ -201,20 +237,27 @@ func (h *DataBroadcastHub) Subscribe(ctx context.Context, serviceID uint16) (Dat
 	h.mu.Lock()
 	snapshot := h.snapshotLocked(serviceID)
 	if h.subs[serviceID] == nil {
-		h.subs[serviceID] = map[chan DataBroadcastEvent]struct{}{}
+		h.subs[serviceID] = map[chan DataBroadcastEvent]*dataBroadcastSubscriber{}
 	}
-	h.subs[serviceID][ch] = struct{}{}
+	h.subs[serviceID][ch] = &dataBroadcastSubscriber{}
 	h.mu.Unlock()
 	var once sync.Once
 	unsubscribe := func() {
 		once.Do(func() {
 			h.mu.Lock()
+			subscriber, ok := h.subs[serviceID][ch]
+			if !ok {
+				h.mu.Unlock()
+				return
+			}
 			delete(h.subs[serviceID], ch)
 			if len(h.subs[serviceID]) == 0 {
 				delete(h.subs, serviceID)
 			}
 			h.mu.Unlock()
-			close(ch)
+			if !subscriber.closed {
+				close(ch)
+			}
 		})
 	}
 	go func() {
@@ -322,6 +365,44 @@ func (h *DataBroadcastHub) Module(serviceID uint16, componentTag byte, moduleID 
 	return apiModule(componentTag, module, true), true
 }
 
+// Snapshot returns one self-consistent view of the current carousel state.
+// Callers use it to reconcile after reconnecting an event stream.
+func (h *DataBroadcastHub) Snapshot(serviceID uint16) DataBroadcastSnapshot {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.snapshotLocked(serviceID)
+}
+
+// ModuleVersion returns a completed module for the requested immutable URL.
+// A currently announced generation is served only from its live carousel;
+// previously announced generations may be served from the completed-module
+// store. Thus an incomplete replacement never falls back to stale data, while
+// an in-flight fetch for an already replaced generation remains valid.
+func (h *DataBroadcastHub) ModuleVersion(serviceID uint16, componentTag byte, downloadID uint32, moduleID uint16, version byte) (DataBroadcastModule, bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	service := h.services[serviceID]
+	if service == nil {
+		return DataBroadcastModule{}, false
+	}
+	carousel := service.carousels[componentTag]
+	if carousel == nil {
+		return DataBroadcastModule{}, false
+	}
+	module, ok := carousel.Module(moduleID)
+	if ok && module.DownloadID == downloadID && module.Version == version {
+		return apiModule(componentTag, module, true), true
+	}
+	if h.moduleStore == nil {
+		return DataBroadcastModule{}, false
+	}
+	cached, ok := h.moduleStore.GetVersion(h.moduleCacheKey(serviceID, componentTag, downloadID, moduleID, version, 0).VersionKey())
+	if !ok {
+		return DataBroadcastModule{}, false
+	}
+	return apiModule(componentTag, cached, true), true
+}
+
 // DDBPriority returns the cache priority announced by DII and whether the
 // block belongs to the BML entry document. It is intentionally read-only and
 // used by the channel session before placing DDB work on a bounded queue.
@@ -367,11 +448,19 @@ func (h *DataBroadcastHub) observePMT(section ts.PIDSection) {
 			continue
 		}
 		pidToTag[elem.ElementaryPID] = tag
-		components = append(components, DataBroadcastComponent{
-			ComponentTag: tag,
-			PID:          elem.ElementaryPID,
-			StreamType:   elem.StreamType,
-		})
+		component := DataBroadcastComponent{
+			ComponentTag:   tag,
+			PID:            elem.ElementaryPID,
+			StreamType:     elem.StreamType,
+			CarouselStatus: "waitingForDii",
+		}
+		if descriptor, ok := dataComponentDescriptor(elem.Descriptors); ok {
+			component.DataComponentID = ptr(descriptor.DataComponentID)
+			if isAribBXMLDataComponent(descriptor.DataComponentID) {
+				component.BXMLInfo, _ = ts.ParseAdditionalAribBXMLInfo(descriptor.AdditionalDataComponentInfo)
+			}
+		}
+		components = append(components, component)
 	}
 	slices.SortFunc(components, func(a, b DataBroadcastComponent) int {
 		return int(a.ComponentTag) - int(b.ComponentTag)
@@ -398,6 +487,7 @@ func (h *DataBroadcastHub) observePMT(section ts.PIDSection) {
 	for tag := range service.carousels {
 		if !componentTagExists(components, tag) {
 			delete(service.carousels, tag)
+			delete(service.carouselStates, tag)
 		}
 	}
 	for _, component := range components {
@@ -470,13 +560,40 @@ func (h *DataBroadcastHub) observeDII(section ts.PIDSection) {
 	}
 	service.diiSections[componentTag] = diiSection
 	infos := carousel.ObserveDII(dii)
+	rejections := carousel.RejectedAnnouncements()
+	status := "active"
+	if len(infos) == 0 {
+		status = "empty"
+	}
+	for _, rejection := range rejections {
+		if rejection.Reason == "moduleSizeLimitExceeded" || rejection.Reason == "inFlightBudgetExceeded" {
+			status = "resourceLimitExceeded"
+		} else if status != "resourceLimitExceeded" {
+			status = "unsupported"
+		}
+	}
+	service.carouselStates[componentTag] = dataBroadcastCarouselState{status: status, downloadID: dii.DownloadID, blockSize: dii.BlockSize}
+	dataEventID := byte(dii.DownloadID >> 28)
+	returnToEntry := diiReturnToEntry(dii.PrivateData)
+	if service.pmt != nil {
+		for i := range service.pmt.Components {
+			if service.pmt.Components[i].ComponentTag == componentTag {
+				service.pmt.Components[i].DataEventID = dataEventID
+				service.pmt.Components[i].ReturnToEntry = returnToEntry
+				service.pmt.Components[i].CarouselStatus = status
+				service.pmt.Components[i].CarouselDownloadID = ptr(dii.DownloadID)
+				service.pmt.Components[i].CarouselBlockSize = ptr(dii.BlockSize)
+				break
+			}
+		}
+	}
 	now := time.Now()
 	for key := range service.moduleStarts {
 		if key.componentTag == componentTag {
 			delete(service.moduleStarts, key)
 		}
 	}
-	modules := make([]DataBroadcastModule, 0, len(infos))
+	modules := make([]DataBroadcastModule, 0, len(infos)+len(rejections))
 	restored := make([]DataBroadcastModule, 0)
 	for _, info := range infos {
 		key := dataBroadcastModuleKey{componentTag: componentTag, downloadID: dii.DownloadID, moduleID: info.ModuleID, version: info.Version}
@@ -489,26 +606,41 @@ func (h *DataBroadcastHub) observeDII(section ts.PIDSection) {
 			Size:         info.ModuleSize,
 			Info:         append([]byte(nil), info.Info...),
 			ETag:         moduleETag(dii.DownloadID, info.ModuleID, info.Version, info.ModuleSize),
+			Status:       "announced",
+			TotalBlocks:  int((info.ModuleSize + uint32(dii.BlockSize) - 1) / uint32(dii.BlockSize)),
 		}
 		if metadata, ok := info.Metadata(); ok {
 			module.Metadata = &metadata
 		}
 		modules = append(modules, module)
 		cacheKey := h.moduleCacheKey(serviceID, componentTag, dii.DownloadID, info.ModuleID, info.Version, info.ModuleSize)
-		if cached, found := h.moduleCache.Get(cacheKey); found && carousel.Restore(cached) {
-			modules[len(modules)-1].Complete = true
-			restored = append(restored, apiModule(componentTag, cached, false))
-			delete(service.moduleStarts, dataBroadcastModuleKey{componentTag: componentTag, downloadID: dii.DownloadID, moduleID: info.ModuleID, version: info.Version})
-			h.recordCarousel("cache", "hit")
-		} else if h.moduleCache != nil {
-			h.recordCarousel("cache", "miss")
+		if h.moduleStore != nil {
+			cached, found := h.moduleStore.Get(cacheKey)
+			if found && carousel.Restore(cached) {
+				modules[len(modules)-1].Complete = true
+				modules[len(modules)-1].Status = "complete"
+				modules[len(modules)-1].ReceivedBlocks = modules[len(modules)-1].TotalBlocks
+				restored = append(restored, apiModule(componentTag, cached, false))
+				delete(service.moduleStarts, dataBroadcastModuleKey{componentTag: componentTag, downloadID: dii.DownloadID, moduleID: info.ModuleID, version: info.Version})
+				h.recordCarousel("cache", "hit")
+				if _, persistent := h.moduleStore.(PersistentModuleStore); persistent {
+					carousel.ReleaseCompletedPayload(info.ModuleID)
+				}
+			} else {
+				h.recordCarousel("cache", "miss")
+			}
 		}
 	}
+	for _, rejection := range rejections {
+		modules = append(modules, rejectedModule(componentTag, dii.DownloadID, rejection))
+	}
 	event := DataBroadcastEvent{Type: "moduleListUpdated", ModuleList: &DataBroadcastModuleList{
-		ComponentTag: componentTag,
-		DownloadID:   dii.DownloadID,
-		BlockSize:    dii.BlockSize,
-		Modules:      modules,
+		ComponentTag:  componentTag,
+		DownloadID:    dii.DownloadID,
+		BlockSize:     dii.BlockSize,
+		DataEventID:   dataEventID,
+		ReturnToEntry: returnToEntry,
+		Modules:       modules,
 	}}
 	h.broadcastLocked(serviceID, event)
 	for i := range restored {
@@ -516,6 +648,22 @@ func (h *DataBroadcastHub) observeDII(section ts.PIDSection) {
 	}
 	h.mu.Unlock()
 	h.recordCarousel("dii", "accepted")
+}
+
+func diiReturnToEntry(privateData []byte) *bool {
+	for len(privateData) >= 2 {
+		tag, length := privateData[0], int(privateData[1])
+		privateData = privateData[2:]
+		if length > len(privateData) {
+			return nil
+		}
+		if tag == 0xf0 && length > 0 {
+			value := privateData[0]&0x80 != 0
+			return &value
+		}
+		privateData = privateData[length:]
+	}
+	return nil
 }
 
 func (h *DataBroadcastHub) observeDDB(section ts.PIDSection) {
@@ -545,7 +693,11 @@ func (h *DataBroadcastHub) observeDDB(section ts.PIDSection) {
 	started, timed := h.services[serviceID].moduleStarts[key]
 	delete(h.services[serviceID].moduleStarts, key)
 	event := DataBroadcastEvent{Type: "moduleUpdated", Module: ptr(apiModule(componentTag, *module, false))}
-	h.moduleCache.Put(h.moduleCacheKey(serviceID, componentTag, module.DownloadID, module.ModuleID, module.Version, module.Size), *module)
+	if h.moduleStore != nil && h.moduleStore.Put(h.moduleCacheKey(serviceID, componentTag, module.DownloadID, module.ModuleID, module.Version, module.Size), *module) {
+		if _, persistent := h.moduleStore.(PersistentModuleStore); persistent {
+			carousel.ReleaseCompletedPayload(module.ModuleID)
+		}
+	}
 	h.broadcastLocked(serviceID, event)
 	h.mu.Unlock()
 	h.recordCarousel("ddb", "completed")
@@ -597,10 +749,11 @@ func (h *DataBroadcastHub) serviceLocked(serviceID uint16) *dataBroadcastService
 	service := h.services[serviceID]
 	if service == nil {
 		service = &dataBroadcastService{
-			pidToTag:     map[uint16]byte{},
-			carousels:    map[byte]*ts.DSMCCCarousel{},
-			diiSections:  map[byte]string{},
-			moduleStarts: map[dataBroadcastModuleKey]time.Time{},
+			pidToTag:       map[uint16]byte{},
+			carousels:      map[byte]*ts.DSMCCCarousel{},
+			diiSections:    map[byte]string{},
+			moduleStarts:   map[dataBroadcastModuleKey]time.Time{},
+			carouselStates: map[byte]dataBroadcastCarouselState{},
 		}
 		h.services[serviceID] = service
 	}
@@ -629,6 +782,7 @@ func (h *DataBroadcastHub) snapshotLocked(serviceID uint16) DataBroadcastSnapsho
 	if service == nil {
 		return snapshot
 	}
+	snapshot.Revision = service.revision
 	snapshot.PMT = clonePMT(service.pmt)
 	snapshot.ProgramInfo = cloneProgramInfo(service.programInfo)
 	snapshot.CurrentTime = cloneCurrentTime(service.currentTime)
@@ -636,23 +790,76 @@ func (h *DataBroadcastHub) snapshotLocked(serviceID uint16) DataBroadcastSnapsho
 	if service.pmt != nil {
 		snapshot.Components = cloneComponents(service.pmt.Components)
 		for i := range snapshot.Components {
+			if state, ok := service.carouselStates[snapshot.Components[i].ComponentTag]; ok {
+				snapshot.Components[i].CarouselStatus = state.status
+				snapshot.Components[i].CarouselDownloadID = ptr(state.downloadID)
+				snapshot.Components[i].CarouselBlockSize = ptr(state.blockSize)
+			}
 			carousel := service.carousels[snapshot.Components[i].ComponentTag]
 			if carousel == nil {
 				continue
 			}
-			for _, module := range carousel.Modules() {
-				snapshot.Components[i].Modules = append(snapshot.Components[i].Modules, apiModule(snapshot.Components[i].ComponentTag, module, false))
+			for _, announcement := range carousel.Announcements() {
+				module := apiModule(snapshot.Components[i].ComponentTag, announcement.Module, false)
+				module.Complete = announcement.Complete
+				module.ReceivedBlocks = announcement.ReceivedBlocks
+				module.TotalBlocks = announcement.TotalBlocks
+				if announcement.Complete {
+					module.Status = "complete"
+				} else if announcement.ReceivedBlocks > 0 {
+					module.Status = "receiving"
+				} else {
+					module.Status = "announced"
+				}
+				snapshot.Components[i].Modules = append(snapshot.Components[i].Modules, module)
+			}
+			for _, rejection := range carousel.RejectedAnnouncements() {
+				downloadID := uint32(0)
+				if snapshot.Components[i].CarouselDownloadID != nil {
+					downloadID = *snapshot.Components[i].CarouselDownloadID
+				}
+				snapshot.Components[i].Modules = append(snapshot.Components[i].Modules, rejectedModule(snapshot.Components[i].ComponentTag, downloadID, rejection))
 			}
 		}
 	}
 	return snapshot
 }
 
+func rejectedModule(componentTag byte, downloadID uint32, rejection ts.DSMCCModuleRejection) DataBroadcastModule {
+	reason := rejection.Reason
+	module := DataBroadcastModule{
+		ComponentTag: componentTag, ModuleID: rejection.Module.ModuleID,
+		DownloadID: downloadID, Version: rejection.Module.Version, Size: rejection.Module.ModuleSize,
+		Info: append([]byte(nil), rejection.Module.Info...), Status: "rejected", RejectionReason: &reason,
+		ETag: moduleETag(downloadID, rejection.Module.ModuleID, rejection.Module.Version, rejection.Module.ModuleSize),
+	}
+	if metadata, ok := rejection.Module.Metadata(); ok {
+		module.Metadata = &metadata
+	}
+	return module
+}
+
 func (h *DataBroadcastHub) broadcastLocked(serviceID uint16, event DataBroadcastEvent) {
-	for ch := range h.subs[serviceID] {
+	service := h.serviceLocked(serviceID)
+	// PCR is a clock sample, not a material carousel state change.
+	if event.Type != "pcr" {
+		service.revision++
+	}
+	service.sequence++
+	event.Revision = service.revision
+	event.Sequence = service.sequence
+	for ch, subscriber := range h.subs[serviceID] {
+		if subscriber.closed {
+			continue
+		}
 		select {
 		case ch <- event:
 		default:
+			// Deltas are no longer reliable. Closing lets EventSource reconnect;
+			// every connection starts with an authoritative snapshot.
+			subscriber.closed = true
+			delete(h.subs[serviceID], ch)
+			close(ch)
 		}
 	}
 }
@@ -664,6 +871,21 @@ func streamIdentifierComponentTag(descriptors []ts.Descriptor) (byte, bool) {
 		}
 	}
 	return 0, false
+}
+
+func dataComponentDescriptor(descriptors []ts.Descriptor) (*ts.DataComponentDescriptor, bool) {
+	for _, desc := range descriptors {
+		if desc.Tag() != ts.DescriptorTagDataComponent {
+			continue
+		}
+		value, err := ts.ParseDataComponentDescriptor(desc)
+		return value, err == nil
+	}
+	return nil, false
+}
+
+func isAribBXMLDataComponent(id uint16) bool {
+	return id == 0x0007 || id == 0x000b || id == 0x000c || id == 0x000d
 }
 
 func componentTagExists(components []DataBroadcastComponent, tag byte) bool {
@@ -684,6 +906,7 @@ func apiModule(componentTag byte, module ts.DSMCCModule, includeData bool) DataB
 		Size:         module.Size,
 		Info:         append([]byte(nil), module.Info...),
 		Complete:     true,
+		Status:       "complete",
 		ETag:         moduleETag(module.DownloadID, module.ModuleID, module.Version, module.Size),
 	}
 	if metadata, ok := (ts.DSMCCModuleInfo{Info: module.Info}).Metadata(); ok {
@@ -693,6 +916,12 @@ func apiModule(componentTag byte, module ts.DSMCCModule, includeData bool) DataB
 		result.Data = append([]byte(nil), module.Data...)
 	}
 	return result
+}
+
+// CompletedModule exposes a cached completed DSM-CC module using the same
+// representation as live carousel modules.
+func CompletedModule(componentTag byte, module ts.DSMCCModule) DataBroadcastModule {
+	return apiModule(componentTag, module, true)
 }
 
 func moduleETag(downloadID uint32, moduleID uint16, version byte, size uint32) string {
@@ -712,9 +941,38 @@ func cloneComponents(components []DataBroadcastComponent) []DataBroadcastCompone
 	result := make([]DataBroadcastComponent, len(components))
 	for i, component := range components {
 		result[i] = component
+		if component.DataComponentID != nil {
+			value := *component.DataComponentID
+			result[i].DataComponentID = &value
+		}
+		result[i].BXMLInfo = cloneBXMLInfo(component.BXMLInfo)
 		result[i].Modules = cloneModules(component.Modules)
 	}
 	return result
+}
+
+func cloneBXMLInfo(info *ts.AdditionalAribBXMLInfo) *ts.AdditionalAribBXMLInfo {
+	if info == nil {
+		return nil
+	}
+	clone := *info
+	if info.EntryPointInfo != nil {
+		entry := *info.EntryPointInfo
+		if entry.BXMLMajorVersion != nil {
+			value := *entry.BXMLMajorVersion
+			entry.BXMLMajorVersion = &value
+		}
+		if entry.BXMLMinorVersion != nil {
+			value := *entry.BXMLMinorVersion
+			entry.BXMLMinorVersion = &value
+		}
+		clone.EntryPointInfo = &entry
+	}
+	if info.AdditionalAribCarouselInfo != nil {
+		carousel := *info.AdditionalAribCarouselInfo
+		clone.AdditionalAribCarouselInfo = &carousel
+	}
+	return &clone
 }
 
 func cloneModules(modules []DataBroadcastModule) []DataBroadcastModule {

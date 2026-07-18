@@ -118,10 +118,22 @@ type Invoker interface {
 	//
 	// GET /services/{id}/data-broadcast/events
 	GetServiceDataBroadcastEvents(ctx context.Context, params GetServiceDataBroadcastEventsParams) (GetServiceDataBroadcastEventsRes, error)
-	// GetServiceDataBroadcastModule invokes getServiceDataBroadcastModule operation.
+	// GetServiceDataBroadcastModuleRaw invokes getServiceDataBroadcastModuleRaw operation.
 	//
-	// GET /services/{id}/data-broadcast/modules/{componentTag}/{moduleId}
-	GetServiceDataBroadcastModule(ctx context.Context, params GetServiceDataBroadcastModuleParams) (GetServiceDataBroadcastModuleRes, error)
+	// GET /services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}/raw
+	GetServiceDataBroadcastModuleRaw(ctx context.Context, params GetServiceDataBroadcastModuleRawParams) (GetServiceDataBroadcastModuleRawRes, error)
+	// GetServiceDataBroadcastModuleResource invokes getServiceDataBroadcastModuleResource operation.
+	//
+	// GET /services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}/resources/{resourceId}
+	GetServiceDataBroadcastModuleResource(ctx context.Context, params GetServiceDataBroadcastModuleResourceParams) (GetServiceDataBroadcastModuleResourceRes, error)
+	// GetServiceDataBroadcastModuleVersion invokes getServiceDataBroadcastModuleVersion operation.
+	//
+	// GET /services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}
+	GetServiceDataBroadcastModuleVersion(ctx context.Context, params GetServiceDataBroadcastModuleVersionParams) (GetServiceDataBroadcastModuleVersionRes, error)
+	// GetServiceDataBroadcastState invokes getServiceDataBroadcastState operation.
+	//
+	// GET /services/{id}/data-broadcast/state
+	GetServiceDataBroadcastState(ctx context.Context, params GetServiceDataBroadcastStateParams) (GetServiceDataBroadcastStateRes, error)
 	// GetServicePrograms invokes getServicePrograms operation.
 	//
 	// GET /services/{id}/programs
@@ -2691,19 +2703,19 @@ func (c *Client) sendGetServiceDataBroadcastEvents(ctx context.Context, params G
 	return result, nil
 }
 
-// GetServiceDataBroadcastModule invokes getServiceDataBroadcastModule operation.
+// GetServiceDataBroadcastModuleRaw invokes getServiceDataBroadcastModuleRaw operation.
 //
-// GET /services/{id}/data-broadcast/modules/{componentTag}/{moduleId}
-func (c *Client) GetServiceDataBroadcastModule(ctx context.Context, params GetServiceDataBroadcastModuleParams) (GetServiceDataBroadcastModuleRes, error) {
-	res, err := c.sendGetServiceDataBroadcastModule(ctx, params)
+// GET /services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}/raw
+func (c *Client) GetServiceDataBroadcastModuleRaw(ctx context.Context, params GetServiceDataBroadcastModuleRawParams) (GetServiceDataBroadcastModuleRawRes, error) {
+	res, err := c.sendGetServiceDataBroadcastModuleRaw(ctx, params)
 	return res, err
 }
 
-func (c *Client) sendGetServiceDataBroadcastModule(ctx context.Context, params GetServiceDataBroadcastModuleParams) (res GetServiceDataBroadcastModuleRes, err error) {
+func (c *Client) sendGetServiceDataBroadcastModuleRaw(ctx context.Context, params GetServiceDataBroadcastModuleRawParams) (res GetServiceDataBroadcastModuleRawRes, err error) {
 	otelAttrs := []attribute.KeyValue{
-		otelogen.OperationID("getServiceDataBroadcastModule"),
+		otelogen.OperationID("getServiceDataBroadcastModuleRaw"),
 		semconv.HTTPRequestMethodKey.String("GET"),
-		semconv.URLTemplateKey.String("/services/{id}/data-broadcast/modules/{componentTag}/{moduleId}"),
+		semconv.URLTemplateKey.String("/services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}/raw"),
 	}
 	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
 
@@ -2719,7 +2731,7 @@ func (c *Client) sendGetServiceDataBroadcastModule(ctx context.Context, params G
 	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
 
 	// Start a span for this request.
-	ctx, span := c.cfg.Tracer.Start(ctx, GetServiceDataBroadcastModuleOperation,
+	ctx, span := c.cfg.Tracer.Start(ctx, GetServiceDataBroadcastModuleRawOperation,
 		trace.WithAttributes(otelAttrs...),
 		clientSpanKind,
 	)
@@ -2736,7 +2748,7 @@ func (c *Client) sendGetServiceDataBroadcastModule(ctx context.Context, params G
 
 	stage = "BuildURL"
 	u := uri.Clone(c.requestURL(ctx))
-	var pathParts [6]string
+	var pathParts [11]string
 	pathParts[0] = "/services/"
 	{
 		// Encode "id" parameter.
@@ -2756,7 +2768,7 @@ func (c *Client) sendGetServiceDataBroadcastModule(ctx context.Context, params G
 		}
 		pathParts[1] = encoded
 	}
-	pathParts[2] = "/data-broadcast/modules/"
+	pathParts[2] = "/data-broadcast/components/"
 	{
 		// Encode "componentTag" parameter.
 		e := uri.NewPathEncoder(uri.PathEncoderConfig{
@@ -2775,7 +2787,26 @@ func (c *Client) sendGetServiceDataBroadcastModule(ctx context.Context, params G
 		}
 		pathParts[3] = encoded
 	}
-	pathParts[4] = "/"
+	pathParts[4] = "/carousels/"
+	{
+		// Encode "downloadId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "downloadId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.Int64ToString(params.DownloadId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[5] = encoded
+	}
+	pathParts[6] = "/modules/"
 	{
 		// Encode "moduleId" parameter.
 		e := uri.NewPathEncoder(uri.PathEncoderConfig{
@@ -2792,7 +2823,227 @@ func (c *Client) sendGetServiceDataBroadcastModule(ctx context.Context, params G
 		if err != nil {
 			return res, errors.Wrap(err, "encode path")
 		}
+		pathParts[7] = encoded
+	}
+	pathParts[8] = "/versions/"
+	{
+		// Encode "moduleVersion" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "moduleVersion",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.IntToString(params.ModuleVersion))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[9] = encoded
+	}
+	pathParts[10] = "/raw"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	stage = "EncodeHeaderParams"
+	h := uri.NewHeaderEncoder(r.Header)
+	{
+		cfg := uri.HeaderParameterEncodingConfig{
+			Name:    "If-None-Match",
+			Explode: false,
+		}
+		if err := h.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.IfNoneMatch.Get(); ok {
+				return e.EncodeValue(conv.StringToString(val))
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode header")
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+
+	stage = "DecodeResponse"
+	result, err := decodeGetServiceDataBroadcastModuleRawResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// GetServiceDataBroadcastModuleResource invokes getServiceDataBroadcastModuleResource operation.
+//
+// GET /services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}/resources/{resourceId}
+func (c *Client) GetServiceDataBroadcastModuleResource(ctx context.Context, params GetServiceDataBroadcastModuleResourceParams) (GetServiceDataBroadcastModuleResourceRes, error) {
+	res, err := c.sendGetServiceDataBroadcastModuleResource(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendGetServiceDataBroadcastModuleResource(ctx context.Context, params GetServiceDataBroadcastModuleResourceParams) (res GetServiceDataBroadcastModuleResourceRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("getServiceDataBroadcastModuleResource"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}/resources/{resourceId}"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, GetServiceDataBroadcastModuleResourceOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [12]string
+	pathParts[0] = "/services/"
+	{
+		// Encode "id" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "id",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.Int64ToString(params.ID))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/data-broadcast/components/"
+	{
+		// Encode "componentTag" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "componentTag",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.IntToString(params.ComponentTag))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[3] = encoded
+	}
+	pathParts[4] = "/carousels/"
+	{
+		// Encode "downloadId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "downloadId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.Int64ToString(params.DownloadId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
 		pathParts[5] = encoded
+	}
+	pathParts[6] = "/modules/"
+	{
+		// Encode "moduleId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "moduleId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.IntToString(params.ModuleId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[7] = encoded
+	}
+	pathParts[8] = "/versions/"
+	{
+		// Encode "moduleVersion" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "moduleVersion",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.IntToString(params.ModuleVersion))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[9] = encoded
+	}
+	pathParts[10] = "/resources/"
+	{
+		// Encode "resourceId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "resourceId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.ResourceId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[11] = encoded
 	}
 	uri.AddPathParts(u, pathParts[:]...)
 
@@ -2826,7 +3077,277 @@ func (c *Client) sendGetServiceDataBroadcastModule(ctx context.Context, params G
 	}
 
 	stage = "DecodeResponse"
-	result, err := decodeGetServiceDataBroadcastModuleResponse(resp)
+	result, err := decodeGetServiceDataBroadcastModuleResourceResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// GetServiceDataBroadcastModuleVersion invokes getServiceDataBroadcastModuleVersion operation.
+//
+// GET /services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}
+func (c *Client) GetServiceDataBroadcastModuleVersion(ctx context.Context, params GetServiceDataBroadcastModuleVersionParams) (GetServiceDataBroadcastModuleVersionRes, error) {
+	res, err := c.sendGetServiceDataBroadcastModuleVersion(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendGetServiceDataBroadcastModuleVersion(ctx context.Context, params GetServiceDataBroadcastModuleVersionParams) (res GetServiceDataBroadcastModuleVersionRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("getServiceDataBroadcastModuleVersion"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, GetServiceDataBroadcastModuleVersionOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [10]string
+	pathParts[0] = "/services/"
+	{
+		// Encode "id" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "id",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.Int64ToString(params.ID))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/data-broadcast/components/"
+	{
+		// Encode "componentTag" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "componentTag",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.IntToString(params.ComponentTag))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[3] = encoded
+	}
+	pathParts[4] = "/carousels/"
+	{
+		// Encode "downloadId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "downloadId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.Int64ToString(params.DownloadId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[5] = encoded
+	}
+	pathParts[6] = "/modules/"
+	{
+		// Encode "moduleId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "moduleId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.IntToString(params.ModuleId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[7] = encoded
+	}
+	pathParts[8] = "/versions/"
+	{
+		// Encode "moduleVersion" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "moduleVersion",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.IntToString(params.ModuleVersion))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[9] = encoded
+	}
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	stage = "EncodeHeaderParams"
+	h := uri.NewHeaderEncoder(r.Header)
+	{
+		cfg := uri.HeaderParameterEncodingConfig{
+			Name:    "If-None-Match",
+			Explode: false,
+		}
+		if err := h.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.IfNoneMatch.Get(); ok {
+				return e.EncodeValue(conv.StringToString(val))
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode header")
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+
+	stage = "DecodeResponse"
+	result, err := decodeGetServiceDataBroadcastModuleVersionResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// GetServiceDataBroadcastState invokes getServiceDataBroadcastState operation.
+//
+// GET /services/{id}/data-broadcast/state
+func (c *Client) GetServiceDataBroadcastState(ctx context.Context, params GetServiceDataBroadcastStateParams) (GetServiceDataBroadcastStateRes, error) {
+	res, err := c.sendGetServiceDataBroadcastState(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendGetServiceDataBroadcastState(ctx context.Context, params GetServiceDataBroadcastStateParams) (res GetServiceDataBroadcastStateRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("getServiceDataBroadcastState"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/services/{id}/data-broadcast/state"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, GetServiceDataBroadcastStateOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/services/"
+	{
+		// Encode "id" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "id",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.Int64ToString(params.ID))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/data-broadcast/state"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+
+	stage = "DecodeResponse"
+	result, err := decodeGetServiceDataBroadcastStateResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}

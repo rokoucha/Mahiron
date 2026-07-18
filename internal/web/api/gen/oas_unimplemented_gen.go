@@ -171,10 +171,31 @@ func (UnimplementedHandler) GetServiceDataBroadcastEvents(ctx context.Context, p
 	return ht.ErrNotImplemented
 }
 
-// GetServiceDataBroadcastModule implements getServiceDataBroadcastModule operation.
+// GetServiceDataBroadcastModuleRaw implements getServiceDataBroadcastModuleRaw operation.
 //
-// GET /services/{id}/data-broadcast/modules/{componentTag}/{moduleId}
-func (UnimplementedHandler) GetServiceDataBroadcastModule(ctx context.Context, params GetServiceDataBroadcastModuleParams, w http.ResponseWriter) error {
+// GET /services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}/raw
+func (UnimplementedHandler) GetServiceDataBroadcastModuleRaw(ctx context.Context, params GetServiceDataBroadcastModuleRawParams, w http.ResponseWriter) error {
+	return ht.ErrNotImplemented
+}
+
+// GetServiceDataBroadcastModuleResource implements getServiceDataBroadcastModuleResource operation.
+//
+// GET /services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}/resources/{resourceId}
+func (UnimplementedHandler) GetServiceDataBroadcastModuleResource(ctx context.Context, params GetServiceDataBroadcastModuleResourceParams, w http.ResponseWriter) error {
+	return ht.ErrNotImplemented
+}
+
+// GetServiceDataBroadcastModuleVersion implements getServiceDataBroadcastModuleVersion operation.
+//
+// GET /services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}
+func (UnimplementedHandler) GetServiceDataBroadcastModuleVersion(ctx context.Context, params GetServiceDataBroadcastModuleVersionParams, w http.ResponseWriter) error {
+	return ht.ErrNotImplemented
+}
+
+// GetServiceDataBroadcastState implements getServiceDataBroadcastState operation.
+//
+// GET /services/{id}/data-broadcast/state
+func (UnimplementedHandler) GetServiceDataBroadcastState(ctx context.Context, params GetServiceDataBroadcastStateParams, w http.ResponseWriter) error {
 	return ht.ErrNotImplemented
 }
 

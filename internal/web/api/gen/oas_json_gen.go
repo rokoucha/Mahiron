@@ -1858,6 +1858,46 @@ func (s *GetProgramsOKApplicationJSON) UnmarshalJSON(data []byte) error {
 	return s.Decode(d)
 }
 
+// Encode encodes GetServiceDataBroadcastStateOKApplicationJSON as json.
+func (s GetServiceDataBroadcastStateOKApplicationJSON) Encode(e *jx.Encoder) {
+	unwrapped := string(s)
+
+	e.Str(unwrapped)
+}
+
+// Decode decodes GetServiceDataBroadcastStateOKApplicationJSON from json.
+func (s *GetServiceDataBroadcastStateOKApplicationJSON) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode GetServiceDataBroadcastStateOKApplicationJSON to nil")
+	}
+	var unwrapped string
+	if err := func() error {
+		v, err := d.Str()
+		unwrapped = string(v)
+		if err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return errors.Wrap(err, "alias")
+	}
+	*s = GetServiceDataBroadcastStateOKApplicationJSON(unwrapped)
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s GetServiceDataBroadcastStateOKApplicationJSON) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *GetServiceDataBroadcastStateOKApplicationJSON) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
 // Encode encodes GetServiceProgramsOKApplicationJSON as json.
 func (s GetServiceProgramsOKApplicationJSON) Encode(e *jx.Encoder) {
 	unwrapped := []Program(s)

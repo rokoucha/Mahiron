@@ -4,6 +4,9 @@ addresses:
 
 logLevel: info
 databasePath: ./db/mahiron.db
+dataBroadcastCachePath: ./db/data-broadcast-cache.db
+dataBroadcastCacheBytes: 134217728
+dataBroadcastCacheMaxAgeDays: 14
 maxConcurrentJobs: 1
 epgRetentionDays: 3
 epgRetrievalTime: 600000

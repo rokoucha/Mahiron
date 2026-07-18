@@ -199,10 +199,22 @@ type RawHandler interface {
 	//
 	// GET /services/{id}/data-broadcast/events
 	GetServiceDataBroadcastEvents(ctx context.Context, params GetServiceDataBroadcastEventsParams, w http.ResponseWriter) error
-	// GetServiceDataBroadcastModule implements getServiceDataBroadcastModule operation.
+	// GetServiceDataBroadcastModuleRaw implements getServiceDataBroadcastModuleRaw operation.
 	//
-	// GET /services/{id}/data-broadcast/modules/{componentTag}/{moduleId}
-	GetServiceDataBroadcastModule(ctx context.Context, params GetServiceDataBroadcastModuleParams, w http.ResponseWriter) error
+	// GET /services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}/raw
+	GetServiceDataBroadcastModuleRaw(ctx context.Context, params GetServiceDataBroadcastModuleRawParams, w http.ResponseWriter) error
+	// GetServiceDataBroadcastModuleResource implements getServiceDataBroadcastModuleResource operation.
+	//
+	// GET /services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}/resources/{resourceId}
+	GetServiceDataBroadcastModuleResource(ctx context.Context, params GetServiceDataBroadcastModuleResourceParams, w http.ResponseWriter) error
+	// GetServiceDataBroadcastModuleVersion implements getServiceDataBroadcastModuleVersion operation.
+	//
+	// GET /services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}
+	GetServiceDataBroadcastModuleVersion(ctx context.Context, params GetServiceDataBroadcastModuleVersionParams, w http.ResponseWriter) error
+	// GetServiceDataBroadcastState implements getServiceDataBroadcastState operation.
+	//
+	// GET /services/{id}/data-broadcast/state
+	GetServiceDataBroadcastState(ctx context.Context, params GetServiceDataBroadcastStateParams, w http.ResponseWriter) error
 }
 
 // Server implements http server based on OpenAPI v3 specification and

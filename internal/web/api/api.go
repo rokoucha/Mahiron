@@ -191,8 +191,20 @@ func (h *Handler) GetServiceDataBroadcastEvents(ctx context.Context, params apig
 	return GetServiceDataBroadcastEvents(ctx, h, params, w)
 }
 
-func (h *Handler) GetServiceDataBroadcastModule(ctx context.Context, params apigen.GetServiceDataBroadcastModuleParams, w http.ResponseWriter) error {
-	return GetServiceDataBroadcastModule(ctx, h, params, w)
+func (h *Handler) GetServiceDataBroadcastState(ctx context.Context, params apigen.GetServiceDataBroadcastStateParams, w http.ResponseWriter) error {
+	return GetServiceDataBroadcastState(ctx, h, params, w)
+}
+
+func (h *Handler) GetServiceDataBroadcastModuleVersion(ctx context.Context, params apigen.GetServiceDataBroadcastModuleVersionParams, w http.ResponseWriter) error {
+	return GetServiceDataBroadcastModuleVersion(ctx, h, params, w)
+}
+
+func (h *Handler) GetServiceDataBroadcastModuleRaw(ctx context.Context, params apigen.GetServiceDataBroadcastModuleRawParams, w http.ResponseWriter) error {
+	return GetServiceDataBroadcastModuleRaw(ctx, h, params, w)
+}
+
+func (h *Handler) GetServiceDataBroadcastModuleResource(ctx context.Context, params apigen.GetServiceDataBroadcastModuleResourceParams, w http.ResponseWriter) error {
+	return GetServiceDataBroadcastModuleResource(ctx, h, params, w)
 }
 
 func (h *Handler) GetServicePrograms(ctx context.Context, params apigen.GetServiceProgramsParams) (apigen.GetServiceProgramsRes, error) {

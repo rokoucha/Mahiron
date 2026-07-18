@@ -57,6 +57,26 @@ type DSMCCCarousel struct {
 	completedBytes uint64
 	inFlightBytes  uint64
 	generation     uint64
+	rejected       map[uint16]DSMCCModuleRejection
+}
+
+// DSMCCModuleRejection describes a DII module the receiver deliberately did
+// not allocate. Keeping it separate from accepted module state prevents a
+// resource failure from looking like an indefinitely receiving module.
+type DSMCCModuleRejection struct {
+	Module DSMCCModuleInfo
+	Reason string
+}
+
+// DSMCCModuleAnnouncement is the current DII-backed state of a module.  It
+// intentionally includes incomplete modules: a receiver must be able to tell
+// the difference between a module that has not arrived yet and one that was
+// not announced at all.
+type DSMCCModuleAnnouncement struct {
+	Module         DSMCCModule
+	Complete       bool
+	ReceivedBlocks int
+	TotalBlocks    int
 }
 
 type dsmccModuleState struct {
@@ -72,8 +92,9 @@ type dsmccModuleState struct {
 
 func NewDSMCCCarousel(limits DSMCCCarouselLimits) *DSMCCCarousel {
 	return &DSMCCCarousel{
-		limits:  limits.withDefaults(),
-		modules: map[uint16]*dsmccModuleState{},
+		limits:   limits.withDefaults(),
+		modules:  map[uint16]*dsmccModuleState{},
+		rejected: map[uint16]DSMCCModuleRejection{},
 	}
 }
 
@@ -85,22 +106,36 @@ func (c *DSMCCCarousel) ObserveDII(dii *DSMCCDII) []DSMCCModuleInfo {
 	accepted := make([]DSMCCModuleInfo, 0, len(dii.Modules))
 	for _, module := range dii.Modules {
 		seen[module.ModuleID] = true
-		if module.ModuleSize == 0 || module.ModuleSize > c.limits.MaxModuleSize || dii.BlockSize == 0 {
+		if module.ModuleSize == 0 {
 			c.remove(module.ModuleID)
+			c.reject(module, "moduleSizeZero")
 			continue
 		}
-		accepted = append(accepted, module)
+		if dii.BlockSize == 0 {
+			c.remove(module.ModuleID)
+			c.reject(module, "blockSizeZero")
+			continue
+		}
+		if module.ModuleSize > c.limits.MaxModuleSize {
+			c.remove(module.ModuleID)
+			c.reject(module, "moduleSizeLimitExceeded")
+			continue
+		}
+		delete(c.rejected, module.ModuleID)
 		current := c.modules[module.ModuleID]
 		if current != nil && current.downloadID == dii.DownloadID && current.info.Version == module.Version && current.info.ModuleSize == module.ModuleSize && current.blockSize == dii.BlockSize {
+			accepted = append(accepted, module)
 			continue
 		}
 		c.remove(module.ModuleID)
 		if uint64(module.ModuleSize) > c.limits.MaxInFlightBytes {
+			c.reject(module, "inFlightBudgetExceeded")
 			continue
 		}
 		for c.inFlightBytes+uint64(module.ModuleSize) > c.limits.MaxInFlightBytes && c.evictOldestInFlight() {
 		}
 		if c.inFlightBytes+uint64(module.ModuleSize) > c.limits.MaxInFlightBytes {
+			c.reject(module, "inFlightBudgetExceeded")
 			continue
 		}
 		blockCount := int((module.ModuleSize + uint32(dii.BlockSize) - 1) / uint32(dii.BlockSize))
@@ -114,13 +149,67 @@ func (c *DSMCCCarousel) ObserveDII(dii *DSMCCDII) []DSMCCModuleInfo {
 			generation: c.generation,
 		}
 		c.inFlightBytes += uint64(module.ModuleSize)
+		accepted = append(accepted, module)
 	}
 	for moduleID := range c.modules {
 		if !seen[moduleID] {
 			c.remove(moduleID)
 		}
 	}
+	for moduleID := range c.rejected {
+		if !seen[moduleID] {
+			delete(c.rejected, moduleID)
+		}
+	}
 	return accepted
+}
+
+func (c *DSMCCCarousel) reject(module DSMCCModuleInfo, reason string) {
+	if c.rejected == nil {
+		c.rejected = map[uint16]DSMCCModuleRejection{}
+	}
+	c.rejected[module.ModuleID] = DSMCCModuleRejection{
+		Module: cloneDSMCCModuleInfo(module),
+		Reason: reason,
+	}
+}
+
+// RejectedAnnouncements returns current DII modules for which no assembly
+// allocation exists, sorted in the same deterministic order as Announcements.
+func (c *DSMCCCarousel) RejectedAnnouncements() []DSMCCModuleRejection {
+	result := make([]DSMCCModuleRejection, 0, len(c.rejected))
+	for _, value := range c.rejected {
+		result = append(result, value)
+	}
+	slices.SortFunc(result, func(a, b DSMCCModuleRejection) int {
+		return int(a.Module.ModuleID) - int(b.Module.ModuleID)
+	})
+	return result
+}
+
+// Announcements returns all currently accepted DII modules, including
+// incomplete ones. No payload bytes are returned for incomplete modules.
+func (c *DSMCCCarousel) Announcements() []DSMCCModuleAnnouncement {
+	result := make([]DSMCCModuleAnnouncement, 0, len(c.modules))
+	for _, state := range c.modules {
+		module := DSMCCModule{
+			DownloadID: state.downloadID,
+			ModuleID:   state.info.ModuleID,
+			Version:    state.info.Version,
+			Size:       state.info.ModuleSize,
+			Info:       append([]byte(nil), state.info.Info...),
+		}
+		if state.completed {
+			module.Data = append([]byte(nil), state.data...)
+		}
+		announcement := DSMCCModuleAnnouncement{Module: module, Complete: state.completed, ReceivedBlocks: state.count, TotalBlocks: len(state.received)}
+		if state.completed {
+			announcement.TotalBlocks = state.count
+		}
+		result = append(result, announcement)
+	}
+	slices.SortFunc(result, func(a, b DSMCCModuleAnnouncement) int { return int(a.Module.ModuleID) - int(b.Module.ModuleID) })
+	return result
 }
 
 func (c *DSMCCCarousel) ObserveDDB(ddb *DSMCCDDB) (*DSMCCModule, bool, error) {
@@ -176,10 +265,23 @@ func (c *DSMCCCarousel) ObserveDDBWithResult(ddb *DSMCCDDB) (*DSMCCModule, bool,
 
 func (c *DSMCCCarousel) Module(moduleID uint16) (DSMCCModule, bool) {
 	state := c.modules[moduleID]
-	if state == nil || !state.completed {
+	if state == nil || !state.completed || uint32(len(state.data)) != state.info.ModuleSize {
 		return DSMCCModule{}, false
 	}
 	return state.module(), true
+}
+
+// ReleaseCompletedPayload drops a completed module's byte buffer while
+// preserving its DII state. Callers may do this only after placing the module
+// in a persistent store that can serve its immutable URL.
+func (c *DSMCCCarousel) ReleaseCompletedPayload(moduleID uint16) bool {
+	state := c.modules[moduleID]
+	if state == nil || !state.completed || uint32(len(state.data)) != state.info.ModuleSize {
+		return false
+	}
+	c.completedBytes -= uint64(len(state.data))
+	state.data = nil
+	return true
 }
 
 // ModuleInfo returns DII metadata for an announced module, including modules
@@ -201,7 +303,7 @@ func (c *DSMCCCarousel) Restore(module DSMCCModule) bool {
 	}
 	state.data = append(state.data[:0], module.Data...)
 	state.received = nil
-	state.count = 0
+	state.count = int((state.info.ModuleSize + uint32(state.blockSize) - 1) / uint32(state.blockSize))
 	state.completed = true
 	c.inFlightBytes -= uint64(state.info.ModuleSize)
 	c.completedBytes += uint64(state.info.ModuleSize)
@@ -241,7 +343,7 @@ func (c *DSMCCCarousel) remove(moduleID uint16) {
 		return
 	}
 	if state.completed {
-		c.completedBytes -= uint64(state.info.ModuleSize)
+		c.completedBytes -= uint64(len(state.data))
 	} else {
 		c.inFlightBytes -= uint64(state.info.ModuleSize)
 	}
@@ -271,7 +373,7 @@ func (c *DSMCCCarousel) evictOldestCompletedExcept(except uint16) bool {
 	var oldestID uint16
 	var oldest *dsmccModuleState
 	for moduleID, state := range c.modules {
-		if !state.completed || moduleID == except {
+		if !state.completed || len(state.data) == 0 || moduleID == except {
 			continue
 		}
 		if oldest == nil || state.generation < oldest.generation {
