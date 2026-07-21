@@ -124,9 +124,10 @@ func (m DSMCCModuleInfo) LogoType() (byte, bool) {
 }
 
 type DSMCCDII struct {
-	DownloadID uint32
-	BlockSize  uint16
-	Modules    []DSMCCModuleInfo
+	DownloadID  uint32
+	BlockSize   uint16
+	Modules     []DSMCCModuleInfo
+	PrivateData []byte
 }
 
 func ParseDSMCCDII(s Section) (*DSMCCDII, error) {
@@ -146,6 +147,9 @@ func ParseDSMCCDII(s Section) (*DSMCCDII, error) {
 	}
 	compatLen := int(binary.BigEndian.Uint16(body[16:18]))
 	off := 18 + compatLen
+	if off == len(body) {
+		return result, nil
+	}
 	if off+2 > len(body) {
 		return nil, ErrInvalidSection
 	}
@@ -169,6 +173,20 @@ func ParseDSMCCDII(s Section) (*DSMCCDII, error) {
 		off += infoLen
 		result.Modules = append(result.Modules, module)
 	}
+	if off == len(body) {
+		return result, nil
+	}
+	if off+2 > len(body) {
+		return result, nil
+	}
+	privateLen := int(binary.BigEndian.Uint16(body[off : off+2]))
+	off += 2
+	if off+privateLen > len(body) {
+		// Older/minimal streams omit the optional private-data area. Keep the
+		// DII usable when trailing compatibility bytes are not a valid length.
+		return result, nil
+	}
+	result.PrivateData = append([]byte(nil), body[off:off+privateLen]...)
 	return result, nil
 }
 

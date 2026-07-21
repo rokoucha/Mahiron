@@ -9,17 +9,20 @@ import (
 )
 
 type SystemConfig struct {
-	Addresses          []ServerAddress     `json:"addresses"`
-	LogLevel           string              `json:"logLevel,omitempty"`
-	Observability      ObservabilityConfig `json:"observability,omitempty"`
-	MaxConcurrentJobs  int                 `json:"maxConcurrentJobs,omitempty"`
-	Jobs               []JobScheduleConfig `json:"jobs,omitempty"`
-	DatabasePath       string              `json:"databasePath,omitempty"`
-	EpgRetentionDays   int                 `json:"epgRetentionDays,omitempty"`
-	EpgRetrievalTime   int                 `json:"epgRetrievalTime,omitempty"`
-	EpgStaleAfter      int                 `json:"epgStaleAfter,omitempty"`
-	LogoGatherTimeout  int                 `json:"logoGatherTimeout,omitempty"`
-	ServiceScanTimeout int                 `json:"serviceScanTimeout,omitempty"`
+	Addresses                    []ServerAddress     `json:"addresses"`
+	LogLevel                     string              `json:"logLevel,omitempty"`
+	Observability                ObservabilityConfig `json:"observability,omitempty"`
+	MaxConcurrentJobs            int                 `json:"maxConcurrentJobs,omitempty"`
+	Jobs                         []JobScheduleConfig `json:"jobs,omitempty"`
+	DatabasePath                 string              `json:"databasePath,omitempty"`
+	DataBroadcastCachePath       string              `json:"dataBroadcastCachePath,omitempty"`
+	DataBroadcastCacheBytes      uint64              `json:"dataBroadcastCacheBytes,omitempty"`
+	DataBroadcastCacheMaxAgeDays int                 `json:"dataBroadcastCacheMaxAgeDays,omitempty"`
+	EpgRetentionDays             int                 `json:"epgRetentionDays,omitempty"`
+	EpgRetrievalTime             int                 `json:"epgRetrievalTime,omitempty"`
+	EpgStaleAfter                int                 `json:"epgStaleAfter,omitempty"`
+	LogoGatherTimeout            int                 `json:"logoGatherTimeout,omitempty"`
+	ServiceScanTimeout           int                 `json:"serviceScanTimeout,omitempty"`
 }
 
 type JobScheduleConfig struct {
@@ -52,13 +55,16 @@ func LoadAndParseSystemConfig(filePath string) (*SystemConfig, error) {
 	}
 
 	config := SystemConfig{
-		DatabasePath:       "./db/mahiron.db",
-		MaxConcurrentJobs:  1,
-		EpgRetentionDays:   3,
-		EpgRetrievalTime:   600000,
-		EpgStaleAfter:      7200000,
-		LogoGatherTimeout:  1200000,
-		ServiceScanTimeout: 30000,
+		DatabasePath:                 "./db/mahiron.db",
+		DataBroadcastCachePath:       "./db/data-broadcast-cache.db",
+		DataBroadcastCacheBytes:      128 * 1024 * 1024,
+		DataBroadcastCacheMaxAgeDays: 14,
+		MaxConcurrentJobs:            1,
+		EpgRetentionDays:             3,
+		EpgRetrievalTime:             600000,
+		EpgStaleAfter:                7200000,
+		LogoGatherTimeout:            1200000,
+		ServiceScanTimeout:           30000,
 	}
 	err = yaml.Unmarshal(file, &config)
 	if err != nil {
@@ -105,6 +111,9 @@ func LoadAndParseSystemConfig(filePath string) (*SystemConfig, error) {
 	}
 	if config.EpgRetentionDays < 0 {
 		return nil, errors.New("epgRetentionDays must be >= 0 (0 = unlimited)")
+	}
+	if config.DataBroadcastCacheMaxAgeDays < 0 {
+		return nil, errors.New("dataBroadcastCacheMaxAgeDays must be >= 0 (0 = unlimited)")
 	}
 	if config.EpgRetrievalTime < 5000 {
 		return nil, errors.New("epgRetrievalTime must be >= 5000")

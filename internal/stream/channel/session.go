@@ -56,6 +56,7 @@ type Config struct {
 	OnStop      func()
 	Type        string
 	ModuleCache *databroadcast.ModuleCache
+	ModuleStore databroadcast.ModuleStore
 }
 
 func NewSession(config Config) *Session {
@@ -75,7 +76,7 @@ func NewSession(config Config) *Session {
 		eitUpdater:    config.EITUpdater,
 		logoUpdater:   config.LogoUpdater,
 		logoCarousel:  ts.NewDSMCCLogoCarousel(),
-		dataBroadcast: databroadcast.NewDataBroadcastHub().WithMetricLabels(config.Type, config.Channel).WithModuleCache(config.ModuleCache),
+		dataBroadcast: databroadcast.NewDataBroadcastHub().WithMetricLabels(config.Type, config.Channel).WithModuleStore(moduleStore(config)),
 	}
 	session.sectionQueue = make(chan ts.Section, sectionQueueSize)
 	session.carouselQueue = make(chan ts.Section, carouselQueueSize)
@@ -90,6 +91,13 @@ func NewSession(config Config) *Session {
 	}, session.observeSection).WithPIDSections(session.observePIDSection).WithPackets(session.dataBroadcast.ObservePacket).WithMetricLabels(config.Type, config.Channel)
 	session.decodedDemuxer = demux.New(session.subscribeDecodedMux, nil).WithMetricLabels(config.Type, config.Channel)
 	return session
+}
+
+func moduleStore(config Config) databroadcast.ModuleStore {
+	if config.ModuleStore != nil {
+		return config.ModuleStore
+	}
+	return config.ModuleCache
 }
 
 func NewChannelSession(config Config) *ChannelSession { return NewSession(config) }
@@ -181,7 +189,7 @@ func (s *Session) ObserveDataBroadcast(ctx context.Context, serviceID uint16, de
 	return s.input.WithUser(ctx, func(ctx context.Context) error {
 		snapshot, events, unsubscribe := s.dataBroadcast.Subscribe(ctx, serviceID)
 		defer unsubscribe()
-		if err := observe(databroadcast.DataBroadcastEvent{Type: "snapshot", Snapshot: snapshot}); err != nil {
+		if err := observe(databroadcast.DataBroadcastEvent{Type: "snapshot", Revision: snapshot.Revision, Snapshot: snapshot}); err != nil {
 			return err
 		}
 		observeCtx, cancel := context.WithCancel(ctx)
@@ -237,6 +245,20 @@ func (s *Session) DataBroadcastModule(serviceID uint16, componentTag byte, modul
 		return databroadcast.DataBroadcastModule{}, false
 	}
 	return s.dataBroadcast.Module(serviceID, componentTag, moduleID)
+}
+
+func (s *Session) DataBroadcastSnapshot(serviceID uint16) databroadcast.DataBroadcastSnapshot {
+	if s.dataBroadcast == nil {
+		return databroadcast.DataBroadcastSnapshot{ServiceID: serviceID}
+	}
+	return s.dataBroadcast.Snapshot(serviceID)
+}
+
+func (s *Session) DataBroadcastModuleVersion(serviceID uint16, componentTag byte, downloadID uint32, moduleID uint16, version byte) (databroadcast.DataBroadcastModule, bool) {
+	if s.dataBroadcast == nil {
+		return databroadcast.DataBroadcastModule{}, false
+	}
+	return s.dataBroadcast.ModuleVersion(serviceID, componentTag, downloadID, moduleID, version)
 }
 
 func (s *Session) Stop(ctx context.Context) error {

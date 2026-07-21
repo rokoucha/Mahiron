@@ -85,8 +85,20 @@ type GetServiceDataBroadcastEventsRes interface {
 	getServiceDataBroadcastEventsRes()
 }
 
-type GetServiceDataBroadcastModuleRes interface {
-	getServiceDataBroadcastModuleRes()
+type GetServiceDataBroadcastModuleRawRes interface {
+	getServiceDataBroadcastModuleRawRes()
+}
+
+type GetServiceDataBroadcastModuleResourceRes interface {
+	getServiceDataBroadcastModuleResourceRes()
+}
+
+type GetServiceDataBroadcastModuleVersionRes interface {
+	getServiceDataBroadcastModuleVersionRes()
+}
+
+type GetServiceDataBroadcastStateRes interface {
+	getServiceDataBroadcastStateRes()
 }
 
 type GetServiceProgramsRes interface {

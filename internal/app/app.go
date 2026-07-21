@@ -28,6 +28,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/service"
 	"github.com/21S1298001/mahiron/internal/servicescan"
 	"github.com/21S1298001/mahiron/internal/stream"
+	"github.com/21S1298001/mahiron/internal/stream/databroadcast"
 	"github.com/21S1298001/mahiron/internal/tuner"
 	"github.com/21S1298001/mahiron/internal/web"
 )
@@ -121,16 +122,17 @@ func Run(ctx context.Context, args []string) int {
 }
 
 type applicationRuntime struct {
-	database *sql.DB
-	jobs     *job.JobManager
-	obs      observability.SetupResult
-	epgScan  *epg.Service
-	programs *program.ProgramManager
-	server   *server.Server
-	scanner  *servicescan.Service
-	services *service.ServiceManager
-	streams  *stream.StreamManager
-	tuners   *tuner.TunerManager
+	dataBroadcastStore io.Closer
+	database           *sql.DB
+	jobs               *job.JobManager
+	obs                observability.SetupResult
+	epgScan            *epg.Service
+	programs           *program.ProgramManager
+	server             *server.Server
+	scanner            *servicescan.Service
+	services           *service.ServiceManager
+	streams            *stream.StreamManager
+	tuners             *tuner.TunerManager
 }
 
 func buildRuntime(cfg *config.Config, database *sql.DB, obs observability.SetupResult) (*applicationRuntime, string, error) {
@@ -148,6 +150,18 @@ func buildRuntime(cfg *config.Config, database *sql.DB, obs observability.SetupR
 	programs := program.NewProgramManager(programStore, events)
 	epgUpdater := epg.NewUpdater(programs)
 
+	cachePath := cfg.System.DataBroadcastCachePath
+	dataBroadcastStore, err := databroadcast.NewSQLiteModuleStoreWithOptions(cachePath, databroadcast.SQLiteModuleStoreOptions{
+		MaxBytes: cfg.System.DataBroadcastCacheBytes,
+		MaxAge:   time.Duration(cfg.System.DataBroadcastCacheMaxAgeDays) * 24 * time.Hour,
+	})
+	if err != nil {
+		slog.Warn("failed to open data broadcast cache; using memory cache", "err", err)
+	}
+	var moduleStore databroadcast.ModuleStore
+	if err == nil {
+		moduleStore = dataBroadcastStore
+	}
 	streams := stream.NewStreamManager(stream.StreamManagerConfig{
 		Channels:       cfg.Channels,
 		Remotes:        cfg.Remotes,
@@ -156,6 +170,7 @@ func buildRuntime(cfg *config.Config, database *sql.DB, obs observability.SetupR
 		ProgramUpdater: programs,
 		ServiceLister:  services,
 		TunerManager:   tuners,
+		ModuleStore:    moduleStore,
 	})
 	serviceScanner := stream.NewServiceScannerAdapter(streams)
 	logoCollector := stream.NewLogoCollectorAdapter(streams)
@@ -206,16 +221,17 @@ func buildRuntime(cfg *config.Config, database *sql.DB, obs observability.SetupR
 	registerRuntimeMetrics(obs.MeterProvider, streams, tuners, jobs, programs, services, events, obs.LogStore, int64(cfg.System.EpgStaleAfter))
 
 	return &applicationRuntime{
-		database: database,
-		jobs:     jobs,
-		obs:      obs,
-		epgScan:  epgService,
-		programs: programs,
-		server:   server.NewServer(listenAddresses(cfg), handler),
-		scanner:  scanService,
-		services: services,
-		streams:  streams,
-		tuners:   tuners,
+		dataBroadcastStore: dataBroadcastStore,
+		database:           database,
+		jobs:               jobs,
+		obs:                obs,
+		epgScan:            epgService,
+		programs:           programs,
+		server:             server.NewServer(listenAddresses(cfg), handler),
+		scanner:            scanService,
+		services:           services,
+		streams:            streams,
+		tuners:             tuners,
 	}, "", nil
 }
 
@@ -263,6 +279,12 @@ func (r *applicationRuntime) shutdown() {
 		slog.Info("job manager shut down")
 	}()
 	wg.Wait()
+	if r.dataBroadcastStore != nil {
+		slog.Info("closing data broadcast cache")
+		if err := r.dataBroadcastStore.Close(); err != nil {
+			slog.Error("failed to close data broadcast cache", "err", err)
+		}
+	}
 
 	slog.Info("closing database")
 	if err := r.database.Close(); err != nil {

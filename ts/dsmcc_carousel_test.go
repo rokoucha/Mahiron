@@ -41,6 +41,67 @@ func TestDSMCCCarouselReassemblesModule(t *testing.T) {
 	}
 }
 
+func TestDSMCCCarouselReleasesPersistedPayload(t *testing.T) {
+	carousel := NewDSMCCCarousel(DSMCCCarouselLimits{})
+	dii, err := ParseDSMCCDII(buildGenericDSMCCDII(t, 1, 4, 2, 4, 1, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	carousel.ObserveDII(dii)
+	ddb, err := ParseDSMCCDDB(buildDSMCCDDB(t, 1, 2, 1, 0, []byte("data")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, complete, err := carousel.ObserveDDB(ddb); err != nil || !complete {
+		t.Fatalf("complete = %v, err = %v", complete, err)
+	}
+	if !carousel.ReleaseCompletedPayload(2) {
+		t.Fatal("release failed")
+	}
+	if _, ok := carousel.Module(2); ok {
+		t.Fatal("released module payload remained readable")
+	}
+	announcements := carousel.Announcements()
+	if len(announcements) != 1 || !announcements[0].Complete || announcements[0].ReceivedBlocks != 1 || len(announcements[0].Module.Data) != 0 {
+		t.Fatalf("announcements = %#v", announcements)
+	}
+	if got := carousel.CompletedBytes(); got != 0 {
+		t.Fatalf("completed bytes = %d, want 0", got)
+	}
+	// Replacing a released module must not subtract its payload a second time.
+	nextDII, err := ParseDSMCCDII(buildGenericDSMCCDII(t, 1, 4, 2, 4, 2, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	carousel.ObserveDII(nextDII)
+	nextDDB, err := ParseDSMCCDDB(buildDSMCCDDB(t, 1, 2, 2, 0, []byte("next")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, complete, err := carousel.ObserveDDB(nextDDB); err != nil || !complete {
+		t.Fatalf("replacement complete = %v, err = %v", complete, err)
+	}
+	if got := carousel.CompletedBytes(); got != 4 {
+		t.Fatalf("completed bytes after replacement = %d, want 4", got)
+	}
+}
+
+func TestDSMCCCarouselAnnouncementsIncludeIncompleteModule(t *testing.T) {
+	carousel := NewDSMCCCarousel(DSMCCCarouselLimits{})
+	dii, err := ParseDSMCCDII(buildGenericDSMCCDII(t, 1, 4, 2, 4, 1, []byte("index.bml")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	carousel.ObserveDII(dii)
+	announcements := carousel.Announcements()
+	if len(announcements) != 1 || announcements[0].Complete {
+		t.Fatalf("announcements = %#v, want one incomplete module", announcements)
+	}
+	if got := string(announcements[0].Module.Info); got != "index.bml" {
+		t.Fatalf("info = %q", got)
+	}
+}
+
 func TestDSMCCCarouselIgnoresDuplicateBlocks(t *testing.T) {
 	carousel := NewDSMCCCarousel(DSMCCCarouselLimits{})
 	dii, err := ParseDSMCCDII(buildGenericDSMCCDII(t, 1, 2, 2, 4, 1, nil))

@@ -1786,7 +1786,7 @@ func decodeGetServiceDataBroadcastEventsResponse(resp *http.Response) (res GetSe
 	return res, nil
 }
 
-func decodeGetServiceDataBroadcastModuleResponse(resp *http.Response) (res GetServiceDataBroadcastModuleRes, _ error) {
+func decodeGetServiceDataBroadcastModuleRawResponse(resp *http.Response) (res GetServiceDataBroadcastModuleRawRes, _ error) {
 	switch resp.StatusCode {
 	case 200:
 		// Code 200.
@@ -1797,7 +1797,7 @@ func decodeGetServiceDataBroadcastModuleResponse(resp *http.Response) (res GetSe
 		switch {
 		case ct == "application/octet-stream":
 			// Raw response - return the http.Response directly
-			return &GetServiceDataBroadcastModuleOKRawApplicationOctetStream{
+			return &GetServiceDataBroadcastModuleRawOKRawApplicationOctetStream{
 				Response: resp,
 			}, nil
 		default:
@@ -1805,14 +1805,131 @@ func decodeGetServiceDataBroadcastModuleResponse(resp *http.Response) (res GetSe
 		}
 	case 304:
 		// Code 304.
-		return &GetServiceDataBroadcastModuleNotModified{}, nil
+		return &GetServiceDataBroadcastModuleRawNotModified{}, nil
 	case 404:
 		// Code 404.
-		return &GetServiceDataBroadcastModuleNotFound{}, nil
+		return &GetServiceDataBroadcastModuleRawNotFound{}, nil
+	case 410:
+		// Code 410.
+		return &GetServiceDataBroadcastModuleRawGone{}, nil
+	case 425:
+		// Code 425.
+		return &GetServiceDataBroadcastModuleRawTooEarly{}, nil
+	}
+	return res, validate.UnexpectedStatusCodeWithResponse(resp)
+}
+
+func decodeGetServiceDataBroadcastModuleResourceResponse(resp *http.Response) (res GetServiceDataBroadcastModuleResourceRes, _ error) {
+	switch resp.StatusCode {
+	case 200:
+		// Code 200.
+		ct, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+		if err != nil {
+			return res, errors.Wrap(err, "parse media type")
+		}
+		switch {
+		case ct == "application/octet-stream":
+			// Raw response - return the http.Response directly
+			return &GetServiceDataBroadcastModuleResourceOKRawApplicationOctetStream{
+				Response: resp,
+			}, nil
+		default:
+			return res, validate.InvalidContentType(ct)
+		}
+	case 304:
+		// Code 304.
+		return &GetServiceDataBroadcastModuleResourceNotModified{}, nil
+	case 404:
+		// Code 404.
+		return &GetServiceDataBroadcastModuleResourceNotFound{}, nil
+	case 410:
+		// Code 410.
+		return &GetServiceDataBroadcastModuleResourceGone{}, nil
+	case 422:
+		// Code 422.
+		return &GetServiceDataBroadcastModuleResourceUnprocessableEntity{}, nil
+	case 425:
+		// Code 425.
+		return &GetServiceDataBroadcastModuleResourceTooEarly{}, nil
+	case 507:
+		// Code 507.
+		return &GetServiceDataBroadcastModuleResourceInsufficientStorage{}, nil
+	}
+	return res, validate.UnexpectedStatusCodeWithResponse(resp)
+}
+
+func decodeGetServiceDataBroadcastModuleVersionResponse(resp *http.Response) (res GetServiceDataBroadcastModuleVersionRes, _ error) {
+	switch resp.StatusCode {
+	case 200:
+		// Code 200.
+		ct, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+		if err != nil {
+			return res, errors.Wrap(err, "parse media type")
+		}
+		switch {
+		case ct == "application/json":
+			// Raw response - return the http.Response directly
+			return &GetServiceDataBroadcastModuleVersionOKRawApplicationJSON{
+				Response: resp,
+			}, nil
+		default:
+			return res, validate.InvalidContentType(ct)
+		}
+	case 304:
+		// Code 304.
+		return &GetServiceDataBroadcastModuleVersionNotModified{}, nil
+	case 404:
+		// Code 404.
+		return &GetServiceDataBroadcastModuleVersionNotFound{}, nil
+	case 410:
+		// Code 410.
+		return &GetServiceDataBroadcastModuleVersionGone{}, nil
+	case 422:
+		// Code 422.
+		return &GetServiceDataBroadcastModuleVersionUnprocessableEntity{}, nil
+	case 425:
+		// Code 425.
+		return &GetServiceDataBroadcastModuleVersionTooEarly{}, nil
+	case 507:
+		// Code 507.
+		return &GetServiceDataBroadcastModuleVersionInsufficientStorage{}, nil
 	}
 	// Default response.
-	res, err := func() (res GetServiceDataBroadcastModuleRes, err error) {
-		return &GetServiceDataBroadcastModuleDef{
+	res, err := func() (res GetServiceDataBroadcastModuleVersionRes, err error) {
+		return &GetServiceDataBroadcastModuleVersionDef{
+			StatusCode: resp.StatusCode,
+		}, nil
+	}()
+	if err != nil {
+		return res, errors.Wrapf(err, "default (code %d)", resp.StatusCode)
+	}
+	return res, nil
+}
+
+func decodeGetServiceDataBroadcastStateResponse(resp *http.Response) (res GetServiceDataBroadcastStateRes, _ error) {
+	switch resp.StatusCode {
+	case 200:
+		// Code 200.
+		ct, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+		if err != nil {
+			return res, errors.Wrap(err, "parse media type")
+		}
+		switch {
+		case ct == "application/json":
+			// Raw response - return the http.Response directly
+			return &GetServiceDataBroadcastStateOKRawApplicationJSON{
+				Response: resp,
+			}, nil
+		default:
+			return res, validate.InvalidContentType(ct)
+		}
+	case 404:
+		// Code 404.
+		return &GetServiceDataBroadcastStateNotFound{}, nil
+	}
+	// Default response.
+	res, err := func() (res GetServiceDataBroadcastStateRes, err error) {
+		return &GetServiceDataBroadcastStateDef{
 			StatusCode: resp.StatusCode,
 		}, nil
 	}()

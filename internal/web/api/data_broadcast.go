@@ -51,7 +51,9 @@ func GetServiceDataBroadcastEvents(ctx context.Context, h *Handler, params apige
 	})
 }
 
-func GetServiceDataBroadcastModule(ctx context.Context, h *Handler, params apigen.GetServiceDataBroadcastModuleParams, w http.ResponseWriter) error {
+// GetServiceDataBroadcastState returns the authoritative state without
+// allocating a tuner. Clients fetch it before opening SSE and after reconnect.
+func GetServiceDataBroadcastState(ctx context.Context, h *Handler, params apigen.GetServiceDataBroadcastStateParams, w http.ResponseWriter) error {
 	service, err := h.serviceManager.GetServiceById(ctx, strconv.FormatInt(params.ID, 10))
 	if err != nil {
 		return err
@@ -65,25 +67,157 @@ func GetServiceDataBroadcastModule(ctx context.Context, h *Handler, params apige
 		w.WriteHeader(http.StatusNotFound)
 		return nil
 	}
-	module, ok := session.DataBroadcastModule(service.ServiceId, byte(params.ComponentTag), uint16(params.ModuleId))
-	if !ok {
-		w.WriteHeader(http.StatusNotFound)
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	return json.NewEncoder(w).Encode(apiDataBroadcastSnapshot(params.ID, session.DataBroadcastSnapshot(service.ServiceId)))
+}
+
+func GetServiceDataBroadcastModuleVersion(ctx context.Context, h *Handler, params apigen.GetServiceDataBroadcastModuleVersionParams, w http.ResponseWriter) error {
+	module, status, err := dataBroadcastVersionModule(ctx, h, params.ID, byte(params.ComponentTag), uint32(params.DownloadId), uint16(params.ModuleId), byte(params.ModuleVersion))
+	if err != nil || status != 0 {
+		if status != 0 {
+			w.WriteHeader(status)
+		}
+		return err
+	}
+	w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
+	w.Header().Set("ETag", module.ETag)
+	if value, ok := params.IfNoneMatch.Get(); ok && etagMatches(value, module.ETag) {
+		w.WriteHeader(http.StatusNotModified)
 		return nil
 	}
-	// DSM-CC module URLs are stable while their contents are versioned by the
-	// DII moduleVersion/downloadId pair represented in the ETag. Allow clients
-	// to retain the bytes and revalidate them instead of downloading the same
-	// carousel module for every BML reference.
-	w.Header().Set("Cache-Control", "private, no-cache")
+	resources, err := dataBroadcastModuleResources(ctx, h, params.ID, module)
+	if err != nil {
+		return writeModuleDecodeError(w, err)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	return json.NewEncoder(w).Encode(apiDataBroadcastModuleManifest(params.ID, module, resources))
+}
+
+func GetServiceDataBroadcastModuleRaw(ctx context.Context, h *Handler, params apigen.GetServiceDataBroadcastModuleRawParams, w http.ResponseWriter) error {
+	module, status, err := dataBroadcastVersionModule(ctx, h, params.ID, byte(params.ComponentTag), uint32(params.DownloadId), uint16(params.ModuleId), byte(params.ModuleVersion))
+	if err != nil || status != 0 {
+		if status != 0 {
+			w.WriteHeader(status)
+		}
+		return err
+	}
+	w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
 	w.Header().Set("ETag", module.ETag)
 	if value, ok := params.IfNoneMatch.Get(); ok && etagMatches(value, module.ETag) {
 		w.WriteHeader(http.StatusNotModified)
 		return nil
 	}
 	w.Header().Set("Content-Type", "application/octet-stream")
-	w.WriteHeader(http.StatusOK)
 	_, err = w.Write(module.Data)
 	return err
+}
+
+func GetServiceDataBroadcastModuleResource(ctx context.Context, h *Handler, params apigen.GetServiceDataBroadcastModuleResourceParams, w http.ResponseWriter) error {
+	module, status, err := dataBroadcastVersionModule(ctx, h, params.ID, byte(params.ComponentTag), uint32(params.DownloadId), uint16(params.ModuleId), byte(params.ModuleVersion))
+	if err != nil || status != 0 {
+		if status != 0 {
+			w.WriteHeader(status)
+		}
+		return err
+	}
+	w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
+	w.Header().Set("ETag", module.ETag)
+	if value, ok := params.IfNoneMatch.Get(); ok && etagMatches(value, module.ETag) {
+		w.WriteHeader(http.StatusNotModified)
+		return nil
+	}
+	resources, err := dataBroadcastModuleResources(ctx, h, params.ID, module)
+	if err != nil {
+		return writeModuleDecodeError(w, err)
+	}
+	for _, resource := range resources {
+		if resource.ID != params.ResourceId {
+			continue
+		}
+		w.Header().Set("Content-Type", resource.ContentType)
+		_, err = w.Write(resource.Data)
+		return err
+	}
+	w.WriteHeader(http.StatusNotFound)
+	return nil
+}
+
+func writeModuleDecodeError(w http.ResponseWriter, err error) error {
+	if errors.Is(err, databroadcast.ErrModuleResourceLimit) {
+		w.WriteHeader(http.StatusInsufficientStorage)
+		return nil
+	}
+	if errors.Is(err, databroadcast.ErrMalformedModule) || errors.Is(err, databroadcast.ErrUnsupportedModuleCompression) {
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		return nil
+	}
+	return err
+}
+
+func dataBroadcastModuleResources(ctx context.Context, h *Handler, serviceItemID int64, module databroadcast.DataBroadcastModule) ([]databroadcast.ModuleResource, error) {
+	service, err := h.serviceManager.GetServiceById(ctx, strconv.FormatInt(serviceItemID, 10))
+	if err != nil {
+		return nil, err
+	}
+	if service != nil {
+		if store, ok := h.streamManager.(interface {
+			DataBroadcastCachedResources(string, string, uint16, byte, uint32, uint16, byte) ([]databroadcast.ModuleResource, bool)
+		}); ok {
+			if resources, found := store.DataBroadcastCachedResources(service.ChannelType, service.ChannelId, service.ServiceId, module.ComponentTag, module.DownloadID, module.ModuleID, module.Version); found {
+				return resources, nil
+			}
+		}
+	}
+	return databroadcast.DecodeModuleResources(module)
+}
+
+func dataBroadcastVersionModule(ctx context.Context, h *Handler, serviceItemID int64, componentTag byte, downloadID uint32, moduleID uint16, version byte) (databroadcast.DataBroadcastModule, int, error) {
+	service, err := h.serviceManager.GetServiceById(ctx, strconv.FormatInt(serviceItemID, 10))
+	if err != nil {
+		return databroadcast.DataBroadcastModule{}, 0, err
+	}
+	if service == nil {
+		return databroadcast.DataBroadcastModule{}, http.StatusNotFound, nil
+	}
+	if session, ok := h.streamManager.GetExisting(service.ChannelType, service.ChannelId); ok {
+		module, found := session.DataBroadcastModuleVersion(service.ServiceId, componentTag, downloadID, moduleID, version)
+		if found {
+			return module, 0, nil
+		}
+		if announced, rejected := announcedModuleVersion(session.DataBroadcastSnapshot(service.ServiceId), componentTag, downloadID, moduleID, version); rejected {
+			return databroadcast.DataBroadcastModule{}, http.StatusInsufficientStorage, nil
+		} else if announced {
+			return databroadcast.DataBroadcastModule{}, http.StatusTooEarly, nil
+		}
+	}
+	if store, ok := h.streamManager.(interface {
+		DataBroadcastCachedModule(string, string, uint16, byte, uint32, uint16, byte) (databroadcast.DataBroadcastModule, bool)
+	}); ok {
+		if module, found := store.DataBroadcastCachedModule(service.ChannelType, service.ChannelId, service.ServiceId, componentTag, downloadID, moduleID, version); found {
+			return module, 0, nil
+		}
+	}
+	if store, ok := h.streamManager.(interface {
+		DataBroadcastModuleWasEvicted(string, string, uint16, byte, uint32, uint16, byte) bool
+	}); ok && store.DataBroadcastModuleWasEvicted(service.ChannelType, service.ChannelId, service.ServiceId, componentTag, downloadID, moduleID, version) {
+		return databroadcast.DataBroadcastModule{}, http.StatusGone, nil
+	}
+	return databroadcast.DataBroadcastModule{}, http.StatusNotFound, nil
+}
+
+func announcedModuleVersion(snapshot databroadcast.DataBroadcastSnapshot, componentTag byte, downloadID uint32, moduleID uint16, version byte) (bool, bool) {
+	for _, component := range snapshot.Components {
+		if component.ComponentTag != componentTag {
+			continue
+		}
+		for _, module := range component.Modules {
+			if module.DownloadID == downloadID && module.ModuleID == moduleID && module.Version == version {
+				return true, module.Status == "rejected"
+			}
+		}
+	}
+	return false, false
 }
 
 func etagMatches(ifNoneMatch, etag string) bool {
@@ -105,6 +239,9 @@ func writeDataBroadcastSSE(w io.Writer, serviceItemID int64, event databroadcast
 	if _, err := fmt.Fprintf(w, "event: %s\n", event.Type); err != nil {
 		return err
 	}
+	if _, err := fmt.Fprintf(w, "id: %d\n", event.Sequence); err != nil {
+		return err
+	}
 	if _, err := w.Write([]byte("data: ")); err != nil {
 		return err
 	}
@@ -116,7 +253,7 @@ func writeDataBroadcastSSE(w io.Writer, serviceItemID int64, event databroadcast
 }
 
 func apiDataBroadcastEvent(serviceItemID int64, event databroadcast.DataBroadcastEvent) map[string]any {
-	result := map[string]any{"type": event.Type}
+	result := map[string]any{"type": event.Type, "sequence": event.Sequence, "revision": event.Revision}
 	switch event.Type {
 	case "snapshot":
 		result["snapshot"] = apiDataBroadcastSnapshot(serviceItemID, event.Snapshot)
@@ -127,9 +264,9 @@ func apiDataBroadcastEvent(serviceItemID int64, event databroadcast.DataBroadcas
 	case "moduleUpdated":
 		result["module"] = apiDataBroadcastModule(serviceItemID, event.Module)
 	case "programInfo":
-		result["programInfo"] = event.ProgramInfo
+		result["programInfo"] = apiDataBroadcastProgramInfo(event.ProgramInfo)
 	case "currentTime":
-		result["currentTime"] = event.CurrentTime
+		result["currentTime"] = apiDataBroadcastCurrentTime(event.CurrentTime)
 	case "esEventUpdated":
 		result["esEvent"] = apiDataBroadcastESEvent(event.ESEvent)
 	case "bit":
@@ -143,13 +280,28 @@ func apiDataBroadcastEvent(serviceItemID int64, event databroadcast.DataBroadcas
 func apiDataBroadcastSnapshot(serviceItemID int64, snapshot databroadcast.DataBroadcastSnapshot) map[string]any {
 	return map[string]any{
 		"serviceId":   snapshot.ServiceID,
+		"revision":    snapshot.Revision,
 		"pmt":         apiDataBroadcastPMT(serviceItemID, snapshot.PMT),
 		"components":  apiDataBroadcastComponents(serviceItemID, snapshot.Components),
-		"programInfo": snapshot.ProgramInfo,
-		"currentTime": snapshot.CurrentTime,
+		"programInfo": apiDataBroadcastProgramInfo(snapshot.ProgramInfo),
+		"currentTime": apiDataBroadcastCurrentTime(snapshot.CurrentTime),
 		"bit":         apiDataBroadcastBIT(snapshot.BIT),
 		"pcr":         apiDataBroadcastPCR(snapshot.PCR),
 	}
+}
+
+func apiDataBroadcastProgramInfo(info *databroadcast.DataBroadcastProgramInfo) any {
+	if info == nil {
+		return nil
+	}
+	return map[string]any{"serviceId": info.ServiceID, "eventIds": info.EventIDs, "rawSectionHex": info.RawSectionHex}
+}
+
+func apiDataBroadcastCurrentTime(current *databroadcast.DataBroadcastCurrentTime) any {
+	if current == nil {
+		return nil
+	}
+	return map[string]any{"jstTimeUnixMilli": current.JSTTimeUnixMilli}
 }
 
 func apiDataBroadcastPCR(pcr *databroadcast.DataBroadcastPCR) any {
@@ -240,11 +392,43 @@ func apiDataBroadcastComponents(serviceItemID int64, components []databroadcast.
 			modules = append(modules, apiDataBroadcastModule(serviceItemID, &component.Modules[i]))
 		}
 		result = append(result, map[string]any{
-			"componentTag": component.ComponentTag,
-			"pid":          component.PID,
-			"streamType":   component.StreamType,
-			"modules":      modules,
+			"componentTag":    component.ComponentTag,
+			"pid":             component.PID,
+			"streamType":      component.StreamType,
+			"dataComponentId": component.DataComponentID,
+			"bxmlInfo":        apiAdditionalAribBXMLInfo(component.BXMLInfo),
+			"dataEventId":     component.DataEventID,
+			"returnToEntry":   component.ReturnToEntry,
+			"carousel": map[string]any{
+				"status": component.CarouselStatus, "downloadId": component.CarouselDownloadID,
+				"blockSize": component.CarouselBlockSize,
+			},
+			"modules": modules,
 		})
+	}
+	return result
+}
+
+func apiAdditionalAribBXMLInfo(info *ts.AdditionalAribBXMLInfo) any {
+	if info == nil {
+		return nil
+	}
+	result := map[string]any{"transmissionFormat": info.TransmissionFormat, "entryPointFlag": info.EntryPointFlag}
+	if entry := info.EntryPointInfo; entry != nil {
+		result["entryPointInfo"] = map[string]any{
+			"autoStartFlag": entry.AutoStartFlag, "documentResolution": entry.DocumentResolution,
+			"useXML": entry.UseXML, "defaultVersionFlag": entry.DefaultVersionFlag,
+			"independentFlag": entry.IndependentFlag, "styleForTVFlag": entry.StyleForTVFlag,
+			"bmlMajorVersion": entry.BMLMajorVersion, "bmlMinorVersion": entry.BMLMinorVersion,
+			"bxmlMajorVersion": entry.BXMLMajorVersion, "bxmlMinorVersion": entry.BXMLMinorVersion,
+		}
+	}
+	if carousel := info.AdditionalAribCarouselInfo; carousel != nil {
+		result["additionalAribCarouselInfo"] = map[string]any{
+			"dataEventId": carousel.DataEventID, "eventSectionFlag": carousel.EventSectionFlag,
+			"ondemandRetrievalFlag": carousel.OnDemandRetrievalFlag, "fileStorableFlag": carousel.FileStorableFlag,
+			"startPriority": carousel.StartPriority,
+		}
 	}
 	return result
 }
@@ -258,10 +442,12 @@ func apiDataBroadcastModuleList(serviceItemID int64, list *databroadcast.DataBro
 		modules = append(modules, apiDataBroadcastModule(serviceItemID, &list.Modules[i]))
 	}
 	return map[string]any{
-		"componentTag": list.ComponentTag,
-		"downloadId":   list.DownloadID,
-		"blockSize":    list.BlockSize,
-		"modules":      modules,
+		"componentTag":  list.ComponentTag,
+		"downloadId":    list.DownloadID,
+		"blockSize":     list.BlockSize,
+		"dataEventId":   list.DataEventID,
+		"returnToEntry": list.ReturnToEntry,
+		"modules":       modules,
 	}
 }
 
@@ -270,17 +456,30 @@ func apiDataBroadcastModule(serviceItemID int64, module *databroadcast.DataBroad
 		return nil
 	}
 	return map[string]any{
-		"componentTag": module.ComponentTag,
-		"moduleId":     module.ModuleID,
-		"downloadId":   module.DownloadID,
-		"version":      module.Version,
-		"size":         module.Size,
-		"info":         module.Info,
-		"metadata":     apiDataBroadcastModuleMetadata(module.Metadata),
-		"complete":     module.Complete,
-		"etag":         module.ETag,
-		"url":          fmt.Sprintf("/api/services/%d/data-broadcast/modules/%d/%d", serviceItemID, module.ComponentTag, module.ModuleID),
+		"componentTag":    module.ComponentTag,
+		"moduleId":        module.ModuleID,
+		"downloadId":      module.DownloadID,
+		"version":         module.Version,
+		"size":            module.Size,
+		"info":            module.Info,
+		"metadata":        apiDataBroadcastModuleMetadata(module.Metadata),
+		"complete":        module.Complete,
+		"status":          module.Status,
+		"rejectionReason": module.RejectionReason,
+		"receivedBlocks":  module.ReceivedBlocks,
+		"totalBlocks":     module.TotalBlocks,
+		"etag":            module.ETag,
+		"url":             fmt.Sprintf("/api/services/%d/data-broadcast/components/%d/carousels/%d/modules/%d/versions/%d", serviceItemID, module.ComponentTag, module.DownloadID, module.ModuleID, module.Version),
 	}
+}
+
+func apiDataBroadcastModuleManifest(serviceItemID int64, module databroadcast.DataBroadcastModule, resources []databroadcast.ModuleResource) map[string]any {
+	base := fmt.Sprintf("/api/services/%d/data-broadcast/components/%d/carousels/%d/modules/%d/versions/%d", serviceItemID, module.ComponentTag, module.DownloadID, module.ModuleID, module.Version)
+	items := make([]map[string]any, 0, len(resources))
+	for _, resource := range resources {
+		items = append(items, map[string]any{"id": resource.ID, "contentLocation": resource.ContentLocation, "contentType": resource.ContentType, "url": base + "/resources/" + resource.ID})
+	}
+	return map[string]any{"componentTag": module.ComponentTag, "downloadId": module.DownloadID, "moduleId": module.ModuleID, "version": module.Version, "size": module.Size, "etag": module.ETag, "rawUrl": base + "/raw", "resources": items}
 }
 
 func apiDataBroadcastModuleMetadata(metadata *ts.DSMCCModuleMetadata) any {

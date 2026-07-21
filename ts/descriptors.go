@@ -38,6 +38,7 @@ const (
 	DescriptorTagComponent           = 0x50
 	DescriptorTagContent             = 0x54
 	DescriptorTagAudioComponent      = 0xC4
+	DescriptorTagDataComponent       = 0xFD
 	DescriptorTagExtendedBroadcaster = 0xCE
 	DescriptorTagBroadcasterName     = 0xD8
 	DescriptorTagDownloadContent     = 0xC9
@@ -49,6 +50,116 @@ const (
 	DescriptorTagEventGroup                = 0xD6
 	DescriptorTagSeries                    = 0xD5
 )
+
+// DataComponentDescriptor identifies the data coding scheme carried by one
+// PMT elementary stream. ARIB BML uses the additional data below it to
+// describe its entry point and carousel behavior.
+type DataComponentDescriptor struct {
+	DataComponentID             uint16
+	AdditionalDataComponentInfo []byte
+}
+
+type AdditionalAribBXMLInfo struct {
+	TransmissionFormat         byte
+	EntryPointFlag             bool
+	EntryPointInfo             *AdditionalAribBXMLEntryPointInfo
+	AdditionalAribCarouselInfo *AdditionalAribCarouselInfo
+}
+
+type AdditionalAribBXMLEntryPointInfo struct {
+	AutoStartFlag      bool
+	DocumentResolution byte
+	UseXML             bool
+	DefaultVersionFlag bool
+	IndependentFlag    bool
+	StyleForTVFlag     bool
+	BMLMajorVersion    uint16
+	BMLMinorVersion    uint16
+	BXMLMajorVersion   *uint16
+	BXMLMinorVersion   *uint16
+}
+
+type AdditionalAribCarouselInfo struct {
+	DataEventID           byte
+	EventSectionFlag      bool
+	OnDemandRetrievalFlag bool
+	FileStorableFlag      bool
+	StartPriority         byte
+}
+
+func ParseDataComponentDescriptor(d Descriptor) (*DataComponentDescriptor, error) {
+	if len(d) < 2 || len(d) < 2+d.Length() {
+		return nil, ErrInvalidSection
+	}
+	if d.Tag() != DescriptorTagDataComponent || len(d.Data()) < 2 {
+		return nil, ErrInvalidSection
+	}
+	data := d.Data()
+	return &DataComponentDescriptor{
+		DataComponentID:             uint16(data[0])<<8 | uint16(data[1]),
+		AdditionalDataComponentInfo: append([]byte(nil), data[2:]...),
+	}, nil
+}
+
+// ParseAdditionalAribBXMLInfo parses the additional_data_component_info for
+// ARIB data component IDs 0x0007, 0x000b, 0x000c, and 0x000d.
+func ParseAdditionalAribBXMLInfo(data []byte) (*AdditionalAribBXMLInfo, error) {
+	if len(data) < 3 {
+		return nil, ErrInvalidSection
+	}
+	info := &AdditionalAribBXMLInfo{
+		TransmissionFormat: (data[0] >> 6) & 0x03,
+		EntryPointFlag:     data[0]&0x20 != 0,
+	}
+	off := 1
+	if info.EntryPointFlag {
+		if len(data) < off+1 {
+			return nil, ErrInvalidSection
+		}
+		entry := &AdditionalAribBXMLEntryPointInfo{
+			AutoStartFlag:      data[0]&0x10 != 0,
+			DocumentResolution: data[0] & 0x0f,
+			UseXML:             data[off]&0x80 != 0,
+			DefaultVersionFlag: data[off]&0x40 != 0,
+			IndependentFlag:    data[off]&0x20 != 0,
+			StyleForTVFlag:     data[off]&0x10 != 0,
+			BMLMajorVersion:    1,
+			BMLMinorVersion:    0,
+		}
+		off++
+		if !entry.DefaultVersionFlag {
+			if len(data) < off+4 {
+				return nil, ErrInvalidSection
+			}
+			entry.BMLMajorVersion = uint16(data[off])<<8 | uint16(data[off+1])
+			entry.BMLMinorVersion = uint16(data[off+2])<<8 | uint16(data[off+3])
+			off += 4
+			if entry.UseXML {
+				if len(data) < off+4 {
+					return nil, ErrInvalidSection
+				}
+				major := uint16(data[off])<<8 | uint16(data[off+1])
+				minor := uint16(data[off+2])<<8 | uint16(data[off+3])
+				entry.BXMLMajorVersion, entry.BXMLMinorVersion = &major, &minor
+				off += 4
+			}
+		}
+		info.EntryPointInfo = entry
+	}
+	if info.TransmissionFormat == 0 {
+		if len(data) < off+2 {
+			return nil, ErrInvalidSection
+		}
+		info.AdditionalAribCarouselInfo = &AdditionalAribCarouselInfo{
+			DataEventID:           data[off] >> 4,
+			EventSectionFlag:      data[off]&0x08 != 0,
+			OnDemandRetrievalFlag: data[off+1]&0x80 != 0,
+			FileStorableFlag:      data[off+1]&0x40 != 0,
+			StartPriority:         (data[off+1] >> 5) & 0x01,
+		}
+	}
+	return info, nil
+}
 
 type TSInformationTransmissionType struct {
 	TransmissionTypeInfo byte

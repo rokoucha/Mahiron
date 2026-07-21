@@ -16,7 +16,7 @@ import (
 type SessionConfig struct {
 	Client      *Client
 	Handle      source.InputHandle
-	ModuleCache *databroadcast.ModuleCache
+	ModuleStore databroadcast.ModuleStore
 }
 
 // Session adds remote API-backed operations to the shared TS ChannelSession.
@@ -31,7 +31,7 @@ type Session struct {
 func NewSession(config SessionConfig) *Session {
 	metadata := config.Handle.Metadata()
 	return &Session{
-		ChannelSession: channel.NewChannelSession(channel.Config{Channel: metadata.PublicChannel.Channel, Handle: config.Handle, Type: metadata.PublicChannel.Type, ModuleCache: config.ModuleCache}),
+		ChannelSession: channel.NewChannelSession(channel.Config{Channel: metadata.PublicChannel.Channel, Handle: config.Handle, Type: metadata.PublicChannel.Type, ModuleStore: config.ModuleStore}),
 		client:         config.Client,
 		input:          config.Handle.Input(),
 		remote:         metadata.Remote,

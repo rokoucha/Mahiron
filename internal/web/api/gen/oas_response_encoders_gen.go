@@ -1042,19 +1042,133 @@ func encodeGetServiceDataBroadcastEventsResponse(response GetServiceDataBroadcas
 	}
 }
 
-func encodeGetServiceDataBroadcastModuleResponse(response GetServiceDataBroadcastModuleRes, w http.ResponseWriter, span trace.Span) error {
+func encodeGetServiceDataBroadcastModuleRawResponse(response GetServiceDataBroadcastModuleRawRes, w http.ResponseWriter, span trace.Span) error {
 	switch response := response.(type) {
-	case *GetServiceDataBroadcastModuleNotModified:
+	case *GetServiceDataBroadcastModuleRawNotModified:
 		w.WriteHeader(304)
 
 		return nil
 
-	case *GetServiceDataBroadcastModuleNotFound:
+	case *GetServiceDataBroadcastModuleRawNotFound:
 		w.WriteHeader(404)
 
 		return nil
 
-	case *GetServiceDataBroadcastModuleDef:
+	case *GetServiceDataBroadcastModuleRawGone:
+		w.WriteHeader(410)
+
+		return nil
+
+	case *GetServiceDataBroadcastModuleRawTooEarly:
+		w.WriteHeader(425)
+
+		return nil
+
+	default:
+		return errors.Errorf("unexpected response type: %T", response)
+	}
+}
+
+func encodeGetServiceDataBroadcastModuleResourceResponse(response GetServiceDataBroadcastModuleResourceRes, w http.ResponseWriter, span trace.Span) error {
+	switch response := response.(type) {
+	case *GetServiceDataBroadcastModuleResourceNotModified:
+		w.WriteHeader(304)
+
+		return nil
+
+	case *GetServiceDataBroadcastModuleResourceNotFound:
+		w.WriteHeader(404)
+
+		return nil
+
+	case *GetServiceDataBroadcastModuleResourceGone:
+		w.WriteHeader(410)
+
+		return nil
+
+	case *GetServiceDataBroadcastModuleResourceUnprocessableEntity:
+		w.WriteHeader(422)
+
+		return nil
+
+	case *GetServiceDataBroadcastModuleResourceTooEarly:
+		w.WriteHeader(425)
+
+		return nil
+
+	case *GetServiceDataBroadcastModuleResourceInsufficientStorage:
+		w.WriteHeader(507)
+		span.SetStatus(codes.Error, http.StatusText(507))
+
+		return nil
+
+	default:
+		return errors.Errorf("unexpected response type: %T", response)
+	}
+}
+
+func encodeGetServiceDataBroadcastModuleVersionResponse(response GetServiceDataBroadcastModuleVersionRes, w http.ResponseWriter, span trace.Span) error {
+	switch response := response.(type) {
+	case *GetServiceDataBroadcastModuleVersionNotModified:
+		w.WriteHeader(304)
+
+		return nil
+
+	case *GetServiceDataBroadcastModuleVersionNotFound:
+		w.WriteHeader(404)
+
+		return nil
+
+	case *GetServiceDataBroadcastModuleVersionGone:
+		w.WriteHeader(410)
+
+		return nil
+
+	case *GetServiceDataBroadcastModuleVersionUnprocessableEntity:
+		w.WriteHeader(422)
+
+		return nil
+
+	case *GetServiceDataBroadcastModuleVersionTooEarly:
+		w.WriteHeader(425)
+
+		return nil
+
+	case *GetServiceDataBroadcastModuleVersionInsufficientStorage:
+		w.WriteHeader(507)
+		span.SetStatus(codes.Error, http.StatusText(507))
+
+		return nil
+
+	case *GetServiceDataBroadcastModuleVersionDef:
+		code := response.StatusCode
+		if code == 0 {
+			// Set default status code.
+			code = http.StatusOK
+		}
+		w.WriteHeader(code)
+		if code >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(code))
+		}
+
+		if code >= http.StatusInternalServerError {
+			return errors.Wrapf(ht.ErrInternalServerErrorResponse, "code: %d, message: %s", code, http.StatusText(code))
+		}
+		return nil
+
+	default:
+		return errors.Errorf("unexpected response type: %T", response)
+	}
+}
+
+func encodeGetServiceDataBroadcastStateResponse(response GetServiceDataBroadcastStateRes, w http.ResponseWriter, span trace.Span) error {
+	switch response := response.(type) {
+	case *GetServiceDataBroadcastStateNotFound:
+		w.WriteHeader(404)
+
+		return nil
+
+	case *GetServiceDataBroadcastStateDef:
 		code := response.StatusCode
 		if code == 0 {
 			// Set default status code.

@@ -47,6 +47,17 @@ func TestConfiguredRemoteTunersFiltersByRemoteRouteType(t *testing.T) {
 	}
 }
 
+func TestDataBroadcastCachedModuleOutlivesSession(t *testing.T) {
+	cache := databroadcast.NewModuleCache(1024)
+	key := databroadcast.ModuleCacheKey{ChannelType: "GR", ChannelID: "27", ServiceID: 101, ComponentTag: 0x40, DownloadID: 7, ModuleID: 2, Version: 3, Size: 4}
+	cache.Put(key, ts.DSMCCModule{DownloadID: 7, ModuleID: 2, Version: 3, Size: 4, Data: []byte("data")})
+	manager := NewStreamManager(StreamManagerConfig{ModuleStore: cache})
+	module, ok := manager.DataBroadcastCachedModule("GR", "27", 101, 0x40, 7, 2, 3)
+	if !ok || string(module.Data) != "data" || module.ETag == "" {
+		t.Fatalf("module = %#v, found = %v", module, ok)
+	}
+}
+
 func testManagerWithDescrambler(t *testing.T, devices *fakeTunerDeviceRecorder, descramblers *fakeDescramblerRecorder) *StreamManager {
 	t.Helper()
 	no := false
@@ -381,7 +392,13 @@ func (fakeDeadSession) ObserveLogos(context.Context, func(*ts.LogoImage) error) 
 func (fakeDeadSession) ObserveDataBroadcast(context.Context, uint16, bool, func(databroadcast.DataBroadcastEvent) error) error {
 	return nil
 }
+func (fakeDeadSession) DataBroadcastSnapshot(serviceID uint16) databroadcast.DataBroadcastSnapshot {
+	return databroadcast.DataBroadcastSnapshot{ServiceID: serviceID}
+}
 func (fakeDeadSession) DataBroadcastModule(uint16, byte, uint16) (databroadcast.DataBroadcastModule, bool) {
+	return databroadcast.DataBroadcastModule{}, false
+}
+func (fakeDeadSession) DataBroadcastModuleVersion(uint16, byte, uint32, uint16, byte) (databroadcast.DataBroadcastModule, bool) {
 	return databroadcast.DataBroadcastModule{}, false
 }
 func (fakeDeadSession) Stop(context.Context) error { return nil }

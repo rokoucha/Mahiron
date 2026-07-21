@@ -35,7 +35,7 @@ type StreamManager struct {
 	serviceLister         ServiceLister
 	registry              *sessionRegistry
 	sources               *source.Pool
-	dataBroadcastCache    *databroadcast.ModuleCache
+	dataBroadcastStore    databroadcast.ModuleStore
 }
 
 // RemoteTunerStatus identifies a tuner that belongs to a configured remote
@@ -54,6 +54,7 @@ type StreamManagerConfig struct {
 	ProgramUpdater     ProgramUpdater
 	ServiceLister      ServiceLister
 	TunerManager       source.TunerManager
+	ModuleStore        databroadcast.ModuleStore
 }
 
 type Session interface {
@@ -64,7 +65,9 @@ type Session interface {
 	CollectEIT(context.Context, func(*ts.EIT) error) error
 	ObserveLogos(context.Context, func(*ts.LogoImage) error) error
 	ObserveDataBroadcast(context.Context, uint16, bool, func(databroadcast.DataBroadcastEvent) error) error
+	DataBroadcastSnapshot(uint16) databroadcast.DataBroadcastSnapshot
 	DataBroadcastModule(uint16, byte, uint16) (databroadcast.DataBroadcastModule, bool)
+	DataBroadcastModuleVersion(uint16, byte, uint32, uint16, byte) (databroadcast.DataBroadcastModule, bool)
 	Stop(context.Context) error
 }
 
@@ -101,8 +104,15 @@ func NewStreamManager(cfg StreamManagerConfig) *StreamManager {
 		serviceLister:      cfg.ServiceLister,
 		registry:           newSessionRegistry(),
 		sources:            source.NewPool(cfg.Channels, cfg.TunerManager, descramblerFactory, remoteClients(remotes)),
-		dataBroadcastCache: databroadcast.NewModuleCache(0),
+		dataBroadcastStore: moduleStoreOrDefault(cfg.ModuleStore),
 	}
+}
+
+func moduleStoreOrDefault(store databroadcast.ModuleStore) databroadcast.ModuleStore {
+	if store != nil {
+		return store
+	}
+	return databroadcast.NewModuleCache(0)
 }
 
 func remoteClients(clients map[string]*remote.Client) map[string]source.RemoteClient {
@@ -259,6 +269,42 @@ func (m *StreamManager) GetExisting(channelType, channel string) (Session, bool)
 		return nil, false
 	}
 	return session, true
+}
+
+// DataBroadcastCachedModule resolves a completed immutable module without
+// allocating a tuner or requiring its original channel session to still exist.
+func (m *StreamManager) DataBroadcastCachedModule(channelType, channelID string, serviceID uint16, componentTag byte, downloadID uint32, moduleID uint16, version byte) (databroadcast.DataBroadcastModule, bool) {
+	if m == nil || m.dataBroadcastStore == nil {
+		return databroadcast.DataBroadcastModule{}, false
+	}
+	module, ok := m.dataBroadcastStore.GetVersion(databroadcast.ModuleVersionKey{
+		ChannelType: channelType, ChannelID: channelID, ServiceID: serviceID,
+		ComponentTag: componentTag, DownloadID: downloadID, ModuleID: moduleID, Version: version,
+	})
+	if !ok {
+		return databroadcast.DataBroadcastModule{}, false
+	}
+	return databroadcast.CompletedModule(componentTag, module), true
+}
+
+// DataBroadcastModuleWasEvicted reports whether the cache previously held the
+// immutable identity but pruned it due to its configured capacity.
+func (m *StreamManager) DataBroadcastModuleWasEvicted(channelType, channelID string, serviceID uint16, componentTag byte, downloadID uint32, moduleID uint16, version byte) bool {
+	store, ok := m.dataBroadcastStore.(databroadcast.EvictedModuleStore)
+	if !ok {
+		return false
+	}
+	return store.WasEvicted(databroadcast.ModuleVersionKey{ChannelType: channelType, ChannelID: channelID, ServiceID: serviceID, ComponentTag: componentTag, DownloadID: downloadID, ModuleID: moduleID, Version: version})
+}
+
+// DataBroadcastCachedResources returns MIME resources retained with a completed
+// immutable module, without needing a live channel session.
+func (m *StreamManager) DataBroadcastCachedResources(channelType, channelID string, serviceID uint16, componentTag byte, downloadID uint32, moduleID uint16, version byte) ([]databroadcast.ModuleResource, bool) {
+	store, ok := m.dataBroadcastStore.(databroadcast.DecodedModuleStore)
+	if !ok {
+		return nil, false
+	}
+	return store.GetDecodedResources(databroadcast.ModuleVersionKey{ChannelType: channelType, ChannelID: channelID, ServiceID: serviceID, ComponentTag: componentTag, DownloadID: downloadID, ModuleID: moduleID, Version: version})
 }
 
 func (m *StreamManager) ActiveSessionCount() int {

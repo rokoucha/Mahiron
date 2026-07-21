@@ -23,13 +23,19 @@ var (
 		"GET":  "X-Mirakurun-Priority",
 		"HEAD": "X-Mirakurun-Priority",
 	}
+	rn41AllowedHeaders = map[string]string{
+		"GET": "If-None-Match",
+	}
+	rn42AllowedHeaders = map[string]string{
+		"GET": "If-None-Match",
+	}
+	rn45AllowedHeaders = map[string]string{
+		"GET": "If-None-Match",
+	}
 	rn32AllowedHeaders = map[string]string{
 		"GET": "X-Mirakurun-Priority",
 	}
-	rn37AllowedHeaders = map[string]string{
-		"GET": "If-None-Match",
-	}
-	rn39AllowedHeaders = map[string]string{
+	rn48AllowedHeaders = map[string]string{
 		"GET":  "X-Mirakurun-Priority",
 		"HEAD": "X-Mirakurun-Priority",
 	}
@@ -65,7 +71,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.notFound(w, r)
 		return
 	}
-	args := [3]string{}
+	args := [6]string{}
 
 	// Static code generated router with unwrapped path search.
 	switch {
@@ -1013,6 +1019,202 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 									break
 								}
 								switch elem[0] {
+								case 'c': // Prefix: "components/"
+
+									if l := len("components/"); len(elem) >= l && elem[0:l] == "components/" {
+										elem = elem[l:]
+									} else {
+										break
+									}
+
+									// Param: "componentTag"
+									// Match until "/"
+									idx := strings.IndexByte(elem, '/')
+									if idx < 0 {
+										idx = len(elem)
+									}
+									args[1] = elem[:idx]
+									elem = elem[idx:]
+
+									if len(elem) == 0 {
+										break
+									}
+									switch elem[0] {
+									case '/': // Prefix: "/carousels/"
+
+										if l := len("/carousels/"); len(elem) >= l && elem[0:l] == "/carousels/" {
+											elem = elem[l:]
+										} else {
+											break
+										}
+
+										// Param: "downloadId"
+										// Match until "/"
+										idx := strings.IndexByte(elem, '/')
+										if idx < 0 {
+											idx = len(elem)
+										}
+										args[2] = elem[:idx]
+										elem = elem[idx:]
+
+										if len(elem) == 0 {
+											break
+										}
+										switch elem[0] {
+										case '/': // Prefix: "/modules/"
+
+											if l := len("/modules/"); len(elem) >= l && elem[0:l] == "/modules/" {
+												elem = elem[l:]
+											} else {
+												break
+											}
+
+											// Param: "moduleId"
+											// Match until "/"
+											idx := strings.IndexByte(elem, '/')
+											if idx < 0 {
+												idx = len(elem)
+											}
+											args[3] = elem[:idx]
+											elem = elem[idx:]
+
+											if len(elem) == 0 {
+												break
+											}
+											switch elem[0] {
+											case '/': // Prefix: "/versions/"
+
+												if l := len("/versions/"); len(elem) >= l && elem[0:l] == "/versions/" {
+													elem = elem[l:]
+												} else {
+													break
+												}
+
+												// Param: "moduleVersion"
+												// Match until "/"
+												idx := strings.IndexByte(elem, '/')
+												if idx < 0 {
+													idx = len(elem)
+												}
+												args[4] = elem[:idx]
+												elem = elem[idx:]
+
+												if len(elem) == 0 {
+													switch r.Method {
+													case "GET":
+														s.handleGetServiceDataBroadcastModuleVersionRequest([5]string{
+															args[0],
+															args[1],
+															args[2],
+															args[3],
+															args[4],
+														}, elemIsEscaped, w, r)
+													default:
+														s.notAllowed(w, r, notAllowedParams{
+															allowedMethods: "GET",
+															allowedHeaders: rn41AllowedHeaders,
+															acceptPost:     "",
+															acceptPatch:    "",
+														})
+													}
+
+													return
+												}
+												switch elem[0] {
+												case '/': // Prefix: "/r"
+
+													if l := len("/r"); len(elem) >= l && elem[0:l] == "/r" {
+														elem = elem[l:]
+													} else {
+														break
+													}
+
+													if len(elem) == 0 {
+														break
+													}
+													switch elem[0] {
+													case 'a': // Prefix: "aw"
+
+														if l := len("aw"); len(elem) >= l && elem[0:l] == "aw" {
+															elem = elem[l:]
+														} else {
+															break
+														}
+
+														if len(elem) == 0 {
+															// Leaf node.
+															switch r.Method {
+															case "GET":
+																s.handleGetServiceDataBroadcastModuleRawRequest([5]string{
+																	args[0],
+																	args[1],
+																	args[2],
+																	args[3],
+																	args[4],
+																}, elemIsEscaped, w, r)
+															default:
+																s.notAllowed(w, r, notAllowedParams{
+																	allowedMethods: "GET",
+																	allowedHeaders: rn42AllowedHeaders,
+																	acceptPost:     "",
+																	acceptPatch:    "",
+																})
+															}
+
+															return
+														}
+
+													case 'e': // Prefix: "esources/"
+
+														if l := len("esources/"); len(elem) >= l && elem[0:l] == "esources/" {
+															elem = elem[l:]
+														} else {
+															break
+														}
+
+														// Param: "resourceId"
+														// Leaf parameter, slashes are prohibited
+														idx := strings.IndexByte(elem, '/')
+														if idx >= 0 {
+															break
+														}
+														args[5] = elem
+														elem = ""
+
+														if len(elem) == 0 {
+															// Leaf node.
+															switch r.Method {
+															case "GET":
+																s.handleGetServiceDataBroadcastModuleResourceRequest([6]string{
+																	args[0],
+																	args[1],
+																	args[2],
+																	args[3],
+																	args[4],
+																	args[5],
+																}, elemIsEscaped, w, r)
+															default:
+																s.notAllowed(w, r, notAllowedParams{
+																	allowedMethods: "GET",
+																	allowedHeaders: rn45AllowedHeaders,
+																	acceptPost:     "",
+																	acceptPatch:    "",
+																})
+															}
+
+															return
+														}
+
+													}
+
+												}
+
+											}
+
+										}
+
+									}
+
 								case 'e': // Prefix: "events"
 
 									if l := len("events"); len(elem) >= l && elem[0:l] == "events" {
@@ -1040,65 +1242,31 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 										return
 									}
 
-								case 'm': // Prefix: "modules/"
+								case 's': // Prefix: "state"
 
-									if l := len("modules/"); len(elem) >= l && elem[0:l] == "modules/" {
+									if l := len("state"); len(elem) >= l && elem[0:l] == "state" {
 										elem = elem[l:]
 									} else {
 										break
 									}
 
-									// Param: "componentTag"
-									// Match until "/"
-									idx := strings.IndexByte(elem, '/')
-									if idx < 0 {
-										idx = len(elem)
-									}
-									args[1] = elem[:idx]
-									elem = elem[idx:]
-
 									if len(elem) == 0 {
-										break
-									}
-									switch elem[0] {
-									case '/': // Prefix: "/"
-
-										if l := len("/"); len(elem) >= l && elem[0:l] == "/" {
-											elem = elem[l:]
-										} else {
-											break
+										// Leaf node.
+										switch r.Method {
+										case "GET":
+											s.handleGetServiceDataBroadcastStateRequest([1]string{
+												args[0],
+											}, elemIsEscaped, w, r)
+										default:
+											s.notAllowed(w, r, notAllowedParams{
+												allowedMethods: "GET",
+												allowedHeaders: nil,
+												acceptPost:     "",
+												acceptPatch:    "",
+											})
 										}
 
-										// Param: "moduleId"
-										// Leaf parameter, slashes are prohibited
-										idx := strings.IndexByte(elem, '/')
-										if idx >= 0 {
-											break
-										}
-										args[2] = elem
-										elem = ""
-
-										if len(elem) == 0 {
-											// Leaf node.
-											switch r.Method {
-											case "GET":
-												s.handleGetServiceDataBroadcastModuleRequest([3]string{
-													args[0],
-													args[1],
-													args[2],
-												}, elemIsEscaped, w, r)
-											default:
-												s.notAllowed(w, r, notAllowedParams{
-													allowedMethods: "GET",
-													allowedHeaders: rn37AllowedHeaders,
-													acceptPost:     "",
-													acceptPatch:    "",
-												})
-											}
-
-											return
-										}
-
+										return
 									}
 
 								}
@@ -1179,7 +1347,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 									default:
 										s.notAllowed(w, r, notAllowedParams{
 											allowedMethods: "GET,HEAD",
-											allowedHeaders: rn39AllowedHeaders,
+											allowedHeaders: rn48AllowedHeaders,
 											acceptPost:     "",
 											acceptPatch:    "",
 										})
@@ -1355,7 +1523,7 @@ type Route struct {
 	operationGroup string
 	pathPattern    string
 	count          int
-	args           [3]string
+	args           [6]string
 }
 
 // Name returns ogen operation name.
@@ -2348,6 +2516,183 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 									break
 								}
 								switch elem[0] {
+								case 'c': // Prefix: "components/"
+
+									if l := len("components/"); len(elem) >= l && elem[0:l] == "components/" {
+										elem = elem[l:]
+									} else {
+										break
+									}
+
+									// Param: "componentTag"
+									// Match until "/"
+									idx := strings.IndexByte(elem, '/')
+									if idx < 0 {
+										idx = len(elem)
+									}
+									args[1] = elem[:idx]
+									elem = elem[idx:]
+
+									if len(elem) == 0 {
+										break
+									}
+									switch elem[0] {
+									case '/': // Prefix: "/carousels/"
+
+										if l := len("/carousels/"); len(elem) >= l && elem[0:l] == "/carousels/" {
+											elem = elem[l:]
+										} else {
+											break
+										}
+
+										// Param: "downloadId"
+										// Match until "/"
+										idx := strings.IndexByte(elem, '/')
+										if idx < 0 {
+											idx = len(elem)
+										}
+										args[2] = elem[:idx]
+										elem = elem[idx:]
+
+										if len(elem) == 0 {
+											break
+										}
+										switch elem[0] {
+										case '/': // Prefix: "/modules/"
+
+											if l := len("/modules/"); len(elem) >= l && elem[0:l] == "/modules/" {
+												elem = elem[l:]
+											} else {
+												break
+											}
+
+											// Param: "moduleId"
+											// Match until "/"
+											idx := strings.IndexByte(elem, '/')
+											if idx < 0 {
+												idx = len(elem)
+											}
+											args[3] = elem[:idx]
+											elem = elem[idx:]
+
+											if len(elem) == 0 {
+												break
+											}
+											switch elem[0] {
+											case '/': // Prefix: "/versions/"
+
+												if l := len("/versions/"); len(elem) >= l && elem[0:l] == "/versions/" {
+													elem = elem[l:]
+												} else {
+													break
+												}
+
+												// Param: "moduleVersion"
+												// Match until "/"
+												idx := strings.IndexByte(elem, '/')
+												if idx < 0 {
+													idx = len(elem)
+												}
+												args[4] = elem[:idx]
+												elem = elem[idx:]
+
+												if len(elem) == 0 {
+													switch method {
+													case "GET":
+														r.name = GetServiceDataBroadcastModuleVersionOperation
+														r.summary = ""
+														r.operationID = "getServiceDataBroadcastModuleVersion"
+														r.operationGroup = ""
+														r.pathPattern = "/services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}"
+														r.args = args
+														r.count = 5
+														return r, true
+													default:
+														return
+													}
+												}
+												switch elem[0] {
+												case '/': // Prefix: "/r"
+
+													if l := len("/r"); len(elem) >= l && elem[0:l] == "/r" {
+														elem = elem[l:]
+													} else {
+														break
+													}
+
+													if len(elem) == 0 {
+														break
+													}
+													switch elem[0] {
+													case 'a': // Prefix: "aw"
+
+														if l := len("aw"); len(elem) >= l && elem[0:l] == "aw" {
+															elem = elem[l:]
+														} else {
+															break
+														}
+
+														if len(elem) == 0 {
+															// Leaf node.
+															switch method {
+															case "GET":
+																r.name = GetServiceDataBroadcastModuleRawOperation
+																r.summary = ""
+																r.operationID = "getServiceDataBroadcastModuleRaw"
+																r.operationGroup = ""
+																r.pathPattern = "/services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}/raw"
+																r.args = args
+																r.count = 5
+																return r, true
+															default:
+																return
+															}
+														}
+
+													case 'e': // Prefix: "esources/"
+
+														if l := len("esources/"); len(elem) >= l && elem[0:l] == "esources/" {
+															elem = elem[l:]
+														} else {
+															break
+														}
+
+														// Param: "resourceId"
+														// Leaf parameter, slashes are prohibited
+														idx := strings.IndexByte(elem, '/')
+														if idx >= 0 {
+															break
+														}
+														args[5] = elem
+														elem = ""
+
+														if len(elem) == 0 {
+															// Leaf node.
+															switch method {
+															case "GET":
+																r.name = GetServiceDataBroadcastModuleResourceOperation
+																r.summary = ""
+																r.operationID = "getServiceDataBroadcastModuleResource"
+																r.operationGroup = ""
+																r.pathPattern = "/services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}/resources/{resourceId}"
+																r.args = args
+																r.count = 6
+																return r, true
+															default:
+																return
+															}
+														}
+
+													}
+
+												}
+
+											}
+
+										}
+
+									}
+
 								case 'e': // Prefix: "events"
 
 									if l := len("events"); len(elem) >= l && elem[0:l] == "events" {
@@ -2373,61 +2718,29 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 										}
 									}
 
-								case 'm': // Prefix: "modules/"
+								case 's': // Prefix: "state"
 
-									if l := len("modules/"); len(elem) >= l && elem[0:l] == "modules/" {
+									if l := len("state"); len(elem) >= l && elem[0:l] == "state" {
 										elem = elem[l:]
 									} else {
 										break
 									}
 
-									// Param: "componentTag"
-									// Match until "/"
-									idx := strings.IndexByte(elem, '/')
-									if idx < 0 {
-										idx = len(elem)
-									}
-									args[1] = elem[:idx]
-									elem = elem[idx:]
-
 									if len(elem) == 0 {
-										break
-									}
-									switch elem[0] {
-									case '/': // Prefix: "/"
-
-										if l := len("/"); len(elem) >= l && elem[0:l] == "/" {
-											elem = elem[l:]
-										} else {
-											break
+										// Leaf node.
+										switch method {
+										case "GET":
+											r.name = GetServiceDataBroadcastStateOperation
+											r.summary = ""
+											r.operationID = "getServiceDataBroadcastState"
+											r.operationGroup = ""
+											r.pathPattern = "/services/{id}/data-broadcast/state"
+											r.args = args
+											r.count = 1
+											return r, true
+										default:
+											return
 										}
-
-										// Param: "moduleId"
-										// Leaf parameter, slashes are prohibited
-										idx := strings.IndexByte(elem, '/')
-										if idx >= 0 {
-											break
-										}
-										args[2] = elem
-										elem = ""
-
-										if len(elem) == 0 {
-											// Leaf node.
-											switch method {
-											case "GET":
-												r.name = GetServiceDataBroadcastModuleOperation
-												r.summary = ""
-												r.operationID = "getServiceDataBroadcastModule"
-												r.operationGroup = ""
-												r.pathPattern = "/services/{id}/data-broadcast/modules/{componentTag}/{moduleId}"
-												r.args = args
-												r.count = 3
-												return r, true
-											default:
-												return
-											}
-										}
-
 									}
 
 								}

@@ -26,11 +26,16 @@ func NewMigrator(db *sql.DB) *Migrator {
 }
 
 func (m *Migrator) Apply(ctx context.Context) (err error) {
-	dir := migrate.OpenMemDir(fmt.Sprintf("mahiron-%p", m))
+	return ApplyMigrations(ctx, m.db, migrationsFS, "migrations")
+}
+
+// ApplyMigrations applies an embedded Atlas migration directory to a SQLite database.
+func ApplyMigrations(ctx context.Context, database *sql.DB, files fs.FS, path string) (err error) {
+	dir := migrate.OpenMemDir(fmt.Sprintf("mahiron-%p", database))
 	defer func() {
 		err = errors.Join(err, dir.Close())
 	}()
-	entries, err := fs.ReadDir(migrationsFS, "migrations")
+	entries, err := fs.ReadDir(files, path)
 	if err != nil {
 		return fmt.Errorf("read migrations: %w", err)
 	}
@@ -38,7 +43,7 @@ func (m *Migrator) Apply(ctx context.Context) (err error) {
 		if entry.IsDir() {
 			continue
 		}
-		content, err := migrationsFS.ReadFile("migrations/" + entry.Name())
+		content, err := fs.ReadFile(files, path+"/"+entry.Name())
 		if err != nil {
 			return fmt.Errorf("read migration %s: %w", entry.Name(), err)
 		}
@@ -46,11 +51,11 @@ func (m *Migrator) Apply(ctx context.Context) (err error) {
 			return fmt.Errorf("load migration %s: %w", entry.Name(), err)
 		}
 	}
-	drv, err := sqlite.Open(m.db)
+	drv, err := sqlite.Open(database)
 	if err != nil {
 		return fmt.Errorf("open Atlas SQLite driver: %w", err)
 	}
-	revisions := &revisionStore{db: m.db}
+	revisions := &revisionStore{db: database}
 	if err := revisions.init(ctx); err != nil {
 		return err
 	}
