@@ -1,5 +1,13 @@
 # Changelog
 
+## [v5.0.8](https://github.com/rokoucha/Mahiron/compare/v5.0.7...v5.0.8) - 2026-07-17
+
+- Update dependency typescript-eslint to v8.64.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/45
+- Update Songmu/tagpr action to v1.20.1 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/47
+- Update actions/setup-node action to v6.5.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/48
+- Log TS packet drops with rate-limited warnings. by @rokoucha in https://github.com/rokoucha/Mahiron/pull/49
+- Handle valid TS continuity discontinuities by @rokoucha in https://github.com/rokoucha/Mahiron/pull/50
+
 ## [v5.0.7](https://github.com/rokoucha/Mahiron/compare/v5.0.6...v5.0.7) - 2026-07-13
 
 - Share remote channel streams across subscribers by @rokoucha in https://github.com/rokoucha/Mahiron/pull/36
