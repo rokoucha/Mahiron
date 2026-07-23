@@ -126,6 +126,36 @@ func TestTunerStatusSortsTypes(t *testing.T) {
 	}
 }
 
+func TestTunerStatusStreamInfoIsSnapshot(t *testing.T) {
+	mgr := NewTunerManager(&TunerManagerConfig{TunersConfig: config.TunersConfig{
+		{Name: "test", Types: []string{"GR"}, Command: "true"},
+	}})
+	item := mgr.tuners[0]
+	input := map[string]StreamInfo{"GR/27": {Packet: 1}}
+	mgr.addUser(item, User{ID: "viewer", StreamInfo: input})
+
+	status, ok := mgr.Status(0)
+	if !ok {
+		t.Fatal("status not found")
+	}
+	mgr.updateUserStreamInfo(item, "viewer", "GR/27", StreamInfo{Packet: 2})
+	input["GR/27"] = StreamInfo{Packet: 3}
+
+	if got := status.Users[0].StreamInfo["GR/27"].Packet; got != 1 {
+		t.Fatalf("snapshot packet = %d, want 1", got)
+	}
+	current, _ := mgr.Status(0)
+	if got := current.Users[0].StreamInfo["GR/27"].Packet; got != 2 {
+		t.Fatalf("current packet = %d, want 2", got)
+	}
+
+	status.Users[0].StreamInfo["GR/27"] = StreamInfo{Packet: 4}
+	current, _ = mgr.Status(0)
+	if got := current.Users[0].StreamInfo["GR/27"].Packet; got != 2 {
+		t.Fatalf("current packet after snapshot mutation = %d, want 2", got)
+	}
+}
+
 func TestTunerStatusOmitsProcessFieldsForNonProcessDevice(t *testing.T) {
 	mgr := NewTunerManager(&TunerManagerConfig{TunersConfig: config.TunersConfig{
 		{Name: "test", Types: []string{"GR"}, Command: "sleep 1"},

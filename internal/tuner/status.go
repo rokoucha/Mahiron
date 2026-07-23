@@ -3,6 +3,7 @@ package tuner
 import (
 	"context"
 	"log/slog"
+	"maps"
 	"sort"
 	"time"
 
@@ -231,7 +232,7 @@ func (tm *TunerManager) statusLockedByTuner(item *Tuner) Status {
 	}
 	sort.Strings(ids)
 	for _, id := range ids {
-		status.Users = append(status.Users, runtime.users[id].user)
+		status.Users = append(status.Users, cloneUser(runtime.users[id].user))
 	}
 	status.IsFree = available && !runtime.inUse && len(status.Users) == 0
 	status.IsUsing = available && runtime.running && len(status.Users) != 0
@@ -249,18 +250,30 @@ func (tm *TunerManager) addUser(item *Tuner, user User) {
 		if user.StreamInfo == nil {
 			user.StreamInfo = tracked.user.StreamInfo
 		}
-		tracked.user = user
+		tracked.user = cloneUser(user)
 		slog.Debug("tuner user reference added", "name", item.Name(), "userId", user.ID, "refs", tracked.refs)
 		update := tm.statusUpdateLocked(item)
 		tm.mu.Unlock()
 		tm.publishTunerStatusUpdate(eventTypeUpdate, update)
 		return
 	}
-	runtime.users[user.ID] = &trackedUser{user: user, refs: 1}
+	runtime.users[user.ID] = &trackedUser{user: cloneUser(user), refs: 1}
 	slog.Debug("tuner user added", "name", item.Name(), "userId", user.ID, "agent", user.Agent, "url", user.URL, "priority", user.Priority, "disableDecoder", user.DisableDecoder)
 	update := tm.statusUpdateLocked(item)
 	tm.mu.Unlock()
 	tm.publishTunerStatusUpdate(eventTypeUpdate, update)
+}
+
+// cloneUser detaches mutable status data from the manager's runtime state.
+// Status events are serialized after tm.mu is released, while stream metrics can
+// continue to update, so sharing StreamInfo here would race map iteration with a
+// map write.
+func cloneUser(user User) User {
+	if user.StreamInfo == nil {
+		return user
+	}
+	user.StreamInfo = maps.Clone(user.StreamInfo)
+	return user
 }
 
 func (tm *TunerManager) updateUserStreamInfo(item *Tuner, userID, key string, info StreamInfo) {
