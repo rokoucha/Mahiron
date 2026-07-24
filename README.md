@@ -17,6 +17,8 @@ Yet another DVR Tuner Server for Japanese TV.
 
 [リリース](https://github.com/rokoucha/Mahiron/releases)より最新のバージョンをダウンロードするか、[コンテナイメージ](https://github.com/rokoucha/Mahiron/pkgs/container/mahiron)をpullしてください。
 
+mainブランチの最新ビルドを試す場合は、[CIの実行履歴](https://github.com/rokoucha/Mahiron/actions/workflows/ci.yml)からバイナリのartifactをダウンロードできます。コンテナイメージは `ghcr.io/rokoucha/mahiron:nightly` でpullできます。日時指定の `YYYY.MMDD.HHMMSS-nightly` や、特定のコミットを直接指定する `sha-<短縮コミットSHA>` タグもあります。
+
 設定は[サンプル](https://github.com/rokoucha/Mahiron/tree/main/config)を参考に、実行ファイルと同じディレクトリの `config` フォルダ内に配置してください。別なフォルダにする場合は、実行時に `-config-dir <path>` オプションを指定してください。
 
 起動すると、自動的に放送サービスをスキャンし、EPGやロゴを取得します。
