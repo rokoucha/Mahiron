@@ -22,6 +22,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/epg"
 	"github.com/21S1298001/mahiron/internal/event"
 	"github.com/21S1298001/mahiron/internal/job"
+	"github.com/21S1298001/mahiron/internal/job/defs"
 	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/server"
@@ -182,16 +183,16 @@ func buildRuntime(cfg *config.Config, database *sql.DB, obs observability.SetupR
 		return nil, "failed to create job manager", err
 	}
 
-	job.RegisterServiceUpdater(jobs, scanService, epgService)
-	job.RegisterEPGGathererService(jobs, epgService)
-	job.RegisterLogoGatherer(jobs, logoCollector, services, time.Duration(cfg.System.LogoGatherTimeout)*time.Millisecond)
+	defs.RegisterServiceUpdater(jobs, scanService, epgService)
+	defs.RegisterEPGGathererService(jobs, epgService)
+	defs.RegisterLogoGatherer(jobs, logoCollector, services, time.Duration(cfg.System.LogoGatherTimeout)*time.Millisecond)
 
 	schedules := cfg.System.Jobs
 	if len(schedules) == 0 {
 		schedules = []config.JobScheduleConfig{
-			{Key: job.ServiceUpdaterKey, Schedule: job.ServiceUpdaterDefaultSchedule},
-			{Key: job.EPGGathererKey, Schedule: job.EPGGathererDefaultSchedule},
-			{Key: job.LogoGathererKey, Schedule: job.LogoGathererDefaultSchedule},
+			{Key: defs.ServiceUpdaterKey, Schedule: defs.ServiceUpdaterDefaultSchedule},
+			{Key: defs.EPGGathererKey, Schedule: defs.EPGGathererDefaultSchedule},
+			{Key: defs.LogoGathererKey, Schedule: defs.LogoGathererDefaultSchedule},
 		}
 		slog.Info("no job schedules in config, using defaults")
 	}
@@ -363,7 +364,7 @@ func loadChannelConfigState(ctx context.Context, database *sql.DB, channels conf
 func enqueueStartupServiceUpdate(jobs *job.JobManager, serviceCount int, channelState channelConfigState) bool {
 	if serviceCount == 0 {
 		slog.Info("no services cached, running initial service update")
-		if _, err := jobs.Enqueue(job.ServiceUpdaterKey); err != nil {
+		if _, err := jobs.Enqueue(defs.ServiceUpdaterKey); err != nil {
 			slog.Error("failed to enqueue initial service update", "err", err)
 			return false
 		}
@@ -371,7 +372,7 @@ func enqueueStartupServiceUpdate(jobs *job.JobManager, serviceCount int, channel
 	}
 	if channelState.previouslyStored() && channelState.changed() {
 		slog.Info("channel config changed, enqueuing service update")
-		if _, err := jobs.Enqueue(job.ServiceUpdaterKey); err != nil {
+		if _, err := jobs.Enqueue(defs.ServiceUpdaterKey); err != nil {
 			slog.Warn("failed to enqueue service update", "err", err)
 			return false
 		}
@@ -394,11 +395,11 @@ func missingScannedChannels(ctx context.Context, services *service.ServiceManage
 	return missing, nil
 }
 
-func enqueueStartupServiceScans(ctx context.Context, jobs *job.JobManager, scanner job.ServiceScanner, epgScan job.EPGGatherer, channels []servicescan.Channel) {
+func enqueueStartupServiceScans(ctx context.Context, jobs *job.JobManager, scanner defs.ServiceScanner, epgScan defs.EPGGatherer, channels []servicescan.Channel) {
 	if len(channels) == 0 {
 		return
 	}
-	queued, err := job.EnqueueServiceScans(ctx, jobs, scanner, epgScan, channels)
+	queued, err := defs.EnqueueServiceScans(ctx, jobs, scanner, epgScan, channels)
 	if err != nil {
 		slog.Warn("failed to enqueue startup service scans", "err", err)
 		return
@@ -415,7 +416,7 @@ func enqueueStartupEPGGather(jobs *job.JobManager, serviceCount int, staleServic
 	// refresh all networks.
 	if serviceCount > 0 && staleServices > 0 {
 		slog.Info("EPG is stale, enqueuing gatherer", "staleServices", staleServices)
-		if _, err := jobs.Enqueue(job.EPGGathererKey); err != nil && !errors.Is(err, job.ErrJobAlreadyRunning) {
+		if _, err := jobs.Enqueue(defs.EPGGathererKey); err != nil && !errors.Is(err, job.ErrJobAlreadyRunning) {
 			slog.Warn("failed to enqueue startup EPG gathering", "err", err)
 		}
 	}

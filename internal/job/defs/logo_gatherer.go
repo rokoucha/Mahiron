@@ -1,4 +1,4 @@
-package job
+package defs
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/21S1298001/mahiron/internal/job"
 	"github.com/21S1298001/mahiron/internal/job/run"
 	"github.com/21S1298001/mahiron/internal/service"
 	"github.com/21S1298001/mahiron/ts"
@@ -24,7 +25,7 @@ func RegisterLogoGatherer(registry Registry, collector LogoCollector, store Logo
 	if timeout <= 0 {
 		timeout = 20 * time.Minute
 	}
-	registry.Register(JobDefinition{
+	registry.Register(job.JobDefinition{
 		Key: LogoGathererKey, Name: LogoGathererName, IsRerunnable: true,
 		Handler: func(ctx context.Context) error {
 			targets, err := logoGatherTargets(ctx, store)
@@ -66,7 +67,7 @@ func enqueueLogoGatherTargets(ctx context.Context, registry Registry, collector 
 		for _, target := range channelTargets {
 			hasProbe = hasProbe || target.IsSDTTProbe
 		}
-		definition := JobDefinition{
+		definition := job.JobDefinition{
 			Key:          fmt.Sprintf("logo-gather:%s:%s", channelType, channelID),
 			Name:         fmt.Sprintf("Logo Gather %s/%s", channelType, channelID),
 			IsRerunnable: true,
@@ -121,7 +122,7 @@ func enqueueLogoGatherTargets(ctx context.Context, registry Registry, collector 
 			},
 		}
 		if _, err := registry.EnqueueDefinition(definition); err != nil {
-			if errors.Is(err, ErrJobAlreadyRunning) {
+			if errors.Is(err, job.ErrJobAlreadyRunning) {
 				continue
 			}
 			return queued, err

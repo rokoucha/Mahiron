@@ -1,4 +1,4 @@
-package job
+package defs
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/db"
 	"github.com/21S1298001/mahiron/internal/epg"
+	"github.com/21S1298001/mahiron/internal/job"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/service"
 	"github.com/21S1298001/mahiron/internal/servicescan"
@@ -131,7 +132,7 @@ func TestServiceScanRetriesWhenTunerUnavailable(t *testing.T) {
 		ServiceUpdaterKey:      true,
 		"service-scan:EXT1:11": true,
 	})
-	child := waitForJobKeyStatus(t, mgr, "service-scan:EXT1:11", StatusStandby)
+	child := waitForJobKeyStatus(t, mgr, "service-scan:EXT1:11", job.StatusStandby)
 	if child.RetryCount != 1 {
 		t.Fatalf("retry count = %d, want 1", child.RetryCount)
 	}
@@ -311,7 +312,7 @@ func TestLogoGatherTimeoutIsSuccessful(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitJob(t, mgr, parentID)
-	var child *Job
+	var child *job.Job
 	deadline := time.Now().Add(time.Second)
 	for child == nil && time.Now().Before(deadline) {
 		for _, item := range mgr.GetJobs() {
@@ -441,7 +442,7 @@ func (f *fakeLogoObserver) ObserveLogos(ctx context.Context, _, _ string, observ
 	return observe(f.image)
 }
 
-func waitForJobKeys(t *testing.T, mgr *JobManager, expected map[string]bool) {
+func waitForJobKeys(t *testing.T, mgr *job.JobManager, expected map[string]bool) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	defer cancel()
@@ -466,7 +467,7 @@ func waitForJobKeys(t *testing.T, mgr *JobManager, expected map[string]bool) {
 	}
 }
 
-func waitForJobKeyStatus(t *testing.T, mgr *JobManager, key string, status JobStatus) *Job {
+func waitForJobKeyStatus(t *testing.T, mgr *job.JobManager, key string, status job.JobStatus) *job.Job {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	defer cancel()
@@ -485,7 +486,27 @@ func waitForJobKeyStatus(t *testing.T, mgr *JobManager, key string, status JobSt
 	}
 }
 
-func waitForFinishedJobKey(t *testing.T, mgr *JobManager, key string) *Job {
+func waitForFinishedJobKey(t *testing.T, mgr *job.JobManager, key string) *job.Job {
 	t.Helper()
-	return waitForJobKeyStatus(t, mgr, key, StatusFinished)
+	return waitForJobKeyStatus(t, mgr, key, job.StatusFinished)
+}
+
+func newTestManager(t *testing.T) *job.JobManager {
+	t.Helper()
+	mgr, err := job.NewManager(job.Config{MaxHistory: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return mgr
+}
+
+func waitJob(t *testing.T, mgr *job.JobManager, id string) *job.Job {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	item, err := mgr.Wait(ctx, id)
+	if err != nil {
+		t.Fatalf("Wait(%q): %v", id, err)
+	}
+	return item
 }
