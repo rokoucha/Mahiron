@@ -1,0 +1,17 @@
+# ogen (OpenAPI)
+internal/web/api/gen/** linguist-generated
+
+# sqlc
+internal/db/gen/** linguist-generated
+internal/stream/databroadcast/cachedb/db.go linguist-generated
+internal/stream/databroadcast/cachedb/models.go linguist-generated
+internal/stream/databroadcast/cachedb/queries.sql.go linguist-generated
+
+# built web UI assets
+internal/web/ui/dist/** linguist-generated
+
+# hand-maintained character conversion table (treat as generated for diff/stats)
+ts/aribstr/table_x0213.go linguist-generated
+
+# tagpr
+CHANGELOG.md linguist-generated
