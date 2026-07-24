@@ -1,5 +1,9 @@
 # Changelog
 
+## [v5.0.11](https://github.com/rokoucha/Mahiron/compare/v5.0.10...v5.0.11) - 2026-07-24
+
+- CIビルドとnightly Dockerイメージを公開する by @rokoucha in https://github.com/rokoucha/Mahiron/pull/61
+
 ## [v5.0.10](https://github.com/rokoucha/Mahiron/compare/v5.0.9...v5.0.10) - 2026-07-23
 
 - Update actions/checkout action to v7.0.1 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/58
