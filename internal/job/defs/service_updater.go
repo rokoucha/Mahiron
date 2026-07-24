@@ -1,4 +1,4 @@
-package job
+package defs
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/21S1298001/mahiron/internal/job"
 	"github.com/21S1298001/mahiron/internal/job/run"
 	"github.com/21S1298001/mahiron/internal/servicescan"
 	"github.com/21S1298001/mahiron/internal/tuner"
@@ -20,7 +21,7 @@ const (
 )
 
 func RegisterServiceUpdater(registry Registry, scanner ServiceScanner, epgService EPGGatherer) {
-	registry.Register(JobDefinition{
+	registry.Register(job.JobDefinition{
 		Key: ServiceUpdaterKey, Name: ServiceUpdaterName, IsRerunnable: true,
 		Handler: func(ctx context.Context) error {
 			channels := scanner.Channels()
@@ -31,7 +32,7 @@ func RegisterServiceUpdater(registry Registry, scanner ServiceScanner, epgServic
 			// Build EPG inputs only after every scan has committed its result. This
 			// is essential for satellite networks, whose services are distributed
 			// across several transponders but share one original network ID.
-			if _, err := registry.EnqueueDefinition(JobDefinition{
+			if _, err := registry.EnqueueDefinition(job.JobDefinition{
 				Key:           serviceUpdateEPGGathererKey,
 				Name:          "EPG Gatherer After Service Update",
 				Handler:       epgGathererHandler(registry, epgService),
@@ -39,7 +40,7 @@ func RegisterServiceUpdater(registry Registry, scanner ServiceScanner, epgServic
 				ExclusiveKeys: []string{"epg-service-topology"},
 				IsRerunnable:  true,
 				RetryDelays:   []time.Duration{time.Minute, 2 * time.Minute, 4 * time.Minute},
-			}); err != nil && !errors.Is(err, ErrJobAlreadyRunning) {
+			}); err != nil && !errors.Is(err, job.ErrJobAlreadyRunning) {
 				return fmt.Errorf("enqueue EPG gather after service scans: %w", err)
 			}
 			run.Set(ctx, run.Result{
@@ -71,7 +72,7 @@ func EnqueueServiceScans(ctx context.Context, registry Registry, scanner Service
 			return queued, err
 		}
 		channel := configured
-		definition := JobDefinition{
+		definition := job.JobDefinition{
 			Key:           fmt.Sprintf("service-scan:%s:%s", channel.Type, channel.ID),
 			Name:          fmt.Sprintf("Service Scan %s/%s", channel.Type, channel.ID),
 			ExclusiveKeys: []string{"epg-service-topology"},
@@ -86,7 +87,7 @@ func EnqueueServiceScans(ctx context.Context, registry Registry, scanner Service
 			},
 		}
 		if _, err := registry.EnqueueDefinition(definition); err != nil {
-			if errors.Is(err, ErrJobAlreadyRunning) {
+			if errors.Is(err, job.ErrJobAlreadyRunning) {
 				continue
 			}
 			return queued, err

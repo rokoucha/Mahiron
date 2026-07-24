@@ -1,21 +1,22 @@
-package job
+// Package defs contains the concrete job definitions wired into the generic
+// job manager. Feature-specific details should live behind usecase packages
+// such as internal/epg; this package only adapts them to job definitions.
+package defs
 
 import (
 	"context"
 	"time"
 
 	"github.com/21S1298001/mahiron/internal/epg"
+	"github.com/21S1298001/mahiron/internal/job"
 	"github.com/21S1298001/mahiron/internal/service"
 	"github.com/21S1298001/mahiron/internal/servicescan"
 	"github.com/21S1298001/mahiron/ts"
 )
 
-// This package keeps job orchestration thin. Feature-specific details should
-// live behind usecase packages such as internal/epg.
-
 type Registry interface {
-	Register(JobDefinition)
-	EnqueueDefinition(JobDefinition) (string, error)
+	Register(job.JobDefinition)
+	EnqueueDefinition(job.JobDefinition) (string, error)
 }
 
 type ServiceScanner interface {

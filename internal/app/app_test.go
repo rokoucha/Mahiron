@@ -11,6 +11,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/db"
 	"github.com/21S1298001/mahiron/internal/epg"
 	"github.com/21S1298001/mahiron/internal/job"
+	"github.com/21S1298001/mahiron/internal/job/defs"
 	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/internal/service"
 	"github.com/21S1298001/mahiron/internal/servicescan"
@@ -181,7 +182,7 @@ func TestStartupQueuePolicyUsesCurrentState(t *testing.T) {
 				t.Fatal(err)
 			}
 			release := make(chan struct{})
-			for _, key := range []string{job.ServiceUpdaterKey, job.EPGGathererKey} {
+			for _, key := range []string{defs.ServiceUpdaterKey, defs.EPGGathererKey} {
 				mgr.Register(job.JobDefinition{Key: key, Handler: func(ctx context.Context) error {
 					select {
 					case <-release:
@@ -195,10 +196,10 @@ func TestStartupQueuePolicyUsesCurrentState(t *testing.T) {
 			enqueueStartupServiceUpdate(mgr, tt.serviceCount, tt.state)
 			enqueueStartupEPGGather(mgr, tt.serviceCount, tt.stale)
 			active := mgr.GetActiveJobKeysByPrefix("")
-			if got := containsKey(active, job.ServiceUpdaterKey); got != tt.wantService {
+			if got := containsKey(active, defs.ServiceUpdaterKey); got != tt.wantService {
 				t.Errorf("service updater queued=%v, want %v; active=%v", got, tt.wantService, active)
 			}
-			if got := containsKey(active, job.EPGGathererKey); got != tt.wantEPG {
+			if got := containsKey(active, defs.EPGGathererKey); got != tt.wantEPG {
 				t.Errorf("EPG gatherer queued=%v, want %v; active=%v", got, tt.wantEPG, active)
 			}
 

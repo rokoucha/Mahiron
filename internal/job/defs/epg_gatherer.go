@@ -1,4 +1,4 @@
-package job
+package defs
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/21S1298001/mahiron/internal/epg"
+	"github.com/21S1298001/mahiron/internal/job"
 	"github.com/21S1298001/mahiron/internal/job/run"
 )
 
@@ -19,7 +20,7 @@ const (
 )
 
 func RegisterEPGGathererService(registry Registry, service EPGGatherer) {
-	registry.Register(JobDefinition{
+	registry.Register(job.JobDefinition{
 		Key:           EPGGathererKey,
 		Name:          EPGGathererName,
 		Handler:       epgGathererHandler(registry, service),
@@ -71,7 +72,7 @@ func epgGathererHandler(registry Registry, service EPGGatherer) func(context.Con
 }
 
 // enqueueEPGGatherForNetwork enqueues the per-network EPG gather job for the
-// given network ID, ignoring ErrJobAlreadyRunning. It is used by both the
+// given network ID, ignoring job.ErrJobAlreadyRunning. It is used by both the
 // EPGGatherer cron handler and by callers (e.g. the service updater) that
 // want to trigger gathering for a freshly discovered network without waiting
 // for the next cron tick. Returns true when a job was actually enqueued (not
@@ -93,7 +94,7 @@ func enqueueEPGGatherForNetwork(ctx context.Context, registry Registry, service 
 	nid := networkID
 	networkCandidates := append([]epg.Candidate(nil), candidates...)
 	networkServices := append([]epg.ServiceKey(nil), serviceKeys...)
-	definition := JobDefinition{
+	definition := job.JobDefinition{
 		Key: fmt.Sprintf("epg-gather:nid:%d", nid), Name: fmt.Sprintf("EPG Gather NID %d", nid), IsRerunnable: true,
 		ExclusiveKeys: []string{"epg-service-topology"},
 		Handler: func(childCtx context.Context) error {
@@ -103,7 +104,7 @@ func enqueueEPGGatherForNetwork(ctx context.Context, registry Registry, service 
 		RetryIf:     epg.RetryableError,
 	}
 	if _, err := registry.EnqueueDefinition(definition); err != nil {
-		if errors.Is(err, ErrJobAlreadyRunning) {
+		if errors.Is(err, job.ErrJobAlreadyRunning) {
 			slog.Debug("EPG gather already queued or running", "networkId", networkID)
 			return false, nil
 		}
