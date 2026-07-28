@@ -24,6 +24,7 @@ const carouselQueueSize = 256
 // always registered before its DDB blocks enter this queue.
 const dataBroadcastQueueSize = 1024
 const dataBroadcastPriorityQueueSize = 256
+const dataBroadcastPriorityBurst = 8
 
 // EITSectionUpdater persists EIT sections observed on the stream.
 type EITSectionUpdater interface {
@@ -103,18 +104,10 @@ func (s *Session) observePIDSection(section ts.PIDSection) {
 
 func (s *Session) runDataBroadcastUpdates(ctx context.Context) {
 	defer close(s.dataBroadcastDone)
+	priorityBurst := 0
 	for {
-		// Always consume already-queued entry/high-cache-priority work before
-		// normal modules. The fallback select prevents normal work starvation
-		// when the priority queue is momentarily empty.
-		select {
-		case section := <-s.dataBroadcastPriorityQueue:
-			s.observeQueuedDDB(section)
-			continue
-		default:
-		}
-		select {
-		case <-ctx.Done():
+		section, ok := s.nextDataBroadcastSection(ctx, &priorityBurst)
+		if !ok {
 			// Sections were already accepted from the demuxer. Finish the bounded
 			// backlog so a final module completion is not lost on input shutdown.
 			for {
@@ -127,11 +120,39 @@ func (s *Session) runDataBroadcastUpdates(ctx context.Context) {
 					return
 				}
 			}
-		case section := <-s.dataBroadcastPriorityQueue:
-			s.observeQueuedDDB(section)
-		case section := <-s.dataBroadcastQueue:
-			s.observeQueuedDDB(section)
 		}
+		s.observeQueuedDDB(section)
+	}
+}
+
+// nextDataBroadcastSection favors entry/high-cache-priority modules, but
+// forces one normal section after a bounded burst. Emergency broadcasts can
+// keep the priority queue continuously non-empty; without this fairness bound,
+// ordinary modules remain announced forever and their HTTP URLs return 425.
+func (s *Session) nextDataBroadcastSection(ctx context.Context, priorityBurst *int) (ts.PIDSection, bool) {
+	if *priorityBurst >= dataBroadcastPriorityBurst {
+		select {
+		case section := <-s.dataBroadcastQueue:
+			*priorityBurst = 0
+			return section, true
+		default:
+		}
+	}
+	select {
+	case section := <-s.dataBroadcastPriorityQueue:
+		*priorityBurst++
+		return section, true
+	default:
+	}
+	select {
+	case <-ctx.Done():
+		return ts.PIDSection{}, false
+	case section := <-s.dataBroadcastPriorityQueue:
+		*priorityBurst++
+		return section, true
+	case section := <-s.dataBroadcastQueue:
+		*priorityBurst = 0
+		return section, true
 	}
 }
 
