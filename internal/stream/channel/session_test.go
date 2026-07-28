@@ -181,6 +181,29 @@ func TestSessionPrioritizesEntryDocumentDDB(t *testing.T) {
 	session.dataBroadcastWG.Done()
 }
 
+func TestSessionDataBroadcastPriorityQueueDoesNotStarveNormalQueue(t *testing.T) {
+	session := &Session{
+		dataBroadcastQueue:         make(chan ts.PIDSection, 1),
+		dataBroadcastPriorityQueue: make(chan ts.PIDSection, dataBroadcastPriorityBurst+1),
+	}
+	for i := range dataBroadcastPriorityBurst + 1 {
+		session.dataBroadcastPriorityQueue <- ts.PIDSection{PID: uint16(i + 1)}
+	}
+	session.dataBroadcastQueue <- ts.PIDSection{PID: 0x0200}
+
+	burst := 0
+	for i := range dataBroadcastPriorityBurst {
+		section, ok := session.nextDataBroadcastSection(t.Context(), &burst)
+		if !ok || section.PID != uint16(i+1) {
+			t.Fatalf("priority section %d = PID %#x, %v", i, section.PID, ok)
+		}
+	}
+	section, ok := session.nextDataBroadcastSection(t.Context(), &burst)
+	if !ok || section.PID != 0x0200 {
+		t.Fatalf("section after priority burst = PID %#x, %v; want normal PID 0x0200", section.PID, ok)
+	}
+}
+
 func TestSessionRestoresDataBroadcastModuleAcrossSessions(t *testing.T) {
 	serviceID, pmtPID, carouselPID := uint16(101), uint16(0x0100), uint16(0x0200)
 	componentTag := byte(0x40)
