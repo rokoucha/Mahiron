@@ -1,5 +1,14 @@
 # Changelog
 
+## [v5.0.12](https://github.com/rokoucha/Mahiron/compare/v5.0.11...v5.0.12) - 2026-07-28
+
+- コード整理: 生成コードのマーキングと肥大化ファイル・パッケージの分割 by @rokoucha in https://github.com/rokoucha/Mahiron/pull/65
+- Update actions/upload-artifact action to v7.0.1 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/67
+- Update dependency @vitejs/plugin-react to v6.0.4 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/68
+- Update dependency prettier to v3.9.6 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/69
+- Update react monorepo to v19.2.8 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/70
+- Fix data broadcast DDB queue starvation by @rokoucha in https://github.com/rokoucha/Mahiron/pull/71
+
 ## [v5.0.11](https://github.com/rokoucha/Mahiron/compare/v5.0.10...v5.0.11) - 2026-07-24
 
 - CIビルドとnightly Dockerイメージを公開する by @rokoucha in https://github.com/rokoucha/Mahiron/pull/61
