@@ -177,6 +177,43 @@ func RecordStreamSubscriberOverflow(ctx context.Context, channelType, result str
 	))
 }
 
+func RecordStreamFanoutDrop(ctx context.Context, channelType, channelID string, bytes int) {
+	attrs := metric.WithAttributes(
+		AttrChannelType.String(channelType),
+		AttrChannelID.String(channelID),
+	)
+	if instruments.streamFanoutDroppedChunks != nil {
+		instruments.streamFanoutDroppedChunks.Add(ctx, 1, attrs)
+	}
+	if instruments.streamFanoutDroppedBytes != nil && bytes > 0 {
+		instruments.streamFanoutDroppedBytes.Add(ctx, int64(bytes), attrs)
+	}
+}
+
+func RecordStreamFanoutQueueDepth(ctx context.Context, channelType, channelID string, delta int64) {
+	if instruments.streamFanoutQueueDepth == nil {
+		return
+	}
+	instruments.streamFanoutQueueDepth.Add(ctx, delta, metric.WithAttributes(
+		AttrChannelType.String(channelType),
+		AttrChannelID.String(channelID),
+	))
+}
+
+func RegisterStreamFanoutMetrics(ctx context.Context, channelType, channelID string) {
+	attrs := metric.WithAttributes(
+		AttrChannelType.String(channelType),
+		AttrChannelID.String(channelID),
+	)
+	if instruments.streamFanoutDroppedChunks != nil {
+		instruments.streamFanoutDroppedChunks.Add(ctx, 0, attrs)
+	}
+	if instruments.streamFanoutDroppedBytes != nil {
+		instruments.streamFanoutDroppedBytes.Add(ctx, 0, attrs)
+	}
+	RecordStreamFanoutQueueDepth(ctx, channelType, channelID, 0)
+}
+
 func RecordDataBroadcastCarouselEvent(ctx context.Context, channelType, channelID, operation, result string) {
 	if instruments.dataBroadcastCarouselEvents == nil {
 		return

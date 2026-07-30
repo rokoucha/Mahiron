@@ -362,6 +362,13 @@ type tunerLiveSource struct {
 	device  TunerDevice
 }
 
+func (s *tunerLiveSource) StreamMetricLabels() (string, string) {
+	if s.channel == nil {
+		return "", ""
+	}
+	return s.channel.Type, s.channel.Channel
+}
+
 func (s *tunerLiveSource) Start(ctx context.Context, dst io.Writer) error {
 	return s.device.Start(ctx, dst)
 }

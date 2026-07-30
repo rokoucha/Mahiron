@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -417,6 +418,89 @@ func TestDynamicMultiWriter_DropsOldChunksForSlowWriter(t *testing.T) {
 	chunks := slow.snapshot()
 	if len(chunks) >= dynamicMultiWriterBufferSize+50 {
 		t.Fatalf("slow writer received %d chunks, want fewer than %d", len(chunks), dynamicMultiWriterBufferSize+50)
+	}
+}
+
+func TestDynamicMultiWriter_DropMetrics(t *testing.T) {
+	slow := newBlockingRecorder()
+	var droppedChunks atomic.Int64
+	var droppedBytes atomic.Int64
+	var queueDepth atomic.Int64
+	d := NewDynamicMultiWriter()
+	d.AttachWithOptions(slow, DynamicMultiWriterSubscriberOptions{
+		OnDrop: func(bytes int) {
+			droppedChunks.Add(1)
+			droppedBytes.Add(int64(bytes))
+		},
+		OnQueueDepth: func(delta int64) {
+			queueDepth.Add(delta)
+		},
+	})
+	defer d.Close()
+
+	if _, err := d.Write([]byte("first")); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-slow.started:
+	case <-time.After(time.Second):
+		t.Fatal("slow writer did not start")
+	}
+
+	const chunk = "overflow"
+	for range dynamicMultiWriterBufferSize + 10 {
+		if _, err := d.Write([]byte(chunk)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := droppedChunks.Load(); got != 10 {
+		t.Fatalf("dropped chunks = %d, want 10", got)
+	}
+	if got := droppedBytes.Load(); got != 10*int64(len(chunk)) {
+		t.Fatalf("dropped bytes = %d, want %d", got, 10*len(chunk))
+	}
+	if got := queueDepth.Load(); got != dynamicMultiWriterBufferSize {
+		t.Fatalf("queue depth = %d, want %d", got, dynamicMultiWriterBufferSize)
+	}
+
+	close(slow.release)
+	waitUntil(t, func() bool { return queueDepth.Load() == 0 })
+}
+
+func TestDynamicMultiWriter_LosslessWriterBackpressures(t *testing.T) {
+	slow := newBlockingRecorder()
+	d := NewDynamicMultiWriter()
+	d.AttachWithOptions(slow, DynamicMultiWriterSubscriberOptions{Lossless: true})
+	defer d.Close()
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := d.Write([]byte("first"))
+		done <- err
+	}()
+	select {
+	case <-slow.started:
+	case <-time.After(time.Second):
+		t.Fatal("lossless writer did not start")
+	}
+
+	select {
+	case err := <-done:
+		t.Fatalf("Write returned before lossless writer was released: %v", err)
+	case <-time.After(20 * time.Millisecond):
+	}
+
+	close(slow.release)
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Write remained blocked after lossless writer was released")
+	}
+	if got := slow.snapshot(); len(got) != 1 || got[0] != "first" {
+		t.Fatalf("lossless writer chunks = %v, want [first]", got)
 	}
 }
 

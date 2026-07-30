@@ -55,6 +55,9 @@ func TestRecordJobRunMetrics(t *testing.T) {
 	RecordStreamContinuityCounterError(t.Context(), "GR", "27")
 	RecordStreamSubscriberError(t.Context(), "GR", "write")
 	RecordStreamSubscriberOverflow(t.Context(), "GR", "packet_overflow")
+	RecordStreamFanoutDrop(t.Context(), "GR", "27", 32768)
+	RecordStreamFanoutQueueDepth(t.Context(), "GR", "27", 3)
+	RecordStreamFanoutQueueDepth(t.Context(), "GR", "27", -1)
 	RecordDataBroadcastCarouselEvent(t.Context(), "GR", "27", "dii", "duplicate")
 	RecordDataBroadcastModuleDuration(t.Context(), "GR", "27", 321)
 	RecordTunerAcquire(t.Context(), "GR", "success", false, 12)
@@ -105,6 +108,15 @@ func TestRecordJobRunMetrics(t *testing.T) {
 	}
 	if got := int64Sum(data, MetricStreamSubscriberOverflow); got != 1 {
 		t.Fatalf("%s = %d, want 1", MetricStreamSubscriberOverflow, got)
+	}
+	if got := int64Sum(data, MetricStreamFanoutDroppedChunks); got != 1 {
+		t.Fatalf("%s = %d, want 1", MetricStreamFanoutDroppedChunks, got)
+	}
+	if got := int64Sum(data, MetricStreamFanoutDroppedBytes); got != 32768 {
+		t.Fatalf("%s = %d, want 32768", MetricStreamFanoutDroppedBytes, got)
+	}
+	if got := int64Sum(data, MetricStreamFanoutQueueDepth); got != 2 {
+		t.Fatalf("%s = %d, want 2", MetricStreamFanoutQueueDepth, got)
 	}
 	if got := int64Sum(data, MetricDataBroadcastCarouselEvents); got != 1 {
 		t.Fatalf("%s = %d, want 1", MetricDataBroadcastCarouselEvents, got)
