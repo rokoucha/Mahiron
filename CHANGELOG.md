@@ -1,5 +1,10 @@
 # Changelog
 
+## [v5.0.13](https://github.com/rokoucha/Mahiron/compare/v5.0.12...v5.0.13) - 2026-07-30
+
+- Prevent silent stream fanout drops by @rokoucha in https://github.com/rokoucha/Mahiron/pull/72
+- Keep shared stream alive when a peer detaches by @rokoucha in https://github.com/rokoucha/Mahiron/pull/74
+
 ## [v5.0.12](https://github.com/rokoucha/Mahiron/compare/v5.0.11...v5.0.12) - 2026-07-28
 
 - コード整理: 生成コードのマーキングと肥大化ファイル・パッケージの分割 by @rokoucha in https://github.com/rokoucha/Mahiron/pull/65
