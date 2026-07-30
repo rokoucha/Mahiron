@@ -37,14 +37,22 @@ function brandStateIcon(state: BrandState) {
 }
 
 function setFavicon(href: string) {
-  let link = document.querySelector<HTMLLinkElement>('link[rel="icon"]')
-  if (!link) {
-    link = document.createElement('link')
-    link.rel = 'icon'
-    document.head.appendChild(link)
+  const currentLink =
+    document.querySelector<HTMLLinkElement>('link[rel="icon"]')
+  const nextLink = document.createElement('link')
+  nextLink.rel = 'icon'
+  nextLink.type = 'image/svg+xml'
+  nextLink.sizes = 'any'
+  nextLink.href = href
+
+  // Safari does not reliably repaint a favicon when only its href changes.
+  // Replacing the element also makes the initial icon available before React
+  // starts, while preserving the dashboard-state favicon updates.
+  if (currentLink) {
+    currentLink.replaceWith(nextLink)
+  } else {
+    document.head.appendChild(nextLink)
   }
-  link.type = 'image/svg+xml'
-  link.href = href
 }
 
 function brandState(dashboard: DashboardState): BrandState {
