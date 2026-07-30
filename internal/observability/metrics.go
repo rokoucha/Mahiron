@@ -39,6 +39,9 @@ const (
 	MetricEventsPublished             = "mahiron.events.published"
 	MetricStreamSubscriberErrors      = "mahiron.stream.subscriber.errors"
 	MetricStreamSubscriberOverflow    = "mahiron.stream.subscriber.overflow"
+	MetricStreamFanoutDroppedChunks   = "mahiron.stream.fanout.dropped_chunks"
+	MetricStreamFanoutDroppedBytes    = "mahiron.stream.fanout.dropped_bytes"
+	MetricStreamFanoutQueueDepth      = "mahiron.stream.fanout.queue_depth"
 	MetricEventsDropped               = "mahiron.events.dropped"
 	MetricLogsDropped                 = "mahiron.logs.dropped"
 	MetricEPGProgramsUpserted         = "mahiron.epg.program.upserted"
@@ -65,6 +68,9 @@ type instrumentSet struct {
 	streamContinuityErrors      metric.Int64Counter
 	streamSubscriberErrors      metric.Int64Counter
 	streamSubscriberOverflow    metric.Int64Counter
+	streamFanoutDroppedChunks   metric.Int64Counter
+	streamFanoutDroppedBytes    metric.Int64Counter
+	streamFanoutQueueDepth      metric.Int64UpDownCounter
 	dataBroadcastCarouselEvents metric.Int64Counter
 	dataBroadcastModuleDuration metric.Int64Histogram
 
@@ -115,6 +121,9 @@ func initMetrics(provider metric.MeterProvider) {
 		streamContinuityErrors:      newInt64Counter(meter, MetricStreamContinuityErrors),
 		streamSubscriberErrors:      newInt64Counter(meter, MetricStreamSubscriberErrors),
 		streamSubscriberOverflow:    newInt64Counter(meter, MetricStreamSubscriberOverflow),
+		streamFanoutDroppedChunks:   newInt64Counter(meter, MetricStreamFanoutDroppedChunks),
+		streamFanoutDroppedBytes:    newInt64Counter(meter, MetricStreamFanoutDroppedBytes, metric.WithUnit("By")),
+		streamFanoutQueueDepth:      newInt64UpDownCounter(meter, MetricStreamFanoutQueueDepth),
 		dataBroadcastCarouselEvents: newInt64Counter(meter, MetricDataBroadcastCarouselEvents),
 		dataBroadcastModuleDuration: newInt64Histogram(meter, MetricDataBroadcastModuleDuration, metric.WithUnit("ms")),
 
@@ -152,6 +161,14 @@ func newInt64Counter(meter metric.Meter, name string, opts ...metric.Int64Counte
 
 func newInt64Histogram(meter metric.Meter, name string, opts ...metric.Int64HistogramOption) metric.Int64Histogram {
 	instrument, err := meter.Int64Histogram(name, opts...)
+	if err != nil {
+		slog.Warn("failed to create metric instrument", "metric", name, "err", err)
+	}
+	return instrument
+}
+
+func newInt64UpDownCounter(meter metric.Meter, name string, opts ...metric.Int64UpDownCounterOption) metric.Int64UpDownCounter {
+	instrument, err := meter.Int64UpDownCounter(name, opts...)
 	if err != nil {
 		slog.Warn("failed to create metric instrument", "metric", name, "err", err)
 	}

@@ -8,28 +8,35 @@ import (
 	"sync"
 	"time"
 
+	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/internal/util"
 )
 
 var ErrBroadcastStopped = errors.New("broadcast stopped")
 
 type Broadcast struct {
-	cancel  context.CancelFunc
-	done    <-chan struct{}
-	err     error
-	hub     *util.DynamicMultiWriter
-	mu      sync.Mutex
-	onStops []func()
-	refs    int
-	source  LiveSource
-	started bool
-	stopped bool
+	cancel      context.CancelFunc
+	done        <-chan struct{}
+	err         error
+	hub         *util.DynamicMultiWriter
+	mu          sync.Mutex
+	onStops     []func()
+	refs        int
+	source      LiveSource
+	started     bool
+	stopped     bool
+	channelID   string
+	channelType string
 }
 
 func NewBroadcast(source LiveSource, onStop func()) *Broadcast {
 	broadcast := &Broadcast{
 		hub:    util.NewDynamicMultiWriter(),
 		source: source,
+	}
+	if labeled, ok := source.(interface{ StreamMetricLabels() (string, string) }); ok {
+		broadcast.channelType, broadcast.channelID = labeled.StreamMetricLabels()
+		observability.RegisterStreamFanoutMetrics(context.Background(), broadcast.channelType, broadcast.channelID)
 	}
 	if onStop != nil {
 		broadcast.onStops = append(broadcast.onStops, onStop)
@@ -110,7 +117,15 @@ func (b *Broadcast) attach(dst io.Writer) error {
 	}
 	b.refs++
 	refs := b.refs
-	b.hub.Attach(dst)
+	b.hub.AttachWithOptions(dst, util.DynamicMultiWriterSubscriberOptions{
+		Lossless: true,
+		OnDrop: func(bytes int) {
+			observability.RecordStreamFanoutDrop(context.Background(), b.channelType, b.channelID, bytes)
+		},
+		OnQueueDepth: func(delta int64) {
+			observability.RecordStreamFanoutQueueDepth(context.Background(), b.channelType, b.channelID, delta)
+		},
+	})
 	if err := b.startLocked(); err != nil {
 		b.refs--
 		b.hub.Detach(dst)
