@@ -687,7 +687,9 @@ func TestStoppingSessionDoesNotStopSharedInputPeer(t *testing.T) {
 	go func() { firstDone <- first.ChannelStream(ctx, false, io.Discard) }()
 	go func() { secondDone <- second.ChannelStream(ctx, false, io.Discard) }()
 	if !streamtest.Eventually(time.Second, func() bool {
-		return first.rawDemuxer.PacketSubscriberCount() == 1 && second.rawDemuxer.PacketSubscriberCount() == 1
+		return first.rawDemuxer.PacketSubscriberCount() == 1 &&
+			second.rawDemuxer.PacketSubscriberCount() == 1 &&
+			broadcast.SubscriberCount() == 2
 	}) {
 		t.Fatal("peer sessions did not attach")
 	}

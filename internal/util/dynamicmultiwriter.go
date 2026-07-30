@@ -184,6 +184,7 @@ func (d *DynamicMultiWriter) Write(p []byte) (n int, err error) {
 	}
 	var failed []*dynamicMultiWriterSubscriber
 	var result error
+	delivered := 0
 	for _, sub := range subscribers {
 		if sub.lossless {
 			written, writeErr := sub.writer.Write(p)
@@ -193,16 +194,19 @@ func (d *DynamicMultiWriter) Write(p []byte) (n int, err error) {
 			} else if written != len(p) {
 				result = errors.Join(result, io.ErrShortWrite)
 				failed = append(failed, sub)
+			} else {
+				delivered++
 			}
 			continue
 		}
 		sub.enqueue(chunk)
+		delivered++
 	}
 
 	for _, sub := range failed {
 		go d.detachSubscriber(sub, false)
 	}
-	if result != nil {
+	if result != nil && delivered == 0 {
 		return 0, result
 	}
 	return len(p), nil

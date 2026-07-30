@@ -504,6 +504,28 @@ func TestDynamicMultiWriter_LosslessWriterBackpressures(t *testing.T) {
 	}
 }
 
+func TestDynamicMultiWriter_LosslessWriterFailureDoesNotStopPeer(t *testing.T) {
+	failed := &mockErrorWriter{err: io.ErrClosedPipe}
+	peer := &syncBuffer{}
+	d := NewDynamicMultiWriter()
+	d.AttachWithOptions(failed, DynamicMultiWriterSubscriberOptions{Lossless: true})
+	d.AttachWithOptions(peer, DynamicMultiWriterSubscriberOptions{Lossless: true})
+	defer d.Close()
+
+	data := []byte("peer survives")
+	n, err := d.Write(data)
+	if err != nil {
+		t.Fatalf("Write() error = %v, want nil while a peer remains", err)
+	}
+	if n != len(data) {
+		t.Fatalf("Write() n = %d, want %d", n, len(data))
+	}
+	if got := peer.String(); got != string(data) {
+		t.Fatalf("peer content = %q, want %q", got, data)
+	}
+	waitUntil(t, func() bool { return d.Count() == 1 })
+}
+
 func TestDynamicMultiWriter_ConcurrentAccess(t *testing.T) {
 	d := NewDynamicMultiWriter(&discardWriter{})
 	data := bytes.Repeat([]byte{0x47}, 188)

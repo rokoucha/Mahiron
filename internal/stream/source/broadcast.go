@@ -109,6 +109,12 @@ func (b *Broadcast) Err() error {
 	return b.err
 }
 
+// SubscriberCount reports the number of writers currently attached to the
+// shared source.
+func (b *Broadcast) SubscriberCount() int {
+	return b.hub.Count()
+}
+
 func (b *Broadcast) attach(dst io.Writer) error {
 	b.mu.Lock()
 	if b.stopped {
