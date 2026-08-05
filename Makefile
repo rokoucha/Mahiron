@@ -21,6 +21,6 @@ test:
 	$(TEST_ENV) go test ./...
 
 test-race:
-	$(TEST_ENV) go test -race ./internal/job ./internal/stream ./internal/tuner ./internal/util
+	$(TEST_ENV) go test -race ./internal/job/... ./internal/stream/... ./internal/tuner/... ./internal/util/...
 
 verify: test test-race

@@ -321,10 +321,12 @@ func (s *Session) startUpdateWorkersLocked() {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	s.sectionCancel = cancel
-	s.sectionDone = make(chan struct{})
-	s.dataBroadcastDone = make(chan struct{})
-	go s.runSectionUpdates(ctx)
-	go s.runDataBroadcastUpdates(ctx)
+	sectionDone := make(chan struct{})
+	dataBroadcastDone := make(chan struct{})
+	s.sectionDone = sectionDone
+	s.dataBroadcastDone = dataBroadcastDone
+	go s.runSectionUpdates(ctx, sectionDone)
+	go s.runDataBroadcastUpdates(ctx, dataBroadcastDone)
 }
 
 var (
