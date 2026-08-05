@@ -10,6 +10,24 @@ import (
 	"database/sql"
 )
 
+const deleteExpiredSnapshotCarousels = `-- name: DeleteExpiredSnapshotCarousels :exec
+DELETE FROM data_broadcast_snapshot_carousels WHERE stored_at < ?
+`
+
+func (q *Queries) DeleteExpiredSnapshotCarousels(ctx context.Context, storedAt int64) error {
+	_, err := q.db.ExecContext(ctx, deleteExpiredSnapshotCarousels, storedAt)
+	return err
+}
+
+const deleteExpiredSnapshots = `-- name: DeleteExpiredSnapshots :exec
+DELETE FROM data_broadcast_snapshots WHERE stored_at < ?
+`
+
+func (q *Queries) DeleteExpiredSnapshots(ctx context.Context, storedAt int64) error {
+	_, err := q.db.ExecContext(ctx, deleteExpiredSnapshots, storedAt)
+	return err
+}
+
 const deleteModule = `-- name: DeleteModule :exec
 DELETE FROM data_broadcast_modules WHERE channel_type=? AND channel_id=? AND service_id=? AND component_tag=? AND download_id=? AND module_id=? AND version=? AND size=?
 `
@@ -64,6 +82,27 @@ func (q *Queries) DeleteResources(ctx context.Context, arg DeleteResourcesParams
 		arg.ModuleID,
 		arg.Version,
 		arg.Size,
+	)
+	return err
+}
+
+const deleteSnapshotCarousel = `-- name: DeleteSnapshotCarousel :exec
+DELETE FROM data_broadcast_snapshot_carousels WHERE channel_type=? AND channel_id=? AND service_id=? AND component_tag=?
+`
+
+type DeleteSnapshotCarouselParams struct {
+	ChannelType  string `json:"channel_type"`
+	ChannelID    string `json:"channel_id"`
+	ServiceID    int64  `json:"service_id"`
+	ComponentTag int64  `json:"component_tag"`
+}
+
+func (q *Queries) DeleteSnapshotCarousel(ctx context.Context, arg DeleteSnapshotCarouselParams) error {
+	_, err := q.db.ExecContext(ctx, deleteSnapshotCarousel,
+		arg.ChannelType,
+		arg.ChannelID,
+		arg.ServiceID,
+		arg.ComponentTag,
 	)
 	return err
 }
@@ -177,6 +216,67 @@ func (q *Queries) GetResources(ctx context.Context, arg GetResourcesParams) ([]G
 			&i.ContentType,
 			&i.Data,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getSnapshot = `-- name: GetSnapshot :one
+SELECT pmt_section, stored_at FROM data_broadcast_snapshots WHERE channel_type=? AND channel_id=? AND service_id=?
+`
+
+type GetSnapshotParams struct {
+	ChannelType string `json:"channel_type"`
+	ChannelID   string `json:"channel_id"`
+	ServiceID   int64  `json:"service_id"`
+}
+
+type GetSnapshotRow struct {
+	PmtSection []byte `json:"pmt_section"`
+	StoredAt   int64  `json:"stored_at"`
+}
+
+func (q *Queries) GetSnapshot(ctx context.Context, arg GetSnapshotParams) (GetSnapshotRow, error) {
+	row := q.db.QueryRowContext(ctx, getSnapshot, arg.ChannelType, arg.ChannelID, arg.ServiceID)
+	var i GetSnapshotRow
+	err := row.Scan(&i.PmtSection, &i.StoredAt)
+	return i, err
+}
+
+const getSnapshotCarousels = `-- name: GetSnapshotCarousels :many
+SELECT component_tag, pid, dii_section FROM data_broadcast_snapshot_carousels WHERE channel_type=? AND channel_id=? AND service_id=? ORDER BY component_tag
+`
+
+type GetSnapshotCarouselsParams struct {
+	ChannelType string `json:"channel_type"`
+	ChannelID   string `json:"channel_id"`
+	ServiceID   int64  `json:"service_id"`
+}
+
+type GetSnapshotCarouselsRow struct {
+	ComponentTag int64  `json:"component_tag"`
+	Pid          int64  `json:"pid"`
+	DiiSection   []byte `json:"dii_section"`
+}
+
+func (q *Queries) GetSnapshotCarousels(ctx context.Context, arg GetSnapshotCarouselsParams) ([]GetSnapshotCarouselsRow, error) {
+	rows, err := q.db.QueryContext(ctx, getSnapshotCarousels, arg.ChannelType, arg.ChannelID, arg.ServiceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetSnapshotCarouselsRow
+	for rows.Next() {
+		var i GetSnapshotCarouselsRow
+		if err := rows.Scan(&i.ComponentTag, &i.Pid, &i.DiiSection); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -307,6 +407,39 @@ func (q *Queries) InsertResource(ctx context.Context, arg InsertResourceParams) 
 		arg.Data,
 	)
 	return err
+}
+
+const listSnapshotCarouselComponentTags = `-- name: ListSnapshotCarouselComponentTags :many
+SELECT component_tag FROM data_broadcast_snapshot_carousels WHERE channel_type=? AND channel_id=? AND service_id=?
+`
+
+type ListSnapshotCarouselComponentTagsParams struct {
+	ChannelType string `json:"channel_type"`
+	ChannelID   string `json:"channel_id"`
+	ServiceID   int64  `json:"service_id"`
+}
+
+func (q *Queries) ListSnapshotCarouselComponentTags(ctx context.Context, arg ListSnapshotCarouselComponentTagsParams) ([]int64, error) {
+	rows, err := q.db.QueryContext(ctx, listSnapshotCarouselComponentTags, arg.ChannelType, arg.ChannelID, arg.ServiceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var component_tag int64
+		if err := rows.Scan(&component_tag); err != nil {
+			return nil, err
+		}
+		items = append(items, component_tag)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const moduleExists = `-- name: ModuleExists :one
@@ -495,6 +628,56 @@ func (q *Queries) UpsertModule(ctx context.Context, arg UpsertModuleParams) erro
 		arg.Data,
 		arg.LastAccessed,
 		arg.StoredBytes,
+	)
+	return err
+}
+
+const upsertSnapshot = `-- name: UpsertSnapshot :exec
+INSERT OR REPLACE INTO data_broadcast_snapshots(channel_type,channel_id,service_id,pmt_section,stored_at) VALUES(?,?,?,?,?)
+`
+
+type UpsertSnapshotParams struct {
+	ChannelType string `json:"channel_type"`
+	ChannelID   string `json:"channel_id"`
+	ServiceID   int64  `json:"service_id"`
+	PmtSection  []byte `json:"pmt_section"`
+	StoredAt    int64  `json:"stored_at"`
+}
+
+func (q *Queries) UpsertSnapshot(ctx context.Context, arg UpsertSnapshotParams) error {
+	_, err := q.db.ExecContext(ctx, upsertSnapshot,
+		arg.ChannelType,
+		arg.ChannelID,
+		arg.ServiceID,
+		arg.PmtSection,
+		arg.StoredAt,
+	)
+	return err
+}
+
+const upsertSnapshotCarousel = `-- name: UpsertSnapshotCarousel :exec
+INSERT OR REPLACE INTO data_broadcast_snapshot_carousels(channel_type,channel_id,service_id,component_tag,pid,dii_section,stored_at) VALUES(?,?,?,?,?,?,?)
+`
+
+type UpsertSnapshotCarouselParams struct {
+	ChannelType  string `json:"channel_type"`
+	ChannelID    string `json:"channel_id"`
+	ServiceID    int64  `json:"service_id"`
+	ComponentTag int64  `json:"component_tag"`
+	Pid          int64  `json:"pid"`
+	DiiSection   []byte `json:"dii_section"`
+	StoredAt     int64  `json:"stored_at"`
+}
+
+func (q *Queries) UpsertSnapshotCarousel(ctx context.Context, arg UpsertSnapshotCarouselParams) error {
+	_, err := q.db.ExecContext(ctx, upsertSnapshotCarousel,
+		arg.ChannelType,
+		arg.ChannelID,
+		arg.ServiceID,
+		arg.ComponentTag,
+		arg.Pid,
+		arg.DiiSection,
+		arg.StoredAt,
 	)
 	return err
 }

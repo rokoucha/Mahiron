@@ -2941,6 +2941,11 @@ func (s *Server) handleGetServiceByChannelRequest(args [3]string, argsEscaped bo
 
 // handleGetServiceDataBroadcastEventsRequest handles getServiceDataBroadcastEvents operation.
 //
+// Streams data-broadcast state changes. Modules whose status is "rejected" are announced for
+// diagnostics but must be excluded from a receiver's DII download list because no resource will become
+// available. URL fields in event payloads are absolute paths rooted at the API mount; clients deployed
+// through a subpath proxy should construct request URLs from the endpoint paths instead.
+//
 // GET /services/{id}/data-broadcast/events
 func (s *Server) handleGetServiceDataBroadcastEventsRequest(args [1]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
 	statusWriter := &codeRecorder{ResponseWriter: w}
@@ -3386,6 +3391,10 @@ func (s *Server) handleGetServiceDataBroadcastModuleResourceRequest(args [6]stri
 
 // handleGetServiceDataBroadcastModuleVersionRequest handles getServiceDataBroadcastModuleVersion operation.
 //
+// Returns the decoded resource manifest. contentLocation is null when the complete module maps
+// directly to one module-scoped resource, and is a string only for a named multipart resource. rawUrl
+// and resource url values are absolute paths rooted at the API mount.
+//
 // GET /services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}
 func (s *Server) handleGetServiceDataBroadcastModuleVersionRequest(args [5]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
 	statusWriter := &codeRecorder{ResponseWriter: w}
@@ -3537,6 +3546,16 @@ func (s *Server) handleGetServiceDataBroadcastModuleVersionRequest(args [5]strin
 
 // handleGetServiceDataBroadcastStateRequest handles getServiceDataBroadcastState operation.
 //
+// Returns the current data-broadcast snapshot. Modules whose status is "rejected" are announced for
+// diagnostics but must be excluded from a receiver's DII download list because no resource will become
+// available. URL fields in the payload are absolute paths rooted at the API mount; clients deployed
+// through a subpath proxy should construct request URLs from the endpoint paths instead. When no tuner
+// is currently allocated for this channel, the response may be a provisional snapshot rebuilt from the
+// last persisted PMT/DII state (origin "cache") instead of live state (origin "live"). A cache
+// snapshot always has programInfo, currentTime, and pcr set to null, since those are clock/schedule
+// samples rather than carousel state and a stale value would be misleading. Pass allowCache=0 to
+// require live state, returning 404 instead of a cache snapshot.
+//
 // GET /services/{id}/data-broadcast/state
 func (s *Server) handleGetServiceDataBroadcastStateRequest(args [1]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
 	statusWriter := &codeRecorder{ResponseWriter: w}
@@ -3634,6 +3653,10 @@ func (s *Server) handleGetServiceDataBroadcastStateRequest(args [1]string, argsE
 					Name: "id",
 					In:   "path",
 				}: params.ID,
+				{
+					Name: "allowCache",
+					In:   "query",
+				}: params.AllowCache,
 			},
 			Raw: r,
 		}

@@ -48,3 +48,21 @@ type DataBroadcastResource struct {
 	ContentType     string         `json:"content_type"`
 	Data            []byte         `json:"data"`
 }
+
+type DataBroadcastSnapshot struct {
+	ChannelType string `json:"channel_type"`
+	ChannelID   string `json:"channel_id"`
+	ServiceID   int64  `json:"service_id"`
+	PmtSection  []byte `json:"pmt_section"`
+	StoredAt    int64  `json:"stored_at"`
+}
+
+type DataBroadcastSnapshotCarousel struct {
+	ChannelType  string `json:"channel_type"`
+	ChannelID    string `json:"channel_id"`
+	ServiceID    int64  `json:"service_id"`
+	ComponentTag int64  `json:"component_tag"`
+	Pid          int64  `json:"pid"`
+	DiiSection   []byte `json:"dii_section"`
+	StoredAt     int64  `json:"stored_at"`
+}

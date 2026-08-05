@@ -27,13 +27,14 @@ func (m *StreamManager) createSession(ctx context.Context, key sessionKey, chann
 	}
 
 	session := channelstream.NewChannelSession(channelstream.Config{
-		Channel:     channel,
-		Handle:      handle,
-		EITUpdater:  m.eitUpdater,
-		LogoUpdater: m.logoUpdater,
-		OnStop:      func() { m.remove(key) },
-		Type:        channelType,
-		ModuleStore: m.dataBroadcastStore,
+		Channel:       channel,
+		Handle:        handle,
+		EITUpdater:    m.eitUpdater,
+		LogoUpdater:   m.logoUpdater,
+		OnStop:        func() { m.remove(key) },
+		Type:          channelType,
+		ModuleStore:   m.dataBroadcastStore,
+		SnapshotStore: m.snapshotStore,
 	})
 	return session, handle.RouteType(), handle.SourceLabel(), nil
 }

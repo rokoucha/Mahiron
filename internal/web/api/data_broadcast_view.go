@@ -35,7 +35,7 @@ func apiDataBroadcastEvent(serviceItemID int64, event databroadcast.DataBroadcas
 	result := map[string]any{"type": event.Type, "sequence": event.Sequence, "revision": event.Revision}
 	switch event.Type {
 	case "snapshot":
-		result["snapshot"] = apiDataBroadcastSnapshot(serviceItemID, event.Snapshot)
+		result["snapshot"] = apiDataBroadcastSnapshot(serviceItemID, event.Snapshot, "live", nil)
 	case "pmt":
 		result["pmt"] = apiDataBroadcastPMT(serviceItemID, event.PMT)
 	case "moduleListUpdated":
@@ -56,10 +56,17 @@ func apiDataBroadcastEvent(serviceItemID int64, event databroadcast.DataBroadcas
 	return result
 }
 
-func apiDataBroadcastSnapshot(serviceItemID int64, snapshot databroadcast.DataBroadcastSnapshot) map[string]any {
+// apiDataBroadcastSnapshot renders a snapshot. origin is "live" for state
+// read from an active channel session, or "cache" for a provisional snapshot
+// rebuilt from persisted PMT/DII sections without a tuner. storedAtUnixMilli
+// is nil for a live snapshot; a cache snapshot always carries it, and always
+// has null programInfo/currentTime/pcr (see RestoreSnapshot).
+func apiDataBroadcastSnapshot(serviceItemID int64, snapshot databroadcast.DataBroadcastSnapshot, origin string, storedAtUnixMilli *int64) map[string]any {
 	return map[string]any{
 		"serviceId":   snapshot.ServiceID,
 		"revision":    snapshot.Revision,
+		"origin":      origin,
+		"storedAt":    storedAtUnixMilli,
 		"pmt":         apiDataBroadcastPMT(serviceItemID, snapshot.PMT),
 		"components":  apiDataBroadcastComponents(serviceItemID, snapshot.Components),
 		"programInfo": apiDataBroadcastProgramInfo(snapshot.ProgramInfo),

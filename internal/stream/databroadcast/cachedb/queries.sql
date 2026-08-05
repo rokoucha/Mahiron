@@ -34,3 +34,19 @@ INSERT OR REPLACE INTO data_broadcast_module_tombstones(channel_type,channel_id,
 DELETE FROM data_broadcast_modules WHERE channel_type=? AND channel_id=? AND service_id=? AND component_tag=? AND download_id=? AND module_id=? AND version=? AND size=?;
 -- name: TrimTombstones :exec
 DELETE FROM data_broadcast_module_tombstones WHERE (channel_type,channel_id,service_id,component_tag,download_id,module_id,version) IN (SELECT channel_type,channel_id,service_id,component_tag,download_id,module_id,version FROM data_broadcast_module_tombstones ORDER BY evicted_at DESC,channel_type,channel_id,service_id,component_tag,download_id,module_id,version LIMIT -1 OFFSET ?);
+-- name: GetSnapshot :one
+SELECT pmt_section, stored_at FROM data_broadcast_snapshots WHERE channel_type=? AND channel_id=? AND service_id=?;
+-- name: UpsertSnapshot :exec
+INSERT OR REPLACE INTO data_broadcast_snapshots(channel_type,channel_id,service_id,pmt_section,stored_at) VALUES(?,?,?,?,?);
+-- name: GetSnapshotCarousels :many
+SELECT component_tag, pid, dii_section FROM data_broadcast_snapshot_carousels WHERE channel_type=? AND channel_id=? AND service_id=? ORDER BY component_tag;
+-- name: ListSnapshotCarouselComponentTags :many
+SELECT component_tag FROM data_broadcast_snapshot_carousels WHERE channel_type=? AND channel_id=? AND service_id=?;
+-- name: UpsertSnapshotCarousel :exec
+INSERT OR REPLACE INTO data_broadcast_snapshot_carousels(channel_type,channel_id,service_id,component_tag,pid,dii_section,stored_at) VALUES(?,?,?,?,?,?,?);
+-- name: DeleteSnapshotCarousel :exec
+DELETE FROM data_broadcast_snapshot_carousels WHERE channel_type=? AND channel_id=? AND service_id=? AND component_tag=?;
+-- name: DeleteExpiredSnapshots :exec
+DELETE FROM data_broadcast_snapshots WHERE stored_at < ?;
+-- name: DeleteExpiredSnapshotCarousels :exec
+DELETE FROM data_broadcast_snapshot_carousels WHERE stored_at < ?;

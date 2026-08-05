@@ -116,6 +116,11 @@ type Invoker interface {
 	GetServiceByChannel(ctx context.Context, params GetServiceByChannelParams) (GetServiceByChannelRes, error)
 	// GetServiceDataBroadcastEvents invokes getServiceDataBroadcastEvents operation.
 	//
+	// Streams data-broadcast state changes. Modules whose status is "rejected" are announced for
+	// diagnostics but must be excluded from a receiver's DII download list because no resource will become
+	// available. URL fields in event payloads are absolute paths rooted at the API mount; clients deployed
+	// through a subpath proxy should construct request URLs from the endpoint paths instead.
+	//
 	// GET /services/{id}/data-broadcast/events
 	GetServiceDataBroadcastEvents(ctx context.Context, params GetServiceDataBroadcastEventsParams) (GetServiceDataBroadcastEventsRes, error)
 	// GetServiceDataBroadcastModuleRaw invokes getServiceDataBroadcastModuleRaw operation.
@@ -128,9 +133,23 @@ type Invoker interface {
 	GetServiceDataBroadcastModuleResource(ctx context.Context, params GetServiceDataBroadcastModuleResourceParams) (GetServiceDataBroadcastModuleResourceRes, error)
 	// GetServiceDataBroadcastModuleVersion invokes getServiceDataBroadcastModuleVersion operation.
 	//
+	// Returns the decoded resource manifest. contentLocation is null when the complete module maps
+	// directly to one module-scoped resource, and is a string only for a named multipart resource. rawUrl
+	// and resource url values are absolute paths rooted at the API mount.
+	//
 	// GET /services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}
 	GetServiceDataBroadcastModuleVersion(ctx context.Context, params GetServiceDataBroadcastModuleVersionParams) (GetServiceDataBroadcastModuleVersionRes, error)
 	// GetServiceDataBroadcastState invokes getServiceDataBroadcastState operation.
+	//
+	// Returns the current data-broadcast snapshot. Modules whose status is "rejected" are announced for
+	// diagnostics but must be excluded from a receiver's DII download list because no resource will become
+	// available. URL fields in the payload are absolute paths rooted at the API mount; clients deployed
+	// through a subpath proxy should construct request URLs from the endpoint paths instead. When no tuner
+	// is currently allocated for this channel, the response may be a provisional snapshot rebuilt from the
+	// last persisted PMT/DII state (origin "cache") instead of live state (origin "live"). A cache
+	// snapshot always has programInfo, currentTime, and pcr set to null, since those are clock/schedule
+	// samples rather than carousel state and a stale value would be misleading. Pass allowCache=0 to
+	// require live state, returning 404 instead of a cache snapshot.
 	//
 	// GET /services/{id}/data-broadcast/state
 	GetServiceDataBroadcastState(ctx context.Context, params GetServiceDataBroadcastStateParams) (GetServiceDataBroadcastStateRes, error)
@@ -2578,6 +2597,11 @@ func (c *Client) sendGetServiceByChannel(ctx context.Context, params GetServiceB
 
 // GetServiceDataBroadcastEvents invokes getServiceDataBroadcastEvents operation.
 //
+// Streams data-broadcast state changes. Modules whose status is "rejected" are announced for
+// diagnostics but must be excluded from a receiver's DII download list because no resource will become
+// available. URL fields in event payloads are absolute paths rooted at the API mount; clients deployed
+// through a subpath proxy should construct request URLs from the endpoint paths instead.
+//
 // GET /services/{id}/data-broadcast/events
 func (c *Client) GetServiceDataBroadcastEvents(ctx context.Context, params GetServiceDataBroadcastEventsParams) (GetServiceDataBroadcastEventsRes, error) {
 	res, err := c.sendGetServiceDataBroadcastEvents(ctx, params)
@@ -3087,6 +3111,10 @@ func (c *Client) sendGetServiceDataBroadcastModuleResource(ctx context.Context, 
 
 // GetServiceDataBroadcastModuleVersion invokes getServiceDataBroadcastModuleVersion operation.
 //
+// Returns the decoded resource manifest. contentLocation is null when the complete module maps
+// directly to one module-scoped resource, and is a string only for a named multipart resource. rawUrl
+// and resource url values are absolute paths rooted at the API mount.
+//
 // GET /services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}
 func (c *Client) GetServiceDataBroadcastModuleVersion(ctx context.Context, params GetServiceDataBroadcastModuleVersionParams) (GetServiceDataBroadcastModuleVersionRes, error) {
 	res, err := c.sendGetServiceDataBroadcastModuleVersion(ctx, params)
@@ -3268,6 +3296,16 @@ func (c *Client) sendGetServiceDataBroadcastModuleVersion(ctx context.Context, p
 
 // GetServiceDataBroadcastState invokes getServiceDataBroadcastState operation.
 //
+// Returns the current data-broadcast snapshot. Modules whose status is "rejected" are announced for
+// diagnostics but must be excluded from a receiver's DII download list because no resource will become
+// available. URL fields in the payload are absolute paths rooted at the API mount; clients deployed
+// through a subpath proxy should construct request URLs from the endpoint paths instead. When no tuner
+// is currently allocated for this channel, the response may be a provisional snapshot rebuilt from the
+// last persisted PMT/DII state (origin "cache") instead of live state (origin "live"). A cache
+// snapshot always has programInfo, currentTime, and pcr set to null, since those are clock/schedule
+// samples rather than carousel state and a stale value would be misleading. Pass allowCache=0 to
+// require live state, returning 404 instead of a cache snapshot.
+//
 // GET /services/{id}/data-broadcast/state
 func (c *Client) GetServiceDataBroadcastState(ctx context.Context, params GetServiceDataBroadcastStateParams) (GetServiceDataBroadcastStateRes, error) {
 	res, err := c.sendGetServiceDataBroadcastState(ctx, params)
@@ -3333,6 +3371,27 @@ func (c *Client) sendGetServiceDataBroadcastState(ctx context.Context, params Ge
 	}
 	pathParts[2] = "/data-broadcast/state"
 	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeQueryParams"
+	q := uri.NewQueryEncoder()
+	{
+		// Encode "allowCache" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "allowCache",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.AllowCache.Get(); ok {
+				return e.EncodeValue(conv.IntToString(val))
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	u.RawQuery = q.Values().Encode()
 
 	stage = "EncodeRequest"
 	r, err := ht.NewRequest(ctx, "GET", u)

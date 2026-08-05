@@ -202,6 +202,36 @@ func (h *DataBroadcastHub) DDBPriority(section ts.PIDSection) (priority byte, en
 	return priority, name == "index.bml" || name == "index.xhtml"
 }
 
+// PersistableState returns the raw PMT and per-component DII sections needed
+// to reconstruct a provisional snapshot, for every service that currently has
+// a PMT. It is a cheap copy of bytes already retained for duplicate
+// detection (service.pmtSection / service.diiSections), so it is safe to call
+// periodically from a caller that owns persistence.
+func (h *DataBroadcastHub) PersistableState() []PersistedService {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	result := make([]PersistedService, 0, len(h.services))
+	for serviceID, service := range h.services {
+		if service.pmt == nil {
+			continue
+		}
+		persisted := PersistedService{ServiceID: serviceID, PMTSection: []byte(service.pmtSection)}
+		for _, component := range service.pmt.Components {
+			diiSection, ok := service.diiSections[component.ComponentTag]
+			if !ok {
+				continue
+			}
+			persisted.Carousels = append(persisted.Carousels, PersistedCarousel{
+				ComponentTag: component.ComponentTag,
+				PID:          component.PID,
+				DIISection:   []byte(diiSection),
+			})
+		}
+		result = append(result, persisted)
+	}
+	return result
+}
+
 func (h *DataBroadcastHub) moduleCacheKey(serviceID uint16, componentTag byte, downloadID uint32, moduleID uint16, version byte, size uint32) ModuleCacheKey {
 	return ModuleCacheKey{ChannelType: h.channelType, ChannelID: h.channelID, ServiceID: serviceID, ComponentTag: componentTag, DownloadID: downloadID, ModuleID: moduleID, Version: version, Size: size}
 }

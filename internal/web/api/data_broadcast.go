@@ -50,6 +50,9 @@ func GetServiceDataBroadcastEvents(ctx context.Context, h *Handler, params apige
 
 // GetServiceDataBroadcastState returns the authoritative state without
 // allocating a tuner. Clients fetch it before opening SSE and after reconnect.
+// When no channel session currently exists, it falls back to a provisional
+// snapshot rebuilt from persisted PMT/DII state (origin "cache") unless the
+// caller passes allowCache=0.
 func GetServiceDataBroadcastState(ctx context.Context, h *Handler, params apigen.GetServiceDataBroadcastStateParams, w http.ResponseWriter) error {
 	service, err := h.serviceManager.GetServiceById(ctx, strconv.FormatInt(params.ID, 10))
 	if err != nil {
@@ -59,14 +62,35 @@ func GetServiceDataBroadcastState(ctx context.Context, h *Handler, params apigen
 		w.WriteHeader(http.StatusNotFound)
 		return nil
 	}
-	session, ok := h.streamManager.GetExisting(service.ChannelType, service.ChannelId)
-	if !ok {
-		w.WriteHeader(http.StatusNotFound)
-		return nil
+	if session, ok := h.streamManager.GetExisting(service.ChannelType, service.ChannelId); ok {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		return json.NewEncoder(w).Encode(apiDataBroadcastSnapshot(params.ID, session.DataBroadcastSnapshot(service.ServiceId), "live", nil))
 	}
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Cache-Control", "no-store")
-	return json.NewEncoder(w).Encode(apiDataBroadcastSnapshot(params.ID, session.DataBroadcastSnapshot(service.ServiceId)))
+	if snapshot, storedAtUnixMilli, found := provisionalDataBroadcastSnapshot(h, params.AllowCache, service.ChannelType, service.ChannelId, service.ServiceId); found {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		return json.NewEncoder(w).Encode(apiDataBroadcastSnapshot(params.ID, snapshot, "cache", &storedAtUnixMilli))
+	}
+	w.WriteHeader(http.StatusNotFound)
+	return nil
+}
+
+func provisionalDataBroadcastSnapshot(h *Handler, allowCache apigen.OptInt, channelType, channelID string, serviceID uint16) (databroadcast.DataBroadcastSnapshot, int64, bool) {
+	if !shouldAllowCache(allowCache) {
+		return databroadcast.DataBroadcastSnapshot{}, 0, false
+	}
+	store, ok := h.streamManager.(interface {
+		DataBroadcastProvisionalSnapshot(string, string, uint16) (databroadcast.DataBroadcastSnapshot, int64, bool)
+	})
+	if !ok {
+		return databroadcast.DataBroadcastSnapshot{}, 0, false
+	}
+	snapshot, storedAt, found := store.DataBroadcastProvisionalSnapshot(channelType, channelID, serviceID)
+	if !found {
+		return databroadcast.DataBroadcastSnapshot{}, 0, false
+	}
+	return snapshot, storedAt * 1000, true
 }
 
 func GetServiceDataBroadcastModuleVersion(ctx context.Context, h *Handler, params apigen.GetServiceDataBroadcastModuleVersionParams, w http.ResponseWriter) error {
