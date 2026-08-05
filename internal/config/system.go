@@ -65,7 +65,7 @@ func LoadAndParseSystemConfig(filePath string) (*SystemConfig, error) {
 	config := SystemConfig{
 		DatabasePath:                     "./db/mahiron.db",
 		DataBroadcastCachePath:           "./db/data-broadcast-cache.db",
-		DataBroadcastCacheBytes:          128 * 1024 * 1024,
+		DataBroadcastCacheBytes:          1024 * 1024 * 1024,
 		DataBroadcastCacheMaxAgeDays:     14,
 		DataBroadcastSnapshotMaxAgeHours: 6,
 		MaxConcurrentJobs:                1,

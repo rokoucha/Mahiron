@@ -75,3 +75,61 @@ func TestModuleVersionReadsPersistentModuleAfterLivePayloadRelease(t *testing.T)
 		t.Fatalf("module = %#v, found = %v", got, ok)
 	}
 }
+
+// TestModuleVersionRecoversAfterPersistentStoreEviction reproduces the
+// production data-broadcast hang: a completed module's live payload is
+// released after a persistent Put, then the store evicts that generation
+// (byte budget, prune, corruption recovery, ...) before any client fetches
+// it. Without recovery, the module stays reported as "complete" forever
+// while every fetch 404s/425s. ModuleVersion must instead reset carousel
+// assembly so the broadcaster's continuing DDB retransmissions rebuild it.
+func TestModuleVersionRecoversAfterPersistentStoreEviction(t *testing.T) {
+	store, err := NewSQLiteModuleStore(filepath.Join(t.TempDir(), "cache.sqlite3"), 1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	hub := NewDataBroadcastHub().WithModuleStore(store)
+	const serviceID uint16 = 101
+	const componentTag byte = 0x40
+	carousel := ts.NewDSMCCCarousel(ts.DSMCCCarouselLimits{})
+	carousel.ObserveDII(&ts.DSMCCDII{DownloadID: 1, BlockSize: 4, Modules: []ts.DSMCCModuleInfo{{ModuleID: 2, ModuleSize: 4, Version: 3}}})
+	module, complete, err := carousel.ObserveDDB(&ts.DSMCCDDB{DownloadID: 1, ModuleID: 2, ModuleVersion: 3, Data: []byte("data")})
+	if err != nil || !complete {
+		t.Fatalf("complete = %v, err = %v", complete, err)
+	}
+	key := hub.moduleCacheKey(serviceID, componentTag, module.DownloadID, module.ModuleID, module.Version, module.Size)
+	if !store.Put(key, *module) || !carousel.ReleaseCompletedPayload(module.ModuleID) {
+		t.Fatal("did not persist and release module")
+	}
+
+	hub.mu.Lock()
+	service := hub.serviceLocked(serviceID)
+	service.carousels[componentTag] = carousel
+	hub.mu.Unlock()
+
+	// Simulate the store evicting the only retained generation before a
+	// client ever fetched it (byte budget, age prune, ...).
+	if !store.pruneOne(key) {
+		t.Fatal("pruneOne failed")
+	}
+
+	if _, ok := hub.ModuleVersion(serviceID, componentTag, 1, 2, 3); ok {
+		t.Fatal("module found despite release and eviction")
+	}
+	announcements := carousel.Announcements()
+	if len(announcements) != 1 || announcements[0].Complete {
+		t.Fatalf("announcements after recovery reset = %#v, want reset to incomplete", announcements)
+	}
+
+	// The broadcaster's continuing retransmission of the same blocks must now
+	// rebuild the module instead of being ignored as "already complete".
+	if _, complete, err := carousel.ObserveDDB(&ts.DSMCCDDB{DownloadID: 1, ModuleID: 2, ModuleVersion: 3, Data: []byte("data")}); err != nil || !complete {
+		t.Fatalf("rebuild after invalidate: complete = %v, err = %v", complete, err)
+	}
+	got, ok := hub.ModuleVersion(serviceID, componentTag, 1, 2, 3)
+	if !ok || string(got.Data) != "data" {
+		t.Fatalf("module after rebuild = %#v, found = %v", got, ok)
+	}
+}

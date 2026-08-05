@@ -86,6 +86,58 @@ func TestDSMCCCarouselReleasesPersistedPayload(t *testing.T) {
 	}
 }
 
+func TestDSMCCCarouselInvalidateRebuildsReleasedModule(t *testing.T) {
+	carousel := NewDSMCCCarousel(DSMCCCarouselLimits{})
+	dii, err := ParseDSMCCDII(buildGenericDSMCCDII(t, 1, 4, 2, 4, 1, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	carousel.ObserveDII(dii)
+	ddb, err := ParseDSMCCDDB(buildDSMCCDDB(t, 1, 2, 1, 0, []byte("data")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, complete, err := carousel.ObserveDDB(ddb); err != nil || !complete {
+		t.Fatalf("complete = %v, err = %v", complete, err)
+	}
+	if !carousel.ReleaseCompletedPayload(2) {
+		t.Fatal("release failed")
+	}
+
+	// A stale identity (wrong download/version) must not touch the module.
+	if carousel.Invalidate(2, 99, 1) {
+		t.Fatal("invalidate accepted mismatched identity")
+	}
+	if _, ok := carousel.Module(2); ok {
+		t.Fatal("module readable after rejected invalidate")
+	}
+
+	if !carousel.Invalidate(2, 1, 1) {
+		t.Fatal("invalidate rejected matching identity")
+	}
+	announcements := carousel.Announcements()
+	if len(announcements) != 1 || announcements[0].Complete || announcements[0].ReceivedBlocks != 0 {
+		t.Fatalf("announcements after invalidate = %#v, want reset to incomplete", announcements)
+	}
+	// A second invalidate on an already-incomplete module is a no-op.
+	if carousel.Invalidate(2, 1, 1) {
+		t.Fatal("invalidate succeeded twice on the same incomplete module")
+	}
+
+	// The broadcaster keeps retransmitting the same blocks; they must now be
+	// accepted again instead of being ignored as "already complete".
+	module, complete, err := carousel.ObserveDDB(ddb)
+	if err != nil || !complete {
+		t.Fatalf("re-complete = %v, err = %v", complete, err)
+	}
+	if string(module.Data) != "data" {
+		t.Fatalf("module data = %q, want %q", module.Data, "data")
+	}
+	if got, ok := carousel.Module(2); !ok || string(got.Data) != "data" {
+		t.Fatalf("module readable after rebuild = %v, %q", ok, got.Data)
+	}
+}
+
 func TestDSMCCCarouselAnnouncementsIncludeIncompleteModule(t *testing.T) {
 	carousel := NewDSMCCCarousel(DSMCCCarouselLimits{})
 	dii, err := ParseDSMCCDII(buildGenericDSMCCDII(t, 1, 4, 2, 4, 1, []byte("index.bml")))
