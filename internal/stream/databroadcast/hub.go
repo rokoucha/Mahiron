@@ -167,10 +167,18 @@ func (h *DataBroadcastHub) ModuleVersion(serviceID uint16, componentTag byte, do
 		return DataBroadcastModule{}, false
 	}
 	cached, ok := h.moduleStore.GetVersion(h.moduleCacheKey(serviceID, componentTag, downloadID, moduleID, version, 0).VersionKey())
-	if !ok {
-		return DataBroadcastModule{}, false
+	if ok {
+		return apiModule(componentTag, cached, true), true
 	}
-	return apiModule(componentTag, cached, true), true
+	// This generation is still what the carousel announces as complete, but
+	// its payload was released after a persistent Put and then evicted from
+	// the store before this fetch. Reset assembly so the DDB blocks the
+	// broadcaster keeps retransmitting rebuild it instead of leaving the
+	// module permanently unfetchable.
+	if carousel.Invalidate(moduleID, downloadID, version) {
+		h.recordCarousel("module", "invalidated")
+	}
+	return DataBroadcastModule{}, false
 }
 
 // DDBPriority returns the cache priority announced by DII and whether the

@@ -271,6 +271,31 @@ func (c *DSMCCCarousel) Module(moduleID uint16) (DSMCCModule, bool) {
 	return state.module(), true
 }
 
+// Invalidate resets a completed module's assembly state back to in-flight
+// when downloadID/version still match what the carousel currently tracks. It
+// exists to recover from a released payload (see ReleaseCompletedPayload)
+// whose persistent copy was evicted before a caller could read it: without
+// this, the module would stay wedged in an unfetchable "complete" state
+// until the DII announces a new generation, even though the broadcaster
+// keeps retransmitting the same module's DDB blocks in the meantime. It is a
+// no-op when the identity doesn't match or the module isn't completed.
+func (c *DSMCCCarousel) Invalidate(moduleID uint16, downloadID uint32, version byte) bool {
+	state := c.modules[moduleID]
+	if state == nil || !state.completed || state.downloadID != downloadID || state.info.Version != version || state.blockSize == 0 {
+		return false
+	}
+	blockCount := int((state.info.ModuleSize + uint32(state.blockSize) - 1) / uint32(state.blockSize))
+	c.completedBytes -= uint64(len(state.data))
+	state.data = make([]byte, state.info.ModuleSize)
+	state.received = make([]bool, blockCount)
+	state.count = 0
+	state.completed = false
+	c.generation++
+	state.generation = c.generation
+	c.inFlightBytes += uint64(state.info.ModuleSize)
+	return true
+}
+
 // ReleaseCompletedPayload drops a completed module's byte buffer while
 // preserving its DII state. Callers may do this only after placing the module
 // in a persistent store that can serve its immutable URL.
