@@ -102,8 +102,8 @@ func (s *Session) observePIDSection(section ts.PIDSection) {
 	}
 }
 
-func (s *Session) runDataBroadcastUpdates(ctx context.Context) {
-	defer close(s.dataBroadcastDone)
+func (s *Session) runDataBroadcastUpdates(ctx context.Context, done chan struct{}) {
+	defer close(done)
 	priorityBurst := 0
 	for {
 		section, ok := s.nextDataBroadcastSection(ctx, &priorityBurst)
@@ -161,10 +161,8 @@ func (s *Session) observeQueuedDDB(section ts.PIDSection) {
 	s.dataBroadcastWG.Done()
 }
 
-func (s *Session) runSectionUpdates(ctx context.Context) {
-	if s.sectionDone != nil {
-		defer close(s.sectionDone)
-	}
+func (s *Session) runSectionUpdates(ctx context.Context, done chan struct{}) {
+	defer close(done)
 	for {
 		select {
 		case <-ctx.Done():
