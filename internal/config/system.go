@@ -18,11 +18,15 @@ type SystemConfig struct {
 	DataBroadcastCachePath       string              `json:"dataBroadcastCachePath,omitempty"`
 	DataBroadcastCacheBytes      uint64              `json:"dataBroadcastCacheBytes,omitempty"`
 	DataBroadcastCacheMaxAgeDays int                 `json:"dataBroadcastCacheMaxAgeDays,omitempty"`
-	EpgRetentionDays             int                 `json:"epgRetentionDays,omitempty"`
-	EpgRetrievalTime             int                 `json:"epgRetrievalTime,omitempty"`
-	EpgStaleAfter                int                 `json:"epgStaleAfter,omitempty"`
-	LogoGatherTimeout            int                 `json:"logoGatherTimeout,omitempty"`
-	ServiceScanTimeout           int                 `json:"serviceScanTimeout,omitempty"`
+	// DataBroadcastSnapshotDisabled turns off persisting PMT/DII sections for
+	// provisional /state responses. Enabled (nil or false) by default.
+	DataBroadcastSnapshotDisabled    *bool `json:"dataBroadcastSnapshotDisabled,omitempty"`
+	DataBroadcastSnapshotMaxAgeHours int   `json:"dataBroadcastSnapshotMaxAgeHours,omitempty"`
+	EpgRetentionDays                 int   `json:"epgRetentionDays,omitempty"`
+	EpgRetrievalTime                 int   `json:"epgRetrievalTime,omitempty"`
+	EpgStaleAfter                    int   `json:"epgStaleAfter,omitempty"`
+	LogoGatherTimeout                int   `json:"logoGatherTimeout,omitempty"`
+	ServiceScanTimeout               int   `json:"serviceScanTimeout,omitempty"`
 }
 
 type JobScheduleConfig struct {
@@ -48,6 +52,10 @@ type ObservabilitySignal struct {
 	Enabled bool `json:"enabled,omitempty"`
 }
 
+func IsDataBroadcastSnapshotEnabled(config SystemConfig) bool {
+	return config.DataBroadcastSnapshotDisabled == nil || !*config.DataBroadcastSnapshotDisabled
+}
+
 func LoadAndParseSystemConfig(filePath string) (*SystemConfig, error) {
 	file, err := os.ReadFile(filePath)
 	if err != nil {
@@ -55,16 +63,17 @@ func LoadAndParseSystemConfig(filePath string) (*SystemConfig, error) {
 	}
 
 	config := SystemConfig{
-		DatabasePath:                 "./db/mahiron.db",
-		DataBroadcastCachePath:       "./db/data-broadcast-cache.db",
-		DataBroadcastCacheBytes:      128 * 1024 * 1024,
-		DataBroadcastCacheMaxAgeDays: 14,
-		MaxConcurrentJobs:            1,
-		EpgRetentionDays:             3,
-		EpgRetrievalTime:             600000,
-		EpgStaleAfter:                7200000,
-		LogoGatherTimeout:            1200000,
-		ServiceScanTimeout:           30000,
+		DatabasePath:                     "./db/mahiron.db",
+		DataBroadcastCachePath:           "./db/data-broadcast-cache.db",
+		DataBroadcastCacheBytes:          128 * 1024 * 1024,
+		DataBroadcastCacheMaxAgeDays:     14,
+		DataBroadcastSnapshotMaxAgeHours: 6,
+		MaxConcurrentJobs:                1,
+		EpgRetentionDays:                 3,
+		EpgRetrievalTime:                 600000,
+		EpgStaleAfter:                    7200000,
+		LogoGatherTimeout:                1200000,
+		ServiceScanTimeout:               30000,
 	}
 	err = yaml.Unmarshal(file, &config)
 	if err != nil {
@@ -114,6 +123,9 @@ func LoadAndParseSystemConfig(filePath string) (*SystemConfig, error) {
 	}
 	if config.DataBroadcastCacheMaxAgeDays < 0 {
 		return nil, errors.New("dataBroadcastCacheMaxAgeDays must be >= 0 (0 = unlimited)")
+	}
+	if config.DataBroadcastSnapshotMaxAgeHours < 0 {
+		return nil, errors.New("dataBroadcastSnapshotMaxAgeHours must be >= 0 (0 = unlimited)")
 	}
 	if config.EpgRetrievalTime < 5000 {
 		return nil, errors.New("epgRetrievalTime must be >= 5000")

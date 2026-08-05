@@ -79,6 +79,13 @@ type DecodedModuleStore interface {
 	GetDecodedResources(ModuleVersionKey) ([]ModuleResource, bool)
 }
 
+// ModuleExistenceStore reports whether a completed module is retained without
+// reading its payload. RestoreSnapshot uses this to mark modules complete in a
+// provisional snapshot without paying for a full module read per module.
+type ModuleExistenceStore interface {
+	Has(ModuleCacheKey) bool
+}
+
 type moduleCacheEntry struct {
 	module ts.DSMCCModule
 	used   uint64
@@ -116,6 +123,16 @@ func (c *ModuleCache) Get(key ModuleCacheKey) (ts.DSMCCModule, bool) {
 	entry.used = c.generation
 	c.entries[key] = entry
 	return cloneCachedModule(entry.module), true
+}
+
+func (c *ModuleCache) Has(key ModuleCacheKey) bool {
+	if c == nil {
+		return false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	_, ok := c.entries[key]
+	return ok
 }
 
 func (c *ModuleCache) GetVersion(key ModuleVersionKey) (ts.DSMCCModule, bool) {
@@ -192,12 +209,13 @@ func cloneCachedModule(module ts.DSMCCModule) ts.DSMCCModule {
 // It is deliberately separate from the application's primary database: cache
 // loss must never affect EPG or recording data.
 type SQLiteModuleStore struct {
-	db       *sql.DB
-	queries  *cachedb.Queries
-	maxBytes uint64
-	maxAge   time.Duration
-	touchMu  sync.Mutex
-	touched  map[ModuleCacheKey]time.Time
+	db             *sql.DB
+	queries        *cachedb.Queries
+	maxBytes       uint64
+	maxAge         time.Duration
+	snapshotMaxAge time.Duration
+	touchMu        sync.Mutex
+	touched        map[ModuleCacheKey]time.Time
 }
 
 func NewSQLiteModuleStore(path string, maxBytes uint64) (*SQLiteModuleStore, error) {
@@ -209,6 +227,11 @@ type SQLiteModuleStoreOptions struct {
 	// MaxAge removes modules that have not been accessed within the duration.
 	// A zero duration keeps entries until they are removed by the byte budget.
 	MaxAge time.Duration
+	// SnapshotMaxAge removes provisional PMT/DII snapshots older than the
+	// duration. Snapshots are not counted against MaxBytes, so a zero
+	// duration keeps them indefinitely rather than falling back to a byte
+	// budget.
+	SnapshotMaxAge time.Duration
 }
 
 func NewSQLiteModuleStoreWithOptions(path string, options SQLiteModuleStoreOptions) (*SQLiteModuleStore, error) {
@@ -216,7 +239,7 @@ func NewSQLiteModuleStoreWithOptions(path string, options SQLiteModuleStoreOptio
 	if maxBytes == 0 {
 		maxBytes = DefaultModuleCacheBytes
 	}
-	store, err := openSQLiteModuleStore(path, maxBytes, options.MaxAge)
+	store, err := openSQLiteModuleStore(path, maxBytes, options.MaxAge, options.SnapshotMaxAge)
 	if err == nil || !isSQLiteCorruption(err) || path == ":memory:" || strings.HasPrefix(path, "file:") {
 		return store, err
 	}
@@ -228,20 +251,21 @@ func NewSQLiteModuleStoreWithOptions(path string, options SQLiteModuleStoreOptio
 	if removeErr := removeSQLiteCacheFiles(path); removeErr != nil {
 		return nil, errors.Join(err, removeErr)
 	}
-	return openSQLiteModuleStore(path, maxBytes, options.MaxAge)
+	return openSQLiteModuleStore(path, maxBytes, options.MaxAge, options.SnapshotMaxAge)
 }
 
-func openSQLiteModuleStore(path string, maxBytes uint64, maxAge time.Duration) (*SQLiteModuleStore, error) {
+func openSQLiteModuleStore(path string, maxBytes uint64, maxAge, snapshotMaxAge time.Duration) (*SQLiteModuleStore, error) {
 	db, err := mahirondb.Open(path)
 	if err != nil {
 		return nil, err
 	}
-	store := &SQLiteModuleStore{db: db, queries: cachedb.New(db), maxBytes: maxBytes, maxAge: maxAge, touched: map[ModuleCacheKey]time.Time{}}
+	store := &SQLiteModuleStore{db: db, queries: cachedb.New(db), maxBytes: maxBytes, maxAge: maxAge, snapshotMaxAge: snapshotMaxAge, touched: map[ModuleCacheKey]time.Time{}}
 	if err := cachedb.Migrate(context.Background(), db); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
 	store.prune()
+	store.pruneSnapshots()
 	return store, nil
 }
 
@@ -274,6 +298,14 @@ func (s *SQLiteModuleStore) Get(key ModuleCacheKey) (ts.DSMCCModule, bool) {
 	module.DownloadID, module.ModuleID, module.Version, module.Size = key.DownloadID, key.ModuleID, key.Version, key.Size
 	s.touch(key)
 	return module, true
+}
+
+func (s *SQLiteModuleStore) Has(key ModuleCacheKey) bool {
+	if s == nil || s.db == nil {
+		return false
+	}
+	_, err := s.queries.ModuleExists(context.Background(), cachedb.ModuleExistsParams{ChannelType: key.ChannelType, ChannelID: key.ChannelID, ServiceID: int64(key.ServiceID), ComponentTag: int64(key.ComponentTag), DownloadID: int64(key.DownloadID), ModuleID: int64(key.ModuleID), Version: int64(key.Version), Size: int64(key.Size)})
+	return err == nil
 }
 
 func (s *SQLiteModuleStore) GetVersion(key ModuleVersionKey) (ts.DSMCCModule, bool) {
@@ -455,6 +487,95 @@ func moduleCacheKey(channelType, channelID string, serviceID, componentTag, down
 		return ModuleCacheKey{}, false
 	}
 	return ModuleCacheKey{ChannelType: channelType, ChannelID: channelID, ServiceID: uint16(serviceID), ComponentTag: byte(componentTag), DownloadID: uint32(downloadID), ModuleID: uint16(moduleID), Version: byte(version), Size: uint32(size)}, true
+}
+
+// PutSnapshot persists the raw PMT and per-component DII sections needed to
+// reconstruct a provisional snapshot. Components no longer present in the new
+// PMT are removed so a stale carousel cannot outlive the component it
+// belonged to.
+func (s *SQLiteModuleStore) PutSnapshot(channelType, channelID string, service PersistedService) error {
+	if s == nil || s.db == nil {
+		return nil
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	queries := s.queries.WithTx(tx)
+	ctx := context.Background()
+	now := time.Now().Unix()
+	// SQLite maps a nil slice to NULL, while the cache schema requires BLOB
+	// values (see the same normalization for module Info in Put).
+	pmtSection := service.PMTSection
+	if pmtSection == nil {
+		pmtSection = []byte{}
+	}
+	if err := queries.UpsertSnapshot(ctx, cachedb.UpsertSnapshotParams{ChannelType: channelType, ChannelID: channelID, ServiceID: int64(service.ServiceID), PmtSection: pmtSection, StoredAt: now}); err != nil {
+		return err
+	}
+	existingTags, err := queries.ListSnapshotCarouselComponentTags(ctx, cachedb.ListSnapshotCarouselComponentTagsParams{ChannelType: channelType, ChannelID: channelID, ServiceID: int64(service.ServiceID)})
+	if err != nil {
+		return err
+	}
+	keep := make(map[int64]bool, len(service.Carousels))
+	for _, carousel := range service.Carousels {
+		keep[int64(carousel.ComponentTag)] = true
+		diiSection := carousel.DIISection
+		if diiSection == nil {
+			diiSection = []byte{}
+		}
+		if err := queries.UpsertSnapshotCarousel(ctx, cachedb.UpsertSnapshotCarouselParams{ChannelType: channelType, ChannelID: channelID, ServiceID: int64(service.ServiceID), ComponentTag: int64(carousel.ComponentTag), Pid: int64(carousel.PID), DiiSection: diiSection, StoredAt: now}); err != nil {
+			return err
+		}
+	}
+	for _, tag := range existingTags {
+		if keep[tag] {
+			continue
+		}
+		if err := queries.DeleteSnapshotCarousel(ctx, cachedb.DeleteSnapshotCarouselParams{ChannelType: channelType, ChannelID: channelID, ServiceID: int64(service.ServiceID), ComponentTag: tag}); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	s.pruneSnapshots()
+	return nil
+}
+
+// GetSnapshot returns the persisted PMT/DII sections for a service, if any.
+func (s *SQLiteModuleStore) GetSnapshot(channelType, channelID string, serviceID uint16) (PersistedService, bool) {
+	if s == nil || s.db == nil {
+		return PersistedService{}, false
+	}
+	ctx := context.Background()
+	row, err := s.queries.GetSnapshot(ctx, cachedb.GetSnapshotParams{ChannelType: channelType, ChannelID: channelID, ServiceID: int64(serviceID)})
+	if err != nil {
+		return PersistedService{}, false
+	}
+	rows, err := s.queries.GetSnapshotCarousels(ctx, cachedb.GetSnapshotCarouselsParams{ChannelType: channelType, ChannelID: channelID, ServiceID: int64(serviceID)})
+	if err != nil {
+		return PersistedService{}, false
+	}
+	carousels := make([]PersistedCarousel, 0, len(rows))
+	for _, carouselRow := range rows {
+		if carouselRow.ComponentTag < 0 || carouselRow.ComponentTag > int64(^byte(0)) || carouselRow.Pid < 0 || carouselRow.Pid > int64(^uint16(0)) {
+			continue
+		}
+		carousels = append(carousels, PersistedCarousel{ComponentTag: byte(carouselRow.ComponentTag), PID: uint16(carouselRow.Pid), DIISection: carouselRow.DiiSection})
+	}
+	return PersistedService{ServiceID: serviceID, PMTSection: row.PmtSection, Carousels: carousels, StoredAt: row.StoredAt}, true
+}
+
+func (s *SQLiteModuleStore) pruneSnapshots() {
+	if s == nil || s.db == nil || s.snapshotMaxAge <= 0 {
+		return
+	}
+	cutoff := time.Now().Add(-s.snapshotMaxAge).Unix()
+	ctx := context.Background()
+	_ = s.queries.DeleteExpiredSnapshots(ctx, cutoff)
+	_ = s.queries.DeleteExpiredSnapshotCarousels(ctx, cutoff)
 }
 
 func (s *SQLiteModuleStore) Close() error {

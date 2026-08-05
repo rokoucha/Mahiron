@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -55,6 +56,41 @@ func TestDataBroadcastCachedModuleOutlivesSession(t *testing.T) {
 	module, ok := manager.DataBroadcastCachedModule("GR", "27", 101, 0x40, 7, 2, 3)
 	if !ok || string(module.Data) != "data" || module.ETag == "" {
 		t.Fatalf("module = %#v, found = %v", module, ok)
+	}
+}
+
+func TestDataBroadcastProvisionalSnapshotUsesConfiguredSnapshotStore(t *testing.T) {
+	store, err := databroadcast.NewSQLiteModuleStore(filepath.Join(t.TempDir(), "cache.sqlite3"), 1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	if err := store.PutSnapshot("GR", "27", databroadcast.PersistedService{ServiceID: 101}); err != nil {
+		t.Fatal(err)
+	}
+	manager := NewStreamManager(StreamManagerConfig{ModuleStore: store, SnapshotStore: store})
+	snapshot, storedAt, found := manager.DataBroadcastProvisionalSnapshot("GR", "27", 101)
+	if !found || storedAt == 0 || snapshot.ServiceID != 101 {
+		t.Fatalf("snapshot = %#v, storedAt = %d, found = %v", snapshot, storedAt, found)
+	}
+}
+
+func TestDataBroadcastProvisionalSnapshotNotFoundWithoutSnapshotStore(t *testing.T) {
+	manager := NewStreamManager(StreamManagerConfig{ModuleStore: databroadcast.NewModuleCache(1024)})
+	if _, _, found := manager.DataBroadcastProvisionalSnapshot("GR", "27", 101); found {
+		t.Fatal("expected no provisional snapshot without a configured SnapshotStore")
+	}
+}
+
+func TestDataBroadcastProvisionalSnapshotMissingReturnsNotFound(t *testing.T) {
+	store, err := databroadcast.NewSQLiteModuleStore(filepath.Join(t.TempDir(), "cache.sqlite3"), 1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	manager := NewStreamManager(StreamManagerConfig{ModuleStore: store, SnapshotStore: store})
+	if _, _, found := manager.DataBroadcastProvisionalSnapshot("GR", "27", 101); found {
+		t.Fatal("expected no provisional snapshot when nothing was ever persisted")
 	}
 }
 

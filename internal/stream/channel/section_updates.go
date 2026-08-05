@@ -1,11 +1,14 @@
 package channel
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"log/slog"
+	"time"
 
 	"github.com/21S1298001/mahiron/internal/observability"
+	"github.com/21S1298001/mahiron/internal/stream/databroadcast"
 	"github.com/21S1298001/mahiron/ts"
 )
 
@@ -25,6 +28,12 @@ const carouselQueueSize = 256
 const dataBroadcastQueueSize = 1024
 const dataBroadcastPriorityQueueSize = 256
 const dataBroadcastPriorityBurst = 8
+
+// dataBroadcastSnapshotFlushInterval bounds how stale a persisted provisional
+// snapshot can be. It is a periodic sweep rather than an event-driven queue:
+// PMT/DII sections rarely change once a service is stable, so most ticks scan
+// unchanged state and write nothing.
+const dataBroadcastSnapshotFlushInterval = 30 * time.Second
 
 // EITSectionUpdater persists EIT sections observed on the stream.
 type EITSectionUpdater interface {
@@ -159,6 +168,63 @@ func (s *Session) nextDataBroadcastSection(ctx context.Context, priorityBurst *i
 func (s *Session) observeQueuedDDB(section ts.PIDSection) {
 	s.dataBroadcast.Observe(section)
 	s.dataBroadcastWG.Done()
+}
+
+// runDataBroadcastSnapshotPersist periodically writes the current PMT/DII
+// state to the snapshot store so a future GetOrCreate for this channel can
+// serve a provisional /state response before a tuner is reacquired. It runs
+// even when no store is configured so its done channel is always closed,
+// keeping worker start/stop symmetric with the other two update workers.
+func (s *Session) runDataBroadcastSnapshotPersist(ctx context.Context, done chan struct{}) {
+	defer close(done)
+	if s.snapshotStore == nil {
+		<-ctx.Done()
+		return
+	}
+	ticker := time.NewTicker(dataBroadcastSnapshotFlushInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			s.flushDataBroadcastSnapshots()
+			return
+		case <-ticker.C:
+			s.flushDataBroadcastSnapshots()
+		}
+	}
+}
+
+// flushDataBroadcastSnapshots writes only services whose persisted state
+// changed since the last flush. It is called from a single goroutine
+// (runDataBroadcastSnapshotPersist), so lastPersistedSnapshots needs no lock.
+func (s *Session) flushDataBroadcastSnapshots() {
+	if s.dataBroadcast == nil || s.snapshotStore == nil {
+		return
+	}
+	for _, persisted := range s.dataBroadcast.PersistableState() {
+		if previous, ok := s.lastPersistedSnapshots[persisted.ServiceID]; ok && persistedServiceEqual(previous, persisted) {
+			continue
+		}
+		if err := s.snapshotStore.PutSnapshot(s.typ, s.channel, persisted); err != nil {
+			slog.Warn("failed to persist data broadcast snapshot", "type", s.typ, "channel", s.channel, "serviceId", persisted.ServiceID, "err", err)
+			continue
+		}
+		s.lastPersistedSnapshots[persisted.ServiceID] = persisted
+	}
+}
+
+func persistedServiceEqual(a, b databroadcast.PersistedService) bool {
+	if a.ServiceID != b.ServiceID || !bytes.Equal(a.PMTSection, b.PMTSection) || len(a.Carousels) != len(b.Carousels) {
+		return false
+	}
+	for i := range a.Carousels {
+		if a.Carousels[i].ComponentTag != b.Carousels[i].ComponentTag ||
+			a.Carousels[i].PID != b.Carousels[i].PID ||
+			!bytes.Equal(a.Carousels[i].DIISection, b.Carousels[i].DIISection) {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *Session) runSectionUpdates(ctx context.Context, done chan struct{}) {

@@ -150,6 +150,79 @@ func TestGetServiceDataBroadcastStateReturnsAuthoritativeSnapshot(t *testing.T) 
 	}
 }
 
+func TestGetServiceDataBroadcastStateFallsBackToProvisionalSnapshot(t *testing.T) {
+	handler := testProgramHandler(t)
+	handler.streamManager = fakeDataBroadcastStreamManager{
+		provisionalFound:    true,
+		provisionalSnapshot: databroadcast.DataBroadcastSnapshot{ServiceID: 101, Revision: 0},
+		provisionalStoredAt: 1700000000,
+	}
+	rec := httptest.NewRecorder()
+	err := handler.GetServiceDataBroadcastState(context.Background(), apigen.GetServiceDataBroadcastStateParams{ID: 100101}, rec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := rec.Body.String()
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, body)
+	}
+	if !strings.Contains(body, `"origin":"cache"`) || !strings.Contains(body, `"storedAt":1700000000000`) {
+		t.Fatalf("body = %s, want cache origin with millisecond storedAt", body)
+	}
+}
+
+func TestGetServiceDataBroadcastStateReturns404WithoutLiveOrCacheSnapshot(t *testing.T) {
+	handler := testProgramHandler(t)
+	handler.streamManager = fakeDataBroadcastStreamManager{provisionalFound: false}
+	rec := httptest.NewRecorder()
+	err := handler.GetServiceDataBroadcastState(context.Background(), apigen.GetServiceDataBroadcastStateParams{ID: 100101}, rec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", rec.Code)
+	}
+}
+
+func TestGetServiceDataBroadcastStateAllowCacheZeroSkipsProvisionalSnapshot(t *testing.T) {
+	handler := testProgramHandler(t)
+	handler.streamManager = fakeDataBroadcastStreamManager{
+		provisionalFound:    true,
+		provisionalSnapshot: databroadcast.DataBroadcastSnapshot{ServiceID: 101},
+		provisionalStoredAt: 1700000000,
+	}
+	params := apigen.GetServiceDataBroadcastStateParams{ID: 100101}
+	params.AllowCache.SetTo(0)
+	rec := httptest.NewRecorder()
+	err := handler.GetServiceDataBroadcastState(context.Background(), params, rec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404 when allowCache=0 forbids the cache fallback", rec.Code)
+	}
+}
+
+func TestGetServiceDataBroadcastStateLiveSessionTakesPriorityOverCache(t *testing.T) {
+	handler := testProgramHandler(t)
+	handler.streamManager = fakeDataBroadcastStreamManager{
+		session:             fakeDataBroadcastSession{},
+		existing:            true,
+		provisionalFound:    true,
+		provisionalSnapshot: databroadcast.DataBroadcastSnapshot{ServiceID: 101},
+		provisionalStoredAt: 1700000000,
+	}
+	rec := httptest.NewRecorder()
+	err := handler.GetServiceDataBroadcastState(context.Background(), apigen.GetServiceDataBroadcastStateParams{ID: 100101}, rec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := rec.Body.String()
+	if rec.Code != http.StatusOK || !strings.Contains(body, `"origin":"live"`) || strings.Contains(body, `"origin":"cache"`) {
+		t.Fatalf("status = %d, body = %s, want live origin when a session exists", rec.Code, body)
+	}
+}
+
 func TestGetServiceDataBroadcastModuleVersionUsesImmutableURL(t *testing.T) {
 	handler := testProgramHandler(t)
 	module := databroadcast.DataBroadcastModule{ComponentTag: 0x40, DownloadID: 7, ModuleID: 2, Version: 3, ETag: `"dsmcc-test"`, Data: []byte("Content-Type: multipart/mixed; boundary=x\r\n\r\n--x\r\nContent-Location: startup.bml\r\nContent-Type: text/bml\r\n\r\nmodule\r\n--x--\r\n")}
@@ -268,12 +341,19 @@ func TestGetServiceDataBroadcastModuleVersionRejectsResourceLimit(t *testing.T) 
 }
 
 type fakeDataBroadcastStreamManager struct {
-	err             error
-	existing        bool
-	session         fakeDataBroadcastSession
-	cachedModule    databroadcast.DataBroadcastModule
-	cachedResources []databroadcast.ModuleResource
-	evicted         bool
+	err                 error
+	existing            bool
+	session             fakeDataBroadcastSession
+	cachedModule        databroadcast.DataBroadcastModule
+	cachedResources     []databroadcast.ModuleResource
+	evicted             bool
+	provisionalFound    bool
+	provisionalSnapshot databroadcast.DataBroadcastSnapshot
+	provisionalStoredAt int64
+}
+
+func (m fakeDataBroadcastStreamManager) DataBroadcastProvisionalSnapshot(string, string, uint16) (databroadcast.DataBroadcastSnapshot, int64, bool) {
+	return m.provisionalSnapshot, m.provisionalStoredAt, m.provisionalFound
 }
 
 func (m fakeDataBroadcastStreamManager) GetOrCreate(context.Context, string, string) (stream.Session, error) {

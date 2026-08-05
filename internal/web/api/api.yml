@@ -618,6 +618,13 @@ paths:
         URL fields in the payload are absolute paths rooted at the API mount;
         clients deployed through a subpath proxy should construct request URLs
         from the endpoint paths instead.
+        When no tuner is currently allocated for this channel, the response
+        may be a provisional snapshot rebuilt from the last persisted PMT/DII
+        state (origin "cache") instead of live state (origin "live"). A cache
+        snapshot always has programInfo, currentTime, and pcr set to null,
+        since those are clock/schedule samples rather than carousel state and
+        a stale value would be misleading. Pass allowCache=0 to require live
+        state, returning 404 instead of a cache snapshot.
       tags:
         - services
         - stream
@@ -630,6 +637,12 @@ paths:
             maximum: 6553565535
             type: integer
             format: int64
+        - name: allowCache
+          in: query
+          schema:
+            maximum: 1
+            minimum: 0
+            type: integer
       responses:
         "200":
           description: OK

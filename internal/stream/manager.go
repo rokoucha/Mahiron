@@ -36,6 +36,7 @@ type StreamManager struct {
 	registry              *sessionRegistry
 	sources               *source.Pool
 	dataBroadcastStore    databroadcast.ModuleStore
+	snapshotStore         databroadcast.SnapshotStore
 }
 
 // RemoteTunerStatus identifies a tuner that belongs to a configured remote
@@ -55,6 +56,10 @@ type StreamManagerConfig struct {
 	ServiceLister      ServiceLister
 	TunerManager       source.TunerManager
 	ModuleStore        databroadcast.ModuleStore
+	// SnapshotStore persists raw PMT/DII sections for provisional /state
+	// responses. A nil store disables the feature entirely, independent of
+	// whether ModuleStore supports the SnapshotStore interface.
+	SnapshotStore databroadcast.SnapshotStore
 }
 
 type Session interface {
@@ -105,6 +110,7 @@ func NewStreamManager(cfg StreamManagerConfig) *StreamManager {
 		registry:           newSessionRegistry(),
 		sources:            source.NewPool(cfg.Channels, cfg.TunerManager, descramblerFactory, remoteClients(remotes)),
 		dataBroadcastStore: moduleStoreOrDefault(cfg.ModuleStore),
+		snapshotStore:      cfg.SnapshotStore,
 	}
 }
 
@@ -285,6 +291,24 @@ func (m *StreamManager) DataBroadcastCachedModule(channelType, channelID string,
 		return databroadcast.DataBroadcastModule{}, false
 	}
 	return databroadcast.CompletedModule(componentTag, module), true
+}
+
+// DataBroadcastProvisionalSnapshot reconstructs a data-broadcast snapshot from
+// persisted PMT/DII sections without allocating a tuner. It is used by the
+// /state endpoint when no live channel session exists, so a client can render
+// a service's last-known carousel state while a session is (re)acquired.
+// storedAt is the unix time (seconds) the underlying PMT/DII sections were
+// last observed live.
+func (m *StreamManager) DataBroadcastProvisionalSnapshot(channelType, channelID string, serviceID uint16) (snapshot databroadcast.DataBroadcastSnapshot, storedAt int64, found bool) {
+	if m == nil || m.snapshotStore == nil {
+		return databroadcast.DataBroadcastSnapshot{}, 0, false
+	}
+	persisted, ok := m.snapshotStore.GetSnapshot(channelType, channelID, serviceID)
+	if !ok {
+		return databroadcast.DataBroadcastSnapshot{}, 0, false
+	}
+	existence, _ := m.dataBroadcastStore.(databroadcast.ModuleExistenceStore)
+	return databroadcast.RestoreSnapshot(channelType, channelID, persisted, existence), persisted.StoredAt, true
 }
 
 // DataBroadcastModuleWasEvicted reports whether the cache previously held the

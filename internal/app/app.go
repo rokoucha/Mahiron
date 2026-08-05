@@ -153,20 +153,26 @@ func buildRuntime(cfg *config.Config, database *sql.DB, obs observability.SetupR
 
 	cachePath := cfg.System.DataBroadcastCachePath
 	dataBroadcastStore, err := databroadcast.NewSQLiteModuleStoreWithOptions(cachePath, databroadcast.SQLiteModuleStoreOptions{
-		MaxBytes: cfg.System.DataBroadcastCacheBytes,
-		MaxAge:   time.Duration(cfg.System.DataBroadcastCacheMaxAgeDays) * 24 * time.Hour,
+		MaxBytes:       cfg.System.DataBroadcastCacheBytes,
+		MaxAge:         time.Duration(cfg.System.DataBroadcastCacheMaxAgeDays) * 24 * time.Hour,
+		SnapshotMaxAge: time.Duration(cfg.System.DataBroadcastSnapshotMaxAgeHours) * time.Hour,
 	})
 	if err != nil {
 		slog.Warn("failed to open data broadcast cache; using memory cache", "err", err)
 	}
 	var moduleStore databroadcast.ModuleStore
+	var snapshotStore databroadcast.SnapshotStore
 	if err == nil {
 		moduleStore = dataBroadcastStore
+		if config.IsDataBroadcastSnapshotEnabled(*cfg.System) {
+			snapshotStore = dataBroadcastStore
+		}
 	}
 	streams := stream.NewStreamManager(stream.StreamManagerConfig{
 		Channels:       cfg.Channels,
 		Remotes:        cfg.Remotes,
 		EITUpdater:     epgUpdater,
+		SnapshotStore:  snapshotStore,
 		LogoUpdater:    services,
 		ProgramUpdater: programs,
 		ServiceLister:  services,

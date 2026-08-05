@@ -3937,7 +3937,8 @@ func decodeGetServiceDataBroadcastModuleVersionParams(args [5]string, argsEscape
 
 // GetServiceDataBroadcastStateParams is parameters of getServiceDataBroadcastState operation.
 type GetServiceDataBroadcastStateParams struct {
-	ID int64
+	ID         int64
+	AllowCache OptInt `json:",omitempty,omitzero"`
 }
 
 func unpackGetServiceDataBroadcastStateParams(packed middleware.Parameters) (params GetServiceDataBroadcastStateParams) {
@@ -3948,10 +3949,20 @@ func unpackGetServiceDataBroadcastStateParams(packed middleware.Parameters) (par
 		}
 		params.ID = packed[key].(int64)
 	}
+	{
+		key := middleware.ParameterKey{
+			Name: "allowCache",
+			In:   "query",
+		}
+		if v, ok := packed[key]; ok {
+			params.AllowCache = v.(OptInt)
+		}
+	}
 	return params
 }
 
 func decodeGetServiceDataBroadcastStateParams(args [1]string, argsEscaped bool, r *http.Request) (params GetServiceDataBroadcastStateParams, _ error) {
+	q := uri.NewQueryDecoder(r.URL.Query())
 	// Decode path: id.
 	if err := func() error {
 		param := args[0]
@@ -4012,6 +4023,72 @@ func decodeGetServiceDataBroadcastStateParams(args [1]string, argsEscaped bool, 
 		return params, &ogenerrors.DecodeParamError{
 			Name: "id",
 			In:   "path",
+			Err:  err,
+		}
+	}
+	// Decode query: allowCache.
+	if err := func() error {
+		cfg := uri.QueryParameterDecodingConfig{
+			Name:    "allowCache",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.HasParam(cfg); err == nil {
+			if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
+				var paramsDotAllowCacheVal int
+				if err := func() error {
+					val, err := d.DecodeValue()
+					if err != nil {
+						return err
+					}
+
+					c, err := conv.ToInt(val)
+					if err != nil {
+						return err
+					}
+
+					paramsDotAllowCacheVal = c
+					return nil
+				}(); err != nil {
+					return err
+				}
+				params.AllowCache.SetTo(paramsDotAllowCacheVal)
+				return nil
+			}); err != nil {
+				return err
+			}
+			if err := func() error {
+				if value, ok := params.AllowCache.Get(); ok {
+					if err := func() error {
+						if err := (validate.Int{
+							MinSet:        true,
+							Min:           0,
+							MaxSet:        true,
+							Max:           1,
+							MinExclusive:  false,
+							MaxExclusive:  false,
+							MultipleOfSet: false,
+							MultipleOf:    0,
+							Pattern:       nil,
+						}).Validate(int64(value)); err != nil {
+							return errors.Wrap(err, "int")
+						}
+						return nil
+					}(); err != nil {
+						return err
+					}
+				}
+				return nil
+			}(); err != nil {
+				return err
+			}
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "allowCache",
+			In:   "query",
 			Err:  err,
 		}
 	}

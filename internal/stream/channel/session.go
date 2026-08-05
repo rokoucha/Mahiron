@@ -40,6 +40,9 @@ type Session struct {
 	dataBroadcastWG            sync.WaitGroup
 	sectionUpdateMu            sync.Mutex
 	eitPFFingerprints          map[eitPFSectionKey]uint32
+	snapshotStore              databroadcast.SnapshotStore
+	snapshotPersistDone        chan struct{}
+	lastPersistedSnapshots     map[uint16]databroadcast.PersistedService
 }
 
 // ChannelSession is the shared TS streaming, demux, and data-broadcast
@@ -57,6 +60,10 @@ type Config struct {
 	Type        string
 	ModuleCache *databroadcast.ModuleCache
 	ModuleStore databroadcast.ModuleStore
+	// SnapshotStore persists raw PMT/DII sections so a provisional snapshot
+	// can be served before a tuner is acquired for this channel again. A nil
+	// store disables the persistence worker.
+	SnapshotStore databroadcast.SnapshotStore
 }
 
 func NewSession(config Config) *Session {
@@ -68,15 +75,17 @@ func NewSession(config Config) *Session {
 		input = localBroadcastInput{config.Broadcast}
 	}
 	session := &Session{
-		input:         input,
-		handle:        config.Handle,
-		channel:       config.Channel,
-		descrambler:   config.Descrambler,
-		typ:           config.Type,
-		eitUpdater:    config.EITUpdater,
-		logoUpdater:   config.LogoUpdater,
-		logoCarousel:  ts.NewDSMCCLogoCarousel(),
-		dataBroadcast: databroadcast.NewDataBroadcastHub().WithMetricLabels(config.Type, config.Channel).WithModuleStore(moduleStore(config)),
+		input:                  input,
+		handle:                 config.Handle,
+		channel:                config.Channel,
+		descrambler:            config.Descrambler,
+		typ:                    config.Type,
+		eitUpdater:             config.EITUpdater,
+		logoUpdater:            config.LogoUpdater,
+		logoCarousel:           ts.NewDSMCCLogoCarousel(),
+		dataBroadcast:          databroadcast.NewDataBroadcastHub().WithMetricLabels(config.Type, config.Channel).WithModuleStore(moduleStore(config)),
+		snapshotStore:          config.SnapshotStore,
+		lastPersistedSnapshots: map[uint16]databroadcast.PersistedService{},
 	}
 	session.sectionQueue = make(chan ts.Section, sectionQueueSize)
 	session.carouselQueue = make(chan ts.Section, carouselQueueSize)
@@ -302,6 +311,7 @@ func (s *Session) stopSectionUpdates() {
 	cancel := s.sectionCancel
 	done := s.sectionDone
 	dataBroadcastDone := s.dataBroadcastDone
+	snapshotPersistDone := s.snapshotPersistDone
 	s.sectionCancel = nil
 	s.mu.Unlock()
 	if cancel != nil {
@@ -313,6 +323,9 @@ func (s *Session) stopSectionUpdates() {
 	if dataBroadcastDone != nil {
 		<-dataBroadcastDone
 	}
+	if snapshotPersistDone != nil {
+		<-snapshotPersistDone
+	}
 }
 
 func (s *Session) startUpdateWorkersLocked() {
@@ -323,10 +336,13 @@ func (s *Session) startUpdateWorkersLocked() {
 	s.sectionCancel = cancel
 	sectionDone := make(chan struct{})
 	dataBroadcastDone := make(chan struct{})
+	snapshotPersistDone := make(chan struct{})
 	s.sectionDone = sectionDone
 	s.dataBroadcastDone = dataBroadcastDone
+	s.snapshotPersistDone = snapshotPersistDone
 	go s.runSectionUpdates(ctx, sectionDone)
 	go s.runDataBroadcastUpdates(ctx, dataBroadcastDone)
+	go s.runDataBroadcastSnapshotPersist(ctx, snapshotPersistDone)
 }
 
 var (
