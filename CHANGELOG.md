@@ -1,5 +1,21 @@
 # Changelog
 
+## [v5.0.14](https://github.com/rokoucha/Mahiron/compare/v5.0.13...v5.0.14) - 2026-08-06
+
+- Safariでfaviconが正しく表示されるようにする by @rokoucha in https://github.com/rokoucha/Mahiron/pull/75
+- Update dependency eslint to v10.8.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/77
+- Update dependency globals to v17.8.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/78
+- Update dependency @vitejs/plugin-react to v6.0.5 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/79
+- Update dependency typescript-eslint to v8.65.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/80
+- Update react monorepo by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/81
+- Update dependency vite to v8.2.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/82
+- Update dependency globals to v17.9.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/83
+- Update docker/login-action action to v4.6.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/84
+- Fix session worker restart race condition by @rokoucha in https://github.com/rokoucha/Mahiron/pull/86
+- Serve a provisional data-broadcast snapshot before a tuner is acquired by @rokoucha in https://github.com/rokoucha/Mahiron/pull/85
+- Recover data-broadcast modules evicted from the persistent cache by @rokoucha in https://github.com/rokoucha/Mahiron/pull/87
+- Deliver shared-PID carousel sections to every referencing service by @rokoucha in https://github.com/rokoucha/Mahiron/pull/88
+
 ## [v5.0.13](https://github.com/rokoucha/Mahiron/compare/v5.0.12...v5.0.13) - 2026-07-30
 
 - Prevent silent stream fanout drops by @rokoucha in https://github.com/rokoucha/Mahiron/pull/72
