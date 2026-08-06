@@ -32,6 +32,35 @@ func TestSubscriberOverflowClosesConnectionForSnapshotReconnect(t *testing.T) {
 	}
 }
 
+// TestSharedCarouselPIDDeliversToAllServices reproduces the TOKYO MX layout
+// where sibling services (MX1/MX2) reference the same data-carousel ES PID in
+// their PMTs. Every DII/DDB section on that PID must reach every referencing
+// service's carousel: delivering each section to just one arbitrary service
+// splits the block stream between carousels, so no service ever assembles a
+// complete module.
+func TestSharedCarouselPIDDeliversToAllServices(t *testing.T) {
+	hub := NewDataBroadcastHub()
+	const carouselPID uint16 = 2400
+	const componentTag byte = 0x60
+	serviceIDs := []uint16{23608, 23610}
+	hub.Observe(ts.PIDSection{PID: 0x101, Section: ts.Section(provisionalTestBuildPMT(serviceIDs[0], carouselPID, componentTag))})
+	hub.Observe(ts.PIDSection{PID: 0x103, Section: ts.Section(provisionalTestBuildPMT(serviceIDs[1], carouselPID, componentTag))})
+	hub.Observe(ts.PIDSection{PID: carouselPID, Section: ts.Section(provisionalTestBuildDII(1, 4, 2, 4, 3, nil))})
+	hub.Observe(ts.PIDSection{PID: carouselPID, Section: ts.Section(sharedPIDTestBuildDDB(1, 2, 3, 0, []byte("data")))})
+	for _, serviceID := range serviceIDs {
+		got, ok := hub.ModuleVersion(serviceID, componentTag, 1, 2, 3)
+		if !ok || string(got.Data) != "data" {
+			t.Fatalf("service %d: module = %#v, found = %v, want completed module", serviceID, got, ok)
+		}
+	}
+}
+
+func sharedPIDTestBuildDDB(downloadID uint32, moduleID uint16, version byte, blockNumber uint16, data []byte) []byte {
+	body := []byte{byte(moduleID >> 8), byte(moduleID), version, 0, byte(blockNumber >> 8), byte(blockNumber)}
+	body = append(body, data...)
+	return provisionalTestBuildDSMCCSection(ts.TableIDDSMCCDDB, 0x1003, downloadID, body)
+}
+
 func TestDIIReturnToEntry(t *testing.T) {
 	if value := diiReturnToEntry([]byte{0xf0, 1, 0x80}); value == nil || !*value {
 		t.Fatalf("return-to-entry = %v, want true", value)

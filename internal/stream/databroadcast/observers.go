@@ -163,16 +163,10 @@ func (h *DataBroadcastHub) observeES(section ts.PIDSection) {
 	if err != nil || !stream.CurrentNext {
 		return
 	}
-	h.mu.Lock()
-	serviceID, componentTag, _, ok := h.carouselByPIDLocked(section.PID)
-	if !ok {
-		h.mu.Unlock()
-		return
-	}
-	e := &DataBroadcastESEvent{ComponentTag: componentTag, DataEventID: stream.DataEventID, EventMessageGroupID: stream.EventMessageGroupID, Version: stream.VersionNumber, SectionNumber: stream.SectionNumber, RawSectionHex: hex.EncodeToString(section.Section)}
+	events := make([]DataBroadcastGeneralEvent, 0, len(stream.Descriptors))
 	for _, descriptor := range stream.Descriptors {
 		if reference, ok := ts.ParseDSMCCNPTReference(descriptor); ok {
-			e.Events = append(e.Events, DataBroadcastGeneralEvent{Type: "nptReference", NPTReference: &DataBroadcastNPTReference{PostDiscontinuityIndicator: reference.PostDiscontinuityIndicator, DSMContentID: reference.DSMContentID, STCReference: reference.STCReference, NPTReference: reference.NPTReference, ScaleNumerator: reference.ScaleNumerator, ScaleDenominator: reference.ScaleDenominator}})
+			events = append(events, DataBroadcastGeneralEvent{Type: "nptReference", NPTReference: &DataBroadcastNPTReference{PostDiscontinuityIndicator: reference.PostDiscontinuityIndicator, DSMContentID: reference.DSMContentID, STCReference: reference.STCReference, NPTReference: reference.NPTReference, ScaleNumerator: reference.ScaleNumerator, ScaleDenominator: reference.ScaleDenominator}})
 			continue
 		}
 		item, ok := ts.ParseDSMCCGeneralEvent(descriptor)
@@ -190,9 +184,13 @@ func (h *DataBroadcastHub) observeES(section ts.PIDSection) {
 		if npt, ok := item.EventMessageNPT(); ok {
 			event.EventMessageNPT = ptr(npt)
 		}
-		e.Events = append(e.Events, event)
+		events = append(events, event)
 	}
-	h.broadcastLocked(serviceID, DataBroadcastEvent{Type: "esEventUpdated", ESEvent: e})
+	h.mu.Lock()
+	for _, ref := range h.carouselsByPIDLocked(section.PID) {
+		e := &DataBroadcastESEvent{ComponentTag: ref.componentTag, DataEventID: stream.DataEventID, EventMessageGroupID: stream.EventMessageGroupID, Version: stream.VersionNumber, SectionNumber: stream.SectionNumber, RawSectionHex: hex.EncodeToString(section.Section), Events: events}
+		h.broadcastLocked(ref.serviceID, DataBroadcastEvent{Type: "esEventUpdated", ESEvent: e})
+	}
 	h.mu.Unlock()
 }
 
@@ -203,18 +201,30 @@ func (h *DataBroadcastHub) observeDII(section ts.PIDSection) {
 		return
 	}
 	h.mu.Lock()
-	serviceID, componentTag, carousel, ok := h.carouselByPIDLocked(section.PID)
-	if !ok {
+	refs := h.carouselsByPIDLocked(section.PID)
+	if len(refs) == 0 {
 		h.mu.Unlock()
 		h.recordCarousel("dii", "unmapped")
 		return
 	}
+	results := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		results = append(results, h.observeDIIForServiceLocked(ref, dii, section))
+	}
+	h.mu.Unlock()
+	for _, result := range results {
+		h.recordCarousel("dii", result)
+	}
+}
+
+// observeDIIForServiceLocked applies one parsed DII to a single service's
+// carousel and returns the metric result for that delivery.
+func (h *DataBroadcastHub) observeDIIForServiceLocked(ref dataBroadcastCarouselRef, dii *ts.DSMCCDII, section ts.PIDSection) string {
+	serviceID, componentTag, carousel := ref.serviceID, ref.componentTag, ref.carousel
 	service := h.services[serviceID]
 	diiSection := string(section.Section)
 	if service.diiSections[componentTag] == diiSection {
-		h.mu.Unlock()
-		h.recordCarousel("dii", "duplicate")
-		return
+		return "duplicate"
 	}
 	service.diiSections[componentTag] = diiSection
 	infos := carousel.ObserveDII(dii)
@@ -304,8 +314,7 @@ func (h *DataBroadcastHub) observeDII(section ts.PIDSection) {
 	for i := range restored {
 		h.broadcastLocked(serviceID, DataBroadcastEvent{Type: "moduleUpdated", Module: &restored[i]})
 	}
-	h.mu.Unlock()
-	h.recordCarousel("dii", "accepted")
+	return "accepted"
 }
 
 func diiReturnToEntry(privateData []byte) *bool {
@@ -331,21 +340,43 @@ func (h *DataBroadcastHub) observeDDB(section ts.PIDSection) {
 		return
 	}
 	h.mu.Lock()
-	serviceID, componentTag, carousel, ok := h.carouselByPIDLocked(section.PID)
-	if !ok {
+	refs := h.carouselsByPIDLocked(section.PID)
+	if len(refs) == 0 {
 		h.mu.Unlock()
 		h.recordCarousel("ddb", "unmapped")
 		return
 	}
-	module, complete, result, err := carousel.ObserveDDBWithResult(ddb)
-	if err != nil || !complete {
-		h.mu.Unlock()
-		if err != nil {
-			h.recordCarousel("ddb", "error")
-		} else {
-			h.recordCarousel("ddb", string(result))
+	type ddbOutcome struct {
+		result  string
+		started time.Time
+		timed   bool
+	}
+	outcomes := make([]ddbOutcome, 0, len(refs))
+	for _, ref := range refs {
+		result, started, timed := h.observeDDBForServiceLocked(ref, ddb)
+		outcomes = append(outcomes, ddbOutcome{result: result, started: started, timed: timed})
+	}
+	h.mu.Unlock()
+	for _, outcome := range outcomes {
+		h.recordCarousel("ddb", outcome.result)
+		if outcome.timed {
+			observability.RecordDataBroadcastModuleDuration(context.Background(), h.channelType, h.channelID, time.Since(outcome.started).Milliseconds())
 		}
-		return
+	}
+}
+
+// observeDDBForServiceLocked applies one parsed DDB block to a single
+// service's carousel, persisting and broadcasting a completed module for that
+// service. It returns the metric result plus the module's assembly start time
+// when completion was timed.
+func (h *DataBroadcastHub) observeDDBForServiceLocked(ref dataBroadcastCarouselRef, ddb *ts.DSMCCDDB) (string, time.Time, bool) {
+	serviceID, componentTag, carousel := ref.serviceID, ref.componentTag, ref.carousel
+	module, complete, result, err := carousel.ObserveDDBWithResult(ddb)
+	if err != nil {
+		return "error", time.Time{}, false
+	}
+	if !complete {
+		return string(result), time.Time{}, false
 	}
 	key := dataBroadcastModuleKey{componentTag: componentTag, downloadID: module.DownloadID, moduleID: module.ModuleID, version: module.Version}
 	started, timed := h.services[serviceID].moduleStarts[key]
@@ -357,11 +388,7 @@ func (h *DataBroadcastHub) observeDDB(section ts.PIDSection) {
 		}
 	}
 	h.broadcastLocked(serviceID, event)
-	h.mu.Unlock()
-	h.recordCarousel("ddb", "completed")
-	if timed {
-		observability.RecordDataBroadcastModuleDuration(context.Background(), h.channelType, h.channelID, time.Since(started).Milliseconds())
-	}
+	return "completed", started, timed
 }
 
 func (h *DataBroadcastHub) observeEIT(section ts.Section) {
