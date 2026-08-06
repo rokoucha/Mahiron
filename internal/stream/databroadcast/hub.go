@@ -3,6 +3,7 @@ package databroadcast
 import (
 	"context"
 	"path"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -191,23 +192,24 @@ func (h *DataBroadcastHub) DDBPriority(section ts.PIDSection) (priority byte, en
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	_, _, carousel, ok := h.carouselByPIDLocked(section.PID)
-	if !ok {
-		return 0, false
+	for _, ref := range h.carouselsByPIDLocked(section.PID) {
+		info, ok := ref.carousel.ModuleInfo(ddb.ModuleID)
+		if !ok || info.Version != ddb.ModuleVersion {
+			continue
+		}
+		metadata, ok := info.Metadata()
+		if !ok {
+			continue
+		}
+		if metadata.CachingPriority != nil && *metadata.CachingPriority > priority {
+			priority = *metadata.CachingPriority
+		}
+		name := strings.ToLower(path.Base(metadata.Name))
+		if name == "index.bml" || name == "index.xhtml" {
+			entryDocument = true
+		}
 	}
-	info, ok := carousel.ModuleInfo(ddb.ModuleID)
-	if !ok || info.Version != ddb.ModuleVersion {
-		return 0, false
-	}
-	metadata, ok := info.Metadata()
-	if !ok {
-		return 0, false
-	}
-	if metadata.CachingPriority != nil {
-		priority = *metadata.CachingPriority
-	}
-	name := strings.ToLower(path.Base(metadata.Name))
-	return priority, name == "index.bml" || name == "index.xhtml"
+	return priority, entryDocument
 }
 
 // PersistableState returns the raw PMT and per-component DII sections needed
@@ -259,7 +261,21 @@ func (h *DataBroadcastHub) serviceLocked(serviceID uint16) *dataBroadcastService
 	return service
 }
 
-func (h *DataBroadcastHub) carouselByPIDLocked(pid uint16) (uint16, byte, *ts.DSMCCCarousel, bool) {
+// dataBroadcastCarouselRef identifies one service's view of a carousel PID.
+type dataBroadcastCarouselRef struct {
+	serviceID    uint16
+	componentTag byte
+	carousel     *ts.DSMCCCarousel
+}
+
+// carouselsByPIDLocked returns every service that maps pid to a data
+// component. ISDB muxes routinely share one data-carousel ES between sibling
+// services (e.g. TOKYO MX1/MX2 both carry component 0x60 on the same PID), so
+// a section must be delivered to every referencing service: handing it to just
+// one leaves the other services' carousels permanently missing that block.
+// Results are ordered by serviceID so delivery is deterministic.
+func (h *DataBroadcastHub) carouselsByPIDLocked(pid uint16) []dataBroadcastCarouselRef {
+	refs := make([]dataBroadcastCarouselRef, 0, 2)
 	for serviceID, service := range h.services {
 		tag, ok := service.pidToTag[pid]
 		if !ok {
@@ -270,9 +286,10 @@ func (h *DataBroadcastHub) carouselByPIDLocked(pid uint16) (uint16, byte, *ts.DS
 			carousel = ts.NewDSMCCCarousel(ts.DSMCCCarouselLimits{})
 			service.carousels[tag] = carousel
 		}
-		return serviceID, tag, carousel, true
+		refs = append(refs, dataBroadcastCarouselRef{serviceID: serviceID, componentTag: tag, carousel: carousel})
 	}
-	return 0, 0, nil, false
+	slices.SortFunc(refs, func(a, b dataBroadcastCarouselRef) int { return int(a.serviceID) - int(b.serviceID) })
+	return refs
 }
 
 func (h *DataBroadcastHub) broadcastLocked(serviceID uint16, event DataBroadcastEvent) {
