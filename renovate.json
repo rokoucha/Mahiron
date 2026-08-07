@@ -9,14 +9,6 @@
   ],
   "automerge": true,
   "automergeType": "branch",
-  "packageRules": [
-    {
-      "description": "Skip Atlas v1.3.0 because Mahiron fails to start with it",
-      "matchManagers": ["gomod"],
-      "matchPackageNames": ["ariga.io/atlas"],
-      "allowedVersions": "!=1.3.0"
-    }
-  ],
   "lockFileMaintenance": {
     "enabled": true
   },
