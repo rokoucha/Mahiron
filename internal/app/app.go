@@ -81,16 +81,20 @@ func Run(ctx context.Context, args []string) int {
 	}
 	obs := observability.Setup(ctx, cfg.System.Observability, level)
 
+	slog.Info("opening database")
 	database, err := db.Open(cfg.System.DatabasePath)
 	if err != nil {
 		slog.Error("failed to open database", "err", err)
 		return 1
 	}
+	slog.Info("database opened")
 
+	slog.Info("running database migrations")
 	if err := db.Migrate(context.Background(), database); err != nil {
 		slog.Error("failed to run migrations", "err", err)
 		return 1
 	}
+	slog.Info("database migrations completed")
 
 	runtime, errMessage, err := buildRuntime(cfg, database, obs)
 	if err != nil {
