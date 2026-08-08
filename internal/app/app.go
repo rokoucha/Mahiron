@@ -155,14 +155,21 @@ func buildRuntime(cfg *config.Config, database *sql.DB, obs observability.SetupR
 	programs := program.NewProgramManager(programStore, events)
 	epgUpdater := epg.NewUpdater(programs)
 
+	// Opening the cache migrates and prunes it, the only startup step whose
+	// cost grows with stored data. Report how long it took so a slow start is
+	// attributable from the log alone.
 	cachePath := cfg.System.DataBroadcastCachePath
+	slog.Info("opening data broadcast cache", "path", cachePath)
+	cacheOpenedAt := time.Now()
 	dataBroadcastStore, err := databroadcast.NewSQLiteModuleStoreWithOptions(cachePath, databroadcast.SQLiteModuleStoreOptions{
 		MaxBytes:       cfg.System.DataBroadcastCacheBytes,
 		MaxAge:         time.Duration(cfg.System.DataBroadcastCacheMaxAgeDays) * 24 * time.Hour,
 		SnapshotMaxAge: time.Duration(cfg.System.DataBroadcastSnapshotMaxAgeHours) * time.Hour,
 	})
 	if err != nil {
-		slog.Warn("failed to open data broadcast cache; using memory cache", "err", err)
+		slog.Warn("failed to open data broadcast cache; using memory cache", "err", err, "elapsed", time.Since(cacheOpenedAt))
+	} else {
+		slog.Info("data broadcast cache opened", "elapsed", time.Since(cacheOpenedAt))
 	}
 	var moduleStore databroadcast.ModuleStore
 	var snapshotStore databroadcast.SnapshotStore

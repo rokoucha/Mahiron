@@ -441,62 +441,40 @@ func (s *SQLiteModuleStore) WasEvicted(key ModuleVersionKey) bool {
 	return err == nil
 }
 
-func (s *SQLiteModuleStore) prune() {
-	ctx := context.Background()
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return
-	}
-	defer func() { _ = tx.Rollback() }()
+// A module row stores its payload inline, so any plan that scans
+// data_broadcast_modules walks the blob overflow pages of the entire cache: on
+// a full 1 GiB cache that is a gigabyte of reads, which prune() would pay on
+// every startup and on every Put. Each statement below therefore reads modules
+// only through data_broadcast_modules_prune, which covers the byte accounting,
+// the age filter and the eviction order. TestSQLitePruneStatementsAvoidTableScans
+// keeps them that way.
+const (
+	pruneStoredBytesQuery = `SELECT CAST(COALESCE(SUM(stored_bytes), 0) AS INTEGER) FROM data_broadcast_modules`
 
-	maxBytes := int64(s.maxBytes)
-	if s.maxBytes > uint64(^uint64(0)>>1) {
-		maxBytes = int64(^uint64(0) >> 1)
-	}
-	var storedBytes int64
-	if err := tx.QueryRowContext(ctx, `SELECT CAST(COALESCE(SUM(stored_bytes), 0) AS INTEGER) FROM data_broadcast_modules`).Scan(&storedBytes); err != nil {
-		return
-	}
-	hasExpired := false
-	if s.maxAge > 0 {
-		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM data_broadcast_modules WHERE last_accessed < ?)`, time.Now().Add(-s.maxAge).Unix()).Scan(&hasExpired); err != nil {
-			return
-		}
-	}
-	if !hasExpired && storedBytes >= 0 && storedBytes <= maxBytes {
-		_ = tx.Commit()
-		return
-	}
+	pruneHasExpiredQuery = `SELECT EXISTS(SELECT 1 FROM data_broadcast_modules WHERE last_accessed < ?)`
 
-	// Materialize the eviction set once. The old implementation selected and
-	// deleted one module at a time, causing several SQLite commits per module
-	// during startup. Besides being slow, repeatedly calculating SUM over the
-	// remaining cache made large caches increasingly expensive to prune.
-	if _, err := tx.ExecContext(ctx, `CREATE TEMP TABLE IF NOT EXISTS data_broadcast_prune_candidates (
+	pruneCreateCandidates = `CREATE TEMP TABLE IF NOT EXISTS data_broadcast_prune_candidates (
 		channel_type TEXT NOT NULL, channel_id TEXT NOT NULL, service_id INTEGER NOT NULL,
 		component_tag INTEGER NOT NULL, download_id INTEGER NOT NULL, module_id INTEGER NOT NULL,
 		version INTEGER NOT NULL, size INTEGER NOT NULL,
 		PRIMARY KEY (channel_type, channel_id, service_id, component_tag, download_id, module_id, version, size)
-	)`); err != nil {
-		return
-	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM data_broadcast_prune_candidates`); err != nil {
-		return
-	}
-	if s.maxAge > 0 {
-		if _, err := tx.ExecContext(ctx, `
-			INSERT OR IGNORE INTO data_broadcast_prune_candidates
-			SELECT channel_type, channel_id, service_id, component_tag, download_id, module_id, version, size
-			FROM data_broadcast_modules WHERE last_accessed < ?`, time.Now().Add(-s.maxAge).Unix()); err != nil {
-			return
-		}
-	}
+	)`
+
+	pruneClearCandidates = `DELETE FROM data_broadcast_prune_candidates`
+
+	pruneCollectExpired = `
+		INSERT OR IGNORE INTO data_broadcast_prune_candidates
+		SELECT channel_type, channel_id, service_id, component_tag, download_id, module_id, version, size
+		FROM data_broadcast_modules WHERE last_accessed < ?`
 
 	// Retain as many of the newest modules as fit. Everything beyond the byte
-	// budget joins the same eviction set as age-expired modules.
-	if _, err := tx.ExecContext(ctx, `
+	// budget joins the same eviction set as age-expired modules. The window
+	// ordering matches the index, so no sort of the whole cache is needed.
+	pruneCollectOverBudget = `
 		WITH retained AS (
-			SELECT m.* FROM data_broadcast_modules m
+			SELECT m.channel_type, m.channel_id, m.service_id, m.component_tag, m.download_id,
+				m.module_id, m.version, m.size, m.last_accessed, m.stored_bytes
+			FROM data_broadcast_modules m
 			WHERE NOT EXISTS (
 				SELECT 1 FROM data_broadcast_prune_candidates c
 				WHERE c.channel_type=m.channel_type AND c.channel_id=m.channel_id AND c.service_id=m.service_id
@@ -511,7 +489,71 @@ func (s *SQLiteModuleStore) prune() {
 		)
 		INSERT OR IGNORE INTO data_broadcast_prune_candidates
 		SELECT channel_type, channel_id, service_id, component_tag, download_id, module_id, version, size
-		FROM ranked WHERE retained_bytes > ?`, maxBytes); err != nil {
+		FROM ranked WHERE retained_bytes > ?`
+
+	pruneInsertTombstones = `INSERT OR REPLACE INTO data_broadcast_module_tombstones
+		SELECT channel_type, channel_id, service_id, component_tag, download_id, module_id, version, ?
+		FROM data_broadcast_prune_candidates GROUP BY channel_type, channel_id, service_id, component_tag, download_id, module_id, version`
+
+	// Both deletes are driven by the candidate set through a row value so
+	// SQLite searches the target primary key once per evicted module. An EXISTS
+	// correlated on the target scans it instead, costing a full pass over the
+	// cache even when a single module is evicted.
+	pruneDeleteResources = `DELETE FROM data_broadcast_resources WHERE
+		(channel_type, channel_id, service_id, component_tag, download_id, module_id, version, size) IN (
+		SELECT channel_type, channel_id, service_id, component_tag, download_id, module_id, version, size
+		FROM data_broadcast_prune_candidates)`
+
+	pruneDeleteModules = `DELETE FROM data_broadcast_modules WHERE
+		(channel_type, channel_id, service_id, component_tag, download_id, module_id, version, size) IN (
+		SELECT channel_type, channel_id, service_id, component_tag, download_id, module_id, version, size
+		FROM data_broadcast_prune_candidates)`
+)
+
+func (s *SQLiteModuleStore) prune() {
+	ctx := context.Background()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	maxBytes := int64(s.maxBytes)
+	if s.maxBytes > uint64(^uint64(0)>>1) {
+		maxBytes = int64(^uint64(0) >> 1)
+	}
+	var storedBytes int64
+	if err := tx.QueryRowContext(ctx, pruneStoredBytesQuery).Scan(&storedBytes); err != nil {
+		return
+	}
+	expiredBefore := time.Now().Add(-s.maxAge).Unix()
+	hasExpired := false
+	if s.maxAge > 0 {
+		if err := tx.QueryRowContext(ctx, pruneHasExpiredQuery, expiredBefore).Scan(&hasExpired); err != nil {
+			return
+		}
+	}
+	if !hasExpired && storedBytes >= 0 && storedBytes <= maxBytes {
+		_ = tx.Commit()
+		return
+	}
+
+	// Materialize the eviction set once. The old implementation selected and
+	// deleted one module at a time, causing several SQLite commits per module
+	// during startup. Besides being slow, repeatedly calculating SUM over the
+	// remaining cache made large caches increasingly expensive to prune.
+	if _, err := tx.ExecContext(ctx, pruneCreateCandidates); err != nil {
+		return
+	}
+	if _, err := tx.ExecContext(ctx, pruneClearCandidates); err != nil {
+		return
+	}
+	if s.maxAge > 0 {
+		if _, err := tx.ExecContext(ctx, pruneCollectExpired, expiredBefore); err != nil {
+			return
+		}
+	}
+	if _, err := tx.ExecContext(ctx, pruneCollectOverBudget, maxBytes); err != nil {
 		return
 	}
 
@@ -520,19 +562,9 @@ func (s *SQLiteModuleStore) prune() {
 		query string
 		args  []any
 	}{
-		{`INSERT OR REPLACE INTO data_broadcast_module_tombstones
-			SELECT channel_type, channel_id, service_id, component_tag, download_id, module_id, version, ?
-			FROM data_broadcast_prune_candidates GROUP BY channel_type, channel_id, service_id, component_tag, download_id, module_id, version`, []any{now}},
-		{`DELETE FROM data_broadcast_resources AS r WHERE EXISTS (
-			SELECT 1 FROM data_broadcast_prune_candidates c
-			WHERE c.channel_type=r.channel_type AND c.channel_id=r.channel_id AND c.service_id=r.service_id
-			AND c.component_tag=r.component_tag AND c.download_id=r.download_id AND c.module_id=r.module_id
-			AND c.version=r.version AND c.size=r.size)`, nil},
-		{`DELETE FROM data_broadcast_modules AS m WHERE EXISTS (
-			SELECT 1 FROM data_broadcast_prune_candidates c
-			WHERE c.channel_type=m.channel_type AND c.channel_id=m.channel_id AND c.service_id=m.service_id
-			AND c.component_tag=m.component_tag AND c.download_id=m.download_id AND c.module_id=m.module_id
-			AND c.version=m.version AND c.size=m.size)`, nil},
+		{pruneInsertTombstones, []any{now}},
+		{pruneDeleteResources, nil},
+		{pruneDeleteModules, nil},
 	}
 	for _, statement := range statements {
 		if _, err := tx.ExecContext(ctx, statement.query, statement.args...); err != nil {
