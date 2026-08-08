@@ -1,5 +1,15 @@
 # Changelog
 
+## [v5.0.15](https://github.com/rokoucha/Mahiron/compare/v5.0.14...v5.0.15) - 2026-08-08
+
+- Update dependency typescript-eslint to v8.66.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/89
+- Update module ariga.io/atlas to v1.3.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/90
+- Revert "Update module ariga.io/atlas to v1.3.0" by @rokoucha in https://github.com/rokoucha/Mahiron/pull/92
+- Skip broken Atlas v1.3.0 update and log migration startup by @rokoucha in https://github.com/rokoucha/Mahiron/pull/94
+- Update Atlas to v1.3.0 by @rokoucha in https://github.com/rokoucha/Mahiron/pull/96
+- Batch data broadcast cache pruning by @rokoucha in https://github.com/rokoucha/Mahiron/pull/97
+- Index data broadcast cache pruning by @rokoucha in https://github.com/rokoucha/Mahiron/pull/98
+
 ## [v5.0.14](https://github.com/rokoucha/Mahiron/compare/v5.0.13...v5.0.14) - 2026-08-06
 
 - Safariでfaviconが正しく表示されるようにする by @rokoucha in https://github.com/rokoucha/Mahiron/pull/75
