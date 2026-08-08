@@ -549,13 +549,6 @@ func deleteResourcesParams(key ModuleCacheKey) cachedb.DeleteResourcesParams {
 	return cachedb.DeleteResourcesParams{ChannelType: key.ChannelType, ChannelID: key.ChannelID, ServiceID: int64(key.ServiceID), ComponentTag: int64(key.ComponentTag), DownloadID: int64(key.DownloadID), ModuleID: int64(key.ModuleID), Version: int64(key.Version), Size: int64(key.Size)}
 }
 
-func moduleCacheKey(channelType, channelID string, serviceID, componentTag, downloadID, moduleID, version, size int64) (ModuleCacheKey, bool) {
-	if serviceID < 0 || serviceID > int64(^uint16(0)) || componentTag < 0 || componentTag > int64(^byte(0)) || downloadID < 0 || downloadID > int64(^uint32(0)) || moduleID < 0 || moduleID > int64(^uint16(0)) || version < 0 || version > int64(^byte(0)) || size < 0 || size > int64(^uint32(0)) {
-		return ModuleCacheKey{}, false
-	}
-	return ModuleCacheKey{ChannelType: channelType, ChannelID: channelID, ServiceID: uint16(serviceID), ComponentTag: byte(componentTag), DownloadID: uint32(downloadID), ModuleID: uint16(moduleID), Version: byte(version), Size: uint32(size)}, true
-}
-
 // PutSnapshot persists the raw PMT and per-component DII sections needed to
 // reconstruct a provisional snapshot. Components no longer present in the new
 // PMT are removed so a stale carousel cannot outlive the component it
