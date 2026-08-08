@@ -443,39 +443,106 @@ func (s *SQLiteModuleStore) WasEvicted(key ModuleVersionKey) bool {
 
 func (s *SQLiteModuleStore) prune() {
 	ctx := context.Background()
-	for {
-		if s.maxAge > 0 {
-			row, err := s.queries.OldestExpiredModule(ctx, time.Now().Add(-s.maxAge).Unix())
-			key, valid := moduleCacheKey(row.ChannelType, row.ChannelID, row.ServiceID, row.ComponentTag, row.DownloadID, row.ModuleID, row.Version, row.Size)
-			if err == nil && valid && s.pruneOne(key) {
-				continue
-			}
-		}
-		bytes, err := s.queries.TotalStoredBytes(ctx)
-		if err != nil || bytes < 0 || uint64(bytes) <= s.maxBytes {
-			return
-		}
-		row, err := s.queries.OldestModule(ctx)
-		key, valid := moduleCacheKey(row.ChannelType, row.ChannelID, row.ServiceID, row.ComponentTag, row.DownloadID, row.ModuleID, row.Version, row.Size)
-		if err != nil || !valid || !s.pruneOne(key) {
-			return
-		}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return
 	}
-}
+	defer func() { _ = tx.Rollback() }()
 
-func (s *SQLiteModuleStore) pruneOne(key ModuleCacheKey) bool {
-	ctx := context.Background()
-	if err := s.queries.UpsertTombstone(ctx, cachedb.UpsertTombstoneParams{ChannelType: key.ChannelType, ChannelID: key.ChannelID, ServiceID: int64(key.ServiceID), ComponentTag: int64(key.ComponentTag), DownloadID: int64(key.DownloadID), ModuleID: int64(key.ModuleID), Version: int64(key.Version), EvictedAt: time.Now().Unix()}); err != nil {
-		return false
+	maxBytes := int64(s.maxBytes)
+	if s.maxBytes > uint64(^uint64(0)>>1) {
+		maxBytes = int64(^uint64(0) >> 1)
 	}
-	if err := s.queries.DeleteResources(ctx, deleteResourcesParams(key)); err != nil {
-		return false
+	var storedBytes int64
+	if err := tx.QueryRowContext(ctx, `SELECT CAST(COALESCE(SUM(stored_bytes), 0) AS INTEGER) FROM data_broadcast_modules`).Scan(&storedBytes); err != nil {
+		return
 	}
-	if err := s.queries.DeleteModule(ctx, cachedb.DeleteModuleParams{ChannelType: key.ChannelType, ChannelID: key.ChannelID, ServiceID: int64(key.ServiceID), ComponentTag: int64(key.ComponentTag), DownloadID: int64(key.DownloadID), ModuleID: int64(key.ModuleID), Version: int64(key.Version), Size: int64(key.Size)}); err != nil {
-		return false
+	hasExpired := false
+	if s.maxAge > 0 {
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM data_broadcast_modules WHERE last_accessed < ?)`, time.Now().Add(-s.maxAge).Unix()).Scan(&hasExpired); err != nil {
+			return
+		}
 	}
-	_ = s.queries.TrimTombstones(ctx, maxModuleCacheTombstones)
-	return true
+	if !hasExpired && storedBytes >= 0 && storedBytes <= maxBytes {
+		_ = tx.Commit()
+		return
+	}
+
+	// Materialize the eviction set once. The old implementation selected and
+	// deleted one module at a time, causing several SQLite commits per module
+	// during startup. Besides being slow, repeatedly calculating SUM over the
+	// remaining cache made large caches increasingly expensive to prune.
+	if _, err := tx.ExecContext(ctx, `CREATE TEMP TABLE IF NOT EXISTS data_broadcast_prune_candidates (
+		channel_type TEXT NOT NULL, channel_id TEXT NOT NULL, service_id INTEGER NOT NULL,
+		component_tag INTEGER NOT NULL, download_id INTEGER NOT NULL, module_id INTEGER NOT NULL,
+		version INTEGER NOT NULL, size INTEGER NOT NULL,
+		PRIMARY KEY (channel_type, channel_id, service_id, component_tag, download_id, module_id, version, size)
+	)`); err != nil {
+		return
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM data_broadcast_prune_candidates`); err != nil {
+		return
+	}
+	if s.maxAge > 0 {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT OR IGNORE INTO data_broadcast_prune_candidates
+			SELECT channel_type, channel_id, service_id, component_tag, download_id, module_id, version, size
+			FROM data_broadcast_modules WHERE last_accessed < ?`, time.Now().Add(-s.maxAge).Unix()); err != nil {
+			return
+		}
+	}
+
+	// Retain as many of the newest modules as fit. Everything beyond the byte
+	// budget joins the same eviction set as age-expired modules.
+	if _, err := tx.ExecContext(ctx, `
+		WITH retained AS (
+			SELECT m.* FROM data_broadcast_modules m
+			WHERE NOT EXISTS (
+				SELECT 1 FROM data_broadcast_prune_candidates c
+				WHERE c.channel_type=m.channel_type AND c.channel_id=m.channel_id AND c.service_id=m.service_id
+				AND c.component_tag=m.component_tag AND c.download_id=m.download_id AND c.module_id=m.module_id
+				AND c.version=m.version AND c.size=m.size
+			)
+		), ranked AS (
+			SELECT channel_type, channel_id, service_id, component_tag, download_id, module_id, version, size,
+				SUM(stored_bytes) OVER (ORDER BY last_accessed DESC, channel_type DESC, channel_id DESC, service_id DESC,
+					component_tag DESC, download_id DESC, module_id DESC, version DESC, size DESC) AS retained_bytes
+			FROM retained
+		)
+		INSERT OR IGNORE INTO data_broadcast_prune_candidates
+		SELECT channel_type, channel_id, service_id, component_tag, download_id, module_id, version, size
+		FROM ranked WHERE retained_bytes > ?`, maxBytes); err != nil {
+		return
+	}
+
+	now := time.Now().Unix()
+	statements := []struct {
+		query string
+		args  []any
+	}{
+		{`INSERT OR REPLACE INTO data_broadcast_module_tombstones
+			SELECT channel_type, channel_id, service_id, component_tag, download_id, module_id, version, ?
+			FROM data_broadcast_prune_candidates GROUP BY channel_type, channel_id, service_id, component_tag, download_id, module_id, version`, []any{now}},
+		{`DELETE FROM data_broadcast_resources AS r WHERE EXISTS (
+			SELECT 1 FROM data_broadcast_prune_candidates c
+			WHERE c.channel_type=r.channel_type AND c.channel_id=r.channel_id AND c.service_id=r.service_id
+			AND c.component_tag=r.component_tag AND c.download_id=r.download_id AND c.module_id=r.module_id
+			AND c.version=r.version AND c.size=r.size)`, nil},
+		{`DELETE FROM data_broadcast_modules AS m WHERE EXISTS (
+			SELECT 1 FROM data_broadcast_prune_candidates c
+			WHERE c.channel_type=m.channel_type AND c.channel_id=m.channel_id AND c.service_id=m.service_id
+			AND c.component_tag=m.component_tag AND c.download_id=m.download_id AND c.module_id=m.module_id
+			AND c.version=m.version AND c.size=m.size)`, nil},
+	}
+	for _, statement := range statements {
+		if _, err := tx.ExecContext(ctx, statement.query, statement.args...); err != nil {
+			return
+		}
+	}
+	if err := s.queries.WithTx(tx).TrimTombstones(ctx, maxModuleCacheTombstones); err != nil {
+		return
+	}
+	_ = tx.Commit()
 }
 
 func deleteResourcesParams(key ModuleCacheKey) cachedb.DeleteResourcesParams {

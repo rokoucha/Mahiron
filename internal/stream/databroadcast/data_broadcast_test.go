@@ -140,8 +140,10 @@ func TestModuleVersionRecoversAfterPersistentStoreEviction(t *testing.T) {
 
 	// Simulate the store evicting the only retained generation before a
 	// client ever fetched it (byte budget, age prune, ...).
-	if !store.pruneOne(key) {
-		t.Fatal("pruneOne failed")
+	store.maxBytes = 0
+	store.prune()
+	if store.Has(key) {
+		t.Fatal("prune failed")
 	}
 
 	if _, ok := hub.ModuleVersion(serviceID, componentTag, 1, 2, 3); ok {
