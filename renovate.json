@@ -12,5 +12,16 @@
   "lockFileMaintenance": {
     "enabled": true
   },
-  "minimumReleaseAge": "1 day"
+  "minimumReleaseAge": "1 day",
+  "packageRules": [
+    {
+      "matchManagers": [
+        "gomod"
+      ],
+      "matchPackageNames": [
+        "go.opentelemetry.io/**"
+      ],
+      "groupName": "opentelemetry-go"
+    }
+  ]
 }
