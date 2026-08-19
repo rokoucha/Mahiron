@@ -47,6 +47,8 @@ mainブランチの最新ビルドを試す場合は、[CIの実行履歴](https
   - tunedChannel*
 - `/api/version` にserverフィールドを追加しています
   - 値は常に `mahiron` です
+- レスポンスの `Server` ヘッダは `Mahiron/<バージョン>` です
+  - Mirakurun互換サーバーの判定にこのヘッダを使うクライアント向け
 - JobItemに以下のフィールドを追加しています
   - nextRunAt
   - result
