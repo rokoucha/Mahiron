@@ -5,12 +5,18 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/event"
 	"github.com/21S1298001/mahiron/internal/observability"
+	"github.com/21S1298001/mahiron/internal/version"
 	"github.com/21S1298001/mahiron/internal/web/api"
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 	"github.com/21S1298001/mahiron/internal/web/ui"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 )
+
+// serverHeader はレスポンスに付与する Server ヘッダの値。
+// 一部のクライアントはこのヘッダの `名前/バージョン` 表記で
+// Mirakurun互換サーバーかどうかを判定するため、常に付与する必要がある。
+const serverHeader = "Mahiron/" + version.Current
 
 type WebConfig struct {
 	ServiceManager api.ServiceManager
@@ -48,5 +54,12 @@ func NewWeb(config WebConfig) (http.Handler, error) {
 	mux.Handle("/api/", http.StripPrefix("/api", api))
 	mux.Handle("/", ui.NewHandler())
 
-	return mux, nil
+	return withServerHeader(mux), nil
+}
+
+func withServerHeader(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Server", serverHeader)
+		next.ServeHTTP(w, r)
+	})
 }

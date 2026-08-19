@@ -17,6 +17,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/service"
 	"github.com/21S1298001/mahiron/internal/stream"
 	"github.com/21S1298001/mahiron/internal/tuner"
+	"github.com/21S1298001/mahiron/internal/version"
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 	"github.com/ogen-go/ogen/otelogen"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
@@ -143,6 +144,24 @@ func TestNewWebServesWebUIRoutesAndAPI(t *testing.T) {
 	}
 	if contentType := apiStatus.Header().Get("Content-Type"); !strings.Contains(contentType, "application/json") {
 		t.Fatalf("GET /api/status Content-Type = %q, want application/json", contentType)
+	}
+}
+
+func TestNewWebSetsServerHeader(t *testing.T) {
+	handler, err := NewWeb(WebConfig{
+		ServiceManager: testServiceManager{},
+		StreamManager:  testStreamManager{},
+	})
+	if err != nil {
+		t.Fatalf("NewWeb() = %v", err)
+	}
+
+	for _, path := range []string{"/", "/api/status"} {
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, path, nil))
+		if got := recorder.Header().Get("Server"); got != "Mahiron/"+version.Current {
+			t.Fatalf("GET %s Server = %q, want %q", path, got, "Mahiron/"+version.Current)
+		}
 	}
 }
 
