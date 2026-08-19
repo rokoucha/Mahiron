@@ -18,11 +18,12 @@ func TestLoadAndParseRemotesConfig(t *testing.T) {
 			path: "testdata/remotes-valid.yml",
 			want: RemotesConfig{
 				{Name: "living", URL: "http://living.local:40772/api"},
-				{Name: "private", URL: "http://private.local:40772/api", BasicAuth: &BasicAuthConfig{Username: "user", Password: "pass"}},
+				{Name: "private", URL: "http://private.local:40772/api", BasicAuth: &BasicAuthConfig{Username: "user", Password: "pass"}, AvailabilityTimeout: 10000},
 			},
 		},
 		{name: "empty name", path: "testdata/remotes-empty-name.yml", wantErr: true},
 		{name: "empty basic password", path: "testdata/remotes-empty-basic-password.yml", wantErr: true},
+		{name: "negative availability timeout", path: "testdata/remotes-negative-availability-timeout.yml", wantErr: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

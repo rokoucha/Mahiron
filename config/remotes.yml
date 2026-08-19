@@ -6,3 +6,4 @@
 
 - name: study
   url: http://study.local:40772/api
+  availabilityTimeout: 10000

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -46,6 +47,46 @@ func TestRemoteClientCheckAvailableForRouteAndBasicAuth(t *testing.T) {
 	}
 	if !hasDeadline {
 		t.Fatal("remote availability request context has no deadline")
+	}
+}
+
+func TestRemoteClientAvailabilityTimeout(t *testing.T) {
+	tests := []struct {
+		name             string
+		configTimeout    int
+		wantAvailableMin time.Duration
+		wantStatusMin    time.Duration
+	}{
+		{name: "default", configTimeout: 0, wantAvailableMin: defaultRemoteAvailabilityTimeout, wantStatusMin: defaultRemoteStatusTimeout},
+		{name: "configured", configTimeout: 10000, wantAvailableMin: 10 * time.Second, wantStatusMin: 10 * time.Second},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var remaining time.Duration
+			client := NewClient(config.RemoteConfig{URL: "http://remote.local/api", AvailabilityTimeout: tt.configTimeout})
+			client.httpClient = &http.Client{Transport: streamtest.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
+				deadline, ok := r.Context().Deadline()
+				if !ok {
+					t.Fatal("request context has no deadline")
+				}
+				remaining = time.Until(deadline)
+				return streamtest.StringResponse(http.StatusOK, `[]`), nil
+			})}
+
+			if err := client.CheckAvailableForRoute(context.Background(), "GR", "27"); !errors.Is(err, tuner.ErrTunerUnavailable) {
+				t.Fatalf("CheckAvailableForRoute() error = %v, want %v", err, tuner.ErrTunerUnavailable)
+			}
+			if remaining > tt.wantAvailableMin || remaining < tt.wantAvailableMin-time.Second {
+				t.Fatalf("availability timeout = %v, want about %v", remaining, tt.wantAvailableMin)
+			}
+
+			if _, err := client.TunerStatuses(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			if remaining > tt.wantStatusMin || remaining < tt.wantStatusMin-time.Second {
+				t.Fatalf("status timeout = %v, want about %v", remaining, tt.wantStatusMin)
+			}
+		})
 	}
 }
 

@@ -13,6 +13,11 @@ type RemoteConfig struct {
 	Name      string           `json:"name"`
 	URL       string           `json:"url"`
 	BasicAuth *BasicAuthConfig `json:"basicAuth,omitempty"`
+	// AvailabilityTimeout bounds the /api/tuners request used to check whether
+	// the remote can serve a route, in milliseconds. Response time of that
+	// endpoint depends on the tuner count and load of the remote, so slow
+	// servers need a longer limit than the default. Zero means the default.
+	AvailabilityTimeout int `json:"availabilityTimeout,omitempty"`
 }
 
 type BasicAuthConfig struct {
@@ -45,6 +50,9 @@ func LoadAndParseRemotesConfig(filePath string) (RemotesConfig, error) {
 		}
 		if remote.BasicAuth != nil && (remote.BasicAuth.Username == "" || remote.BasicAuth.Password == "") {
 			return nil, errors.New("remote basicAuth username and password are required")
+		}
+		if remote.AvailabilityTimeout < 0 {
+			return nil, errors.New("remote availabilityTimeout must be >= 0")
 		}
 	}
 
