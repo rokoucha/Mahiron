@@ -3,6 +3,7 @@
 
 - name: private
   url: http://private.local:40772/api
+  availabilityTimeout: 10000
   basicAuth:
     username: user
     password: pass

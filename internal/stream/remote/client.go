@@ -22,7 +22,17 @@ import (
 
 const xMirakurunTunerUserID = "X-Mirakurun-Tuner-User-ID"
 
-const remoteAvailabilityTimeout = 3 * time.Second
+const (
+	// defaultRemoteAvailabilityTimeout bounds the tuner availability check that
+	// runs before every remote service scan and stream. Mirakurun's /api/tuners
+	// gets slower as the tuner count and the load of the remote grow, so this is
+	// more generous than the status probe below. Override it per remote with
+	// availabilityTimeout in remotes.yml.
+	defaultRemoteAvailabilityTimeout = 5 * time.Second
+	// defaultRemoteStatusTimeout keeps a temporarily unreachable remote from
+	// delaying the local status page.
+	defaultRemoteStatusTimeout = 3 * time.Second
+)
 
 const (
 	remoteOperationCheckAvailable      = "remote.check_available"
@@ -36,9 +46,11 @@ const (
 )
 
 type Client struct {
-	baseURL    string
-	basicAuth  *config.BasicAuthConfig
-	httpClient *http.Client
+	baseURL             string
+	basicAuth           *config.BasicAuthConfig
+	httpClient          *http.Client
+	availabilityTimeout time.Duration
+	statusTimeout       time.Duration
 }
 
 type ProgramUpdater interface {
@@ -57,10 +69,20 @@ func WithHTTPClient(httpClient *http.Client) ClientOption {
 }
 
 func NewClient(config config.RemoteConfig, opts ...ClientOption) *Client {
+	availabilityTimeout := defaultRemoteAvailabilityTimeout
+	statusTimeout := defaultRemoteStatusTimeout
+	if config.AvailabilityTimeout > 0 {
+		availabilityTimeout = time.Duration(config.AvailabilityTimeout) * time.Millisecond
+		// A remote slow enough to need a longer availability check answers the
+		// status page from the same endpoint, so honor the override there too.
+		statusTimeout = availabilityTimeout
+	}
 	client := &Client{
-		baseURL:    strings.TrimRight(config.URL, "/"),
-		basicAuth:  config.BasicAuth,
-		httpClient: http.DefaultClient,
+		baseURL:             strings.TrimRight(config.URL, "/"),
+		basicAuth:           config.BasicAuth,
+		httpClient:          http.DefaultClient,
+		availabilityTimeout: availabilityTimeout,
+		statusTimeout:       statusTimeout,
 	}
 	for _, opt := range opts {
 		opt(client)
@@ -74,7 +96,7 @@ func (c *Client) CheckAvailableForRoute(ctx context.Context, channelType, channe
 		observability.RecordRemoteOperation(ctx, remoteOperationCheckAvailable, remoteOperationResult(err), time.Since(start).Milliseconds())
 	}()
 
-	checkCtx, cancel := context.WithTimeout(ctx, remoteAvailabilityTimeout)
+	checkCtx, cancel := context.WithTimeout(ctx, c.availabilityTimeout)
 	defer cancel()
 
 	req, err := c.newRequest(checkCtx, http.MethodGet, "tuners")
@@ -107,9 +129,10 @@ func (c *Client) CheckAvailableForRoute(ctx context.Context, channelType, channe
 
 // TunerStatuses returns the current tuner state reported by the remote server.
 // A short timeout keeps a temporarily unreachable remote from delaying the
-// local status page indefinitely.
+// local status page indefinitely, unless the remote raised it with
+// availabilityTimeout.
 func (c *Client) TunerStatuses(ctx context.Context) ([]tuner.Status, error) {
-	checkCtx, cancel := context.WithTimeout(ctx, remoteAvailabilityTimeout)
+	checkCtx, cancel := context.WithTimeout(ctx, c.statusTimeout)
 	defer cancel()
 
 	req, err := c.newRequest(checkCtx, http.MethodGet, "tuners")
