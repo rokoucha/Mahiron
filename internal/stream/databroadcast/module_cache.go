@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"math"
 	"os"
 	"strings"
 	"sync"
@@ -18,6 +19,18 @@ const (
 	DefaultModuleCacheBytes  = 128 * 1024 * 1024
 	maxModuleCacheTombstones = 4096
 	moduleCacheTouchInterval = time.Minute
+
+	// The eviction pass is O(cache size). Evicting only back to the budget
+	// puts the cache one module over it again on the very next Put, so a full
+	// cache paid that pass for every module it stored. Freeing down to a low
+	// water mark instead amortizes one pass over the modules that fit in the
+	// gap.
+	moduleCacheEvictTargetPercent = 90
+
+	// A cache under budget can still hold age-expired modules. Checking for
+	// them is an index seek rather than a scan, but there is no reason to pay
+	// it per module either.
+	moduleCacheExpiryCheckInterval = time.Minute
 )
 
 type ModuleCacheKey struct {
@@ -216,6 +229,15 @@ type SQLiteModuleStore struct {
 	snapshotMaxAge time.Duration
 	touchMu        sync.Mutex
 	touched        map[ModuleCacheKey]time.Time
+
+	// storedBytes tracks the cache size between eviction passes so Put can
+	// decide whether a pass is needed without summing the cache first. It is
+	// reset from the database whenever a pass runs, so a drifted count is
+	// corrected rather than accumulated.
+	bytesMu         sync.Mutex
+	storedBytes     int64
+	bytesValid      bool
+	lastExpiryCheck time.Time
 }
 
 func NewSQLiteModuleStore(path string, maxBytes uint64) (*SQLiteModuleStore, error) {
@@ -363,6 +385,16 @@ func (s *SQLiteModuleStore) Put(key ModuleCacheKey, module ts.DSMCCModule) bool 
 	defer func() { _ = tx.Rollback() }()
 	queries := s.queries.WithTx(tx)
 	ctx := context.Background()
+	// A Put may replace an existing module, so only the difference counts
+	// towards the budget. This is a primary key lookup, unlike the cache-wide
+	// sum it replaces.
+	previousBytes, err := queries.GetStoredBytes(ctx, cachedb.GetStoredBytesParams{ChannelType: key.ChannelType, ChannelID: key.ChannelID, ServiceID: int64(key.ServiceID), ComponentTag: int64(key.ComponentTag), DownloadID: int64(key.DownloadID), ModuleID: int64(key.ModuleID), Version: int64(key.Version), Size: int64(key.Size)})
+	if err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			return false
+		}
+		previousBytes = 0
+	}
 	// A module may legitimately have no module-info bytes. SQLite maps a nil
 	// slice to NULL, while the cache schema intentionally requires BLOB values.
 	info := module.Info
@@ -395,7 +427,8 @@ func (s *SQLiteModuleStore) Put(key ModuleCacheKey, module ts.DSMCCModule) bool 
 	if err := tx.Commit(); err != nil {
 		return false
 	}
-	s.prune()
+	s.noteStoredBytes(int64(storedBytes) - previousBytes)
+	s.maybePrune()
 	_, err = s.queries.ModuleExists(ctx, cachedb.ModuleExistsParams{ChannelType: key.ChannelType, ChannelID: key.ChannelID, ServiceID: int64(key.ServiceID), ComponentTag: int64(key.ComponentTag), DownloadID: int64(key.DownloadID), ModuleID: int64(key.ModuleID), Version: int64(key.Version), Size: int64(key.Size)})
 	return err == nil
 }
@@ -510,6 +543,59 @@ const (
 		FROM data_broadcast_prune_candidates)`
 )
 
+// evictTargetBytes is the size the eviction pass frees down to. Scaling before
+// dividing keeps the mark meaningful for the byte-sized budgets the tests use,
+// where dividing first would floor it to zero and evict the whole cache.
+func evictTargetBytes(maxBytes int64) int64 {
+	if maxBytes <= 0 {
+		return 0
+	}
+	if maxBytes <= math.MaxInt64/moduleCacheEvictTargetPercent {
+		return maxBytes * moduleCacheEvictTargetPercent / 100
+	}
+	return maxBytes / 100 * moduleCacheEvictTargetPercent
+}
+
+func (s *SQLiteModuleStore) cappedMaxBytes() int64 {
+	if s.maxBytes > uint64(^uint64(0)>>1) {
+		return int64(^uint64(0) >> 1)
+	}
+	return int64(s.maxBytes)
+}
+
+// noteStoredBytes applies a Put's net change to the tracked cache size. It is a
+// no-op while the count is unknown, so a failed refresh degrades into running
+// the eviction pass rather than into an incorrect size.
+func (s *SQLiteModuleStore) noteStoredBytes(delta int64) {
+	s.bytesMu.Lock()
+	defer s.bytesMu.Unlock()
+	if !s.bytesValid {
+		return
+	}
+	s.storedBytes += delta
+	if s.storedBytes < 0 {
+		s.storedBytes = 0
+	}
+}
+
+// maybePrune runs the eviction pass only when it can do useful work: the cache
+// is over budget, the age check is due, or the size is unknown. Running the
+// pass unconditionally made every Put cost a walk of the whole cache.
+func (s *SQLiteModuleStore) maybePrune() {
+	s.bytesMu.Lock()
+	valid, stored := s.bytesValid, s.storedBytes
+	expiryDue := s.maxAge > 0 && time.Since(s.lastExpiryCheck) >= moduleCacheExpiryCheckInterval
+	if expiryDue {
+		s.lastExpiryCheck = time.Now()
+	}
+	s.bytesMu.Unlock()
+
+	if valid && stored <= s.cappedMaxBytes() && !expiryDue {
+		return
+	}
+	s.prune()
+}
+
 func (s *SQLiteModuleStore) prune() {
 	ctx := context.Background()
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -518,14 +604,15 @@ func (s *SQLiteModuleStore) prune() {
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	maxBytes := int64(s.maxBytes)
-	if s.maxBytes > uint64(^uint64(0)>>1) {
-		maxBytes = int64(^uint64(0) >> 1)
-	}
+	maxBytes := s.cappedMaxBytes()
 	var storedBytes int64
 	if err := tx.QueryRowContext(ctx, pruneStoredBytesQuery).Scan(&storedBytes); err != nil {
 		return
 	}
+	s.bytesMu.Lock()
+	s.storedBytes, s.bytesValid = storedBytes, true
+	s.lastExpiryCheck = time.Now()
+	s.bytesMu.Unlock()
 	expiredBefore := time.Now().Add(-s.maxAge).Unix()
 	hasExpired := false
 	if s.maxAge > 0 {
@@ -553,7 +640,9 @@ func (s *SQLiteModuleStore) prune() {
 			return
 		}
 	}
-	if _, err := tx.ExecContext(ctx, pruneCollectOverBudget, maxBytes); err != nil {
+	// Free down to the low water mark, not merely back to the budget, so the
+	// next pass is due only after the freed gap has been refilled.
+	if _, err := tx.ExecContext(ctx, pruneCollectOverBudget, evictTargetBytes(maxBytes)); err != nil {
 		return
 	}
 
@@ -574,7 +663,16 @@ func (s *SQLiteModuleStore) prune() {
 	if err := s.queries.WithTx(tx).TrimTombstones(ctx, maxModuleCacheTombstones); err != nil {
 		return
 	}
-	_ = tx.Commit()
+	var remaining int64
+	if err := tx.QueryRowContext(ctx, pruneStoredBytesQuery).Scan(&remaining); err != nil {
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		return
+	}
+	s.bytesMu.Lock()
+	s.storedBytes, s.bytesValid = remaining, true
+	s.bytesMu.Unlock()
 }
 
 func deleteResourcesParams(key ModuleCacheKey) cachedb.DeleteResourcesParams {
