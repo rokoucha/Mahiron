@@ -127,10 +127,14 @@ func TestProgramEventDataIncludesEmptyArrays(t *testing.T) {
 	if err := json.Unmarshal(raw, &decoded); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"genres", "audios", "relatedItems"} {
+	for _, name := range []string{"audios", "relatedItems"} {
 		items, ok := decoded[name].([]any)
 		if !ok || len(items) != 0 {
 			t.Fatalf("%s = %#v, want empty array", name, decoded[name])
 		}
+	}
+	// Mirakurun omits genres for programs without genre information.
+	if _, ok := decoded["genres"]; ok {
+		t.Fatalf("genres = %#v, want omitted", decoded["genres"])
 	}
 }
