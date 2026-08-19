@@ -24,6 +24,7 @@ tags:
   - name: version
 paths:
   /version:
+    parameters: []
     get:
       tags:
         - version
@@ -42,6 +43,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
   /docs:
+    parameters: []
     get:
       tags:
         - documents
@@ -61,6 +63,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
   /tuners:
+    parameters: []
     get:
       tags:
         - tuners
@@ -81,6 +84,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
   /status:
+    parameters: []
     get:
       tags:
         - status
@@ -100,6 +104,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
   /services:
+    parameters: []
     get:
       tags:
         - services
@@ -145,6 +150,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
   /programs:
+    parameters: []
     get:
       tags:
         - programs
@@ -178,6 +184,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
   /log/stream:
+    parameters: []
     get:
       tags:
         - log
@@ -194,6 +201,7 @@ paths:
           description: Unexpected Error
           content: {}
   /log:
+    parameters: []
     get:
       tags:
         - log
@@ -209,6 +217,7 @@ paths:
           description: Unexpected Error
           content: {}
   /jobs:
+    parameters: []
     get:
       tags:
         - job
@@ -229,6 +238,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
   /job-schedules:
+    parameters: []
     get:
       tags:
         - job
@@ -249,6 +259,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
   /iptv/xmltv:
+    parameters: []
     get:
       tags:
         - iptv
@@ -267,6 +278,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
   /iptv/playlist:
+    parameters: []
     get:
       tags:
         - iptv
@@ -285,6 +297,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
   /iptv/lineup.json:
+    parameters: []
     get:
       tags:
         - iptv
@@ -305,6 +318,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
   /iptv/lineup_status.json:
+    parameters: []
     get:
       tags:
         - iptv
@@ -323,6 +337,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
   /iptv/discover.json:
+    parameters: []
     get:
       tags:
         - iptv
@@ -341,6 +356,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
   /events/stream:
+    parameters: []
     get:
       tags:
         - events
@@ -380,6 +396,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
   /events:
+    parameters: []
     get:
       tags:
         - events
@@ -400,6 +417,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
   /channels:
+    parameters: []
     get:
       tags:
         - channels
@@ -433,6 +451,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
   /tuners/{index}/process:
+    parameters: []
     get:
       tags:
         - tuners
@@ -493,6 +512,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
   /tuners/{index}:
+    parameters: []
     get:
       tags:
         - tuners
@@ -524,6 +544,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
   /services/{id}/stream:
+    parameters: []
     get:
       tags:
         - services
@@ -610,6 +631,7 @@ paths:
           description: Unexpected Error
           content: {}
   /services/{id}/data-broadcast/state:
+    parameters: []
     get:
       description: >-
         Returns the current data-broadcast snapshot. Modules whose status is
@@ -658,6 +680,7 @@ paths:
           description: Unexpected Error
           content: {}
   /services/{id}/data-broadcast/events:
+    parameters: []
     get:
       description: >-
         Streams data-broadcast state changes. Modules whose status is
@@ -711,6 +734,7 @@ paths:
           description: Unexpected Error
           content: {}
   /services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}:
+    parameters: []
     get:
       description: >-
         Returns the decoded resource manifest. contentLocation is null when the
@@ -796,6 +820,7 @@ paths:
           description: Unexpected Error
           content: {}
   /services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}/raw:
+    parameters: []
     get:
       tags: [services, stream]
       operationId: getServiceDataBroadcastModuleRaw
@@ -818,6 +843,7 @@ paths:
         "410": {description: Module generation was evicted from the completed-module cache}
         "425": {description: Module generation announced but not complete}
   /services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}/resources/{resourceId}:
+    parameters: []
     get:
       tags: [services, stream]
       operationId: getServiceDataBroadcastModuleResource
@@ -846,6 +872,7 @@ paths:
         "507": {description: Module exceeds receiver resource limits}
         "422": {description: Module entity cannot be decoded into logical resources}
   /services/{id}/programs:
+    parameters: []
     get:
       tags:
         - programs
@@ -875,6 +902,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
   /services/{id}/logo:
+    parameters: []
     get:
       tags:
         - services
@@ -905,6 +933,7 @@ paths:
           description: Unexpected Error
           content: {}
   /services/{id}:
+    parameters: []
     get:
       tags:
         - services
@@ -937,6 +966,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
   /programs/{id}/stream:
+    parameters: []
     get:
       tags:
         - programs
@@ -1025,6 +1055,7 @@ paths:
           description: Unexpected Error
           content: {}
   /programs/{id}:
+    parameters: []
     get:
       tags:
         - programs
@@ -1058,6 +1089,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
   /jobs/{id}/rerun:
+    parameters: []
     put:
       tags:
         - job
@@ -1086,6 +1118,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
   /jobs/{id}/abort:
+    parameters: []
     put:
       tags:
         - job
@@ -1114,6 +1147,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
   /job-schedules/{key}/run:
+    parameters: []
     put:
       tags:
         - job
@@ -1142,6 +1176,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
   /channels/{type}/{channel}/stream:
+    parameters: []
     get:
       tags:
         - channels
@@ -1234,6 +1269,7 @@ paths:
           description: Unexpected Error
           content: {}
   /channels/{type}/{channel}/services/{id}/stream:
+    parameters: []
     get:
       tags:
         - channels
@@ -1342,6 +1378,7 @@ paths:
           description: Unexpected Error
           content: {}
   /channels/{type}/{channel}/services/{id}:
+    parameters: []
     get:
       tags:
         - channels
@@ -1379,6 +1416,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
   /channels/{type}/{channel}/services:
+    parameters: []
     get:
       tags:
         - channels
@@ -1411,6 +1449,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
   /channels/{type}/{channel}:
+    parameters: []
     get:
       tags:
         - channels
@@ -1446,6 +1485,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
   /channels/{type}:
+    parameters: []
     get:
       tags:
         - channels

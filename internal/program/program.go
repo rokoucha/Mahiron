@@ -85,9 +85,13 @@ func (p *Program) EventData() map[string]any {
 		"startAt":      p.StartAt,
 		"duration":     p.Duration,
 		"isFree":       p.IsFree,
-		"genres":       genreListEventData(p.Genres),
 		"audios":       audioListEventData(p.Audios),
 		"relatedItems": relatedItemListEventData(p.RelatedItems),
+	}
+	// Mirakurun omits "genres" entirely for programs without genre information;
+	// EPGStation reads genres[0].lv1 whenever the key exists.
+	if len(p.Genres) > 0 {
+		data["genres"] = genreListEventData(p.Genres)
 	}
 	if p.Name != "" {
 		data["name"] = p.Name

@@ -166,7 +166,13 @@ func apiProgramSeries(s *program.Series) apigen.ProgramSeries {
 	return out
 }
 
+// apiProgramGenres returns nil for programs without genre information so that
+// the "genres" key is omitted entirely, matching Mirakurun. EPGStation reads
+// genres[0].lv1 whenever the key exists and crashes on an empty array.
 func apiProgramGenres(genres []program.Genre) []apigen.ProgramGenre {
+	if len(genres) == 0 {
+		return nil
+	}
 	result := make([]apigen.ProgramGenre, len(genres))
 	for i, genre := range genres {
 		result[i] = apigen.ProgramGenre{

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -421,4 +422,33 @@ func TestApiProgramRelatedItemsEmptyWhenNone(t *testing.T) {
 	if p.Series.IsSet() {
 		t.Errorf("Series = %#v, want unset", p.Series)
 	}
+}
+
+func TestApiProgramGenres(t *testing.T) {
+	t.Run("omitted when empty", func(t *testing.T) {
+		p := apiProgram(&program.Program{})
+		if p.Genres != nil {
+			t.Errorf("Genres = %#v, want nil", p.Genres)
+		}
+		encoded, err := p.MarshalJSON()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if bytes.Contains(encoded, []byte(`"genres"`)) {
+			t.Errorf("encoded program = %s, want no genres key", encoded)
+		}
+	})
+
+	t.Run("kept when present", func(t *testing.T) {
+		p := apiProgram(&program.Program{Genres: []program.Genre{{Lv1: 0, Lv2: 1, Un1: 15, Un2: 15}}})
+		if len(p.Genres) != 1 {
+			t.Fatalf("Genres length = %d, want 1", len(p.Genres))
+		}
+		if got, ok := p.Genres[0].Lv1.Get(); !ok || got != 0 {
+			t.Errorf("Genres[0].Lv1 = %d, %v; want 0, true", got, ok)
+		}
+		if got, ok := p.Genres[0].Lv2.Get(); !ok || got != 1 {
+			t.Errorf("Genres[0].Lv2 = %d, %v; want 1, true", got, ok)
+		}
+	})
 }

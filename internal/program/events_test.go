@@ -112,3 +112,19 @@ func TestProgramManagerPublishesMergedSparseUpdateEvent(t *testing.T) {
 		t.Fatalf("update payload startAt = %v, want %d", got, want)
 	}
 }
+
+func TestProgramEventDataOmitsEmptyGenres(t *testing.T) {
+	p := &Program{ID: ProgramID(1, 101, 1), NetworkID: 1, ServiceID: 101, EventID: 1}
+	if _, ok := p.EventData()["genres"]; ok {
+		t.Errorf("genres key present for program without genres")
+	}
+
+	p.Genres = []Genre{{Lv1: 0, Lv2: 1, Un1: 15, Un2: 15}}
+	genres, ok := p.EventData()["genres"].([]map[string]any)
+	if !ok {
+		t.Fatalf("genres = %#v, want []map[string]any", p.EventData()["genres"])
+	}
+	if len(genres) != 1 || genres[0]["lv1"] != 0 || genres[0]["lv2"] != 1 {
+		t.Errorf("genres = %#v, want one entry with lv1=0 lv2=1", genres)
+	}
+}
