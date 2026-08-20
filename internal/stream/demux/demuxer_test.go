@@ -109,42 +109,50 @@ func TestPacketDemuxerSharesOneSourceAcrossSubscribers(t *testing.T) {
 	}
 }
 
-func TestPacketDemuxerDisconnectsOverflowingSubscriberOnly(t *testing.T) {
+func TestPacketDemuxerDropsForOverflowingSubscriberWithoutDisconnecting(t *testing.T) {
+	// More packets than the buffer holds, so the blocked subscriber must lose
+	// some of them. The source is live and cannot be paused for one slow
+	// consumer, so the demuxer drops for it rather than disconnecting it.
+	const extra = 1000
 	packet := streamtest.TestPacket(0x0100, 1)
 	start := make(chan struct{})
+	sent := make(chan struct{})
 	engine := New(func(_ context.Context, dst io.Writer) error {
 		<-start
-		for range packetSubscriberBuffer + 32 {
+		defer close(sent)
+		for range packetSubscriberBuffer + extra {
 			if _, err := dst.Write(packet); err != nil {
 				return err
 			}
-			time.Sleep(50 * time.Microsecond)
 		}
 		return nil
 	}, nil)
 
 	blocked := &blockingWriter{entered: make(chan struct{}), release: make(chan struct{})}
-	var fast bytes.Buffer
+	var fast countingWriter
 	errs := make(chan error, 2)
 	go func() { errs <- engine.SubscribeChannel(t.Context(), blocked) }()
 	go func() { errs <- engine.SubscribeChannel(t.Context(), &fast) }()
 	waitForDemuxerSubscribers(t, engine, 2)
 	close(start)
-	<-blocked.entered
 
-	var overflow error
+	<-blocked.entered
+	<-sent
+	close(blocked.release)
+
 	for range 2 {
-		err := <-errs
-		if errors.Is(err, ErrSubscriberOverflow) {
-			overflow = err
+		if err := <-errs; err != nil {
+			t.Fatalf("SubscribeChannel returned error = %v, want nil", err)
 		}
 	}
-	close(blocked.release)
-	if overflow == nil {
-		t.Fatal("slow subscriber did not return ErrSubscriberOverflow")
-	}
-	if fast.Len() == 0 {
+	if got := fast.Len(); got == 0 {
 		t.Fatal("fast subscriber received no packets")
+	}
+	// The blocked subscriber keeps whatever the buffer still held; the packets
+	// pushed out while it was stalled are gone.
+	sentBytes := (packetSubscriberBuffer + extra) * ts.PacketSize
+	if got := blocked.Len(); got >= sentBytes {
+		t.Fatalf("blocked subscriber received %d bytes, want fewer than the %d sent", got, sentBytes)
 	}
 }
 
@@ -399,6 +407,7 @@ type blockingWriter struct {
 	entered chan struct{}
 	release chan struct{}
 	called  atomic.Bool
+	written atomic.Int64
 }
 
 func (w *blockingWriter) Write(p []byte) (int, error) {
@@ -406,8 +415,22 @@ func (w *blockingWriter) Write(p []byte) (int, error) {
 		close(w.entered)
 	}
 	<-w.release
+	w.written.Add(int64(len(p)))
 	return len(p), nil
 }
+
+func (w *blockingWriter) Len() int { return int(w.written.Load()) }
+
+// countingWriter records only how much it was given, so a fast subscriber can
+// be checked without retaining megabytes of packets.
+type countingWriter struct{ written atomic.Int64 }
+
+func (w *countingWriter) Write(p []byte) (int, error) {
+	w.written.Add(int64(len(p)))
+	return len(p), nil
+}
+
+func (w *countingWriter) Len() int { return int(w.written.Load()) }
 
 func waitForDemuxerSubscribers(t *testing.T, engine *Demuxer, want int) {
 	t.Helper()
@@ -422,4 +445,58 @@ func waitForDemuxerSubscribers(t *testing.T, engine *Demuxer, want int) {
 		time.Sleep(time.Millisecond)
 	}
 	t.Fatalf("packet subscribers did not reach %d", want)
+}
+
+// A subscriber that falls behind and then recovers must keep receiving. This is
+// the case the previous behaviour got wrong: a momentary stall ended the
+// stream, which for a recording meant losing the whole file rather than the
+// packets that did not fit.
+func TestPacketDemuxerResumesDeliveryAfterOverflow(t *testing.T) {
+	const beyondBuffer = packetSubscriberBuffer + 1000
+	packet := streamtest.TestPacket(0x0100, 1)
+	stalled := make(chan struct{})
+	resume := make(chan struct{})
+	start := make(chan struct{})
+	engine := New(func(_ context.Context, dst io.Writer) error {
+		<-start
+		// Overrun the buffer while the consumer is stalled...
+		for range beyondBuffer {
+			if _, err := dst.Write(packet); err != nil {
+				return err
+			}
+		}
+		close(stalled)
+		// ...then keep sending once it has recovered.
+		<-resume
+		for range 100 {
+			if _, err := dst.Write(packet); err != nil {
+				return err
+			}
+		}
+		return nil
+	}, nil)
+
+	blocked := &blockingWriter{entered: make(chan struct{}), release: make(chan struct{})}
+	errCh := make(chan error, 1)
+	go func() { errCh <- engine.SubscribeChannel(t.Context(), blocked) }()
+	waitForDemuxerSubscribers(t, engine, 1)
+	close(start)
+
+	<-blocked.entered
+	<-stalled
+	close(blocked.release)
+
+	// Let the subscriber drain what it kept before sending more.
+	if !streamtest.Eventually(2*time.Second, func() bool { return blocked.Len() > 0 }) {
+		t.Fatal("subscriber received nothing after being released")
+	}
+	drained := blocked.Len()
+	close(resume)
+
+	if err := <-errCh; err != nil {
+		t.Fatalf("SubscribeChannel returned error = %v, want nil", err)
+	}
+	if got := blocked.Len(); got <= drained {
+		t.Fatalf("subscriber received %d bytes, want more than the %d it had before recovering", got, drained)
+	}
 }

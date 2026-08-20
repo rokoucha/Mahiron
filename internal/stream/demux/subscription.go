@@ -23,6 +23,12 @@ type packetSubscription struct {
 	stats      tuner.StreamInfo
 	statsKey   string
 	writerDone chan struct{}
+
+	// dropping and droppedBytes describe an episode of the consumer falling
+	// behind. Both belong to the demuxer's mutex, which dispatch holds, so
+	// they stay clear of stats: that is owned by the writer goroutine.
+	dropping     bool
+	droppedBytes int
 }
 
 type sectionSubscription struct {
