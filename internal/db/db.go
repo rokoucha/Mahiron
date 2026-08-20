@@ -11,8 +11,25 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+// Open opens a database whose contents cannot be rebuilt, and so commits
+// durably: SQLite's default synchronous=FULL flushes the write-ahead log on
+// every commit.
 func Open(path string) (*sql.DB, error) {
-	dsn, err := sqliteDSN(path)
+	return open(path, false)
+}
+
+// OpenCache opens a database holding only data that can be reacquired from the
+// broadcast stream. Such a database trades durability for commit cost by
+// running at synchronous=NORMAL, which flushes the write-ahead log at
+// checkpoints rather than on every commit. Losing recently committed rows to a
+// power cut costs a re-download; it cannot corrupt the database, which is the
+// guarantee NORMAL keeps and OFF does not.
+func OpenCache(path string) (*sql.DB, error) {
+	return open(path, true)
+}
+
+func open(path string, cache bool) (*sql.DB, error) {
+	dsn, err := sqliteDSN(path, cache)
 	if err != nil {
 		return nil, fmt.Errorf("build database DSN: %w", err)
 	}
@@ -37,7 +54,11 @@ func Open(path string) (*sql.DB, error) {
 	return database, nil
 }
 
-func sqliteDSN(path string) (string, error) {
+// sqliteDSN carries the pragmas in the DSN so every connection applies them.
+// Unlike journal_mode, synchronous is per connection and is not recorded in the
+// database file, so setting it once after opening would not survive a
+// connection being replaced.
+func sqliteDSN(path string, cache bool) (string, error) {
 	if path == ":memory:" {
 		return "file::memory:?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)", nil
 	}
@@ -48,6 +69,9 @@ func sqliteDSN(path string) (string, error) {
 	q := u.Query()
 	q.Add("_pragma", "busy_timeout(5000)")
 	q.Add("_pragma", "foreign_keys(1)")
+	if cache {
+		q.Add("_pragma", "synchronous(normal)")
+	}
 	u.RawQuery = q.Encode()
 	return u.String(), nil
 }
