@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log/slog"
 	"sync"
 
 	"github.com/21S1298001/mahiron/internal/observability"
@@ -12,8 +13,13 @@ import (
 )
 
 const (
-	packetSubscriberBuffer  = 16384 // ~3 MB / ~1.4 s of a 17 Mbps TS
-	sectionSubscriberBuffer = 512
+	// A consumer that stalls is given this much room before anything is lost.
+	// Eight mebibytes matches the budget Mirakurun keeps for a backed up
+	// client; at the ~8 Mbps of a single service it absorbs roughly seven
+	// seconds, and at the ~17 Mbps of a whole channel roughly four.
+	packetSubscriberBufferBytes = 8 << 20
+	packetSubscriberBuffer      = packetSubscriberBufferBytes / ts.PacketSize
+	sectionSubscriberBuffer     = 512
 )
 
 var (
@@ -430,11 +436,35 @@ func (e *Demuxer) dispatch(packet ts.Packet, sections []ts.PIDSection) {
 		}
 		select {
 		case sub.queue <- out:
-			i++
+			if sub.dropping {
+				slog.Warn("ts subscriber caught up", "type", e.channelType, "channel", e.channelID, "stream", sub.statsKey, "droppedBytes", sub.droppedBytes)
+				sub.dropping = false
+				sub.droppedBytes = 0
+			}
 		default:
+			// A consumer slower than the broadcast cannot be waited for: the
+			// source is live, and blocking here would stall the demuxer, and
+			// through it every other subscriber and the tuner feeding them.
+			// Drop the oldest packet instead and keep the stream running, as
+			// both Mirakurun and mirakc do. The lost packets leave a
+			// continuity gap that writePackets reports as drops.
+			if !sub.dropping {
+				slog.Warn("ts subscriber buffer full, dropping packets", "type", e.channelType, "channel", e.channelID, "stream", sub.statsKey, "bufferBytes", packetSubscriberBufferBytes)
+				sub.dropping = true
+			}
 			observability.RecordStreamSubscriberOverflow(context.Background(), e.channelType, "packet_overflow")
-			e.finishPacketLocked(id, ErrSubscriberOverflow)
+			select {
+			case dropped := <-sub.queue:
+				sub.droppedBytes += len(dropped)
+			default:
+			}
+			select {
+			case sub.queue <- out:
+			default:
+				sub.droppedBytes += len(out)
+			}
 		}
+		i++
 	}
 	for _, pidSection := range sections {
 		section := pidSection.Section
