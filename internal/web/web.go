@@ -2,6 +2,9 @@ package web
 
 import (
 	"net/http"
+	"net/http/pprof"
+	"runtime"
+	"time"
 
 	"github.com/21S1298001/mahiron/internal/event"
 	"github.com/21S1298001/mahiron/internal/observability"
@@ -29,6 +32,8 @@ type WebConfig struct {
 	EpgStaleAfter  int64
 	MeterProvider  metric.MeterProvider
 	TracerProvider trace.TracerProvider
+	// Pprof serves the net/http/pprof handlers under /debug/pprof.
+	Pprof bool
 }
 
 func NewWeb(config WebConfig) (http.Handler, error) {
@@ -52,9 +57,32 @@ func NewWeb(config WebConfig) (http.Handler, error) {
 	}
 
 	mux.Handle("/api/", http.StripPrefix("/api", api))
+	if config.Pprof {
+		registerPprof(mux)
+	}
 	mux.Handle("/", ui.NewHandler())
 
 	return withServerHeader(mux), nil
+}
+
+// registerPprof mounts the net/http/pprof handlers. They are registered
+// explicitly rather than through the package's default mux, which this server
+// never serves.
+//
+// The block and mutex profiles sample nothing until their rates are set, so
+// enabling the endpoints without setting them would serve two empty profiles to
+// someone who turned profiling on precisely to read them. The rates chosen cost
+// little: one sample per millisecond spent blocked, and one in a hundred
+// contended mutex events.
+func registerPprof(mux *http.ServeMux) {
+	runtime.SetBlockProfileRate(int(time.Millisecond))
+	runtime.SetMutexProfileFraction(100)
+
+	mux.HandleFunc("/debug/pprof/", pprof.Index)
+	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 }
 
 func withServerHeader(next http.Handler) http.Handler {
