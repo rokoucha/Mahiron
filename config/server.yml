@@ -28,6 +28,9 @@ observability:
     enabled: true
   metrics:
     enabled: true
+  # /debug/pprof を全リスナーで公開する。既定は無効。
+  pprof:
+    enabled: false
 
 jobs:
   - key: service-updater

@@ -46,6 +46,12 @@ type ObservabilityConfig struct {
 	Logs        ObservabilitySignal `json:"logs,omitempty"`
 	Traces      ObservabilitySignal `json:"traces,omitempty"`
 	Metrics     ObservabilitySignal `json:"metrics,omitempty"`
+	// Pprof serves net/http/pprof under /debug/pprof on every configured
+	// listener. It stays off unless asked for: the handlers report what the
+	// process is doing and holding, and a profile request occupies the server
+	// for its whole duration, neither of which belongs on an interface that
+	// otherwise only serves the API and the dashboard.
+	Pprof ObservabilitySignal `json:"pprof,omitempty"`
 }
 
 type ObservabilitySignal struct {

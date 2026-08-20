@@ -305,3 +305,61 @@ func hasMetric(data metricdata.ResourceMetrics, name string) bool {
 	}
 	return false
 }
+
+func TestNewWebServesPprofOnlyWhenEnabled(t *testing.T) {
+	// The goroutine profile is the one this exists for, and debug=2 keeps the
+	// assertion on a plain text dump rather than a compressed protobuf. That
+	// dump is the panic-style listing, so it opens on a goroutine header.
+	const path = "/debug/pprof/goroutine?debug=2"
+
+	for _, tc := range []struct {
+		name  string
+		pprof bool
+	}{
+		{name: "disabled by default", pprof: false},
+		{name: "enabled", pprof: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			handler, err := NewWeb(WebConfig{
+				ServiceManager: testServiceManager{},
+				StreamManager:  testStreamManager{},
+				Pprof:          tc.pprof,
+			})
+			if err != nil {
+				t.Fatalf("NewWeb() = %v", err)
+			}
+
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, path, nil))
+
+			// Status alone cannot tell the two apart: with pprof unregistered
+			// the path falls through to the single page app handler, which
+			// answers 200 for any route it does not recognize. Only the body
+			// distinguishes a profile from the dashboard.
+			body := recorder.Body.String()
+			served := strings.HasPrefix(body, "goroutine ")
+			if served != tc.pprof {
+				t.Fatalf("GET %s served a goroutine dump = %v, want %v (body %.60q)", path, served, tc.pprof, body)
+			}
+		})
+	}
+}
+
+// The disabled case must not pass merely because nothing routes it: the UI
+// handler owns "/" and would answer /debug/pprof/ itself if pprof were left
+// unregistered without that path being reserved.
+func TestNewWebWithoutPprofStillServesTheUIRoot(t *testing.T) {
+	handler, err := NewWeb(WebConfig{
+		ServiceManager: testServiceManager{},
+		StreamManager:  testStreamManager{},
+	})
+	if err != nil {
+		t.Fatalf("NewWeb() = %v", err)
+	}
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/", nil))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("GET / = %d, want %d", recorder.Code, http.StatusOK)
+	}
+}
