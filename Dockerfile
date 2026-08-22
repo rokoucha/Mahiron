@@ -6,7 +6,7 @@ RUN --mount=type=bind,source=web,target=/src/web,rw \
     --mount=type=cache,target=/root/.npm \
     npm ci && npm run build
 
-FROM --platform=$BUILDPLATFORM golang:1.26-bookworm AS build
+FROM --platform=$BUILDPLATFORM golang:1.27-bookworm AS build
 WORKDIR /src
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=bind,source=go.mod,target=go.mod \
