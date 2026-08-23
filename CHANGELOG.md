@@ -1,5 +1,29 @@
 # Changelog
 
+## [v5.1.0](https://github.com/rokoucha/Mahiron/compare/v5.0.15...v5.1.0) - 2026-08-23
+
+- Update dependency eslint to v10.8.1 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/101
+- Update module github.com/ogen-go/ogen to v1.24.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/102
+- Update module modernc.org/sqlite to v1.56.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/105
+- Update dependency eslint-plugin-react-refresh to v0.5.4 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/106
+- Update dependency typescript-eslint to v8.67.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/107
+- Update dependency globals to v17.11.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/108
+- Update module golang.org/x/text to v0.41.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/109
+- Serve a Server header identifying Mahiron by @rokoucha in https://github.com/rokoucha/Mahiron/pull/115
+- リモートの可用性チェックのタイムアウトを設定可能にする by @rokoucha in https://github.com/rokoucha/Mahiron/pull/116
+- EPGStation との互換性を修正 (genres の省略 / path-level parameters) by @rokoucha in https://github.com/rokoucha/Mahiron/pull/117
+- Update OpenTelemetry modules together to v1.45.0/v0.21.0 by @rokoucha in https://github.com/rokoucha/Mahiron/pull/118
+- Pin golangci-lint and stop serving its cache across versions by @rokoucha in https://github.com/rokoucha/Mahiron/pull/120
+- Amortize data broadcast cache pruning by @rokoucha in https://github.com/rokoucha/Mahiron/pull/119
+- Serve pprof handlers when observability.pprof is enabled by @rokoucha in https://github.com/rokoucha/Mahiron/pull/121
+- Run the data broadcast cache at synchronous=NORMAL by @rokoucha in https://github.com/rokoucha/Mahiron/pull/122
+- Drop packets for a slow subscriber instead of disconnecting it by @rokoucha in https://github.com/rokoucha/Mahiron/pull/123
+- Update dependency vitest to v4.1.11 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/124
+- Update dependency vite to v8.2.2 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/125
+- Update dependency @vitejs/plugin-react to v6.1.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/126
+- Update dependency golangci/golangci-lint to v2.13.1 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/128
+- Update dependency eslint to v10.9.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/127
+
 ## [v5.0.15](https://github.com/rokoucha/Mahiron/compare/v5.0.14...v5.0.15) - 2026-08-09
 
 - Update dependency typescript-eslint to v8.66.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/89
