@@ -30,7 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       # renovate: datasource=github-releases depName=golangci/golangci-lint
-      GOLANGCI_LINT_VERSION: v2.12.2
+      GOLANGCI_LINT_VERSION: v2.13.1
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: echo "placeholder for go:embed, not served" > internal/web/ui/dist/ci-placeholder
