@@ -21,12 +21,12 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 
 FROM debian:bookworm-slim
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates tzdata curl \
+    && apt-get install -y --no-install-recommends ca-certificates tzdata curl tini \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=build /out/mahiron /usr/local/bin/mahiron
 WORKDIR /app
 RUN mkdir -p /app/config /app/db
 VOLUME ["/app/config", "/app/db"]
 EXPOSE 40772
-ENTRYPOINT ["mahiron"]
+ENTRYPOINT ["/usr/bin/tini", "-s", "--", "mahiron"]
 CMD ["-config-dir", "/app/config"]
