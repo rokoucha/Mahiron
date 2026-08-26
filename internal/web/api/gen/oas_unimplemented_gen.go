@@ -290,7 +290,7 @@ func (UnimplementedHandler) GetTunerProcess(ctx context.Context, params GetTuner
 // GetTuners implements getTuners operation.
 //
 // GET /tuners
-func (UnimplementedHandler) GetTuners(ctx context.Context) (r GetTunersRes, _ error) {
+func (UnimplementedHandler) GetTuners(ctx context.Context, params GetTunersParams) (r GetTunersRes, _ error) {
 	return r, ht.ErrNotImplemented
 }
 

@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/job/run"
@@ -32,6 +33,8 @@ type StreamManager struct {
 	remoteEventSyncWG     sync.WaitGroup
 	remotes               map[string]*remote.Client
 	remoteTunerTypes      map[string]map[string]struct{}
+	remoteTunersMu        sync.RWMutex
+	remoteTuners          map[string]map[int]tuner.Status
 	serviceLister         ServiceLister
 	registry              *sessionRegistry
 	sources               *source.Pool
@@ -106,6 +109,7 @@ func NewStreamManager(cfg StreamManagerConfig) *StreamManager {
 		programUpdater:     cfg.ProgramUpdater,
 		remotes:            remotes,
 		remoteTunerTypes:   remoteTunerTypes,
+		remoteTuners:       make(map[string]map[int]tuner.Status, len(remotes)),
 		serviceLister:      cfg.ServiceLister,
 		registry:           newSessionRegistry(),
 		sources:            source.NewPool(cfg.Channels, cfg.TunerManager, descramblerFactory, remoteClients(remotes)),
@@ -130,22 +134,106 @@ func remoteClients(clients map[string]*remote.Client) map[string]source.RemoteCl
 }
 
 func (m *StreamManager) StartRemoteProgramEventSync(ctx context.Context) {
-	if m.programUpdater == nil || len(m.remotes) == 0 {
+	if len(m.remotes) == 0 {
 		return
 	}
 	m.remoteEventSyncOnce.Do(func() {
 		syncCtx, cancel := context.WithCancel(ctx)
 		m.remoteEventSyncCancel = cancel
-		updater := m.remoteProgramUpdater()
+		var updater ProgramUpdater
+		if m.programUpdater != nil {
+			updater = m.remoteProgramUpdater()
+		}
 		for name, client := range m.remotes {
 			name, client := name, client
 			m.remoteEventSyncWG.Add(1)
 			go func() {
 				defer m.remoteEventSyncWG.Done()
-				remote.RunProgramEventSync(syncCtx, name, client, updater)
+				m.runRemoteEventSync(syncCtx, name, client, updater)
 			}()
 		}
 	})
+}
+
+const remoteTunerRefreshInterval = 5 * time.Minute
+
+func (m *StreamManager) runRemoteEventSync(ctx context.Context, name string, client *remote.Client, updater ProgramUpdater) {
+	refresh := func() {
+		statuses, err := client.TunerStatuses(ctx)
+		if err != nil {
+			slog.Warn("failed to refresh remote tuner status", "remote", name, "err", err)
+			return
+		}
+		m.replaceRemoteTuners(name, statuses)
+	}
+	refresh()
+	var refreshWG sync.WaitGroup
+	refreshWG.Add(1)
+	go func() {
+		defer refreshWG.Done()
+		ticker := time.NewTicker(remoteTunerRefreshInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				refresh()
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	defer refreshWG.Wait()
+	backoff := time.Second
+	for ctx.Err() == nil {
+		err := client.StreamEvents(ctx, func() {
+			backoff = time.Second
+			refresh()
+		}, updater, func(typ string, status tuner.Status) {
+			m.applyRemoteTunerEvent(name, typ, status)
+		})
+		if ctx.Err() != nil {
+			return
+		}
+		slog.Debug("remote event sync stopped", "remote", name, "err", err, "retryIn", backoff)
+		if !waitRemoteSync(ctx, backoff) {
+			return
+		}
+		backoff = min(backoff*2, time.Minute)
+	}
+}
+
+func waitRemoteSync(ctx context.Context, duration time.Duration) bool {
+	timer := time.NewTimer(duration)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return true
+	case <-ctx.Done():
+		return false
+	}
+}
+
+func (m *StreamManager) replaceRemoteTuners(name string, statuses []tuner.Status) {
+	items := make(map[int]tuner.Status, len(statuses))
+	for _, status := range statuses {
+		items[status.Index] = status
+	}
+	m.remoteTunersMu.Lock()
+	m.remoteTuners[name] = items
+	m.remoteTunersMu.Unlock()
+}
+
+func (m *StreamManager) applyRemoteTunerEvent(name, typ string, status tuner.Status) {
+	m.remoteTunersMu.Lock()
+	defer m.remoteTunersMu.Unlock()
+	if m.remoteTuners[name] == nil {
+		m.remoteTuners[name] = map[int]tuner.Status{}
+	}
+	if typ == "remove" {
+		delete(m.remoteTuners[name], status.Index)
+		return
+	}
+	m.remoteTuners[name][status.Index] = status
 }
 
 func (m *StreamManager) remoteProgramUpdater() ProgramUpdater {
@@ -335,35 +423,21 @@ func (m *StreamManager) ActiveSessionCount() int {
 	return m.registry.count()
 }
 
-// RemoteTunerStatuses collects remote tuner state concurrently. A failed
-// remote is omitted so the local tuner status endpoint remains available.
-func (m *StreamManager) RemoteTunerStatuses(ctx context.Context) []RemoteTunerStatus {
-	type result struct {
-		name     string
-		statuses []tuner.Status
-	}
-	results := make(chan result, len(m.remotes))
-	var wg sync.WaitGroup
-	for name, client := range m.remotes {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			statuses, err := client.TunerStatuses(ctx)
-			if err == nil {
-				results <- result{name: name, statuses: m.configuredRemoteTuners(name, statuses)}
-			}
-		}()
-	}
-	wg.Wait()
-	close(results)
-
+// RemoteTunerStatuses returns the latest event-maintained remote tuner cache.
+func (m *StreamManager) RemoteTunerStatuses(_ context.Context) []RemoteTunerStatus {
+	m.remoteTunersMu.RLock()
 	var collected []RemoteTunerStatus
-	for item := range results {
-		for _, status := range item.statuses {
-			status.Users = m.remoteSessionUsers(item.name, status)
-			collected = append(collected, RemoteTunerStatus{Remote: item.name, Status: status})
+	for name, items := range m.remoteTuners {
+		statuses := make([]tuner.Status, 0, len(items))
+		for _, status := range items {
+			statuses = append(statuses, status)
+		}
+		for _, status := range m.configuredRemoteTuners(name, statuses) {
+			status.Users = m.remoteSessionUsers(name, status)
+			collected = append(collected, RemoteTunerStatus{Remote: name, Status: status})
 		}
 	}
+	m.remoteTunersMu.RUnlock()
 	slices.SortFunc(collected, func(a, b RemoteTunerStatus) int {
 		if a.Remote != b.Remote {
 			return strings.Compare(a.Remote, b.Remote)

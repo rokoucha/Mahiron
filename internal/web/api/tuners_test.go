@@ -21,7 +21,7 @@ func TestGetTunersAndGetTuner(t *testing.T) {
 	handler := NewHandler(HandlerConfig{TunerManager: tuner.NewTunerManager(&tuner.TunerManagerConfig{
 		TunersConfig: config.TunersConfig{{Name: "first", Types: []string{"GR"}, Command: "sleep 1"}},
 	})})
-	res, err := handler.GetTuners(context.Background())
+	res, err := handler.GetTuners(context.Background(), apigen.GetTunersParams{IncludeRemote: apigen.NewOptBool(true)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +56,7 @@ func TestGetTunersIncludesRemoteTuners(t *testing.T) {
 	streamManager := remoteTunerStatusProvider{StreamManager: stream.NewStreamManager(stream.StreamManagerConfig{TunerManager: localTuners})}
 	handler := NewHandler(HandlerConfig{TunerManager: localTuners, StreamManager: streamManager})
 
-	res, err := handler.GetTuners(context.Background())
+	res, err := handler.GetTuners(context.Background(), apigen.GetTunersParams{IncludeRemote: apigen.NewOptBool(true)})
 	if err != nil {
 		t.Fatal(err)
 	}

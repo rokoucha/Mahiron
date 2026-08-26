@@ -198,7 +198,7 @@ type Invoker interface {
 	// GetTuners invokes getTuners operation.
 	//
 	// GET /tuners
-	GetTuners(ctx context.Context) (GetTunersRes, error)
+	GetTuners(ctx context.Context, params GetTunersParams) (GetTunersRes, error)
 	// IptvDiscoverJSONGet invokes GET /iptv/discover.json operation.
 	//
 	// IPTV - Media Server Support.
@@ -4483,12 +4483,12 @@ func (c *Client) sendGetTunerProcess(ctx context.Context, params GetTunerProcess
 // GetTuners invokes getTuners operation.
 //
 // GET /tuners
-func (c *Client) GetTuners(ctx context.Context) (GetTunersRes, error) {
-	res, err := c.sendGetTuners(ctx)
+func (c *Client) GetTuners(ctx context.Context, params GetTunersParams) (GetTunersRes, error) {
+	res, err := c.sendGetTuners(ctx, params)
 	return res, err
 }
 
-func (c *Client) sendGetTuners(ctx context.Context) (res GetTunersRes, err error) {
+func (c *Client) sendGetTuners(ctx context.Context, params GetTunersParams) (res GetTunersRes, err error) {
 	otelAttrs := []attribute.KeyValue{
 		otelogen.OperationID("getTuners"),
 		semconv.HTTPRequestMethodKey.String("GET"),
@@ -4528,6 +4528,27 @@ func (c *Client) sendGetTuners(ctx context.Context) (res GetTunersRes, err error
 	var pathParts [1]string
 	pathParts[0] = "/tuners"
 	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeQueryParams"
+	q := uri.NewQueryEncoder()
+	{
+		// Encode "includeRemote" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "includeRemote",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.IncludeRemote.Get(); ok {
+				return e.EncodeValue(conv.BoolToString(val))
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	u.RawQuery = q.Values().Encode()
 
 	stage = "EncodeRequest"
 	r, err := ht.NewRequest(ctx, "GET", u)

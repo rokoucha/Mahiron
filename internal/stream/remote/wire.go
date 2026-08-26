@@ -10,6 +10,7 @@ import (
 	"log/slog"
 
 	"github.com/21S1298001/mahiron/internal/program"
+	"github.com/21S1298001/mahiron/internal/tuner"
 )
 
 type remoteTuner struct {
@@ -26,6 +27,15 @@ type remoteTuner struct {
 	CurrentChannel     string   `json:"currentChannel"`
 	TunedChannelType   string   `json:"tunedChannelType"`
 	TunedChannel       string   `json:"tunedChannel"`
+}
+
+func (t remoteTuner) Status() tuner.Status {
+	return tuner.Status{
+		Index: t.Index, Name: t.Name, Types: t.Types, Command: t.Command, PID: t.PID,
+		IsAvailable: t.IsAvailable, IsFree: t.IsFree, IsUsing: t.IsUsing, IsFault: t.IsFault,
+		CurrentChannelType: t.CurrentChannelType, CurrentChannel: t.CurrentChannel,
+		TunedChannelType: t.TunedChannelType, TunedChannel: t.TunedChannel,
+	}
 }
 
 func (t remoteTuner) matchesRoute(channelType, channel string) bool {
@@ -113,6 +123,48 @@ func readRemoteProgramEvents(ctx context.Context, src io.Reader, updater Program
 		if errors.Is(err, context.Canceled) {
 			return nil
 		}
+		return err
+	}
+	return nil
+}
+
+func readRemoteEvents(ctx context.Context, src io.Reader, updater ProgramUpdater, updateTuner func(string, tuner.Status)) error {
+	scanner := bufio.NewScanner(src)
+	scanner.Buffer(make([]byte, 64*1024), 4*1024*1024)
+	for scanner.Scan() {
+		if ctx.Err() != nil {
+			return nil
+		}
+		line := bytes.TrimSuffix(bytes.TrimSpace(scanner.Bytes()), []byte(","))
+		if len(line) == 0 || bytes.Equal(line, []byte("[")) || bytes.Equal(line, []byte("]")) {
+			continue
+		}
+		var event remoteEvent
+		if json.Unmarshal(line, &event) != nil {
+			continue
+		}
+		switch event.Resource {
+		case "program":
+			if updater == nil || event.Type != "update" && event.Type != "create" {
+				continue
+			}
+			var item remoteProgram
+			if json.Unmarshal(event.Data, &item) == nil {
+				if err := updater.UpsertPrograms(ctx, []*program.Program{item.Program()}); err != nil {
+					return err
+				}
+			}
+		case "tuner":
+			if updateTuner == nil {
+				continue
+			}
+			var item remoteTuner
+			if json.Unmarshal(event.Data, &item) == nil {
+				updateTuner(event.Type, item.Status())
+			}
+		}
+	}
+	if err := scanner.Err(); err != nil && !errors.Is(err, context.Canceled) {
 		return err
 	}
 	return nil

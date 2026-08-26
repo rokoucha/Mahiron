@@ -136,7 +136,7 @@ type Handler interface {
 	// GetTuners implements getTuners operation.
 	//
 	// GET /tuners
-	GetTuners(ctx context.Context) (GetTunersRes, error)
+	GetTuners(ctx context.Context, params GetTunersParams) (GetTunersRes, error)
 	// IptvDiscoverJSONGet implements GET /iptv/discover.json operation.
 	//
 	// IPTV - Media Server Support.
