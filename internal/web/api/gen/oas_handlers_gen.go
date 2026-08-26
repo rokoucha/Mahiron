@@ -5042,8 +5042,22 @@ func (s *Server) handleGetTunersRequest(args [0]string, argsEscaped bool, w http
 
 			s.errors.Add(ctx, 1, metric.WithAttributes(attrs...))
 		}
-		err error
+		err          error
+		opErrContext = ogenerrors.OperationContext{
+			Name: GetTunersOperation,
+			ID:   "getTuners",
+		}
 	)
+	params, err := decodeGetTunersParams(args, argsEscaped, r)
+	if err != nil {
+		err = &ogenerrors.DecodeParamsError{
+			OperationContext: opErrContext,
+			Err:              err,
+		}
+		defer recordError("DecodeParams", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
 
 	var rawBody []byte
 
@@ -5056,13 +5070,18 @@ func (s *Server) handleGetTunersRequest(args [0]string, argsEscaped bool, w http
 			OperationID:      "getTuners",
 			Body:             nil,
 			RawBody:          rawBody,
-			Params:           middleware.Parameters{},
-			Raw:              r,
+			Params: middleware.Parameters{
+				{
+					Name: "includeRemote",
+					In:   "query",
+				}: params.IncludeRemote,
+			},
+			Raw: r,
 		}
 
 		type (
 			Request  = struct{}
-			Params   = struct{}
+			Params   = GetTunersParams
 			Response = GetTunersRes
 		)
 		response, err = middleware.HookMiddleware[
@@ -5072,14 +5091,14 @@ func (s *Server) handleGetTunersRequest(args [0]string, argsEscaped bool, w http
 		](
 			m,
 			mreq,
-			nil,
+			unpackGetTunersParams,
 			func(ctx context.Context, request Request, params Params) (response Response, err error) {
-				response, err = s.h.GetTuners(ctx)
+				response, err = s.h.GetTuners(ctx, params)
 				return response, err
 			},
 		)
 	} else {
-		response, err = s.h.GetTuners(ctx)
+		response, err = s.h.GetTuners(ctx, params)
 	}
 	if err != nil {
 		defer recordError("Internal", err)

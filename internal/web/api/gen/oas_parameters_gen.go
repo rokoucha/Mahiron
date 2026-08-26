@@ -5357,6 +5357,76 @@ func decodeGetTunerProcessParams(args [1]string, argsEscaped bool, r *http.Reque
 	return params, nil
 }
 
+// GetTunersParams is parameters of getTuners operation.
+type GetTunersParams struct {
+	// Include cached tuner status from configured remotes.
+	IncludeRemote OptBool `json:",omitempty,omitzero"`
+}
+
+func unpackGetTunersParams(packed middleware.Parameters) (params GetTunersParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "includeRemote",
+			In:   "query",
+		}
+		if v, ok := packed[key]; ok {
+			params.IncludeRemote = v.(OptBool)
+		}
+	}
+	return params
+}
+
+func decodeGetTunersParams(args [0]string, argsEscaped bool, r *http.Request) (params GetTunersParams, _ error) {
+	q := uri.NewQueryDecoder(r.URL.Query())
+	// Set default value for query: includeRemote.
+	{
+		val := bool(true)
+		params.IncludeRemote.SetTo(val)
+	}
+	// Decode query: includeRemote.
+	if err := func() error {
+		cfg := uri.QueryParameterDecodingConfig{
+			Name:    "includeRemote",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.HasParam(cfg); err == nil {
+			if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
+				var paramsDotIncludeRemoteVal bool
+				if err := func() error {
+					val, err := d.DecodeValue()
+					if err != nil {
+						return err
+					}
+
+					c, err := conv.ToBool(val)
+					if err != nil {
+						return err
+					}
+
+					paramsDotIncludeRemoteVal = c
+					return nil
+				}(); err != nil {
+					return err
+				}
+				params.IncludeRemote.SetTo(paramsDotIncludeRemoteVal)
+				return nil
+			}); err != nil {
+				return err
+			}
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "includeRemote",
+			In:   "query",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
 // KillTunerProcessParams is parameters of killTunerProcess operation.
 type KillTunerProcessParams struct {
 	Index int

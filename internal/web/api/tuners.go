@@ -11,17 +11,20 @@ import (
 	"github.com/go-faster/jx"
 )
 
-func GetTuners(ctx context.Context, h *Handler) (apigen.GetTunersRes, error) {
+func GetTuners(ctx context.Context, h *Handler, params apigen.GetTunersParams) (apigen.GetTunersRes, error) {
 	statuses := h.tunerManager.Statuses()
 	result := make(apigen.GetTunersOKApplicationJSON, 0, len(statuses))
 	for i := range statuses {
 		result = append(result, *apiTuner(statuses[i]))
 	}
-	if provider, ok := h.streamManager.(interface {
-		RemoteTunerStatuses(context.Context) []stream.RemoteTunerStatus
-	}); ok {
-		for i, remote := range provider.RemoteTunerStatuses(ctx) {
-			result = append(result, *apiRemoteTuner(remote, i))
+	includeRemote, _ := params.IncludeRemote.Get()
+	if includeRemote {
+		if provider, ok := h.streamManager.(interface {
+			RemoteTunerStatuses(context.Context) []stream.RemoteTunerStatus
+		}); ok {
+			for i, remote := range provider.RemoteTunerStatuses(ctx) {
+				result = append(result, *apiRemoteTuner(remote, i))
+			}
 		}
 	}
 	return &result, nil

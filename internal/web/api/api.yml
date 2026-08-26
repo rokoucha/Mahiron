@@ -89,6 +89,13 @@ paths:
       tags:
         - tuners
       operationId: getTuners
+      parameters:
+        - name: includeRemote
+          in: query
+          description: Include cached tuner status from configured remotes.
+          schema:
+            type: boolean
+            default: true
       responses:
         "200":
           description: OK

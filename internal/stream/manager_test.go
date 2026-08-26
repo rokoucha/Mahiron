@@ -804,7 +804,7 @@ func TestManagerFallsBackWhenRemoteRouteUnavailable(t *testing.T) {
 
 func TestManagerStartsRemoteProgramEventSyncOutsideSessionLifecycle(t *testing.T) {
 	no := false
-	requests := make(chan string, 2)
+	requests := make(chan string, 1)
 	previousNewRemoteClient := newRemoteClient
 	t.Cleanup(func() { newRemoteClient = previousNewRemoteClient })
 	newRemoteClient = func(cfg config.RemoteConfig) *remote.Client {
@@ -836,11 +836,11 @@ func TestManagerStartsRemoteProgramEventSyncOutsideSessionLifecycle(t *testing.T
 	manager.StartRemoteProgramEventSync(ctx)
 	select {
 	case request := <-requests:
-		if request != "/api/events/stream?resource=program" {
-			t.Fatalf("request = %q, want /api/events/stream?resource=program", request)
+		if request != "/api/events/stream?" {
+			t.Fatalf("event sync request = %q, want one unfiltered stream", request)
 		}
 	case <-time.After(time.Second):
-		t.Fatal("timed out waiting for remote program event sync request")
+		t.Fatal("timed out waiting for remote event sync request")
 	}
 
 	session, err := manager.GetOrCreate(context.Background(), "GR", "27")

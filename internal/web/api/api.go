@@ -243,8 +243,8 @@ func (h *Handler) GetTunerProcess(ctx context.Context, params apigen.GetTunerPro
 	return GetTunerProcess(ctx, h, params)
 }
 
-func (h *Handler) GetTuners(ctx context.Context) (apigen.GetTunersRes, error) {
-	return GetTuners(ctx, h)
+func (h *Handler) GetTuners(ctx context.Context, params apigen.GetTunersParams) (apigen.GetTunersRes, error) {
+	return GetTuners(ctx, h, params)
 }
 
 func (h *Handler) IptvDiscoverJSONGet(ctx context.Context) (apigen.IptvDiscoverJSONGetRes, error) {

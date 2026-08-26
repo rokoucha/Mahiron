@@ -36,6 +36,9 @@ func TestRemoteClientCheckAvailableForRouteAndBasicAuth(t *testing.T) {
 		if r.URL.Path != "/api/tuners" {
 			t.Fatalf("path = %s, want /api/tuners", r.URL.Path)
 		}
+		if got := r.URL.Query().Get("includeRemote"); got != "0" {
+			t.Fatalf("includeRemote = %q, want 0", got)
+		}
 		return streamtest.StringResponse(http.StatusOK, `[{"types":["GR"],"isAvailable":true,"isFree":true,"isFault":false}]`), nil
 	})}
 	if err := client.CheckAvailableForRoute(context.Background(), "GR", "27"); err != nil {
@@ -175,6 +178,9 @@ func TestRemoteClientTunerStatuses(t *testing.T) {
 	client.httpClient = &http.Client{Transport: streamtest.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		if r.URL.Path != "/api/tuners" {
 			t.Fatalf("path = %q, want /api/tuners", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("includeRemote"); got != "0" {
+			t.Fatalf("includeRemote = %q, want 0", got)
 		}
 		return streamtest.StringResponse(http.StatusOK, `[{"index":2,"name":"remote","types":["GR"],"isAvailable":true,"isFree":false,"isUsing":true,"isFault":false,"currentChannelType":"GR","currentChannel":"27"}]`), nil
 	})}
@@ -625,10 +631,11 @@ func TestRemoteClientListServicePrograms(t *testing.T) {
 	}
 }
 
-func TestRemoteClientStreamProgramEventsUsesRemoteAPI(t *testing.T) {
+func TestRemoteClientStreamEventsUsesOneUnfilteredRemoteAPI(t *testing.T) {
 	var auth string
 	var path string
 	var query string
+	var connected bool
 	client := NewClient(config.RemoteConfig{
 		URL:       "http://remote.local/api",
 		BasicAuth: &config.BasicAuthConfig{Username: "user", Password: "pass"},
@@ -640,15 +647,39 @@ func TestRemoteClientStreamProgramEventsUsesRemoteAPI(t *testing.T) {
 		return streamtest.StringResponse(http.StatusOK, "[\n"), nil
 	})}
 
-	if err := client.StreamProgramEvents(context.Background(), &recordingProgramUpdater{}); err != nil {
+	if err := client.StreamEvents(context.Background(), func() { connected = true }, &recordingProgramUpdater{}, func(string, tuner.Status) {}); err != nil {
 		t.Fatal(err)
 	}
-	if path != "/api/events/stream" || query != "resource=program" {
+	if path != "/api/events/stream" || query != "" {
 		t.Fatalf("request = %s?%s", path, query)
+	}
+	if !connected {
+		t.Fatal("connected callback was not called")
 	}
 	wantAuth := "Basic " + base64.StdEncoding.EncodeToString([]byte("user:pass"))
 	if auth != wantAuth {
 		t.Fatalf("Authorization = %q, want %q", auth, wantAuth)
+	}
+}
+
+func TestReadRemoteEventsDispatchesProgramsAndTuners(t *testing.T) {
+	updater := &recordingProgramUpdater{}
+	var eventType string
+	var status tuner.Status
+	err := readRemoteEvents(context.Background(), strings.NewReader(`[
+{"resource":"program","type":"update","data":{"id":401010001,"eventId":1,"serviceId":101,"networkId":4}},
+{"resource":"tuner","type":"update","data":{"index":2,"name":"remote","types":["GR"],"isAvailable":true}}
+`), updater, func(typ string, item tuner.Status) {
+		eventType, status = typ, item
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(updater.programs) != 1 || updater.programs[0].ID != 401010001 {
+		t.Fatalf("programs = %#v", updater.programs)
+	}
+	if eventType != "update" || status.Index != 2 || status.Name != "remote" {
+		t.Fatalf("tuner event = %q %+v", eventType, status)
 	}
 }
 

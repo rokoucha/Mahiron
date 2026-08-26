@@ -41,7 +41,6 @@ const (
 	remoteOperationProgramStream       = "remote.program_stream"
 	remoteOperationScanServices        = "remote.scan_services"
 	remoteOperationListServicePrograms = "remote.list_service_programs"
-	remoteOperationStreamProgramEvents = "remote.stream_program_events"
 	remoteOperationGetLogoImage        = "remote.get_logo_image"
 )
 
@@ -103,6 +102,7 @@ func (c *Client) CheckAvailableForRoute(ctx context.Context, channelType, channe
 	if err != nil {
 		return err
 	}
+	requestLocalTunersOnly(req)
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return err
@@ -139,29 +139,22 @@ func (c *Client) TunerStatuses(ctx context.Context) ([]tuner.Status, error) {
 	if err != nil {
 		return nil, err
 	}
+	requestLocalTunersOnly(req)
 	var remoteTuners []remoteTuner
 	if err := c.doJSON(req, &remoteTuners); err != nil {
 		return nil, err
 	}
 	statuses := make([]tuner.Status, len(remoteTuners))
 	for i, item := range remoteTuners {
-		statuses[i] = tuner.Status{
-			Index:              item.Index,
-			Name:               item.Name,
-			Types:              item.Types,
-			Command:            item.Command,
-			PID:                item.PID,
-			IsAvailable:        item.IsAvailable,
-			IsFree:             item.IsFree,
-			IsUsing:            item.IsUsing,
-			IsFault:            item.IsFault,
-			CurrentChannelType: item.CurrentChannelType,
-			CurrentChannel:     item.CurrentChannel,
-			TunedChannelType:   item.TunedChannelType,
-			TunedChannel:       item.TunedChannel,
-		}
+		statuses[i] = item.Status()
 	}
 	return statuses, nil
+}
+
+func requestLocalTunersOnly(req *http.Request) {
+	query := req.URL.Query()
+	query.Set("includeRemote", "0")
+	req.URL.RawQuery = query.Encode()
 }
 
 func (c *Client) ChannelStream(ctx context.Context, channelType, channel string, decode bool, dst io.Writer) error {
@@ -332,38 +325,23 @@ func (c *Client) ListServicePrograms(ctx context.Context, networkID, serviceID u
 	return programs, nil
 }
 
-func (c *Client) StreamProgramEvents(ctx context.Context, updater ProgramUpdater) (err error) {
-	start := time.Now()
-	defer func() {
-		observability.RecordRemoteOperation(ctx, remoteOperationStreamProgramEvents, remoteOperationResult(err), time.Since(start).Milliseconds())
-	}()
-
-	ctx, span := observability.StartSpan(ctx, observability.SpanRemoteStreamProgramEventsConnect,
-		observability.AttrRemoteURL.String(c.baseURL),
-	)
-
+// StreamEvents subscribes once to the unfiltered Mirakurun-compatible event
+// stream and dispatches the resource types Mahiron uses.
+func (c *Client) StreamEvents(ctx context.Context, connected func(), updater ProgramUpdater, updateTuner func(string, tuner.Status)) error {
 	req, err := c.newRequest(ctx, http.MethodGet, "events", "stream")
 	if err != nil {
-		observability.EndSpan(span, err)
 		return err
 	}
-	query := req.URL.Query()
-	query.Set("resource", "program")
-	req.URL.RawQuery = query.Encode()
-
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		observability.EndSpan(span, err)
 		return err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		err = fmt.Errorf("remote events stream status: %s", resp.Status)
-		observability.EndSpan(span, err)
+	if err := remoteStatusError(resp.StatusCode, resp.Status); err != nil {
 		return err
 	}
-	observability.EndSpan(span, nil)
-	return readRemoteProgramEvents(ctx, resp.Body, updater)
+	connected()
+	return readRemoteEvents(ctx, resp.Body, updater, updateTuner)
 }
 
 func (c *Client) stream(ctx context.Context, operation string, decode bool, dst io.Writer, elems ...string) (err error) {
