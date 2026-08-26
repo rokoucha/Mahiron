@@ -118,15 +118,15 @@ func TestNewWebServesWebUIRoutesAndAPI(t *testing.T) {
 		t.Fatalf("GET / Cache-Control = %q, want no-cache", cache)
 	}
 
-	epg := httptest.NewRecorder()
-	epgRequest := httptest.NewRequest(http.MethodGet, "/epg", nil)
-	epgRequest.Header.Set("Accept", "text/html")
-	handler.ServeHTTP(epg, epgRequest)
-	if epg.Code != http.StatusOK {
-		t.Fatalf("GET /epg = %d, want 200", epg.Code)
-	}
-	if epg.Body.String() != index.Body.String() {
-		t.Fatal("GET /epg did not serve the SPA index")
+	for _, route := range []string{"/epg", "/jobs", "/logs", "/integrations"} {
+		page := httptest.NewRecorder()
+		handler.ServeHTTP(page, httptest.NewRequest(http.MethodGet, route, nil))
+		if page.Code != http.StatusOK {
+			t.Fatalf("GET %s = %d, want 200", route, page.Code)
+		}
+		if page.Body.String() != index.Body.String() {
+			t.Fatalf("GET %s did not serve the SPA index", route)
+		}
 	}
 
 	events := httptest.NewRecorder()
@@ -139,10 +139,10 @@ func TestNewWebServesWebUIRoutesAndAPI(t *testing.T) {
 
 	unknownAPI := httptest.NewRecorder()
 	unknownAPIRequest := httptest.NewRequest(http.MethodGet, "/unknown", nil)
-	unknownAPIRequest.Header.Set("Accept", "application/json")
+	unknownAPIRequest.Header.Set("Accept", "text/html")
 	handler.ServeHTTP(unknownAPI, unknownAPIRequest)
 	if unknownAPI.Code != http.StatusNotFound {
-		t.Fatalf("GET /unknown with Accept: application/json = %d, want 404", unknownAPI.Code)
+		t.Fatalf("GET /unknown with Accept: text/html = %d, want 404", unknownAPI.Code)
 	}
 
 	match := regexp.MustCompile(`"/assets/([^"]+\.js)"`).FindStringSubmatch(index.Body.String())

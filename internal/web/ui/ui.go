@@ -7,7 +7,6 @@ import (
 	"mime"
 	"net/http"
 	"path"
-	"strconv"
 	"strings"
 )
 
@@ -30,16 +29,20 @@ type spaHandler struct {
 
 type fallbackHandler struct{}
 
+var spaRoutes = map[string]struct{}{
+	"/":             {},
+	"/epg":          {},
+	"/integrations": {},
+	"/jobs":         {},
+	"/logs":         {},
+}
+
 func (fallbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if strings.HasPrefix(path.Clean(r.URL.Path), "/assets/") {
-		http.NotFound(w, r)
-		return
-	}
-	if !acceptsHTML(r) {
+	if !isSPARoute(r.URL.Path) {
 		http.NotFound(w, r)
 		return
 	}
@@ -61,7 +64,7 @@ func (h spaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	info, err := fs.Stat(h.files, name)
 	if err != nil || info.IsDir() {
-		if !acceptsHTML(r) {
+		if !isSPARoute(r.URL.Path) {
 			http.NotFound(w, r)
 			return
 		}
@@ -93,21 +96,7 @@ func (h spaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	http.ServeContent(w, r, name, info.ModTime(), bytes.NewReader(data))
 }
 
-func acceptsHTML(r *http.Request) bool {
-	for _, value := range r.Header.Values("Accept") {
-		for _, mediaRange := range strings.Split(value, ",") {
-			mediaType, params, err := mime.ParseMediaType(strings.TrimSpace(mediaRange))
-			if err != nil || mediaType != "text/html" {
-				continue
-			}
-			if quality, ok := params["q"]; ok {
-				q, err := strconv.ParseFloat(quality, 64)
-				if err != nil || q <= 0 {
-					continue
-				}
-			}
-			return true
-		}
-	}
-	return false
+func isSPARoute(requestPath string) bool {
+	_, ok := spaRoutes[path.Clean(requestPath)]
+	return ok
 }
