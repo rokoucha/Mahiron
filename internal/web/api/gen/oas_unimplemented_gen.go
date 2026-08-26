@@ -150,6 +150,15 @@ func (UnimplementedHandler) GetPrograms(ctx context.Context, params GetProgramsP
 	return r, ht.ErrNotImplemented
 }
 
+// GetServerConfig implements getServerConfig operation.
+//
+// Returns an empty object. Mahiron does not expose its server configuration through the API.
+//
+// GET /config/server
+func (UnimplementedHandler) GetServerConfig(ctx context.Context) (r GetServerConfigRes, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
 // GetService implements getService operation.
 //
 // GET /services/{id}

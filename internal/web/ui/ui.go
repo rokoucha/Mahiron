@@ -7,6 +7,7 @@ import (
 	"mime"
 	"net/http"
 	"path"
+	"strconv"
 	"strings"
 )
 
@@ -38,6 +39,10 @@ func (fallbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	if !acceptsHTML(r) {
+		http.NotFound(w, r)
+		return
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
 	_, _ = w.Write([]byte(`<!doctype html><html lang="ja"><head><meta charset="UTF-8"><title>Mahiron</title></head><body><main><h1>Mahiron WebUI is not built</h1><p>Run <code>make web-build</code> to embed the WebUI.</p></main></body></html>`))
@@ -56,6 +61,10 @@ func (h spaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	info, err := fs.Stat(h.files, name)
 	if err != nil || info.IsDir() {
+		if !acceptsHTML(r) {
+			http.NotFound(w, r)
+			return
+		}
 		name = "index.html"
 		info, err = fs.Stat(h.files, name)
 		if err != nil {
@@ -82,4 +91,23 @@ func (h spaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.ServeContent(w, r, name, info.ModTime(), bytes.NewReader(data))
+}
+
+func acceptsHTML(r *http.Request) bool {
+	for _, value := range r.Header.Values("Accept") {
+		for _, mediaRange := range strings.Split(value, ",") {
+			mediaType, params, err := mime.ParseMediaType(strings.TrimSpace(mediaRange))
+			if err != nil || mediaType != "text/html" {
+				continue
+			}
+			if quality, ok := params["q"]; ok {
+				q, err := strconv.ParseFloat(quality, 64)
+				if err != nil || q <= 0 {
+					continue
+				}
+			}
+			return true
+		}
+	}
+	return false
 }

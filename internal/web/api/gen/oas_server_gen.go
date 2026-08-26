@@ -83,6 +83,12 @@ type Handler interface {
 	//
 	// GET /programs
 	GetPrograms(ctx context.Context, params GetProgramsParams) (GetProgramsRes, error)
+	// GetServerConfig implements getServerConfig operation.
+	//
+	// Returns an empty object. Mahiron does not expose its server configuration through the API.
+	//
+	// GET /config/server
+	GetServerConfig(ctx context.Context) (GetServerConfigRes, error)
 	// GetService implements getService operation.
 	//
 	// GET /services/{id}

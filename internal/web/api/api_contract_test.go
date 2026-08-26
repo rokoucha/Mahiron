@@ -21,7 +21,6 @@ func TestOpenAPIDoesNotExposeContainerHostileOperations(t *testing.T) {
 	for _, operationID := range []string{
 		"getChannelsConfig",
 		"updateChannelsConfig",
-		"getServerConfig",
 		"updateServerConfig",
 		"getTunersConfig",
 		"updateTunersConfig",
@@ -34,6 +33,16 @@ func TestOpenAPIDoesNotExposeContainerHostileOperations(t *testing.T) {
 		if strings.Contains(spec, "operationId: "+operationID) {
 			t.Fatalf("api.yml exposes excluded operationId %q", operationID)
 		}
+	}
+}
+
+func TestOpenAPIExposesReadOnlyServerConfig(t *testing.T) {
+	data, err := os.ReadFile("api.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "operationId: getServerConfig") {
+		t.Fatal("api.yml does not expose getServerConfig")
 	}
 }
 
