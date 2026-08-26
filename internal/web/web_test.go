@@ -105,7 +105,9 @@ func TestNewWebServesWebUIRoutesAndAPI(t *testing.T) {
 	}
 
 	index := httptest.NewRecorder()
-	handler.ServeHTTP(index, httptest.NewRequest(http.MethodGet, "/", nil))
+	indexRequest := httptest.NewRequest(http.MethodGet, "/", nil)
+	indexRequest.Header.Set("Accept", "text/html")
+	handler.ServeHTTP(index, indexRequest)
 	if index.Code != http.StatusOK {
 		t.Fatalf("GET / = %d, want 200", index.Code)
 	}
@@ -116,13 +118,31 @@ func TestNewWebServesWebUIRoutesAndAPI(t *testing.T) {
 		t.Fatalf("GET / Cache-Control = %q, want no-cache", cache)
 	}
 
-	epg := httptest.NewRecorder()
-	handler.ServeHTTP(epg, httptest.NewRequest(http.MethodGet, "/epg", nil))
-	if epg.Code != http.StatusOK {
-		t.Fatalf("GET /epg = %d, want 200", epg.Code)
+	for _, route := range []string{"/epg", "/jobs", "/logs", "/integrations"} {
+		page := httptest.NewRecorder()
+		handler.ServeHTTP(page, httptest.NewRequest(http.MethodGet, route, nil))
+		if page.Code != http.StatusOK {
+			t.Fatalf("GET %s = %d, want 200", route, page.Code)
+		}
+		if page.Body.String() != index.Body.String() {
+			t.Fatalf("GET %s did not serve the SPA index", route)
+		}
 	}
-	if epg.Body.String() != index.Body.String() {
-		t.Fatal("GET /epg did not serve the SPA index")
+
+	events := httptest.NewRecorder()
+	eventsRequest := httptest.NewRequest(http.MethodGet, "/events", nil)
+	eventsRequest.Header.Set("Accept", "text/event-stream")
+	handler.ServeHTTP(events, eventsRequest)
+	if events.Code != http.StatusNotFound {
+		t.Fatalf("GET /events with Accept: text/event-stream = %d, want 404", events.Code)
+	}
+
+	unknownAPI := httptest.NewRecorder()
+	unknownAPIRequest := httptest.NewRequest(http.MethodGet, "/unknown", nil)
+	unknownAPIRequest.Header.Set("Accept", "text/html")
+	handler.ServeHTTP(unknownAPI, unknownAPIRequest)
+	if unknownAPI.Code != http.StatusNotFound {
+		t.Fatalf("GET /unknown with Accept: text/html = %d, want 404", unknownAPI.Code)
 	}
 
 	match := regexp.MustCompile(`"/assets/([^"]+\.js)"`).FindStringSubmatch(index.Body.String())
@@ -158,7 +178,9 @@ func TestNewWebSetsServerHeader(t *testing.T) {
 
 	for _, path := range []string{"/", "/api/status"} {
 		recorder := httptest.NewRecorder()
-		handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, path, nil))
+		request := httptest.NewRequest(http.MethodGet, path, nil)
+		request.Header.Set("Accept", "text/html")
+		handler.ServeHTTP(recorder, request)
 		if got := recorder.Header().Get("Server"); got != "Mahiron/"+version.Current {
 			t.Fatalf("GET %s Server = %q, want %q", path, got, "Mahiron/"+version.Current)
 		}

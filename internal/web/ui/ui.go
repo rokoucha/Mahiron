@@ -29,12 +29,20 @@ type spaHandler struct {
 
 type fallbackHandler struct{}
 
+var spaRoutes = map[string]struct{}{
+	"/":             {},
+	"/epg":          {},
+	"/integrations": {},
+	"/jobs":         {},
+	"/logs":         {},
+}
+
 func (fallbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if strings.HasPrefix(path.Clean(r.URL.Path), "/assets/") {
+	if !isSPARoute(r.URL.Path) {
 		http.NotFound(w, r)
 		return
 	}
@@ -56,6 +64,10 @@ func (h spaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	info, err := fs.Stat(h.files, name)
 	if err != nil || info.IsDir() {
+		if !isSPARoute(r.URL.Path) {
+			http.NotFound(w, r)
+			return
+		}
 		name = "index.html"
 		info, err = fs.Stat(h.files, name)
 		if err != nil {
@@ -82,4 +94,9 @@ func (h spaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.ServeContent(w, r, name, info.ModTime(), bytes.NewReader(data))
+}
+
+func isSPARoute(requestPath string) bool {
+	_, ok := spaRoutes[path.Clean(requestPath)]
+	return ok
 }

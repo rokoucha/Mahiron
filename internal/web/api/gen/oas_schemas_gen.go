@@ -464,6 +464,12 @@ func (s *ConfigChannelsItemCommandVars) init() ConfigChannelsItemCommandVars {
 	return m
 }
 
+// An empty response. Mahiron does not expose its server configuration through the API.
+// Ref: #/components/schemas/ConfigServer
+type ConfigServer struct{}
+
+func (*ConfigServer) getServerConfigRes() {}
+
 // Ref: #/components/schemas/Error
 type Error struct {
 	Code   OptInt           `json:"code"`
@@ -586,6 +592,7 @@ func (*ErrorStatusCode) getJobSchedulesRes()         {}
 func (*ErrorStatusCode) getJobsRes()                 {}
 func (*ErrorStatusCode) getProgramRes()              {}
 func (*ErrorStatusCode) getProgramsRes()             {}
+func (*ErrorStatusCode) getServerConfigRes()         {}
 func (*ErrorStatusCode) getServiceByChannelRes()     {}
 func (*ErrorStatusCode) getServiceProgramsRes()      {}
 func (*ErrorStatusCode) getServiceRes()              {}

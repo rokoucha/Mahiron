@@ -77,6 +77,10 @@ type GetProgramsRes interface {
 	getProgramsRes()
 }
 
+type GetServerConfigRes interface {
+	getServerConfigRes()
+}
+
 type GetServiceByChannelRes interface {
 	getServiceByChannelRes()
 }

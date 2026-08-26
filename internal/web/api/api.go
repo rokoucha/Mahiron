@@ -179,6 +179,10 @@ func (h *Handler) GetPrograms(ctx context.Context, params apigen.GetProgramsPara
 	return GetPrograms(ctx, h, params)
 }
 
+func (h *Handler) GetServerConfig(ctx context.Context) (apigen.GetServerConfigRes, error) {
+	return GetServerConfig(ctx, h)
+}
+
 func (h *Handler) GetService(ctx context.Context, params apigen.GetServiceParams) (apigen.GetServiceRes, error) {
 	return GetService(ctx, h, params)
 }

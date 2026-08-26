@@ -10,6 +10,7 @@ servers:
   - url: http://localhost:40772/api
 tags:
   - name: channels
+  - name: config
   - name: documents
   - name: events
   - name: iptv
@@ -23,6 +24,26 @@ tags:
   - name: tuners
   - name: version
 paths:
+  /config/server:
+    parameters: []
+    get:
+      tags:
+        - config
+      operationId: getServerConfig
+      description: Returns an empty object. Mahiron does not expose its server configuration through the API.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigServer"
+        default:
+          description: Unexpected Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /version:
     parameters: []
     get:
@@ -1551,6 +1572,10 @@ components:
       in: header
       schema: {type: string}
   schemas:
+    ConfigServer:
+      type: object
+      description: An empty response. Mahiron does not expose its server configuration through the API.
+      properties: {}
     Error:
       type: object
       properties:
