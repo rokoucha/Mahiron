@@ -1,5 +1,13 @@
 # Changelog
 
+## [v5.1.1](https://github.com/rokoucha/Mahiron/compare/v5.1.0...v5.1.1) - 2026-08-27
+
+- EPGStationによるチューナーサーバーの誤判定を防ぐ by @rokoucha in https://github.com/rokoucha/Mahiron/pull/130
+- Cache remote tuner status from events by @rokoucha in https://github.com/rokoucha/Mahiron/pull/132
+- Run Mahiron under Tini in containers by @rokoucha in https://github.com/rokoucha/Mahiron/pull/134
+- Update dependency @types/react-dom to v19.2.5 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/135
+- Update dependency eslint to v10.9.1 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/136
+
 ## [v5.1.0](https://github.com/rokoucha/Mahiron/compare/v5.0.15...v5.1.0) - 2026-08-23
 
 - Update dependency eslint to v10.8.1 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/101
