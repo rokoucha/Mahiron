@@ -23,6 +23,12 @@ type TunerAllocator interface {
 	AcquireDevice(context.Context, string, *config.ChannelConfig, *config.ChannelConfig, bool) (TunerDevice, string, error)
 }
 
+// TunerAvailabilityChecker reports whether a tuner could be acquired without
+// reserving it. The result is necessarily only a point-in-time observation.
+type TunerAvailabilityChecker interface {
+	CheckAvailable(context.Context, string) error
+}
+
 // DecoderCommandProvider is an optional TunerManager extension that resolves
 // the descrambler command for a channel type.
 type DecoderCommandProvider interface {

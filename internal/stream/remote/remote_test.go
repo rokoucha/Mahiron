@@ -33,13 +33,10 @@ func TestRemoteClientCheckAvailableForRouteAndBasicAuth(t *testing.T) {
 	client.httpClient = &http.Client{Transport: streamtest.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		auth = r.Header.Get("Authorization")
 		_, hasDeadline = r.Context().Deadline()
-		if r.URL.Path != "/api/tuners" {
-			t.Fatalf("path = %s, want /api/tuners", r.URL.Path)
+		if r.Method != http.MethodHead || r.URL.Path != "/api/channels/GR/27/stream" {
+			t.Fatalf("request = %s %s, want HEAD /api/channels/GR/27/stream", r.Method, r.URL.Path)
 		}
-		if got := r.URL.Query().Get("includeRemote"); got != "0" {
-			t.Fatalf("includeRemote = %q, want 0", got)
-		}
-		return streamtest.StringResponse(http.StatusOK, `[{"types":["GR"],"isAvailable":true,"isFree":true,"isFault":false}]`), nil
+		return streamtest.StringResponse(http.StatusOK, ``), nil
 	})}
 	if err := client.CheckAvailableForRoute(context.Background(), "GR", "27"); err != nil {
 		t.Fatal(err)
@@ -73,6 +70,9 @@ func TestRemoteClientAvailabilityTimeout(t *testing.T) {
 					t.Fatal("request context has no deadline")
 				}
 				remaining = time.Until(deadline)
+				if r.Method == http.MethodHead {
+					return streamtest.StringResponse(http.StatusServiceUnavailable, ``), nil
+				}
 				return streamtest.StringResponse(http.StatusOK, `[]`), nil
 			})}
 
@@ -163,8 +163,15 @@ func TestRemoteClientCheckAvailableForRoute(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			client := NewClient(config.RemoteConfig{URL: "http://remote.local"})
-			client.httpClient = &http.Client{Transport: streamtest.RoundTripFunc(func(*http.Request) (*http.Response, error) {
-				return streamtest.StringResponse(http.StatusOK, tt.body), nil
+			client.httpClient = &http.Client{Transport: streamtest.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
+				if r.Method != http.MethodHead {
+					t.Fatalf("method = %s, want HEAD", r.Method)
+				}
+				status := http.StatusOK
+				if tt.wantErr != nil {
+					status = http.StatusServiceUnavailable
+				}
+				return streamtest.StringResponse(status, ``), nil
 			})}
 			if err := client.CheckAvailableForRoute(context.Background(), tt.channelType, tt.channel); err != tt.wantErr {
 				t.Fatalf("CheckAvailableForRoute error = %v, want %v", err, tt.wantErr)

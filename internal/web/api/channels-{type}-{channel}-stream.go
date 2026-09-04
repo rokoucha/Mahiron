@@ -81,7 +81,21 @@ func ChannelsTypeChannelStreamHead(ctx context.Context, h *Handler, params apige
 		return &apigen.ChannelsTypeChannelStreamHeadNotFound{}, nil
 	}
 	decode := shouldDecode(params.Decode)
-	_, userID := tunerUserContext(ctx, params.XMirakurunPriority, decode, channel, nil, nil)
+	ctx, userID := tunerUserContext(ctx, params.XMirakurunPriority, decode, channel, nil, nil)
+	checker, ok := h.streamManager.(interface {
+		CheckAvailable(context.Context, string, string) error
+	})
+	if ok {
+		if err := checker.CheckAvailable(ctx, params.Type, params.Channel); err != nil {
+			if errors.Is(err, stream.ErrChannelNotFound) {
+				return &apigen.ChannelsTypeChannelStreamHeadNotFound{}, nil
+			}
+			if errors.Is(err, stream.ErrTunerNotFound) || errors.Is(err, stream.ErrUnsupportedTuner) || errors.Is(err, stream.ErrTunerUnavailable) {
+				return &apigen.ChannelsTypeChannelStreamHeadServiceUnavailable{}, nil
+			}
+			return nil, err
+		}
+	}
 	return &apigen.ChannelsTypeChannelStreamHeadOK{
 		XMirakurunTunerUserID: apigen.NewOptString(userID),
 	}, nil

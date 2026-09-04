@@ -98,7 +98,33 @@ func (c *Client) CheckAvailableForRoute(ctx context.Context, channelType, channe
 	checkCtx, cancel := context.WithTimeout(ctx, c.availabilityTimeout)
 	defer cancel()
 
-	req, err := c.newRequest(checkCtx, http.MethodGet, "tuners")
+	req, err := c.newRequest(checkCtx, http.MethodHead, "channels", channelType, channel, "stream")
+	if err != nil {
+		return err
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	switch resp.StatusCode {
+	case http.StatusOK:
+		return nil
+	case http.StatusNotFound:
+		return ErrChannelNotFound
+	case http.StatusServiceUnavailable:
+		return tuner.ErrTunerUnavailable
+	case http.StatusMethodNotAllowed, http.StatusNotImplemented:
+		return c.checkAvailableFromTuners(checkCtx, channelType, channel)
+	default:
+		return remoteStatusError(resp.StatusCode, resp.Status)
+	}
+}
+
+// checkAvailableFromTuners preserves compatibility with Mirakurun-compatible
+// servers that do not implement HEAD on channel streams.
+func (c *Client) checkAvailableFromTuners(ctx context.Context, channelType, channel string) error {
+	req, err := c.newRequest(ctx, http.MethodGet, "tuners")
 	if err != nil {
 		return err
 	}
@@ -111,16 +137,13 @@ func (c *Client) CheckAvailableForRoute(ctx context.Context, channelType, channe
 	if err := remoteStatusError(resp.StatusCode, resp.Status); err != nil {
 		return err
 	}
-
 	var tuners []remoteTuner
 	if err := json.NewDecoder(resp.Body).Decode(&tuners); err != nil {
 		return err
 	}
-	for _, tuner := range tuners {
-		if !slices.Contains(tuner.Types, channelType) || !tuner.IsAvailable || tuner.IsFault {
-			continue
-		}
-		if tuner.IsFree || tuner.matchesRoute(channelType, channel) {
+	for _, item := range tuners {
+		if slices.Contains(item.Types, channelType) && item.IsAvailable && !item.IsFault &&
+			(item.IsFree || item.matchesRoute(channelType, channel)) {
 			return nil
 		}
 	}

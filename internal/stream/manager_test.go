@@ -794,8 +794,8 @@ func TestManagerFallsBackWhenRemoteRouteUnavailable(t *testing.T) {
 	}
 	select {
 	case request := <-requests:
-		if request != "/tuners" {
-			t.Fatalf("remote precheck request = %q, want /tuners", request)
+		if request != "/channels/GR/27/stream" {
+			t.Fatalf("remote precheck request = %q, want /channels/GR/27/stream", request)
 		}
 	default:
 		t.Fatal("remote route was not prechecked")
@@ -809,6 +809,9 @@ func TestManagerStartsRemoteProgramEventSyncOutsideSessionLifecycle(t *testing.T
 	t.Cleanup(func() { newRemoteClient = previousNewRemoteClient })
 	newRemoteClient = func(cfg config.RemoteConfig) *remote.Client {
 		return remote.NewClient(cfg, remote.WithHTTPClient(&http.Client{Transport: streamtest.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
+			if r.Method == http.MethodHead && r.URL.Path == "/api/channels/GR/27/stream" {
+				return streamtest.StringResponse(http.StatusOK, ``), nil
+			}
 			if r.URL.Path == "/api/tuners" {
 				return streamtest.StringResponse(http.StatusOK, `[{"types":["GR"],"isAvailable":true,"isFree":true,"isFault":false}]`), nil
 			}

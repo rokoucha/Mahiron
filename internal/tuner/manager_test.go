@@ -305,6 +305,22 @@ func TestTunerManagerReservesDVBCommandTuner(t *testing.T) {
 	}
 }
 
+func TestTunerManagerCheckAvailableDoesNotReserve(t *testing.T) {
+	mgr := NewTunerManager(&TunerManagerConfig{TunersConfig: config.TunersConfig{
+		{Name: "first", Types: []string{"GR"}, Command: "sleep 10"},
+	}})
+	if err := mgr.CheckAvailable(context.Background(), "GR"); err != nil {
+		t.Fatal(err)
+	}
+	status, ok := mgr.Status(0)
+	if !ok {
+		t.Fatal("tuner status not found")
+	}
+	if !status.IsFree || status.IsUsing || status.PID != 0 {
+		t.Fatalf("availability check reserved tuner: %+v", status)
+	}
+}
+
 func TestTunerManagerKillProcess(t *testing.T) {
 	mgr := NewTunerManager(&TunerManagerConfig{TunersConfig: config.TunersConfig{
 		{Name: "first", Types: []string{"GR"}, Command: "sleep 10"},

@@ -31,6 +31,9 @@ func NewServiceScannerAdapter(manager *StreamManager) *ServiceScannerAdapter {
 }
 
 func (a *ServiceScannerAdapter) ScanServices(scanCtx, acquireCtx context.Context, channelType, channelID string, wait bool) ([]ts.ServiceInfo, error) {
+	if services, handled, err := a.manager.scanRemoteServices(scanCtx, channelType, channelID); handled {
+		return services, err
+	}
 	var (
 		session Session
 		err     error
