@@ -1,5 +1,25 @@
 # Changelog
 
+## [v5.1.2](https://github.com/rokoucha/Mahiron/compare/v5.1.1...v5.1.2) - 2026-09-04
+
+- Update dependency eslint-plugin-react-refresh to v0.5.5 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/137
+- Update opentelemetry-go by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/138
+- Update Songmu/tagpr action to v1.20.2 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/140
+- Update dependency typescript-eslint to v8.68.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/141
+- Update dependency @vitejs/plugin-react to v6.1.1 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/142
+- Update dependency golangci/golangci-lint to v2.13.2 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/143
+- Update docker/setup-buildx-action action to v4.3.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/144
+- Update golang Docker tag to v1.27 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/145
+- Update dependency typescript-eslint to v8.69.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/146
+- データ放送APIの有効・無効設定を追加 by @rokoucha in https://github.com/rokoucha/Mahiron/pull/147
+- Reduce dashboard program query load by @rokoucha in https://github.com/rokoucha/Mahiron/pull/148
+- Fix nested remote channel availability by @rokoucha in https://github.com/rokoucha/Mahiron/pull/149
+- Batch remote program event updates by @rokoucha in https://github.com/rokoucha/Mahiron/pull/150
+- Split SQLite reads and writes into separate connection pools by @rokoucha in https://github.com/rokoucha/Mahiron/pull/151
+- Reduce EPG write volume on NFS-backed SQLite by @rokoucha in https://github.com/rokoucha/Mahiron/pull/152
+- Reduce main DB commit cost and add dashboard HTTP caching/compression by @rokoucha in https://github.com/rokoucha/Mahiron/pull/153
+- Open SQLite with the unix-excl VFS to avoid NFS lock RPC stalls by @rokoucha in https://github.com/rokoucha/Mahiron/pull/154
+
 ## Unreleased
 
 - メインDBもWAL + synchronous=NORMALで動かすことでNFS上でのコミットコストを下げる。電源断時に直近のEPG更新が失われる可能性があるが、データ破損はしない by @rokoucha
