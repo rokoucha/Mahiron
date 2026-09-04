@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"time"
 
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/tuner"
@@ -129,45 +130,129 @@ func readRemoteProgramEvents(ctx context.Context, src io.Reader, updater Program
 }
 
 func readRemoteEvents(ctx context.Context, src io.Reader, updater ProgramUpdater, updateTuner func(string, tuner.Status)) error {
+	return readRemoteEventsBatched(ctx, src, updater, updateTuner, 250*time.Millisecond, 256)
+}
+
+type scannedRemoteEvent struct {
+	line []byte
+	err  error
+}
+
+// readRemoteEventsBatched keeps the event stream moving while amortizing the
+// durable SQLite commit used by ProgramManager. A remote can emit tens of
+// thousands of program updates per hour; committing each event separately is
+// especially expensive when the database lives on network storage.
+func readRemoteEventsBatched(ctx context.Context, src io.Reader, updater ProgramUpdater, updateTuner func(string, tuner.Status), flushInterval time.Duration, maxBatchSize int) error {
+	if flushInterval <= 0 {
+		flushInterval = 250 * time.Millisecond
+	}
+	if maxBatchSize <= 0 {
+		maxBatchSize = 256
+	}
+
+	scanCtx, cancelScan := context.WithCancel(ctx)
+	defer cancelScan()
+	scanned := make(chan scannedRemoteEvent, maxBatchSize)
+	go scanRemoteEvents(scanCtx, src, scanned)
+
+	ticker := time.NewTicker(flushInterval)
+	defer ticker.Stop()
+	pending := make(map[int64]*program.Program, maxBatchSize)
+	order := make([]int64, 0, maxBatchSize)
+	flush := func() error {
+		if len(pending) == 0 || updater == nil {
+			return nil
+		}
+		programs := make([]*program.Program, 0, len(pending))
+		for _, id := range order {
+			if item, ok := pending[id]; ok {
+				programs = append(programs, item)
+			}
+		}
+		if err := updater.UpsertPrograms(ctx, programs); err != nil {
+			return err
+		}
+		clear(pending)
+		order = order[:0]
+		return nil
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+			if err := flush(); err != nil {
+				return err
+			}
+		case item, ok := <-scanned:
+			if !ok {
+				return flush()
+			}
+			if item.err != nil {
+				if errors.Is(item.err, context.Canceled) {
+					return nil
+				}
+				return errors.Join(item.err, flush())
+			}
+			var event remoteEvent
+			if json.Unmarshal(item.line, &event) != nil {
+				continue
+			}
+			switch event.Resource {
+			case "program":
+				if updater == nil || event.Type != "update" && event.Type != "create" {
+					continue
+				}
+				var item remoteProgram
+				if json.Unmarshal(event.Data, &item) != nil {
+					continue
+				}
+				program := item.Program()
+				if _, exists := pending[program.ID]; !exists {
+					order = append(order, program.ID)
+				}
+				pending[program.ID] = program
+				if len(pending) >= maxBatchSize {
+					if err := flush(); err != nil {
+						return err
+					}
+				}
+			case "tuner":
+				if updateTuner == nil {
+					continue
+				}
+				var item remoteTuner
+				if json.Unmarshal(event.Data, &item) == nil {
+					updateTuner(event.Type, item.Status())
+				}
+			}
+		}
+	}
+}
+
+func scanRemoteEvents(ctx context.Context, src io.Reader, dst chan<- scannedRemoteEvent) {
+	defer close(dst)
 	scanner := bufio.NewScanner(src)
 	scanner.Buffer(make([]byte, 64*1024), 4*1024*1024)
 	for scanner.Scan() {
-		if ctx.Err() != nil {
-			return nil
-		}
 		line := bytes.TrimSuffix(bytes.TrimSpace(scanner.Bytes()), []byte(","))
 		if len(line) == 0 || bytes.Equal(line, []byte("[")) || bytes.Equal(line, []byte("]")) {
 			continue
 		}
-		var event remoteEvent
-		if json.Unmarshal(line, &event) != nil {
-			continue
-		}
-		switch event.Resource {
-		case "program":
-			if updater == nil || event.Type != "update" && event.Type != "create" {
-				continue
-			}
-			var item remoteProgram
-			if json.Unmarshal(event.Data, &item) == nil {
-				if err := updater.UpsertPrograms(ctx, []*program.Program{item.Program()}); err != nil {
-					return err
-				}
-			}
-		case "tuner":
-			if updateTuner == nil {
-				continue
-			}
-			var item remoteTuner
-			if json.Unmarshal(event.Data, &item) == nil {
-				updateTuner(event.Type, item.Status())
-			}
+		item := scannedRemoteEvent{line: bytes.Clone(line)}
+		select {
+		case dst <- item:
+		case <-ctx.Done():
+			return
 		}
 	}
 	if err := scanner.Err(); err != nil && !errors.Is(err, context.Canceled) {
-		return err
+		select {
+		case dst <- scannedRemoteEvent{err: err}:
+		case <-ctx.Done():
+		}
 	}
-	return nil
 }
 
 func (p remoteProgram) Program() *program.Program {

@@ -690,6 +690,70 @@ func TestReadRemoteEventsDispatchesProgramsAndTuners(t *testing.T) {
 	}
 }
 
+func TestReadRemoteEventsBatchesProgramsAndKeepsLatestUpdate(t *testing.T) {
+	src := strings.NewReader(`[
+{"resource":"program","type":"update","data":{"id":401010001,"eventId":1,"serviceId":101,"networkId":4,"name":"old"}},
+{"resource":"program","type":"update","data":{"id":401010001,"eventId":1,"serviceId":101,"networkId":4,"name":"new"}},
+{"resource":"program","type":"create","data":{"id":401010002,"eventId":2,"serviceId":101,"networkId":4,"name":"next"}},
+{"resource":"program","type":"create","data":{"id":401010003,"eventId":3,"serviceId":101,"networkId":4,"name":"later"}}
+]`)
+	updater := &batchRecordingProgramUpdater{}
+
+	if err := readRemoteEventsBatched(context.Background(), src, updater, nil, time.Hour, 2); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := len(updater.calls), 2; got != want {
+		t.Fatalf("upsert calls = %d, want %d", got, want)
+	}
+	if got, want := len(updater.calls[0]), 2; got != want {
+		t.Fatalf("first batch size = %d, want %d", got, want)
+	}
+	if updater.calls[0][0].ID != 401010001 || updater.calls[0][0].Name != "new" {
+		t.Fatalf("deduplicated program = %#v, want latest update", updater.calls[0][0])
+	}
+	if got, want := len(updater.calls[1]), 1; got != want || updater.calls[1][0].ID != 401010003 {
+		t.Fatalf("EOF batch = %#v, want final program", updater.calls[1])
+	}
+}
+
+func TestReadRemoteEventsReturnsBatchUpdateError(t *testing.T) {
+	want := errors.New("database unavailable")
+	updater := &batchRecordingProgramUpdater{err: want}
+	src := strings.NewReader(`{"resource":"program","type":"update","data":{"id":1,"eventId":1,"serviceId":1,"networkId":1}}`)
+
+	err := readRemoteEventsBatched(context.Background(), src, updater, nil, time.Hour, 256)
+	if !errors.Is(err, want) {
+		t.Fatalf("error = %v, want %v", err, want)
+	}
+}
+
+func TestReadRemoteEventsFlushesProgramsOnInterval(t *testing.T) {
+	reader, writer := io.Pipe()
+	updater := &notifyingProgramUpdater{calls: make(chan []*program.Program, 1)}
+	done := make(chan error, 1)
+	go func() {
+		done <- readRemoteEventsBatched(context.Background(), reader, updater, nil, 10*time.Millisecond, 256)
+	}()
+
+	if _, err := io.WriteString(writer, "{\"resource\":\"program\",\"type\":\"update\",\"data\":{\"id\":1,\"eventId\":1,\"serviceId\":1,\"networkId\":1}}\n"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case programs := <-updater.calls:
+		if len(programs) != 1 || programs[0].ID != 1 {
+			t.Fatalf("interval batch = %#v", programs)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for interval flush")
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestReadRemoteProgramEventsUpsertsProgramUpdates(t *testing.T) {
 	src := strings.NewReader(`[
 {"resource":"program","type":"update","data":{"id":401010001,"eventId":1,"serviceId":101,"networkId":4,"startAt":1000,"duration":1800000,"isFree":true,"name":"updated"}}
@@ -808,6 +872,26 @@ type recordingProgramUpdater struct {
 func (u *recordingProgramUpdater) UpsertPrograms(_ context.Context, programs []*program.Program) error {
 	u.programs = append(u.programs, programs...)
 	return nil
+}
+
+type batchRecordingProgramUpdater struct {
+	calls [][]*program.Program
+	err   error
+}
+
+type notifyingProgramUpdater struct {
+	calls chan []*program.Program
+}
+
+func (u *notifyingProgramUpdater) UpsertPrograms(_ context.Context, programs []*program.Program) error {
+	u.calls <- append([]*program.Program(nil), programs...)
+	return nil
+}
+
+func (u *batchRecordingProgramUpdater) UpsertPrograms(_ context.Context, programs []*program.Program) error {
+	batch := append([]*program.Program(nil), programs...)
+	u.calls = append(u.calls, batch)
+	return u.err
 }
 
 type recordingServiceLister struct {
