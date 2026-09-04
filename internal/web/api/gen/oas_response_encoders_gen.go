@@ -702,17 +702,57 @@ func encodeGetLogStreamResponse(response GetLogStreamRes, w http.ResponseWriter,
 
 func encodeGetLogoImageResponse(response GetLogoImageRes, w http.ResponseWriter, span trace.Span) error {
 	switch response := response.(type) {
-	case *GetLogoImageOK:
+	case *GetLogoImageOKHeaders:
 		w.Header().Set("Content-Type", "image/png")
+		w.Header().Set("Access-Control-Expose-Headers", "Etag")
+		// Encoding response headers.
+		{
+			h := uri.NewHeaderEncoder(w.Header())
+			// Encode "Cache-Control" header.
+			{
+				cfg := uri.HeaderParameterEncodingConfig{
+					Name:    "Cache-Control",
+					Explode: false,
+				}
+				if err := h.EncodeParam(cfg, func(e uri.Encoder) error {
+					if val, ok := response.CacheControl.Get(); ok {
+						return e.EncodeValue(conv.StringToString(val))
+					}
+					return nil
+				}); err != nil {
+					return errors.Wrap(err, "encode Cache-Control header")
+				}
+			}
+			// Encode "ETag" header.
+			{
+				cfg := uri.HeaderParameterEncodingConfig{
+					Name:    "ETag",
+					Explode: false,
+				}
+				if err := h.EncodeParam(cfg, func(e uri.Encoder) error {
+					if val, ok := response.ETag.Get(); ok {
+						return e.EncodeValue(conv.StringToString(val))
+					}
+					return nil
+				}); err != nil {
+					return errors.Wrap(err, "encode ETag header")
+				}
+			}
+		}
 		w.WriteHeader(200)
 
 		writer := w
-		if closer, ok := response.Data.(io.Closer); ok {
+		if closer, ok := response.Response.Data.(io.Closer); ok {
 			defer closer.Close()
 		}
-		if _, err := io.Copy(writer, response); err != nil {
+		if _, err := io.Copy(writer, response.Response); err != nil {
 			return errors.Wrap(err, "write")
 		}
+
+		return nil
+
+	case *GetLogoImageNotModified:
+		w.WriteHeader(304)
 
 		return nil
 

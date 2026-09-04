@@ -1559,7 +1559,8 @@ func decodeGetEventsStreamParams(args [0]string, argsEscaped bool, r *http.Reque
 
 // GetLogoImageParams is parameters of getLogoImage operation.
 type GetLogoImageParams struct {
-	ID int64
+	ID          int64
+	IfNoneMatch OptString `json:",omitempty,omitzero"`
 }
 
 func unpackGetLogoImageParams(packed middleware.Parameters) (params GetLogoImageParams) {
@@ -1570,10 +1571,20 @@ func unpackGetLogoImageParams(packed middleware.Parameters) (params GetLogoImage
 		}
 		params.ID = packed[key].(int64)
 	}
+	{
+		key := middleware.ParameterKey{
+			Name: "If-None-Match",
+			In:   "header",
+		}
+		if v, ok := packed[key]; ok {
+			params.IfNoneMatch = v.(OptString)
+		}
+	}
 	return params
 }
 
 func decodeGetLogoImageParams(args [1]string, argsEscaped bool, r *http.Request) (params GetLogoImageParams, _ error) {
+	h := uri.NewHeaderDecoder(r.Header)
 	// Decode path: id.
 	if err := func() error {
 		param := args[0]
@@ -1634,6 +1645,45 @@ func decodeGetLogoImageParams(args [1]string, argsEscaped bool, r *http.Request)
 		return params, &ogenerrors.DecodeParamError{
 			Name: "id",
 			In:   "path",
+			Err:  err,
+		}
+	}
+	// Decode header: If-None-Match.
+	if err := func() error {
+		cfg := uri.HeaderParameterDecodingConfig{
+			Name:    "If-None-Match",
+			Explode: false,
+		}
+		if err := h.HasParam(cfg); err == nil {
+			if err := h.DecodeParam(cfg, func(d uri.Decoder) error {
+				var paramsDotIfNoneMatchVal string
+				if err := func() error {
+					val, err := d.DecodeValue()
+					if err != nil {
+						return err
+					}
+
+					c, err := conv.ToString(val)
+					if err != nil {
+						return err
+					}
+
+					paramsDotIfNoneMatchVal = c
+					return nil
+				}(); err != nil {
+					return err
+				}
+				params.IfNoneMatch.SetTo(paramsDotIfNoneMatchVal)
+				return nil
+			}); err != nil {
+				return err
+			}
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "If-None-Match",
+			In:   "header",
 			Err:  err,
 		}
 	}

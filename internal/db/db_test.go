@@ -45,16 +45,17 @@ func TestOpenEnablesForeignKeys(t *testing.T) {
 
 // SQLite reports synchronous as an integer: 2 is FULL, its default, and 1 is
 // NORMAL. Asserting the value the connection actually reports catches both a
-// DSN the driver silently ignores and the two constructors being wired to the
-// same setting.
-func TestOpenCacheRelaxesDurabilityAndOpenDoesNot(t *testing.T) {
+// DSN the driver silently ignores and a connection that fell back to the
+// default. synchronous is set per connection, not persisted to the database
+// file, so this must be checked on both the Write and Read pools to confirm
+// the DSN reaches every connection.
+func TestOpenUsesNormalSynchronousAndWAL(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		open func(string) (*DB, error)
-		want int
 	}{
-		{name: "Open keeps FULL", open: Open, want: 2},
-		{name: "OpenCache uses NORMAL", open: OpenCache, want: 1},
+		{name: "Open", open: Open},
+		{name: "OpenCache", open: OpenCache},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			database, err := tc.open(filepath.Join(t.TempDir(), "test.db"))
@@ -74,11 +75,10 @@ func TestOpenCacheRelaxesDurabilityAndOpenDoesNot(t *testing.T) {
 				if err := pool.db.QueryRow("PRAGMA synchronous").Scan(&got); err != nil {
 					t.Fatalf("%s: PRAGMA synchronous = %v", pool.name, err)
 				}
-				if got != tc.want {
-					t.Fatalf("%s: PRAGMA synchronous = %d, want %d", pool.name, got, tc.want)
+				if got != 1 {
+					t.Fatalf("%s: PRAGMA synchronous = %d, want 1 (NORMAL)", pool.name, got)
 				}
 
-				// Both remain journalled in WAL mode; only the flush point moves.
 				var journal string
 				if err := pool.db.QueryRow("PRAGMA journal_mode").Scan(&journal); err != nil {
 					t.Fatalf("%s: PRAGMA journal_mode = %v", pool.name, err)

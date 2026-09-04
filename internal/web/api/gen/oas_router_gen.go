@@ -35,6 +35,9 @@ var (
 	rn34AllowedHeaders = map[string]string{
 		"GET": "X-Mirakurun-Priority",
 	}
+	rn26AllowedHeaders = map[string]string{
+		"GET": "If-None-Match",
+	}
 	rn50AllowedHeaders = map[string]string{
 		"GET":  "X-Mirakurun-Priority",
 		"HEAD": "X-Mirakurun-Priority",
@@ -1328,7 +1331,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 									default:
 										s.notAllowed(w, r, notAllowedParams{
 											allowedMethods: "GET",
-											allowedHeaders: nil,
+											allowedHeaders: rn26AllowedHeaders,
 											acceptPost:     "",
 											acceptPatch:    "",
 										})

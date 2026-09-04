@@ -1115,6 +1115,11 @@ type GetLogoImageNotFound struct{}
 
 func (*GetLogoImageNotFound) getLogoImageRes() {}
 
+// GetLogoImageNotModified is response for GetLogoImage operation.
+type GetLogoImageNotModified struct{}
+
+func (*GetLogoImageNotModified) getLogoImageRes() {}
+
 type GetLogoImageOK struct {
 	Data io.Reader
 }
@@ -1129,7 +1134,44 @@ func (s GetLogoImageOK) Read(p []byte) (n int, err error) {
 	return s.Data.Read(p)
 }
 
-func (*GetLogoImageOK) getLogoImageRes() {}
+// GetLogoImageOKHeaders wraps GetLogoImageOK with response headers.
+type GetLogoImageOKHeaders struct {
+	CacheControl OptString
+	ETag         OptString
+	Response     GetLogoImageOK
+}
+
+// GetCacheControl returns the value of CacheControl.
+func (s *GetLogoImageOKHeaders) GetCacheControl() OptString {
+	return s.CacheControl
+}
+
+// GetETag returns the value of ETag.
+func (s *GetLogoImageOKHeaders) GetETag() OptString {
+	return s.ETag
+}
+
+// GetResponse returns the value of Response.
+func (s *GetLogoImageOKHeaders) GetResponse() GetLogoImageOK {
+	return s.Response
+}
+
+// SetCacheControl sets the value of CacheControl.
+func (s *GetLogoImageOKHeaders) SetCacheControl(val OptString) {
+	s.CacheControl = val
+}
+
+// SetETag sets the value of ETag.
+func (s *GetLogoImageOKHeaders) SetETag(val OptString) {
+	s.ETag = val
+}
+
+// SetResponse sets the value of Response.
+func (s *GetLogoImageOKHeaders) SetResponse(val GetLogoImageOK) {
+	s.Response = val
+}
+
+func (*GetLogoImageOKHeaders) getLogoImageRes() {}
 
 // GetLogoImageServiceUnavailable is response for GetLogoImage operation.
 type GetLogoImageServiceUnavailable struct{}

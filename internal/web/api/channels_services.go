@@ -3,6 +3,8 @@ package api
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"net/http"
 	"strconv"
 
@@ -103,7 +105,22 @@ func GetLogoImage(ctx context.Context, h *Handler, params apigen.GetLogoImagePar
 	if len(data) == 0 {
 		return &apigen.GetLogoImageServiceUnavailable{}, nil
 	}
-	return &apigen.GetLogoImageOK{Data: bytes.NewReader(data)}, nil
+	etag := logoETag(data)
+	if value, ok := params.IfNoneMatch.Get(); ok && etagMatches(value, etag) {
+		return &apigen.GetLogoImageNotModified{}, nil
+	}
+	return &apigen.GetLogoImageOKHeaders{
+		ETag:         apigen.NewOptString(etag),
+		CacheControl: apigen.NewOptString("public, max-age=86400"),
+		Response:     apigen.GetLogoImageOK{Data: bytes.NewReader(data)},
+	}, nil
+}
+
+// logoETag derives a strong ETag from logo bytes. logo_version changes
+// whenever the logo data changes, so the hash naturally changes with it.
+func logoETag(data []byte) string {
+	sum := sha256.Sum256(data)
+	return `"` + hex.EncodeToString(sum[:16]) + `"`
 }
 
 func apiChannels(ctx context.Context, h *Handler, channels config.ChannelsConfig) ([]apigen.Channel, error) {

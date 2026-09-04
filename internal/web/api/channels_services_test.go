@@ -517,16 +517,60 @@ func TestApiServiceExposesMirakurunLogoFieldsAndImage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	image, ok := imageRes.(*apigen.GetLogoImageOK)
+	image, ok := imageRes.(*apigen.GetLogoImageOKHeaders)
 	if !ok {
-		t.Fatalf("logo response = %T, want OK", imageRes)
+		t.Fatalf("logo response = %T, want OKHeaders", imageRes)
 	}
-	got, err := io.ReadAll(image)
+	if got := image.CacheControl.Value; got != "public, max-age=86400" {
+		t.Fatalf("Cache-Control = %q, want public, max-age=86400", got)
+	}
+	etag := image.ETag.Value
+	if etag == "" {
+		t.Fatal("ETag is empty")
+	}
+	got, err := io.ReadAll(image.Response)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(got, data) {
 		t.Fatalf("logo data = %v, want %v", got, data)
+	}
+
+	// Same logo bytes must produce the same ETag on a repeat fetch.
+	imageRes2, err := handler.GetLogoImage(ctx, apigen.GetLogoImageParams{ID: 100101})
+	if err != nil {
+		t.Fatal(err)
+	}
+	image2, ok := imageRes2.(*apigen.GetLogoImageOKHeaders)
+	if !ok {
+		t.Fatalf("logo response = %T, want OKHeaders", imageRes2)
+	}
+	if image2.ETag.Value != etag {
+		t.Fatalf("ETag changed across fetches: %q != %q", image2.ETag.Value, etag)
+	}
+
+	// A matching If-None-Match must yield 304 with no body.
+	notModifiedRes, err := handler.GetLogoImage(ctx, apigen.GetLogoImageParams{
+		ID:          100101,
+		IfNoneMatch: apigen.NewOptString(etag),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := notModifiedRes.(*apigen.GetLogoImageNotModified); !ok {
+		t.Fatalf("logo response = %T, want NotModified", notModifiedRes)
+	}
+
+	// A non-matching If-None-Match must still return the image.
+	mismatchRes, err := handler.GetLogoImage(ctx, apigen.GetLogoImageParams{
+		ID:          100101,
+		IfNoneMatch: apigen.NewOptString(`"stale-etag"`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := mismatchRes.(*apigen.GetLogoImageOKHeaders); !ok {
+		t.Fatalf("logo response = %T, want OKHeaders", mismatchRes)
 	}
 }
 

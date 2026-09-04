@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- メインDBもWAL + synchronous=NORMALで動かすことでNFS上でのコミットコストを下げる。電源断時に直近のEPG更新が失われる可能性があるが、データ破損はしない by @rokoucha
+
 ## [v5.1.1](https://github.com/rokoucha/Mahiron/compare/v5.1.0...v5.1.1) - 2026-08-27
 
 - EPGStationによるチューナーサーバーの誤判定を防ぐ by @rokoucha in https://github.com/rokoucha/Mahiron/pull/130
