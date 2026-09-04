@@ -2170,6 +2170,10 @@ func (s *Server) handleGetLogoImageRequest(args [1]string, argsEscaped bool, w h
 					Name: "id",
 					In:   "path",
 				}: params.ID,
+				{
+					Name: "If-None-Match",
+					In:   "header",
+				}: params.IfNoneMatch,
 			},
 			Raw: r,
 		}

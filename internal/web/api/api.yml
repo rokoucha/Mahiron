@@ -955,14 +955,25 @@ paths:
             maximum: 6553565535
             type: integer
             format: int64
+        - $ref: "#/components/parameters/IfNoneMatch"
       responses:
         "200":
           description: OK
+          headers:
+            ETag:
+              schema:
+                type: string
+            Cache-Control:
+              schema:
+                type: string
           content:
             image/png:
               schema:
                 type: string
                 format: binary
+        "304":
+          description: Not Modified
+          content: {}
         "404":
           description: Not Found
           content: {}

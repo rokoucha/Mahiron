@@ -26,6 +26,7 @@ func NewServer(addresses []ListenAddress, handler http.Handler) *Server {
 	middleware := middleware.Synthesis(
 		middleware.RequestInfoMiddleware(),
 		middleware.AccessLogMiddleware(),
+		middleware.GzipMiddleware(),
 	)
 
 	return &Server{

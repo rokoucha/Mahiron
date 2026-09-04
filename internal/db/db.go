@@ -46,33 +46,35 @@ func (d *DB) Close() error {
 	return errors.Join(d.Write.Close(), d.Read.Close())
 }
 
-// Open opens a database whose contents cannot be rebuilt, and so commits
-// durably: SQLite's default synchronous=FULL flushes the write-ahead log on
-// every commit.
+// Open opens the main database. In WAL mode, synchronous=NORMAL cannot
+// corrupt the database on a power cut — it only risks losing the most recent
+// commits, which is the guarantee NORMAL keeps and OFF does not. Everything
+// the main database holds (services, programs, logos, EPG fetch state) can be
+// reacquired from the broadcast stream or a remote source, so that risk is
+// acceptable and buys back the fsync-per-commit cost that dominates writes on
+// our NFS-backed storage.
+//
+// OpenCache exists only for call-site compatibility with code that
+// distinguishes "cache" databases from the main one; both now run identical
+// pragmas.
 func Open(path string) (*DB, error) {
-	return open(path, false)
+	return open(path)
 }
 
-// OpenCache opens a database holding only data that can be reacquired from the
-// broadcast stream. Such a database trades durability for commit cost by
-// running at synchronous=NORMAL, which flushes the write-ahead log at
-// checkpoints rather than on every commit. Losing recently committed rows to a
-// power cut costs a re-download; it cannot corrupt the database, which is the
-// guarantee NORMAL keeps and OFF does not.
 func OpenCache(path string) (*DB, error) {
-	return open(path, true)
+	return open(path)
 }
 
-func open(path string, cache bool) (*DB, error) {
+func open(path string) (*DB, error) {
 	if isInMemory(path) {
-		database, err := openPool(path, cache, "", 1)
+		database, err := openPool(path, "", 1)
 		if err != nil {
 			return nil, err
 		}
 		return &DB{Write: database, Read: database}, nil
 	}
 
-	writeDB, err := openPool(path, cache, "immediate", 1)
+	writeDB, err := openPool(path, "immediate", 1)
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +86,7 @@ func open(path string, cache bool) (*DB, error) {
 		return nil, errors.Join(fmt.Errorf("PRAGMA journal_mode = WAL: %w", err), writeDB.Close())
 	}
 
-	readDB, err := openPool(path, cache, "", 8)
+	readDB, err := openPool(path, "", 8)
 	if err != nil {
 		return nil, errors.Join(err, writeDB.Close())
 	}
@@ -92,8 +94,8 @@ func open(path string, cache bool) (*DB, error) {
 	return &DB{Write: writeDB, Read: readDB}, nil
 }
 
-func openPool(path string, cache bool, txlock string, maxConnections int) (*sql.DB, error) {
-	dsn, err := sqliteDSN(path, cache, txlock)
+func openPool(path string, txlock string, maxConnections int) (*sql.DB, error) {
+	dsn, err := sqliteDSN(path, txlock)
 	if err != nil {
 		return nil, fmt.Errorf("build database DSN: %w", err)
 	}
@@ -114,7 +116,7 @@ func openPool(path string, cache bool, txlock string, maxConnections int) (*sql.
 // txlock, when non-empty, sets modernc.org/sqlite's `_txlock` DSN option
 // (deferred/immediate/exclusive), which controls how BEGIN starts every
 // transaction opened on that connection.
-func sqliteDSN(path string, cache bool, txlock string) (string, error) {
+func sqliteDSN(path string, txlock string) (string, error) {
 	if path == ":memory:" {
 		dsn := "file::memory:?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)"
 		if txlock != "" {
@@ -129,9 +131,7 @@ func sqliteDSN(path string, cache bool, txlock string) (string, error) {
 	q := u.Query()
 	q.Add("_pragma", "busy_timeout(5000)")
 	q.Add("_pragma", "foreign_keys(1)")
-	if cache {
-		q.Add("_pragma", "synchronous(normal)")
-	}
+	q.Add("_pragma", "synchronous(normal)")
 	if txlock != "" {
 		q.Set("_txlock", txlock)
 	}
