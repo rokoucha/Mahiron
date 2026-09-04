@@ -4,7 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -187,5 +190,71 @@ func TestConcurrentWriteTransactionsSerializeWithoutBusyErrors(t *testing.T) {
 	}
 	if count != writers {
 		t.Fatalf("count = %d, want %d", count, writers)
+	}
+}
+
+// TestUnixExclVFSLeavesNoSHMFile guards the core motivation for unix-excl:
+// the WAL index must live in process heap memory, not the -shm file, so no
+// further fcntl locking or cache-invalidating reads happen against the
+// NFS-mounted database file after it is opened.
+func TestUnixExclVFSLeavesNoSHMFile(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix-excl VFS is not used on windows")
+	}
+
+	path := filepath.Join(t.TempDir(), "test.db")
+	database, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = database.Close() }()
+
+	if _, err := database.Write.Exec("CREATE TABLE t (id INTEGER PRIMARY KEY)"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Write.Exec("INSERT INTO t (id) VALUES (1)"); err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err := database.Read.QueryRow("SELECT COUNT(*) FROM t").Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := os.Stat(path + "-shm"); err == nil {
+		t.Fatalf("%s-shm exists, want no -shm file under unix-excl VFS", path)
+	} else if !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+}
+
+// TestSqliteDSNSetsVFSForFileDatabasesOnly guards that unix-excl is applied
+// to file-backed DSNs (and to both the write and read pool, since mixing VFS
+// choices for the same database file within a process corrupts the WAL
+// index) but never to an in-memory database, which has no file to lock.
+func TestSqliteDSNSetsVFSForFileDatabasesOnly(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix-excl VFS is not used on windows")
+	}
+
+	for _, tc := range []struct {
+		name    string
+		path    string
+		txlock  string
+		wantVFS bool
+	}{
+		{name: "file write pool", path: filepath.Join(t.TempDir(), "test.db"), txlock: "immediate", wantVFS: true},
+		{name: "file read pool", path: filepath.Join(t.TempDir(), "test.db"), txlock: "", wantVFS: true},
+		{name: "in-memory", path: ":memory:", txlock: "", wantVFS: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dsn, err := sqliteDSN(tc.path, tc.txlock)
+			if err != nil {
+				t.Fatal(err)
+			}
+			hasVFS := strings.Contains(dsn, "vfs=unix-excl")
+			if hasVFS != tc.wantVFS {
+				t.Fatalf("dsn = %q, contains vfs=unix-excl = %v, want %v", dsn, hasVFS, tc.wantVFS)
+			}
+		})
 	}
 }

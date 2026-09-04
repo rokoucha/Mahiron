@@ -6,11 +6,22 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"runtime"
 	"strings"
 
 	_ "modernc.org/sqlite"
 )
 
+// File-backed databases are opened with SQLite's `unix-excl` VFS because on
+// NFS, the default VFS's per-transaction fcntl lock is an RPC to the NFS
+// server that also makes the Linux NFS client drop that file's page cache,
+// and under concurrent readers/writers this turned a couple of Lock RPCs/sec
+// into dozens, stalling /api/* requests for tens of seconds. unix-excl keeps
+// the WAL index in process-heap memory instead of the -shm file, which is
+// why every *sql.DB opened against the same database file in this process
+// must use the same VFS — otherwise one connection reads a WAL index the
+// other never wrote to, corrupting reads.
+//
 // DB splits reads and writes across separate connection pools so that a
 // blocked writer cannot starve API reads.
 //
@@ -132,11 +143,25 @@ func sqliteDSN(path string, txlock string) (string, error) {
 	q.Add("_pragma", "busy_timeout(5000)")
 	q.Add("_pragma", "foreign_keys(1)")
 	q.Add("_pragma", "synchronous(normal)")
+	if vfs := VFSName(path); vfs != "" {
+		q.Set("vfs", vfs)
+	}
 	if txlock != "" {
 		q.Set("_txlock", txlock)
 	}
 	u.RawQuery = q.Encode()
 	return u.String(), nil
+}
+
+// VFSName returns the SQLite VFS name applied to file-backed databases
+// opened for path, or "" when no explicit VFS is applied (in-memory
+// databases, and Windows, which has no unix-excl VFS). See the package
+// comment for why unix-excl is used.
+func VFSName(path string) string {
+	if isInMemory(path) || runtime.GOOS == "windows" {
+		return ""
+	}
+	return "unix-excl"
 }
 
 func OpenInMemory() (*DB, error) {
