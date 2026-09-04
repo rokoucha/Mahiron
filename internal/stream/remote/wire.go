@@ -130,7 +130,7 @@ func readRemoteProgramEvents(ctx context.Context, src io.Reader, updater Program
 }
 
 func readRemoteEvents(ctx context.Context, src io.Reader, updater ProgramUpdater, updateTuner func(string, tuner.Status)) error {
-	return readRemoteEventsBatched(ctx, src, updater, updateTuner, 250*time.Millisecond, 256)
+	return readRemoteEventsBatched(ctx, src, updater, updateTuner, 3*time.Second, 1000)
 }
 
 type scannedRemoteEvent struct {
@@ -268,7 +268,7 @@ func (p remoteProgram) Program() *program.Program {
 		Description:  p.Description,
 		Genres:       remoteGenres(p.Genres),
 		Audios:       remoteAudios(p.Audios),
-		Extended:     p.Extended,
+		Extended:     normalizeStringMap(p.Extended),
 		RelatedItems: remoteRelatedItems(p.RelatedItems),
 	}
 	if p.Video != nil {
@@ -303,11 +303,21 @@ type remoteGenre struct {
 }
 
 func remoteGenres(items []remoteGenre) []program.Genre {
+	if len(items) == 0 {
+		return nil
+	}
 	result := make([]program.Genre, len(items))
 	for i, item := range items {
 		result[i] = program.Genre{Lv1: item.Lv1, Lv2: item.Lv2, Un1: item.Un1, Un2: item.Un2}
 	}
 	return result
+}
+
+func normalizeStringMap(m map[string]string) map[string]string {
+	if len(m) == 0 {
+		return nil
+	}
+	return m
 }
 
 type remoteVideo struct {
@@ -324,6 +334,9 @@ type remoteAudio struct {
 }
 
 func remoteAudios(items []remoteAudio) []program.Audio {
+	if len(items) == 0 {
+		return nil
+	}
 	result := make([]program.Audio, len(items))
 	for i, item := range items {
 		result[i] = program.Audio{
@@ -345,6 +358,9 @@ type remoteRelatedItem struct {
 }
 
 func remoteRelatedItems(items []remoteRelatedItem) []program.RelatedItem {
+	if len(items) == 0 {
+		return nil
+	}
 	result := make([]program.RelatedItem, len(items))
 	for i, item := range items {
 		result[i] = program.RelatedItem{

@@ -284,3 +284,7 @@ func (m failingStatusServiceManager) GetServices(context.Context) ([]*service.Se
 func (m failingStatusServiceManager) GetServicesByChannel(context.Context, string, string) ([]*service.Service, error) {
 	return nil, errors.New("unexpected GetServicesByChannel call")
 }
+
+func (m failingStatusServiceManager) GetServicesGroupedByChannel(context.Context) (map[service.ChannelKey][]*service.Service, error) {
+	return nil, errors.New("unexpected GetServicesGroupedByChannel call")
+}

@@ -239,6 +239,110 @@ func TestUpsertProgramsKeepsExistingDetailsWhenIncomingIsSparse(t *testing.T) {
 	}
 }
 
+// recordingProgramStore wraps a real ProgramStore and counts calls to the
+// write methods, so a test can assert that an unchanged UpsertPrograms or
+// ReplaceServicePrograms call skipped the underlying write entirely.
+type recordingProgramStore struct {
+	ProgramStore
+	upsertCalls  int
+	lastUpsert   []*Program
+	replaceCalls int
+}
+
+func (s *recordingProgramStore) UpsertAll(ctx context.Context, programs []*Program) error {
+	s.upsertCalls++
+	s.lastUpsert = programs
+	return s.ProgramStore.UpsertAll(ctx, programs)
+}
+
+func (s *recordingProgramStore) ReplaceServicePrograms(ctx context.Context, networkID, serviceID uint16, from int64, programs []*Program) error {
+	s.replaceCalls++
+	return s.ProgramStore.ReplaceServicePrograms(ctx, networkID, serviceID, from, programs)
+}
+
+func TestUpsertProgramsSkipsWriteWhenUnchanged(t *testing.T) {
+	ctx := context.Background()
+	database, err := db.OpenInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = database.Close() }()
+
+	p := &Program{ID: ProgramID(1, 2, 1), NetworkID: 1, ServiceID: 2, EventID: 1, StartAt: 1000, Duration: 1000, Name: "title"}
+	seed := NewProgramManager(NewSQLiteStore(database))
+	if err := seed.UpsertPrograms(ctx, []*Program{p}); err != nil {
+		t.Fatal(err)
+	}
+
+	recording := &recordingProgramStore{ProgramStore: NewSQLiteStore(database)}
+	manager := NewProgramManager(recording)
+	if err := manager.UpsertPrograms(ctx, []*Program{
+		{ID: p.ID, NetworkID: 1, ServiceID: 2, EventID: 1, StartAt: 1000, Duration: 1000, Name: "title"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if recording.upsertCalls != 0 {
+		t.Fatalf("UpsertAll called %d times, want 0", recording.upsertCalls)
+	}
+}
+
+func TestUpsertProgramsWritesOnlyChangedPrograms(t *testing.T) {
+	ctx := context.Background()
+	database, err := db.OpenInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = database.Close() }()
+
+	unchanged := &Program{ID: ProgramID(1, 2, 1), NetworkID: 1, ServiceID: 2, EventID: 1, StartAt: 1000, Duration: 1000, Name: "unchanged"}
+	changed := &Program{ID: ProgramID(1, 2, 2), NetworkID: 1, ServiceID: 2, EventID: 2, StartAt: 2000, Duration: 1000, Name: "old name"}
+	seed := NewProgramManager(NewSQLiteStore(database))
+	if err := seed.UpsertPrograms(ctx, []*Program{unchanged, changed}); err != nil {
+		t.Fatal(err)
+	}
+
+	recording := &recordingProgramStore{ProgramStore: NewSQLiteStore(database)}
+	manager := NewProgramManager(recording)
+	if err := manager.UpsertPrograms(ctx, []*Program{
+		{ID: unchanged.ID, NetworkID: 1, ServiceID: 2, EventID: 1, StartAt: 1000, Duration: 1000, Name: "unchanged"},
+		{ID: changed.ID, NetworkID: 1, ServiceID: 2, EventID: 2, StartAt: 2000, Duration: 1000, Name: "new name"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if recording.upsertCalls != 1 {
+		t.Fatalf("UpsertAll called %d times, want 1", recording.upsertCalls)
+	}
+	if len(recording.lastUpsert) != 1 || recording.lastUpsert[0].ID != changed.ID {
+		t.Fatalf("UpsertAll programs = %#v, want only %d", recording.lastUpsert, changed.ID)
+	}
+}
+
+func TestReplaceServiceProgramsSkipsWriteWhenIdentical(t *testing.T) {
+	ctx := context.Background()
+	database, err := db.OpenInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = database.Close() }()
+
+	p := &Program{ID: ProgramID(1, 2, 1), NetworkID: 1, ServiceID: 2, EventID: 1, StartAt: 1000, Duration: 1000, Name: "title"}
+	seed := NewProgramManager(NewSQLiteStore(database))
+	if err := seed.ReplaceServicePrograms(ctx, 1, 2, 0, []*Program{p}); err != nil {
+		t.Fatal(err)
+	}
+
+	recording := &recordingProgramStore{ProgramStore: NewSQLiteStore(database)}
+	manager := NewProgramManager(recording)
+	if err := manager.ReplaceServicePrograms(ctx, 1, 2, 0, []*Program{
+		{ID: p.ID, NetworkID: 1, ServiceID: 2, EventID: 1, StartAt: 1000, Duration: 1000, Name: "title"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if recording.replaceCalls != 0 {
+		t.Fatalf("ReplaceServicePrograms called %d times, want 0", recording.replaceCalls)
+	}
+}
+
 func TestUpsertProgramsFillsSparseProgramWithLaterDetails(t *testing.T) {
 	ctx := context.Background()
 	manager := newTestManager(t)

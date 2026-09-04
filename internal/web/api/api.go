@@ -53,6 +53,7 @@ type ServiceManager interface {
 	GetLogoByServiceItemID(context.Context, int64) ([]byte, error)
 	GetServices(context.Context) ([]*service.Service, error)
 	GetServicesByChannel(context.Context, string, string) ([]*service.Service, error)
+	GetServicesGroupedByChannel(context.Context) (map[service.ChannelKey][]*service.Service, error)
 }
 
 type ProgramManager interface {

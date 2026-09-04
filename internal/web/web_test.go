@@ -288,6 +288,10 @@ func (testServiceManager) GetServicesByChannel(context.Context, string, string) 
 	return nil, nil
 }
 
+func (testServiceManager) GetServicesGroupedByChannel(context.Context) (map[service.ChannelKey][]*service.Service, error) {
+	return nil, nil
+}
+
 func contains(values []string, needle string) bool {
 	for _, value := range values {
 		if value == needle {

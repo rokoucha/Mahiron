@@ -222,13 +222,18 @@ func cloneCachedModule(module ts.DSMCCModule) ts.DSMCCModule {
 // It is deliberately separate from the application's primary database: cache
 // loss must never affect EPG or recording data.
 type SQLiteModuleStore struct {
-	// handle owns the connections backing db; Close closes it. The module
-	// cache is a separate database from the application's primary one and
-	// does not need the read/write connection split that database uses to
-	// avoid blocking API reads — db is simply its read pool, sized for
-	// concurrent access from both reads and the occasional write.
+	// handle owns the connections backing write/read; Close closes it. The
+	// cache is a separate database file from the application's primary one,
+	// so it cannot contend with EPG/recording writes, but writers within the
+	// cache itself (Put, prune, PutSnapshot, touch) still contend with each
+	// other under SQLITE_BUSY if they share the read pool's multiple
+	// connections. Routing writes through handle.Write (one connection,
+	// BEGIN IMMEDIATE) serializes them the same way the primary database
+	// does; reads keep using handle.Read.
 	handle         *mahirondb.DB
+	write          *sql.DB
 	db             *sql.DB
+	wq             *cachedb.Queries
 	queries        *cachedb.Queries
 	maxBytes       uint64
 	maxAge         time.Duration
@@ -288,7 +293,7 @@ func openSQLiteModuleStore(path string, maxBytes uint64, maxAge, snapshotMaxAge 
 		return nil, err
 	}
 	db := handle.Read
-	store := &SQLiteModuleStore{handle: handle, db: db, queries: cachedb.New(db), maxBytes: maxBytes, maxAge: maxAge, snapshotMaxAge: snapshotMaxAge, touched: map[ModuleCacheKey]time.Time{}}
+	store := &SQLiteModuleStore{handle: handle, db: db, write: handle.Write, queries: cachedb.New(db), wq: cachedb.New(handle.Write), maxBytes: maxBytes, maxAge: maxAge, snapshotMaxAge: snapshotMaxAge, touched: map[ModuleCacheKey]time.Time{}}
 	if err := cachedb.Migrate(context.Background(), handle.Write); err != nil {
 		_ = handle.Close()
 		return nil, err
@@ -370,7 +375,7 @@ func (s *SQLiteModuleStore) touch(key ModuleCacheKey) {
 	}
 	s.touched[key] = now
 	s.touchMu.Unlock()
-	_ = s.queries.TouchModule(context.Background(), cachedb.TouchModuleParams{LastAccessed: now.Unix(), ChannelType: key.ChannelType, ChannelID: key.ChannelID, ServiceID: int64(key.ServiceID), ComponentTag: int64(key.ComponentTag), DownloadID: int64(key.DownloadID), ModuleID: int64(key.ModuleID), Version: int64(key.Version), Size: int64(key.Size)})
+	_ = s.wq.TouchModule(context.Background(), cachedb.TouchModuleParams{LastAccessed: now.Unix(), ChannelType: key.ChannelType, ChannelID: key.ChannelID, ServiceID: int64(key.ServiceID), ComponentTag: int64(key.ComponentTag), DownloadID: int64(key.DownloadID), ModuleID: int64(key.ModuleID), Version: int64(key.Version), Size: int64(key.Size)})
 }
 
 func (s *SQLiteModuleStore) Put(key ModuleCacheKey, module ts.DSMCCModule) bool {
@@ -385,12 +390,12 @@ func (s *SQLiteModuleStore) Put(key ModuleCacheKey, module ts.DSMCCModule) bool 
 	if storedBytes > s.maxBytes || storedBytes > uint64(^uint64(0)>>1) {
 		return false
 	}
-	tx, err := s.db.Begin()
+	tx, err := s.write.Begin()
 	if err != nil {
 		return false
 	}
 	defer func() { _ = tx.Rollback() }()
-	queries := s.queries.WithTx(tx)
+	queries := s.wq.WithTx(tx)
 	ctx := context.Background()
 	// A Put may replace an existing module, so only the difference counts
 	// towards the budget. This is a primary key lookup, unlike the cache-wide
@@ -605,7 +610,7 @@ func (s *SQLiteModuleStore) maybePrune() {
 
 func (s *SQLiteModuleStore) prune() {
 	ctx := context.Background()
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.write.BeginTx(ctx, nil)
 	if err != nil {
 		return
 	}
@@ -667,7 +672,7 @@ func (s *SQLiteModuleStore) prune() {
 			return
 		}
 	}
-	if err := s.queries.WithTx(tx).TrimTombstones(ctx, maxModuleCacheTombstones); err != nil {
+	if err := s.wq.WithTx(tx).TrimTombstones(ctx, maxModuleCacheTombstones); err != nil {
 		return
 	}
 	var remaining int64
@@ -694,12 +699,12 @@ func (s *SQLiteModuleStore) PutSnapshot(channelType, channelID string, service P
 	if s == nil || s.db == nil {
 		return nil
 	}
-	tx, err := s.db.Begin()
+	tx, err := s.write.Begin()
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	queries := s.queries.WithTx(tx)
+	queries := s.wq.WithTx(tx)
 	ctx := context.Background()
 	now := time.Now().Unix()
 	// SQLite maps a nil slice to NULL, while the cache schema requires BLOB
@@ -771,8 +776,8 @@ func (s *SQLiteModuleStore) pruneSnapshots() {
 	}
 	cutoff := time.Now().Add(-s.snapshotMaxAge).Unix()
 	ctx := context.Background()
-	_ = s.queries.DeleteExpiredSnapshots(ctx, cutoff)
-	_ = s.queries.DeleteExpiredSnapshotCarousels(ctx, cutoff)
+	_ = s.wq.DeleteExpiredSnapshots(ctx, cutoff)
+	_ = s.wq.DeleteExpiredSnapshotCarousels(ctx, cutoff)
 }
 
 func (s *SQLiteModuleStore) Close() error {
