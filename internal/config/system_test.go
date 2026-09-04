@@ -306,4 +306,16 @@ func TestIsDataBroadcastSnapshotEnabled(t *testing.T) {
 	}
 }
 
+func TestIsDataBroadcastEnabled(t *testing.T) {
+	if !IsDataBroadcastEnabled(SystemConfig{}) {
+		t.Fatal("data broadcast API should default to enabled when unset")
+	}
+	if !IsDataBroadcastEnabled(SystemConfig{DataBroadcastEnabled: boolPtr(true)}) {
+		t.Fatal("data broadcast API should be enabled when explicitly true")
+	}
+	if IsDataBroadcastEnabled(SystemConfig{DataBroadcastEnabled: boolPtr(false)}) {
+		t.Fatal("data broadcast API should be disabled when explicitly false")
+	}
+}
+
 func boolPtr(v bool) *bool { return &v }
