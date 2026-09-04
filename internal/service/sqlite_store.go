@@ -8,24 +8,29 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/21S1298001/mahiron/internal/db"
 	"github.com/21S1298001/mahiron/internal/db/gen"
 	"github.com/21S1298001/mahiron/internal/observability"
 )
 
 type sqliteStore struct {
-	db *sql.DB
-	q  *gen.Queries
+	write *sql.DB
+	read  *sql.DB
+	wq    *gen.Queries
+	rq    *gen.Queries
 }
 
-func NewSQLiteStore(db *sql.DB) Store {
+func NewSQLiteStore(database *db.DB) Store {
 	return &sqliteStore{
-		db: db,
-		q:  gen.New(db),
+		write: database.Write,
+		read:  database.Read,
+		wq:    gen.New(database.Write),
+		rq:    gen.New(database.Read),
 	}
 }
 
 func (s *sqliteStore) List(ctx context.Context) ([]*Service, error) {
-	svcs, err := s.q.ListServices(ctx)
+	svcs, err := s.rq.ListServices(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -37,7 +42,7 @@ func (s *sqliteStore) List(ctx context.Context) ([]*Service, error) {
 }
 
 func (s *sqliteStore) Count(ctx context.Context) (int, error) {
-	n, err := s.q.CountServices(ctx)
+	n, err := s.rq.CountServices(ctx)
 	if err != nil {
 		return 0, err
 	}
@@ -45,7 +50,7 @@ func (s *sqliteStore) Count(ctx context.Context) (int, error) {
 }
 
 func (s *sqliteStore) GetByID(ctx context.Context, id string) (*Service, error) {
-	svc, err := s.q.GetServiceByID(ctx, id)
+	svc, err := s.rq.GetServiceByID(ctx, id)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -56,7 +61,7 @@ func (s *sqliteStore) GetByID(ctx context.Context, id string) (*Service, error) 
 }
 
 func (s *sqliteStore) GetByItemID(ctx context.Context, itemID int64) (*Service, error) {
-	svc, err := s.q.GetServiceByItemID(ctx, itemID)
+	svc, err := s.rq.GetServiceByItemID(ctx, itemID)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -67,7 +72,7 @@ func (s *sqliteStore) GetByItemID(ctx context.Context, itemID int64) (*Service, 
 }
 
 func (s *sqliteStore) GetByNetworkServiceID(ctx context.Context, networkID, serviceID uint16) (*Service, error) {
-	svc, err := s.q.GetServiceByNetworkServiceID(ctx, gen.GetServiceByNetworkServiceIDParams{
+	svc, err := s.rq.GetServiceByNetworkServiceID(ctx, gen.GetServiceByNetworkServiceIDParams{
 		NetworkID: int64(networkID),
 		ServiceID: int64(serviceID),
 	})
@@ -81,7 +86,7 @@ func (s *sqliteStore) GetByNetworkServiceID(ctx context.Context, networkID, serv
 }
 
 func (s *sqliteStore) GetByChannel(ctx context.Context, channelType, channelId string) ([]*Service, error) {
-	svcs, err := s.q.GetServicesByChannel(ctx, gen.GetServicesByChannelParams{
+	svcs, err := s.rq.GetServicesByChannel(ctx, gen.GetServicesByChannelParams{
 		ChannelType: channelType,
 		ChannelID:   channelId,
 	})
@@ -96,7 +101,7 @@ func (s *sqliteStore) GetByChannel(ctx context.Context, channelType, channelId s
 }
 
 func (s *sqliteStore) GetByChannelAndID(ctx context.Context, channelType, channelId string, id string, itemID int64) (*Service, error) {
-	svc, err := s.q.GetServiceByChannelAndID(ctx, gen.GetServiceByChannelAndIDParams{
+	svc, err := s.rq.GetServiceByChannelAndID(ctx, gen.GetServiceByChannelAndIDParams{
 		ChannelType: channelType,
 		ChannelID:   channelId,
 		ID:          id,
@@ -112,7 +117,7 @@ func (s *sqliteStore) GetByChannelAndID(ctx context.Context, channelType, channe
 }
 
 func (s *sqliteStore) GetByTriplet(ctx context.Context, networkID, transportStreamID, serviceID uint16) (*Service, error) {
-	svc, err := s.q.GetServiceByTriplet(ctx, gen.GetServiceByTripletParams{
+	svc, err := s.rq.GetServiceByTriplet(ctx, gen.GetServiceByTripletParams{
 		NetworkID:         int64(networkID),
 		TransportStreamID: int64(transportStreamID),
 		ServiceID:         int64(serviceID),
@@ -127,7 +132,7 @@ func (s *sqliteStore) GetByTriplet(ctx context.Context, networkID, transportStre
 }
 
 func (s *sqliteStore) GetLogoByServiceItemID(ctx context.Context, itemID int64) ([]byte, error) {
-	data, err := s.q.GetLogoByServiceItemID(ctx, itemID)
+	data, err := s.rq.GetLogoByServiceItemID(ctx, itemID)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -138,7 +143,7 @@ func (s *sqliteStore) GetLogoByServiceItemID(ctx context.Context, itemID int64) 
 }
 
 func (s *sqliteStore) KnownLogoTargets(ctx context.Context) ([]LogoTarget, error) {
-	rows, err := s.q.KnownLogoTargets(ctx)
+	rows, err := s.rq.KnownLogoTargets(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -162,7 +167,7 @@ func (s *sqliteStore) KnownLogoTargets(ctx context.Context) ([]LogoTarget, error
 }
 
 func (s *sqliteStore) MissingLogoTargets(ctx context.Context) ([]LogoTarget, error) {
-	rows, err := s.q.MissingLogoTargets(ctx)
+	rows, err := s.rq.MissingLogoTargets(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -181,7 +186,7 @@ func (s *sqliteStore) MissingLogoTargets(ctx context.Context) ([]LogoTarget, err
 }
 
 func (s *sqliteStore) ListCommonDataAnnouncements(ctx context.Context) ([]CommonDataAnnouncement, error) {
-	rows, err := s.q.ListCommonDataAnnouncements(ctx)
+	rows, err := s.rq.ListCommonDataAnnouncements(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -202,7 +207,7 @@ func (s *sqliteStore) ListCommonDataAnnouncements(ctx context.Context) ([]Common
 }
 
 func (s *sqliteStore) UpsertCommonDataAnnouncement(ctx context.Context, announcement CommonDataAnnouncement) error {
-	return s.q.UpsertCommonDataAnnouncement(ctx, gen.UpsertCommonDataAnnouncementParams{
+	return s.wq.UpsertCommonDataAnnouncement(ctx, gen.UpsertCommonDataAnnouncementParams{
 		OriginalNetworkID:   int64(announcement.OriginalNetworkID),
 		TransportStreamID:   int64(announcement.TransportStreamID),
 		ServiceID:           int64(announcement.ServiceID),
@@ -215,7 +220,7 @@ func (s *sqliteStore) UpsertCommonDataAnnouncement(ctx context.Context, announce
 }
 
 func (s *sqliteStore) SetEPGAttempt(ctx context.Context, networkID, serviceID uint16, attemptedAt int64, lastError string) error {
-	return s.q.SetEPGAttempt(ctx, gen.SetEPGAttemptParams{
+	return s.wq.SetEPGAttempt(ctx, gen.SetEPGAttemptParams{
 		NetworkID:     int64(networkID),
 		ServiceID:     int64(serviceID),
 		LastAttemptAt: &attemptedAt,
@@ -224,7 +229,7 @@ func (s *sqliteStore) SetEPGAttempt(ctx context.Context, networkID, serviceID ui
 }
 
 func (s *sqliteStore) SetEPGSuccess(ctx context.Context, networkID, serviceID uint16, succeededAt int64) error {
-	return s.q.SetEPGSuccess(ctx, gen.SetEPGSuccessParams{
+	return s.wq.SetEPGSuccess(ctx, gen.SetEPGSuccessParams{
 		NetworkID:     int64(networkID),
 		ServiceID:     int64(serviceID),
 		LastAttemptAt: &succeededAt,
@@ -233,7 +238,7 @@ func (s *sqliteStore) SetEPGSuccess(ctx context.Context, networkID, serviceID ui
 }
 
 func (s *sqliteStore) UpdateServiceLogoMetadata(ctx context.Context, networkID, transportStreamID, serviceID uint16, logoID, logoVersion, downloadDataID int64) (bool, error) {
-	rows, err := s.q.UpdateServiceLogoMetadata(ctx, gen.UpdateServiceLogoMetadataParams{
+	rows, err := s.wq.UpdateServiceLogoMetadata(ctx, gen.UpdateServiceLogoMetadataParams{
 		LogoID:             &logoID,
 		LogoVersion:        &logoVersion,
 		LogoDownloadDataID: &downloadDataID,
@@ -248,7 +253,7 @@ func (s *sqliteStore) UpdateServiceLogoMetadata(ctx context.Context, networkID, 
 }
 
 func (s *sqliteStore) DeleteLogo(ctx context.Context, networkID, transportStreamID, serviceID uint16, logoID int64, logoType int64, logoVersion int64, downloadDataID int64) error {
-	return s.q.DeleteServiceLogo(ctx, gen.DeleteServiceLogoParams{
+	return s.wq.DeleteServiceLogo(ctx, gen.DeleteServiceLogoParams{
 		NetworkID:         int64(networkID),
 		TransportStreamID: int64(transportStreamID),
 		ServiceID:         int64(serviceID),
@@ -260,7 +265,7 @@ func (s *sqliteStore) DeleteLogo(ctx context.Context, networkID, transportStream
 }
 
 func (s *sqliteStore) UpsertLogo(ctx context.Context, networkID, transportStreamID, serviceID uint16, logoID int64, logoType int64, logoVersion int64, downloadDataID int64, data []byte, updatedAt int64) error {
-	return s.q.UpsertServiceLogo(ctx, gen.UpsertServiceLogoParams{
+	return s.wq.UpsertServiceLogo(ctx, gen.UpsertServiceLogoParams{
 		NetworkID:         int64(networkID),
 		TransportStreamID: int64(transportStreamID),
 		ServiceID:         int64(serviceID),
@@ -283,7 +288,7 @@ func (s *sqliteStore) EPGSummary(ctx context.Context, staleAfter int64, now int6
 		observability.EndSpan(span, err)
 	}()
 
-	row, err := s.q.GetEPGSummary(ctx, gen.GetEPGSummaryParams{
+	row, err := s.rq.GetEPGSummary(ctx, gen.GetEPGSummaryParams{
 		Now:        &now,
 		StaleAfter: &staleAfter,
 	})
@@ -339,7 +344,7 @@ func (s *sqliteStore) ReplaceChannelServices(ctx context.Context, channelType, c
 		observability.EndSpan(span, err)
 	}()
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.write.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
@@ -349,7 +354,7 @@ func (s *sqliteStore) ReplaceChannelServices(ctx context.Context, channelType, c
 		}
 	}()
 
-	q := s.q.WithTx(tx)
+	q := s.wq.WithTx(tx)
 	existingRows, err := q.GetServicesByChannel(ctx, gen.GetServicesByChannelParams{
 		ChannelType: channelType,
 		ChannelID:   channelId,
@@ -444,7 +449,7 @@ func (s *sqliteStore) PruneChannels(ctx context.Context, active []ChannelKey) (e
 	for _, key := range active {
 		allowed[key] = struct{}{}
 	}
-	services, err := s.q.ListServices(ctx)
+	services, err := s.rq.ListServices(ctx)
 	if err != nil {
 		return fmt.Errorf("list services: %w", err)
 	}
@@ -458,7 +463,7 @@ func (s *sqliteStore) PruneChannels(ctx context.Context, active []ChannelKey) (e
 	if len(stale) == 0 {
 		return nil
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.write.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin prune tx: %w", err)
 	}
@@ -467,7 +472,7 @@ func (s *sqliteStore) PruneChannels(ctx context.Context, active []ChannelKey) (e
 			err = errors.Join(err, tx.Rollback())
 		}
 	}()
-	q := s.q.WithTx(tx)
+	q := s.wq.WithTx(tx)
 	for key := range stale {
 		if err := q.DeleteServicesByChannel(ctx, gen.DeleteServicesByChannelParams{ChannelType: key.Type, ChannelID: key.ID}); err != nil {
 			return fmt.Errorf("delete stale channel %s/%s: %w", key.Type, key.ID, err)

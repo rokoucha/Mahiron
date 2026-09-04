@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"runtime"
 	"testing"
@@ -18,7 +17,7 @@ import (
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 )
 
-func newStatusHandler(t *testing.T) (*Handler, *job.JobManager, *service.ServiceManager, *program.ProgramManager, *sql.DB) {
+func newStatusHandler(t *testing.T) (*Handler, *job.JobManager, *service.ServiceManager, *program.ProgramManager, *db.DB) {
 	t.Helper()
 	database, err := db.OpenInMemory()
 	if err != nil {

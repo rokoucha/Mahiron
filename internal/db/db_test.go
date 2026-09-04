@@ -3,8 +3,11 @@ package db
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"path/filepath"
+	"sync"
 	"testing"
+	"time"
 )
 
 func TestOpenInMemoryAppliesAtlasMigrationsIdempotently(t *testing.T) {
@@ -17,7 +20,7 @@ func TestOpenInMemoryAppliesAtlasMigrationsIdempotently(t *testing.T) {
 		t.Fatalf("second migration: %v", err)
 	}
 	var revisions int
-	if err := database.QueryRow("SELECT COUNT(*) FROM atlas_schema_revisions").Scan(&revisions); err != nil {
+	if err := database.Write.QueryRow("SELECT COUNT(*) FROM atlas_schema_revisions").Scan(&revisions); err != nil {
 		t.Fatal(err)
 	}
 	if revisions != 6 {
@@ -32,7 +35,7 @@ func TestOpenEnablesForeignKeys(t *testing.T) {
 	}
 	defer func() { _ = database.Close() }()
 	var enabled int
-	if err := database.QueryRow("PRAGMA foreign_keys").Scan(&enabled); err != nil {
+	if err := database.Write.QueryRow("PRAGMA foreign_keys").Scan(&enabled); err != nil {
 		t.Fatal(err)
 	}
 	if enabled != 1 {
@@ -47,7 +50,7 @@ func TestOpenEnablesForeignKeys(t *testing.T) {
 func TestOpenCacheRelaxesDurabilityAndOpenDoesNot(t *testing.T) {
 	for _, tc := range []struct {
 		name string
-		open func(string) (*sql.DB, error)
+		open func(string) (*DB, error)
 		want int
 	}{
 		{name: "Open keeps FULL", open: Open, want: 2},
@@ -60,22 +63,129 @@ func TestOpenCacheRelaxesDurabilityAndOpenDoesNot(t *testing.T) {
 			}
 			t.Cleanup(func() { _ = database.Close() })
 
-			var got int
-			if err := database.QueryRow("PRAGMA synchronous").Scan(&got); err != nil {
-				t.Fatalf("PRAGMA synchronous = %v", err)
-			}
-			if got != tc.want {
-				t.Fatalf("PRAGMA synchronous = %d, want %d", got, tc.want)
-			}
+			for _, pool := range []struct {
+				name string
+				db   *sql.DB
+			}{
+				{"Write", database.Write},
+				{"Read", database.Read},
+			} {
+				var got int
+				if err := pool.db.QueryRow("PRAGMA synchronous").Scan(&got); err != nil {
+					t.Fatalf("%s: PRAGMA synchronous = %v", pool.name, err)
+				}
+				if got != tc.want {
+					t.Fatalf("%s: PRAGMA synchronous = %d, want %d", pool.name, got, tc.want)
+				}
 
-			// Both remain journalled in WAL mode; only the flush point moves.
-			var journal string
-			if err := database.QueryRow("PRAGMA journal_mode").Scan(&journal); err != nil {
-				t.Fatalf("PRAGMA journal_mode = %v", err)
-			}
-			if journal != "wal" {
-				t.Fatalf("PRAGMA journal_mode = %q, want %q", journal, "wal")
+				// Both remain journalled in WAL mode; only the flush point moves.
+				var journal string
+				if err := pool.db.QueryRow("PRAGMA journal_mode").Scan(&journal); err != nil {
+					t.Fatalf("%s: PRAGMA journal_mode = %v", pool.name, err)
+				}
+				if journal != "wal" {
+					t.Fatalf("%s: PRAGMA journal_mode = %q, want %q", pool.name, journal, "wal")
+				}
 			}
 		})
+	}
+}
+
+// TestReadsDoNotBlockBehindHeldWriteTransaction guards the core motivation for
+// splitting Read from Write: a reader on its own connection must be able to
+// query while a write transaction is open (even before it commits), instead
+// of waiting behind it in a shared connection pool.
+func TestReadsDoNotBlockBehindHeldWriteTransaction(t *testing.T) {
+	database, err := Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = database.Close() }()
+
+	if _, err := database.Write.Exec("CREATE TABLE t (id INTEGER PRIMARY KEY)"); err != nil {
+		t.Fatal(err)
+	}
+
+	tx, err := database.Write.BeginTx(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec("INSERT INTO t (id) VALUES (1)"); err != nil {
+		t.Fatal(err)
+	}
+	// Deliberately left uncommitted: the read below must not need the write
+	// transaction to finish.
+
+	readDone := make(chan error, 1)
+	go func() {
+		var count int
+		readDone <- database.Read.QueryRow("SELECT COUNT(*) FROM t").Scan(&count)
+	}()
+
+	select {
+	case err := <-readDone:
+		if err != nil {
+			t.Fatalf("read while write tx open: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("read blocked behind an open, uncommitted write transaction")
+	}
+
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestConcurrentWriteTransactionsSerializeWithoutBusyErrors guards the other
+// half of the split: many goroutines opening write transactions at once must
+// queue for the single write connection and each succeed in turn, rather than
+// racing each other into SQLITE_BUSY.
+func TestConcurrentWriteTransactionsSerializeWithoutBusyErrors(t *testing.T) {
+	database, err := Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = database.Close() }()
+
+	if _, err := database.Write.Exec("CREATE TABLE t (id INTEGER PRIMARY KEY)"); err != nil {
+		t.Fatal(err)
+	}
+
+	const writers = 16
+	var wg sync.WaitGroup
+	errs := make([]error, writers)
+	for i := 0; i < writers; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			tx, err := database.Write.BeginTx(context.Background(), nil)
+			if err != nil {
+				errs[i] = fmt.Errorf("begin: %w", err)
+				return
+			}
+			if _, err := tx.Exec("INSERT INTO t (id) VALUES (?)", i); err != nil {
+				errs[i] = fmt.Errorf("insert: %w", err)
+				_ = tx.Rollback()
+				return
+			}
+			if err := tx.Commit(); err != nil {
+				errs[i] = fmt.Errorf("commit: %w", err)
+			}
+		}(i)
+	}
+	wg.Wait()
+
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("writer %d: %v", i, err)
+		}
+	}
+
+	var count int
+	if err := database.Write.QueryRow("SELECT COUNT(*) FROM t").Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != writers {
+		t.Fatalf("count = %d, want %d", count, writers)
 	}
 }

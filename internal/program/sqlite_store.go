@@ -8,13 +8,16 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/21S1298001/mahiron/internal/db"
 	"github.com/21S1298001/mahiron/internal/db/gen"
 	"github.com/21S1298001/mahiron/internal/observability"
 )
 
 type sqliteStore struct {
-	db *sql.DB
-	q  *gen.Queries
+	write *sql.DB
+	read  *sql.DB
+	wq    *gen.Queries
+	rq    *gen.Queries
 }
 
 const upsertProgramSQL = `INSERT INTO programs (id, event_id, service_id, network_id, start_at, duration, is_free,
@@ -36,10 +39,12 @@ ON CONFLICT(id) DO UPDATE SET
   related_items=COALESCE(excluded.related_items, programs.related_items),
   series=COALESCE(excluded.series, programs.series)`
 
-func NewSQLiteStore(db *sql.DB) ProgramStore {
+func NewSQLiteStore(database *db.DB) ProgramStore {
 	return &sqliteStore{
-		db: db,
-		q:  gen.New(db),
+		write: database.Write,
+		read:  database.Read,
+		wq:    gen.New(database.Write),
+		rq:    gen.New(database.Read),
 	}
 }
 
@@ -53,7 +58,7 @@ func (s *sqliteStore) UpsertAll(ctx context.Context, programs []*Program) (err e
 		observability.EndSpan(span, err)
 	}()
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.write.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
@@ -71,7 +76,7 @@ func (s *sqliteStore) UpsertAll(ctx context.Context, programs []*Program) (err e
 }
 
 func (s *sqliteStore) Get(ctx context.Context, id int64) (*Program, bool, error) {
-	row, err := s.q.GetProgram(ctx, id)
+	row, err := s.rq.GetProgram(ctx, id)
 	if err == sql.ErrNoRows {
 		return nil, false, nil
 	}
@@ -94,7 +99,7 @@ func (s *sqliteStore) List(ctx context.Context, query Query) ([]*Program, error)
 		StartAt:   nilOrInt64(query.StartAt),
 		EndAt:     nilOrInt64(query.EndAt),
 	}
-	rows, err := s.q.ListPrograms(ctx, params)
+	rows, err := s.rq.ListPrograms(ctx, params)
 	if err != nil {
 		return nil, err
 	}
@@ -105,7 +110,7 @@ func (s *sqliteStore) ListByIDs(ctx context.Context, ids []int64) ([]*Program, e
 	if len(ids) == 0 {
 		return nil, nil
 	}
-	rows, err := s.q.ListProgramsByIDs(ctx, ids)
+	rows, err := s.rq.ListProgramsByIDs(ctx, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +118,7 @@ func (s *sqliteStore) ListByIDs(ctx context.Context, ids []int64) ([]*Program, e
 }
 
 func (s *sqliteStore) ListByServiceFrom(ctx context.Context, networkID, serviceID uint16, from int64) ([]*Program, error) {
-	rows, err := s.q.ListProgramsByServiceFrom(ctx, gen.ListProgramsByServiceFromParams{
+	rows, err := s.rq.ListProgramsByServiceFrom(ctx, gen.ListProgramsByServiceFromParams{
 		NetworkID: int64(networkID),
 		ServiceID: int64(serviceID),
 		StartAt:   from,
@@ -125,7 +130,7 @@ func (s *sqliteStore) ListByServiceFrom(ctx context.Context, networkID, serviceI
 }
 
 func (s *sqliteStore) ListEndedIDsBefore(ctx context.Context, cutoff int64) ([]int64, error) {
-	return s.q.ListEndedProgramIDsBefore(ctx, cutoff)
+	return s.rq.ListEndedProgramIDsBefore(ctx, cutoff)
 }
 
 func (s *sqliteStore) DeleteEndedBefore(ctx context.Context, cutoff int64) (err error) {
@@ -138,7 +143,7 @@ func (s *sqliteStore) DeleteEndedBefore(ctx context.Context, cutoff int64) (err 
 		observability.EndSpan(span, err)
 	}()
 
-	return s.q.DeleteEndedAtBefore(ctx, cutoff)
+	return s.wq.DeleteEndedAtBefore(ctx, cutoff)
 }
 
 func (s *sqliteStore) ReplaceServicePrograms(ctx context.Context, networkID, serviceID uint16, from int64, programs []*Program) (err error) {
@@ -154,7 +159,7 @@ func (s *sqliteStore) ReplaceServicePrograms(ctx context.Context, networkID, ser
 		observability.EndSpan(span, err)
 	}()
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.write.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin replace: %w", err)
 	}
@@ -163,7 +168,7 @@ func (s *sqliteStore) ReplaceServicePrograms(ctx context.Context, networkID, ser
 			err = errors.Join(err, tx.Rollback())
 		}
 	}()
-	q := s.q.WithTx(tx)
+	q := s.wq.WithTx(tx)
 	if err := q.DeleteProgramsByServiceFrom(ctx, gen.DeleteProgramsByServiceFromParams{
 		NetworkID: int64(networkID),
 		ServiceID: int64(serviceID),
@@ -219,7 +224,7 @@ func execUpsertProgram(ctx context.Context, stmt *sql.Stmt, arg gen.UpsertProgra
 }
 
 func (s *sqliteStore) Count(ctx context.Context) (int, error) {
-	n, err := s.q.CountPrograms(ctx)
+	n, err := s.rq.CountPrograms(ctx)
 	if err != nil {
 		return 0, err
 	}
