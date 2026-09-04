@@ -127,7 +127,7 @@ func Run(ctx context.Context, args []string) int {
 }
 
 type applicationRuntime struct {
-	dataBroadcastStore io.Closer
+	dataBroadcastStore *databroadcast.SQLiteModuleStore
 	database           *sql.DB
 	jobs               *job.JobManager
 	obs                observability.SetupResult
@@ -155,29 +155,34 @@ func buildRuntime(cfg *config.Config, database *sql.DB, obs observability.SetupR
 	programs := program.NewProgramManager(programStore, events)
 	epgUpdater := epg.NewUpdater(programs)
 
-	// Opening the cache migrates and prunes it, the only startup step whose
-	// cost grows with stored data. Report how long it took so a slow start is
-	// attributable from the log alone.
-	cachePath := cfg.System.DataBroadcastCachePath
-	slog.Info("opening data broadcast cache", "path", cachePath)
-	cacheOpenedAt := time.Now()
-	dataBroadcastStore, err := databroadcast.NewSQLiteModuleStoreWithOptions(cachePath, databroadcast.SQLiteModuleStoreOptions{
-		MaxBytes:       cfg.System.DataBroadcastCacheBytes,
-		MaxAge:         time.Duration(cfg.System.DataBroadcastCacheMaxAgeDays) * 24 * time.Hour,
-		SnapshotMaxAge: time.Duration(cfg.System.DataBroadcastSnapshotMaxAgeHours) * time.Hour,
-	})
-	if err != nil {
-		slog.Warn("failed to open data broadcast cache; using memory cache", "err", err, "elapsed", time.Since(cacheOpenedAt))
-	} else {
-		slog.Info("data broadcast cache opened", "elapsed", time.Since(cacheOpenedAt))
-	}
+	var dataBroadcastStore *databroadcast.SQLiteModuleStore
 	var moduleStore databroadcast.ModuleStore
 	var snapshotStore databroadcast.SnapshotStore
-	if err == nil {
-		moduleStore = dataBroadcastStore
-		if config.IsDataBroadcastSnapshotEnabled(*cfg.System) {
-			snapshotStore = dataBroadcastStore
+	dataBroadcastEnabled := config.IsDataBroadcastEnabled(*cfg.System)
+	if dataBroadcastEnabled {
+		// Opening the cache migrates and prunes it, the only startup step whose
+		// cost grows with stored data. Report how long it took so a slow start is
+		// attributable from the log alone.
+		cachePath := cfg.System.DataBroadcastCachePath
+		slog.Info("opening data broadcast cache", "path", cachePath)
+		cacheOpenedAt := time.Now()
+		var err error
+		dataBroadcastStore, err = databroadcast.NewSQLiteModuleStoreWithOptions(cachePath, databroadcast.SQLiteModuleStoreOptions{
+			MaxBytes:       cfg.System.DataBroadcastCacheBytes,
+			MaxAge:         time.Duration(cfg.System.DataBroadcastCacheMaxAgeDays) * 24 * time.Hour,
+			SnapshotMaxAge: time.Duration(cfg.System.DataBroadcastSnapshotMaxAgeHours) * time.Hour,
+		})
+		if err != nil {
+			slog.Warn("failed to open data broadcast cache; using memory cache", "err", err, "elapsed", time.Since(cacheOpenedAt))
+		} else {
+			slog.Info("data broadcast cache opened", "elapsed", time.Since(cacheOpenedAt))
+			moduleStore = dataBroadcastStore
+			if config.IsDataBroadcastSnapshotEnabled(*cfg.System) {
+				snapshotStore = dataBroadcastStore
+			}
 		}
+	} else {
+		slog.Info("data broadcast API disabled")
 	}
 	streams := stream.NewStreamManager(stream.StreamManagerConfig{
 		Channels:       cfg.Channels,
@@ -221,17 +226,18 @@ func buildRuntime(cfg *config.Config, database *sql.DB, obs observability.SetupR
 	}
 
 	handler, err := web.NewWeb(web.WebConfig{
-		ServiceManager: services,
-		ProgramManager: programs,
-		StreamManager:  streams,
-		TunerManager:   tuners,
-		JobManager:     jobs,
-		LogStore:       obs.LogStore,
-		EventHub:       events,
-		EpgStaleAfter:  int64(cfg.System.EpgStaleAfter),
-		MeterProvider:  obs.MeterProvider,
-		TracerProvider: obs.TracerProvider,
-		Pprof:          cfg.System.Observability.Pprof.Enabled,
+		ServiceManager:        services,
+		ProgramManager:        programs,
+		StreamManager:         streams,
+		TunerManager:          tuners,
+		JobManager:            jobs,
+		LogStore:              obs.LogStore,
+		EventHub:              events,
+		EpgStaleAfter:         int64(cfg.System.EpgStaleAfter),
+		DataBroadcastDisabled: !dataBroadcastEnabled,
+		MeterProvider:         obs.MeterProvider,
+		TracerProvider:        obs.TracerProvider,
+		Pprof:                 cfg.System.Observability.Pprof.Enabled,
 	})
 	if err != nil {
 		return nil, "failed to create web handler", err

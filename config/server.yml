@@ -4,6 +4,7 @@ addresses:
 
 logLevel: info
 databasePath: ./db/mahiron.db
+dataBroadcastEnabled: true
 dataBroadcastCachePath: ./db/data-broadcast-cache.db
 dataBroadcastCacheBytes: 1073741824
 dataBroadcastCacheMaxAgeDays: 14

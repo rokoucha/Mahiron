@@ -14,6 +14,10 @@ import (
 )
 
 func GetServiceDataBroadcastEvents(ctx context.Context, h *Handler, params apigen.GetServiceDataBroadcastEventsParams, w http.ResponseWriter) error {
+	if h.dataBroadcastDisabled {
+		w.WriteHeader(http.StatusNotFound)
+		return nil
+	}
 	service, err := h.serviceManager.GetServiceById(ctx, strconv.FormatInt(params.ID, 10))
 	if err != nil {
 		return err
@@ -54,6 +58,10 @@ func GetServiceDataBroadcastEvents(ctx context.Context, h *Handler, params apige
 // snapshot rebuilt from persisted PMT/DII state (origin "cache") unless the
 // caller passes allowCache=0.
 func GetServiceDataBroadcastState(ctx context.Context, h *Handler, params apigen.GetServiceDataBroadcastStateParams, w http.ResponseWriter) error {
+	if h.dataBroadcastDisabled {
+		w.WriteHeader(http.StatusNotFound)
+		return nil
+	}
 	service, err := h.serviceManager.GetServiceById(ctx, strconv.FormatInt(params.ID, 10))
 	if err != nil {
 		return err
@@ -94,6 +102,10 @@ func provisionalDataBroadcastSnapshot(h *Handler, allowCache apigen.OptInt, chan
 }
 
 func GetServiceDataBroadcastModuleVersion(ctx context.Context, h *Handler, params apigen.GetServiceDataBroadcastModuleVersionParams, w http.ResponseWriter) error {
+	if h.dataBroadcastDisabled {
+		w.WriteHeader(http.StatusNotFound)
+		return nil
+	}
 	module, status, err := dataBroadcastVersionModule(ctx, h, params.ID, byte(params.ComponentTag), uint32(params.DownloadId), uint16(params.ModuleId), byte(params.ModuleVersion))
 	if err != nil || status != 0 {
 		if status != 0 {
@@ -116,6 +128,10 @@ func GetServiceDataBroadcastModuleVersion(ctx context.Context, h *Handler, param
 }
 
 func GetServiceDataBroadcastModuleRaw(ctx context.Context, h *Handler, params apigen.GetServiceDataBroadcastModuleRawParams, w http.ResponseWriter) error {
+	if h.dataBroadcastDisabled {
+		w.WriteHeader(http.StatusNotFound)
+		return nil
+	}
 	module, status, err := dataBroadcastVersionModule(ctx, h, params.ID, byte(params.ComponentTag), uint32(params.DownloadId), uint16(params.ModuleId), byte(params.ModuleVersion))
 	if err != nil || status != 0 {
 		if status != 0 {
@@ -135,6 +151,10 @@ func GetServiceDataBroadcastModuleRaw(ctx context.Context, h *Handler, params ap
 }
 
 func GetServiceDataBroadcastModuleResource(ctx context.Context, h *Handler, params apigen.GetServiceDataBroadcastModuleResourceParams, w http.ResponseWriter) error {
+	if h.dataBroadcastDisabled {
+		w.WriteHeader(http.StatusNotFound)
+		return nil
+	}
 	module, status, err := dataBroadcastVersionModule(ctx, h, params.ID, byte(params.ComponentTag), uint32(params.DownloadId), uint16(params.ModuleId), byte(params.ModuleVersion))
 	if err != nil || status != 0 {
 		if status != 0 {

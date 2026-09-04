@@ -17,28 +17,30 @@ import (
 )
 
 type Handler struct {
-	serviceManager ServiceManager
-	programManager ProgramManager
-	streamManager  StreamManager
-	tunerManager   TunerManager
-	jobManager     JobManager
-	logStore       LogStore
-	eventHub       EventHub
-	epgStaleAfter  int64
+	serviceManager        ServiceManager
+	programManager        ProgramManager
+	streamManager         StreamManager
+	tunerManager          TunerManager
+	jobManager            JobManager
+	logStore              LogStore
+	eventHub              EventHub
+	epgStaleAfter         int64
+	dataBroadcastDisabled bool
 }
 
 var _ apigen.Handler = (*Handler)(nil)
 var _ apigen.RawHandler = (*Handler)(nil)
 
 type HandlerConfig struct {
-	ServiceManager ServiceManager
-	ProgramManager ProgramManager
-	StreamManager  StreamManager
-	TunerManager   TunerManager
-	JobManager     JobManager
-	LogStore       LogStore
-	EventHub       EventHub
-	EpgStaleAfter  int64
+	ServiceManager        ServiceManager
+	ProgramManager        ProgramManager
+	StreamManager         StreamManager
+	TunerManager          TunerManager
+	JobManager            JobManager
+	LogStore              LogStore
+	EventHub              EventHub
+	EpgStaleAfter         int64
+	DataBroadcastDisabled bool
 }
 
 type ServiceManager interface {
@@ -92,14 +94,15 @@ type EventHub interface {
 
 func NewHandler(config HandlerConfig) *Handler {
 	return &Handler{
-		serviceManager: config.ServiceManager,
-		programManager: config.ProgramManager,
-		streamManager:  config.StreamManager,
-		tunerManager:   config.TunerManager,
-		jobManager:     config.JobManager,
-		logStore:       config.LogStore,
-		eventHub:       config.EventHub,
-		epgStaleAfter:  config.EpgStaleAfter,
+		serviceManager:        config.ServiceManager,
+		programManager:        config.ProgramManager,
+		streamManager:         config.StreamManager,
+		tunerManager:          config.TunerManager,
+		jobManager:            config.JobManager,
+		logStore:              config.LogStore,
+		eventHub:              config.EventHub,
+		epgStaleAfter:         config.EpgStaleAfter,
+		dataBroadcastDisabled: config.DataBroadcastDisabled,
 	}
 }
 

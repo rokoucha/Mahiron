@@ -137,6 +137,41 @@ func TestGetServiceDataBroadcastEventsWritesSnapshot(t *testing.T) {
 	}
 }
 
+func TestDataBroadcastAPIDisabledReturnsNotFoundBeforeUsingDependencies(t *testing.T) {
+	handler := NewHandler(HandlerConfig{DataBroadcastDisabled: true})
+	tests := []struct {
+		name string
+		call func(http.ResponseWriter) error
+	}{
+		{"events", func(w http.ResponseWriter) error {
+			return handler.GetServiceDataBroadcastEvents(context.Background(), apigen.GetServiceDataBroadcastEventsParams{ID: 100101}, w)
+		}},
+		{"state", func(w http.ResponseWriter) error {
+			return handler.GetServiceDataBroadcastState(context.Background(), apigen.GetServiceDataBroadcastStateParams{ID: 100101}, w)
+		}},
+		{"module version", func(w http.ResponseWriter) error {
+			return handler.GetServiceDataBroadcastModuleVersion(context.Background(), apigen.GetServiceDataBroadcastModuleVersionParams{ID: 100101}, w)
+		}},
+		{"module raw", func(w http.ResponseWriter) error {
+			return handler.GetServiceDataBroadcastModuleRaw(context.Background(), apigen.GetServiceDataBroadcastModuleRawParams{ID: 100101}, w)
+		}},
+		{"module resource", func(w http.ResponseWriter) error {
+			return handler.GetServiceDataBroadcastModuleResource(context.Background(), apigen.GetServiceDataBroadcastModuleResourceParams{ID: 100101}, w)
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			if err := tt.call(recorder); err != nil {
+				t.Fatal(err)
+			}
+			if recorder.Code != http.StatusNotFound {
+				t.Fatalf("status = %d, want %d", recorder.Code, http.StatusNotFound)
+			}
+		})
+	}
+}
+
 func TestGetServiceDataBroadcastStateReturnsAuthoritativeSnapshot(t *testing.T) {
 	handler := testProgramHandler(t)
 	handler.streamManager = fakeDataBroadcastStreamManager{session: fakeDataBroadcastSession{}, existing: true}

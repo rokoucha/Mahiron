@@ -22,16 +22,17 @@ import (
 const serverHeader = "Mahiron/" + version.Current
 
 type WebConfig struct {
-	ServiceManager api.ServiceManager
-	ProgramManager api.ProgramManager
-	StreamManager  api.StreamManager
-	TunerManager   api.TunerManager
-	JobManager     api.JobManager
-	LogStore       api.LogStore
-	EventHub       *event.Hub
-	EpgStaleAfter  int64
-	MeterProvider  metric.MeterProvider
-	TracerProvider trace.TracerProvider
+	ServiceManager        api.ServiceManager
+	ProgramManager        api.ProgramManager
+	StreamManager         api.StreamManager
+	TunerManager          api.TunerManager
+	JobManager            api.JobManager
+	LogStore              api.LogStore
+	EventHub              *event.Hub
+	EpgStaleAfter         int64
+	DataBroadcastDisabled bool
+	MeterProvider         metric.MeterProvider
+	TracerProvider        trace.TracerProvider
 	// Pprof serves the net/http/pprof handlers under /debug/pprof.
 	Pprof bool
 }
@@ -39,14 +40,15 @@ type WebConfig struct {
 func NewWeb(config WebConfig) (http.Handler, error) {
 	mux := http.NewServeMux()
 	apiHandler := api.NewHandler(api.HandlerConfig{
-		ServiceManager: config.ServiceManager,
-		ProgramManager: config.ProgramManager,
-		StreamManager:  config.StreamManager,
-		TunerManager:   config.TunerManager,
-		JobManager:     config.JobManager,
-		LogStore:       config.LogStore,
-		EventHub:       config.EventHub,
-		EpgStaleAfter:  config.EpgStaleAfter,
+		ServiceManager:        config.ServiceManager,
+		ProgramManager:        config.ProgramManager,
+		StreamManager:         config.StreamManager,
+		TunerManager:          config.TunerManager,
+		JobManager:            config.JobManager,
+		LogStore:              config.LogStore,
+		EventHub:              config.EventHub,
+		EpgStaleAfter:         config.EpgStaleAfter,
+		DataBroadcastDisabled: config.DataBroadcastDisabled,
 	})
 	api, err := apigen.NewServer(apiHandler, apiHandler,
 		apigen.WithMeterProvider(config.MeterProvider),

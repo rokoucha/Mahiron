@@ -9,15 +9,18 @@ import (
 )
 
 type SystemConfig struct {
-	Addresses                    []ServerAddress     `json:"addresses"`
-	LogLevel                     string              `json:"logLevel,omitempty"`
-	Observability                ObservabilityConfig `json:"observability,omitempty"`
-	MaxConcurrentJobs            int                 `json:"maxConcurrentJobs,omitempty"`
-	Jobs                         []JobScheduleConfig `json:"jobs,omitempty"`
-	DatabasePath                 string              `json:"databasePath,omitempty"`
-	DataBroadcastCachePath       string              `json:"dataBroadcastCachePath,omitempty"`
-	DataBroadcastCacheBytes      uint64              `json:"dataBroadcastCacheBytes,omitempty"`
-	DataBroadcastCacheMaxAgeDays int                 `json:"dataBroadcastCacheMaxAgeDays,omitempty"`
+	Addresses         []ServerAddress     `json:"addresses"`
+	LogLevel          string              `json:"logLevel,omitempty"`
+	Observability     ObservabilityConfig `json:"observability,omitempty"`
+	MaxConcurrentJobs int                 `json:"maxConcurrentJobs,omitempty"`
+	Jobs              []JobScheduleConfig `json:"jobs,omitempty"`
+	DatabasePath      string              `json:"databasePath,omitempty"`
+	// DataBroadcastEnabled controls the data broadcast API and its cache.
+	// It defaults to enabled when omitted.
+	DataBroadcastEnabled         *bool  `json:"dataBroadcastEnabled,omitempty"`
+	DataBroadcastCachePath       string `json:"dataBroadcastCachePath,omitempty"`
+	DataBroadcastCacheBytes      uint64 `json:"dataBroadcastCacheBytes,omitempty"`
+	DataBroadcastCacheMaxAgeDays int    `json:"dataBroadcastCacheMaxAgeDays,omitempty"`
 	// DataBroadcastSnapshotDisabled turns off persisting PMT/DII sections for
 	// provisional /state responses. Enabled (nil or false) by default.
 	DataBroadcastSnapshotDisabled    *bool `json:"dataBroadcastSnapshotDisabled,omitempty"`
@@ -60,6 +63,10 @@ type ObservabilitySignal struct {
 
 func IsDataBroadcastSnapshotEnabled(config SystemConfig) bool {
 	return config.DataBroadcastSnapshotDisabled == nil || !*config.DataBroadcastSnapshotDisabled
+}
+
+func IsDataBroadcastEnabled(config SystemConfig) bool {
+	return config.DataBroadcastEnabled == nil || *config.DataBroadcastEnabled
 }
 
 func LoadAndParseSystemConfig(filePath string) (*SystemConfig, error) {
