@@ -87,7 +87,7 @@ func Run(ctx context.Context, args []string) int {
 		slog.Error("failed to open database", "err", err)
 		return 1
 	}
-	slog.Info("database opened")
+	slog.Info("database opened", "vfs", db.VFSName(cfg.System.DatabasePath))
 
 	slog.Info("running database migrations")
 	if err := db.Migrate(context.Background(), database); err != nil {
