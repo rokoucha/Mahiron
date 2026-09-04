@@ -65,27 +65,41 @@ func (m *ProgramManager) UpsertPrograms(ctx context.Context, programs []*Program
 	for _, p := range existingPrograms {
 		before[p.ID] = p
 	}
-	if err := m.store.UpsertAll(ctx, programs); err != nil {
+
+	type pendingEvent struct {
+		typ   string
+		after *Program
+	}
+	toWrite := make([]*Program, 0, len(ids))
+	events := make([]pendingEvent, 0, len(ids))
+	for _, id := range ids {
+		p := pending[id]
+		existing, ok := before[id]
+		after := mergeUpsertProgram(existing, p)
+		if ok && reflect.DeepEqual(existing, after) {
+			continue
+		}
+		toWrite = append(toWrite, p)
+		if !ok {
+			events = append(events, pendingEvent{typ: eventTypeCreate, after: after})
+		} else {
+			events = append(events, pendingEvent{typ: eventTypeUpdate, after: after})
+		}
+	}
+
+	if len(toWrite) == 0 {
+		observability.RecordEPGProgramsUpserted(ctx, source, "success", 0)
+		return nil
+	}
+
+	if err := m.store.UpsertAll(ctx, toWrite); err != nil {
 		observability.RecordEPGProgramsUpserted(ctx, source, "error", int64(attempted))
 		return err
 	}
-	changed := 0
-	for _, p := range pending {
-		if p == nil {
-			continue
-		}
-		existing, ok := before[p.ID]
-		after := mergeUpsertProgram(existing, p)
-		switch {
-		case !ok:
-			changed++
-			m.enqueueProgramEvent(eventTypeCreate, after)
-		case !reflect.DeepEqual(existing, after):
-			changed++
-			m.enqueueProgramEvent(eventTypeUpdate, after)
-		}
+	for _, ev := range events {
+		m.enqueueProgramEvent(ev.typ, ev.after)
 	}
-	observability.RecordEPGProgramsUpserted(ctx, source, "success", int64(changed))
+	observability.RecordEPGProgramsUpserted(ctx, source, "success", int64(len(events)))
 	return nil
 }
 
@@ -125,6 +139,13 @@ func (m *ProgramManager) ReplaceServicePrograms(ctx context.Context, networkID, 
 	for _, p := range beforeList {
 		before[p.ID] = p
 	}
+
+	if identicalServicePrograms(before, programs) {
+		observability.RecordEPGProgramsUpserted(ctx, source, "success", 0)
+		observability.RecordEPGProgramsDeleted(ctx, source, "success", 0)
+		return nil
+	}
+
 	if err := m.store.ReplaceServicePrograms(ctx, networkID, serviceID, from, programs); err != nil {
 		observability.RecordEPGProgramsUpserted(ctx, source, "error", int64(attempted))
 		observability.RecordEPGProgramsDeleted(ctx, source, "error", int64(len(beforeList)))
@@ -155,6 +176,23 @@ func (m *ProgramManager) ReplaceServicePrograms(ctx context.Context, networkID, 
 }
 
 func (m *ProgramManager) Count(ctx context.Context) (int, error) { return m.store.Count(ctx) }
+
+// identicalServicePrograms reports whether incoming exactly matches the
+// existing rows keyed by ID, with no additions or removals.
+func identicalServicePrograms(before map[int64]*Program, incoming []*Program) bool {
+	count := 0
+	for _, p := range incoming {
+		if p == nil {
+			continue
+		}
+		count++
+		existing, ok := before[p.ID]
+		if !ok || !reflect.DeepEqual(existing, p) {
+			return false
+		}
+	}
+	return count == len(before)
+}
 
 func nonNilProgramCount(programs []*Program) int {
 	count := 0

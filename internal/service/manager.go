@@ -142,6 +142,25 @@ func (s *ServiceManager) GetServicesByChannel(ctx context.Context, channelType s
 	return s.orderServices(services), nil
 }
 
+// GetServicesGroupedByChannel fetches every service in a single query and
+// groups the results by channel, so a caller listing many channels does not
+// issue one GetServicesByChannel query per channel.
+func (s *ServiceManager) GetServicesGroupedByChannel(ctx context.Context) (map[ChannelKey][]*Service, error) {
+	services, err := s.store.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	grouped := make(map[ChannelKey][]*Service, len(s.channels))
+	for _, svc := range services {
+		key := ChannelKey{Type: svc.ChannelType, ID: svc.ChannelId}
+		grouped[key] = append(grouped[key], svc)
+	}
+	for key, list := range grouped {
+		grouped[key] = s.orderServices(list)
+	}
+	return grouped, nil
+}
+
 func (s *ServiceManager) ReplaceChannelServices(ctx context.Context, channelType, channelId string, services []*Service) error {
 	beforeList, err := s.store.GetByChannel(ctx, channelType, channelId)
 	if err != nil {

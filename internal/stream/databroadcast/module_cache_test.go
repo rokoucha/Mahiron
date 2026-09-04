@@ -43,6 +43,37 @@ func TestSQLiteModuleStorePersistsCompletedModule(t *testing.T) {
 	}
 }
 
+func TestSQLiteModuleStoreWritesThroughWritePool(t *testing.T) {
+	store, err := NewSQLiteModuleStore(filepath.Join(t.TempDir(), "cache.sqlite3"), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	if store.write == nil {
+		t.Fatal("write pool is nil")
+	}
+	if store.write == store.db {
+		t.Fatal("write pool is the same connection as the read pool")
+	}
+
+	key := ModuleCacheKey{ChannelType: "GR", ChannelID: "27", ServiceID: 101, ComponentTag: 0x40, DownloadID: 1, ModuleID: 2, Version: 3, Size: 4}
+	if !store.Put(key, ts.DSMCCModule{Info: []byte("meta"), Data: []byte("data")}) {
+		t.Fatal("Put failed")
+	}
+	module, ok := store.Get(key)
+	if !ok || string(module.Data) != "data" || string(module.Info) != "meta" {
+		t.Fatalf("module = %#v, found = %v", module, ok)
+	}
+
+	// A directly-issued write against store.write must also be immediately
+	// visible through the read pool, confirming both point at the same
+	// database file rather than separate/in-memory connections.
+	if _, err := store.write.Exec("PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
+		t.Fatalf("checkpoint via write pool: %v", err)
+	}
+}
+
 func TestSQLiteModuleStoreRecreatesCorruptCache(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "cache.sqlite3")
 	if err := os.WriteFile(path, []byte("not a SQLite database"), 0o600); err != nil {

@@ -105,6 +105,9 @@ func Run(ctx context.Context, args []string) int {
 	signalCtx, stop := signal.NotifyContext(ctx, syscall.SIGTERM, os.Interrupt)
 	defer stop()
 
+	stopCheckpointer := db.StartWALCheckpointer(context.Background(), database, db.DefaultWALCheckpointInterval)
+	runtime.stopCheckpointer = stopCheckpointer
+
 	runtime.jobs.Start()
 	runtime.streams.StartRemoteProgramEventSync(signalCtx)
 
@@ -138,6 +141,7 @@ type applicationRuntime struct {
 	services           *service.ServiceManager
 	streams            *stream.StreamManager
 	tuners             *tuner.TunerManager
+	stopCheckpointer   func()
 }
 
 func buildRuntime(cfg *config.Config, database *db.DB, obs observability.SetupResult) (*applicationRuntime, string, error) {
@@ -304,6 +308,11 @@ func (r *applicationRuntime) shutdown() {
 		slog.Info("job manager shut down")
 	}()
 	wg.Wait()
+	if r.stopCheckpointer != nil {
+		slog.Info("stopping wal checkpointer")
+		r.stopCheckpointer()
+		slog.Info("wal checkpointer stopped")
+	}
 	if r.dataBroadcastStore != nil {
 		slog.Info("closing data broadcast cache")
 		if err := r.dataBroadcastStore.Close(); err != nil {

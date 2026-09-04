@@ -101,6 +101,74 @@ func TestGetChannelsReturnsEnabledChannelsWithServices(t *testing.T) {
 	}
 }
 
+// countingServiceStore wraps a real service.Store and counts calls to the
+// queries GetChannels used to issue once per channel before it switched to
+// GetServicesGroupedByChannel.
+type countingServiceStore struct {
+	service.Store
+	listCalls         int
+	getByChannelCalls int
+}
+
+func (s *countingServiceStore) List(ctx context.Context) ([]*service.Service, error) {
+	s.listCalls++
+	return s.Store.List(ctx)
+}
+
+func (s *countingServiceStore) GetByChannel(ctx context.Context, channelType, channelId string) ([]*service.Service, error) {
+	s.getByChannelCalls++
+	return s.Store.GetByChannel(ctx, channelType, channelId)
+}
+
+func TestGetChannelsFetchesServicesInOneQuery(t *testing.T) {
+	ctx := context.Background()
+	no := false
+	database, err := db.OpenInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	baseStore := service.NewSQLiteStore(database)
+	if err := baseStore.ReplaceChannelServices(ctx, "GR", "27", []*service.Service{{
+		Id: "0000100101", ServiceId: 101, NetworkId: 1, TransportStreamId: 10,
+		Name: "NHK Service", Type: 1, ChannelType: "GR", ChannelId: "27",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := baseStore.ReplaceChannelServices(ctx, "BS", "101", []*service.Service{{
+		Id: "0000200102", ServiceId: 102, NetworkId: 2, TransportStreamId: 20,
+		Name: "BS Service", Type: 1, ChannelType: "BS", ChannelId: "101",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+
+	counting := &countingServiceStore{Store: baseStore}
+	handler := NewHandler(HandlerConfig{
+		ServiceManager: service.NewServiceManager(counting, config.ChannelsConfig{
+			{Name: "NHK", Type: "GR", Channel: "27", IsDisabled: &no},
+			{Name: "BS", Type: "BS", Channel: "101", IsDisabled: &no},
+		}),
+	})
+
+	res, err := handler.GetChannels(ctx, apigen.GetChannelsParams{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	channels, ok := res.(*apigen.GetChannelsOKApplicationJSON)
+	if !ok {
+		t.Fatalf("response type = %T, want *GetChannelsOKApplicationJSON", res)
+	}
+	if got, want := len(*channels), 2; got != want {
+		t.Fatalf("channels length = %d, want %d", got, want)
+	}
+	if got, want := counting.getByChannelCalls, 0; got != want {
+		t.Fatalf("GetByChannel called %d times, want %d", got, want)
+	}
+	if got, want := counting.listCalls, 1; got != want {
+		t.Fatalf("List called %d times, want %d", got, want)
+	}
+}
+
 func TestGetChannelsPropagatesStoreError(t *testing.T) {
 	database, err := db.OpenInMemory()
 	if err != nil {

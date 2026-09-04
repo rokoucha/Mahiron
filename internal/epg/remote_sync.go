@@ -8,7 +8,27 @@ import (
 	"time"
 
 	"github.com/21S1298001/mahiron/internal/observability"
+	"github.com/21S1298001/mahiron/internal/program"
 )
+
+// minStartAt returns the smallest StartAt among programs, or 0 if programs
+// is empty. It is used as the lower bound for ReplaceServicePrograms so a
+// sync only rewrites the window of programs actually received from the
+// remote, instead of unconditionally replacing everything from time zero.
+func minStartAt(programs []*program.Program) int64 {
+	var min int64
+	first := true
+	for _, p := range programs {
+		if p == nil {
+			continue
+		}
+		if first || p.StartAt < min {
+			min = p.StartAt
+			first = false
+		}
+	}
+	return min
+}
 
 func syncStoredServicePrograms(ctx context.Context, programStore ProgramStore, serviceStore ServiceStore, lister StoredProgramLister, expected []ServiceKey, retrievalTime time.Duration) (err error) {
 	ctx, span := observability.StartSpan(ctx, observability.SpanEPGSyncStoredServicePrograms,
@@ -41,7 +61,7 @@ func syncStoredServicePrograms(ctx context.Context, programStore ProgramStore, s
 			observability.AttrProgramCount.Int(len(programs)),
 		)
 		replaceCtx = observability.ContextWithEPGMetricSource(replaceCtx, "remote")
-		err = programStore.ReplaceServicePrograms(replaceCtx, key.NetworkID, key.ServiceID, 0, programs)
+		err = programStore.ReplaceServicePrograms(replaceCtx, key.NetworkID, key.ServiceID, minStartAt(programs), programs)
 		observability.EndSpan(replaceSpan, err)
 		if err != nil {
 			if attemptErr := serviceStore.SetEPGAttempt(ctx, key.NetworkID, key.ServiceID, now, err.Error()); attemptErr != nil {

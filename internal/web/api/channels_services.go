@@ -107,12 +107,15 @@ func GetLogoImage(ctx context.Context, h *Handler, params apigen.GetLogoImagePar
 }
 
 func apiChannels(ctx context.Context, h *Handler, channels config.ChannelsConfig) ([]apigen.Channel, error) {
+	grouped, err := h.serviceManager.GetServicesGroupedByChannel(ctx)
+	if err != nil {
+		return nil, err
+	}
 	result := make([]apigen.Channel, len(channels))
 	for i, channel := range channels {
-		item, err := apiChannelWithServices(ctx, h, channel)
-		if err != nil {
-			return nil, err
-		}
+		item := apiChannelWithoutServices(h, channel)
+		key := service.ChannelKey{Type: channel.Type, ID: channel.Channel}
+		item.Services = apiServices(h, grouped[key], false)
 		result[i] = *item
 	}
 	return result, nil
