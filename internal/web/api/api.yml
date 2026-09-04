@@ -196,6 +196,18 @@ paths:
           in: query
           schema:
             type: integer
+        - name: startAt
+          in: query
+          description: Include programs that end at or after this Unix time in milliseconds.
+          schema:
+            type: integer
+            format: int64
+        - name: endAt
+          in: query
+          description: Include programs that start at or before this Unix time in milliseconds.
+          schema:
+            type: integer
+            format: int64
       responses:
         "200":
           description: OK

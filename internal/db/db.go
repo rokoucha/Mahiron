@@ -38,8 +38,15 @@ func open(path string, cache bool) (*sql.DB, error) {
 		return nil, fmt.Errorf("open database: %w", err)
 	}
 
-	database.SetMaxOpenConns(1)
-	database.SetMaxIdleConns(1)
+	maxConnections := 4
+	if isInMemory(path) {
+		// Keep test databases on their single in-memory connection. File-backed
+		// databases use WAL below, so additional connections allow API reads to
+		// continue while another request scans a large result set.
+		maxConnections = 1
+	}
+	database.SetMaxOpenConns(maxConnections)
+	database.SetMaxIdleConns(maxConnections)
 
 	pragmas := []string{}
 	if !isInMemory(path) {

@@ -98,7 +98,9 @@ export function nextProgramList(
   )
 }
 
-export function useDashboard(): DashboardState {
+export function useDashboard(
+  options: { loadPrograms?: boolean } = {},
+): DashboardState {
   const status = useAutoResource(api.status, { intervalMs: pollIntervalMs })
   const tuners = useAutoResource(api.tuners, { intervalMs: pollIntervalMs })
   const services = useAutoResource(api.services, {
@@ -108,12 +110,23 @@ export function useDashboard(): DashboardState {
     intervalMs: pollIntervalMs,
   })
   const jobs = useAutoResource(api.jobs, { intervalMs: pollIntervalMs })
-  const programs = useAutoResource(api.programs)
+  const loadPrograms = useCallback(() => {
+    const now = Date.now()
+    const startAt = now - (now % (60 * 60 * 1000))
+    return api.programs({
+      startAt,
+      endAt: startAt + 6 * 60 * 60 * 1000,
+    })
+  }, [])
+  const programs = useAutoResource(loadPrograms, {
+    enabled: options.loadPrograms === true,
+  })
   const [streamState, setStreamState] =
     useState<StreamConnectionState>('reconnecting')
   const [streamError, setStreamError] = useState<string | null>(null)
   const [lastEvent, setLastEvent] = useState<EventItem | null>(null)
   const refreshTimers = useRef<Partial<Record<DashboardResource, number>>>({})
+  const hasOpenedEventStream = useRef(false)
 
   const reloaders = useMemo<Record<DashboardResource, () => Promise<void>>>(
     () => ({
@@ -182,11 +195,15 @@ export function useDashboard(): DashboardState {
         let opened = false
         try {
           await streamEvents(controller.signal, onEvent, () => {
+            const reconnect = hasOpenedEventStream.current
+            hasOpenedEventStream.current = true
             opened = true
             reconnectDelayMs = 1_000
             setStreamState('connected')
             setStreamError(null)
-            refresh(['status', 'tuners', 'services', 'channels', 'jobs'])
+            if (reconnect) {
+              refresh(['status', 'tuners', 'services', 'channels', 'jobs'])
+            }
           })
           if (cancelled || controller.signal.aborted) return
           setStreamState('reconnecting')

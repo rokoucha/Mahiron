@@ -214,7 +214,13 @@ export const api = {
   status: () => apiFetch<Status>('/api/status'),
   channels: () => apiFetch<Channel[]>('/api/channels'),
   services: () => apiFetch<Service[]>('/api/services'),
-  programs: () => apiFetch<Program[]>('/api/programs'),
+  programs: (params: { startAt?: number; endAt?: number } = {}) => {
+    const query = new URLSearchParams()
+    if (params.startAt != null) query.set('startAt', String(params.startAt))
+    if (params.endAt != null) query.set('endAt', String(params.endAt))
+    const suffix = query.size === 0 ? '' : `?${query}`
+    return apiFetch<Program[]>(`/api/programs${suffix}`)
+  },
   tuners: () => apiFetch<Tuner[]>('/api/tuners'),
   jobs: () => apiFetch<Job[]>('/api/jobs'),
   schedules: () => apiFetch<JobSchedule[]>('/api/job-schedules'),

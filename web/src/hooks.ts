@@ -30,7 +30,7 @@ export function useAsync<T>(loader: () => Promise<T>, deps: unknown[] = []) {
 
 export function useAutoResource<T>(
   loader: () => Promise<T>,
-  options: { intervalMs?: number } = {},
+  options: { intervalMs?: number; enabled?: boolean } = {},
 ) {
   const [data, setData] = useState<T | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -59,19 +59,19 @@ export function useAutoResource<T>(
 
   useEffect(() => {
     mounted.current = true
-    void reload()
+    if (options.enabled !== false) void reload()
     return () => {
       mounted.current = false
     }
-  }, [reload])
+  }, [options.enabled, reload])
 
   useEffect(() => {
-    if (!options.intervalMs) return
+    if (options.enabled === false || !options.intervalMs) return
     const interval = window.setInterval(() => {
       void reload()
     }, options.intervalMs)
     return () => window.clearInterval(interval)
-  }, [options.intervalMs, reload])
+  }, [options.enabled, options.intervalMs, reload])
 
   return { data, error, loading, reload, setData }
 }

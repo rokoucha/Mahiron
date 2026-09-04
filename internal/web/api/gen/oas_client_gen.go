@@ -2340,6 +2340,40 @@ func (c *Client) sendGetPrograms(ctx context.Context, params GetProgramsParams) 
 			return res, errors.Wrap(err, "encode query")
 		}
 	}
+	{
+		// Encode "startAt" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "startAt",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.StartAt.Get(); ok {
+				return e.EncodeValue(conv.Int64ToString(val))
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	{
+		// Encode "endAt" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "endAt",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.EndAt.Get(); ok {
+				return e.EncodeValue(conv.Int64ToString(val))
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
 	u.RawQuery = q.Values().Encode()
 
 	stage = "EncodeRequest"
