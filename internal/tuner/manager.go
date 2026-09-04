@@ -81,6 +81,39 @@ func (tm *TunerManager) NewDeviceByType(channelType string, channel *config.Chan
 	return device, err
 }
 
+// CheckAvailable reports whether AcquireDevice could select a tuner of the
+// requested type without reserving or starting one.
+func (tm *TunerManager) CheckAvailable(ctx context.Context, channelType string) error {
+	requestPriority := priorityFromContext(ctx)
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
+	found, usable := false, false
+	for _, item := range tm.tuners {
+		if item.IsDisabled() || !slices.Contains(item.Groups(), channelType) {
+			continue
+		}
+		found = true
+		if !item.Usable() {
+			continue
+		}
+		usable = true
+		runtime := tm.runtime[item]
+		if runtime.fault {
+			continue
+		}
+		if !tm.inUse[item] || runtime.device != nil && requestPriority > runtime.effectivePriority() {
+			return nil
+		}
+	}
+	if !found {
+		return ErrTunerNotFound
+	}
+	if !usable {
+		return ErrUnsupportedTuner
+	}
+	return ErrTunerUnavailable
+}
+
 func (tm *TunerManager) AcquireDevice(ctx context.Context, channelType string, requestedChannel, tunedChannel *config.ChannelConfig, wait bool) (device Device, decoder string, err error) {
 	start := time.Now()
 	ctx, span := observability.StartSpan(ctx, observability.SpanTunerAcquireDevice,

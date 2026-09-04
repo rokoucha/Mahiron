@@ -13,6 +13,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/job/run"
 	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/internal/tuner"
+	"github.com/21S1298001/mahiron/ts"
 	"github.com/google/uuid"
 )
 
@@ -48,6 +49,41 @@ type InputMetadata struct {
 type RemoteClient interface {
 	CheckAvailableForRoute(context.Context, string, string) error
 	ChannelStream(context.Context, string, string, bool, io.Writer) error
+}
+
+// ScanRemoteServices reads a remote channel's already-scanned services without
+// acquiring a tuner. handled is false when the selected route is local.
+func (p *Pool) ScanRemoteServices(ctx context.Context, channelType, channel string) (services []ts.ServiceInfo, handled bool, err error) {
+	channelConfig := p.findChannel(channelType, channel)
+	if channelConfig == nil {
+		return nil, true, ErrChannelNotFound
+	}
+	var lastErr error
+	for _, route := range enabledRoutes(channelConfig.RoutesOrDefault()) {
+		if route.Remote == "" {
+			return nil, false, nil
+		}
+		client := p.remotes[route.Remote]
+		if client == nil {
+			lastErr = tuner.ErrTunerNotFound
+			continue
+		}
+		scanner, ok := client.(interface {
+			ScanServices(context.Context, string, string) ([]ts.ServiceInfo, error)
+		})
+		if !ok {
+			return nil, false, nil
+		}
+		services, err := scanner.ScanServices(ctx, route.Type, route.Channel)
+		if err == nil {
+			return services, true, nil
+		}
+		lastErr = err
+	}
+	if lastErr != nil {
+		return nil, true, lastErr
+	}
+	return nil, true, ErrChannelNotFound
 }
 
 type InputHandle interface {
@@ -116,6 +152,53 @@ func (p *Pool) Acquire(ctx context.Context, channelType, channel string, wait bo
 		return p.remoteLease(channelType, channel, selected)
 	}
 	return p.localLease(channelType, channel, selected), nil
+}
+
+// CheckAvailable verifies that at least one route can currently be acquired
+// without reserving a tuner or creating a stream source.
+func (p *Pool) CheckAvailable(ctx context.Context, channelType, channel string) error {
+	channelConfig := p.findChannel(channelType, channel)
+	if channelConfig == nil {
+		return ErrChannelNotFound
+	}
+	var lastErr error
+	for _, route := range enabledRoutes(channelConfig.RoutesOrDefault()) {
+		if route.Remote != "" {
+			client := p.remotes[route.Remote]
+			if client == nil {
+				lastErr = tuner.ErrTunerNotFound
+				continue
+			}
+			if err := client.CheckAvailableForRoute(ctx, route.Type, route.Channel); err == nil {
+				return nil
+			} else {
+				lastErr = err
+			}
+			continue
+		}
+		key := newRouteSourceKey(route)
+		p.mu.Lock()
+		source := p.routeSources[key]
+		p.mu.Unlock()
+		if source != nil {
+			return nil
+		}
+		if checker, ok := p.tunerManager.(TunerAvailabilityChecker); ok {
+			if err := checker.CheckAvailable(ctx, route.Type); err == nil {
+				return nil
+			} else {
+				lastErr = err
+			}
+			continue
+		}
+		// Custom managers predating the optional checker cannot be inspected
+		// without allocating a device, so preserve their historical behavior.
+		return nil
+	}
+	if lastErr != nil {
+		return lastErr
+	}
+	return ErrChannelNotFound
 }
 
 // Shutdown stops physical inputs owned by the pool. Releasing an individual

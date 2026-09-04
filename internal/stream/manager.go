@@ -251,6 +251,16 @@ func (m *StreamManager) GetOrCreateWait(ctx context.Context, channelType, channe
 	return m.getOrCreate(ctx, channelType, channel, true)
 }
 
+// CheckAvailable checks route availability without creating a session or
+// reserving a tuner.
+func (m *StreamManager) CheckAvailable(ctx context.Context, channelType, channel string) error {
+	return m.sources.CheckAvailable(ctx, channelType, channel)
+}
+
+func (m *StreamManager) scanRemoteServices(ctx context.Context, channelType, channel string) ([]ts.ServiceInfo, bool, error) {
+	return m.sources.ScanRemoteServices(ctx, channelType, channel)
+}
+
 func ensureUserContext(ctx context.Context, channelType, channel string) context.Context {
 	if _, ok := tuner.UserFromContext(ctx); ok {
 		return ctx
