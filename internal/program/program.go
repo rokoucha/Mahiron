@@ -70,6 +70,8 @@ type Query struct {
 	NetworkID *uint16
 	ServiceID *uint16
 	EventID   *uint16
+	StartAt   *int64
+	EndAt     *int64
 }
 
 func ProgramID(networkID, serviceID, eventID uint16) int64 {

@@ -2609,6 +2609,14 @@ func (s *Server) handleGetProgramsRequest(args [0]string, argsEscaped bool, w ht
 					Name: "eventId",
 					In:   "query",
 				}: params.EventId,
+				{
+					Name: "startAt",
+					In:   "query",
+				}: params.StartAt,
+				{
+					Name: "endAt",
+					In:   "query",
+				}: params.EndAt,
 			},
 			Raw: r,
 		}

@@ -11,6 +11,8 @@ WHERE (sqlc.arg(id) IS NULL OR id = sqlc.arg(id))
   AND (sqlc.arg(network_id) IS NULL OR network_id = sqlc.arg(network_id))
   AND (sqlc.arg(service_id) IS NULL OR service_id = sqlc.arg(service_id))
   AND (sqlc.arg(event_id) IS NULL OR event_id = sqlc.arg(event_id))
+  AND (sqlc.arg(start_at) IS NULL OR start_at + duration >= sqlc.arg(start_at))
+  AND (sqlc.arg(end_at) IS NULL OR start_at <= sqlc.arg(end_at))
 ORDER BY start_at, id;
 
 -- name: ListProgramsByIDs :many

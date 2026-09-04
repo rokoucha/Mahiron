@@ -55,6 +55,24 @@ describe('api.status (apiFetch)', () => {
   })
 })
 
+describe('api.programs', () => {
+  it('adds the requested time window to the query string', async () => {
+    const fetchMock = vi.fn(() =>
+      Promise.resolve(new Response('[]', { status: 200 })),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    await api.programs({ startAt: 1_000, endAt: 2_000 })
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/programs?startAt=1000&endAt=2000',
+      expect.objectContaining({
+        headers: { Accept: 'application/json' },
+      }),
+    )
+  })
+})
+
 describe('api job actions', () => {
   it('PUTs to the encoded rerun endpoint', async () => {
     const fetchMock = vi.fn(() =>

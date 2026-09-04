@@ -71,7 +71,7 @@ export default function App() {
   const [page, setPage] = useState<Page>(() =>
     pageFromPath(window.location.pathname),
   )
-  const dashboard = useDashboard()
+  const dashboard = useDashboard({ loadPrograms: page === 'epg' })
   const currentBrandState = brandState(dashboard)
   const brandIconUrl = brandStateIcon(currentBrandState)
 

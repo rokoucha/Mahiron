@@ -1963,6 +1963,10 @@ type GetProgramsParams struct {
 	NetworkId OptInt `json:",omitempty,omitzero"`
 	ServiceId OptInt `json:",omitempty,omitzero"`
 	EventId   OptInt `json:",omitempty,omitzero"`
+	// Include programs that end at or after this Unix time in milliseconds.
+	StartAt OptInt64 `json:",omitempty,omitzero"`
+	// Include programs that start at or before this Unix time in milliseconds.
+	EndAt OptInt64 `json:",omitempty,omitzero"`
 }
 
 func unpackGetProgramsParams(packed middleware.Parameters) (params GetProgramsParams) {
@@ -1991,6 +1995,24 @@ func unpackGetProgramsParams(packed middleware.Parameters) (params GetProgramsPa
 		}
 		if v, ok := packed[key]; ok {
 			params.EventId = v.(OptInt)
+		}
+	}
+	{
+		key := middleware.ParameterKey{
+			Name: "startAt",
+			In:   "query",
+		}
+		if v, ok := packed[key]; ok {
+			params.StartAt = v.(OptInt64)
+		}
+	}
+	{
+		key := middleware.ParameterKey{
+			Name: "endAt",
+			In:   "query",
+		}
+		if v, ok := packed[key]; ok {
+			params.EndAt = v.(OptInt64)
 		}
 	}
 	return params
@@ -2117,6 +2139,88 @@ func decodeGetProgramsParams(args [0]string, argsEscaped bool, r *http.Request) 
 	}(); err != nil {
 		return params, &ogenerrors.DecodeParamError{
 			Name: "eventId",
+			In:   "query",
+			Err:  err,
+		}
+	}
+	// Decode query: startAt.
+	if err := func() error {
+		cfg := uri.QueryParameterDecodingConfig{
+			Name:    "startAt",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.HasParam(cfg); err == nil {
+			if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
+				var paramsDotStartAtVal int64
+				if err := func() error {
+					val, err := d.DecodeValue()
+					if err != nil {
+						return err
+					}
+
+					c, err := conv.ToInt64(val)
+					if err != nil {
+						return err
+					}
+
+					paramsDotStartAtVal = c
+					return nil
+				}(); err != nil {
+					return err
+				}
+				params.StartAt.SetTo(paramsDotStartAtVal)
+				return nil
+			}); err != nil {
+				return err
+			}
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "startAt",
+			In:   "query",
+			Err:  err,
+		}
+	}
+	// Decode query: endAt.
+	if err := func() error {
+		cfg := uri.QueryParameterDecodingConfig{
+			Name:    "endAt",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.HasParam(cfg); err == nil {
+			if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
+				var paramsDotEndAtVal int64
+				if err := func() error {
+					val, err := d.DecodeValue()
+					if err != nil {
+						return err
+					}
+
+					c, err := conv.ToInt64(val)
+					if err != nil {
+						return err
+					}
+
+					paramsDotEndAtVal = c
+					return nil
+				}(); err != nil {
+					return err
+				}
+				params.EndAt.SetTo(paramsDotEndAtVal)
+				return nil
+			}); err != nil {
+				return err
+			}
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "endAt",
 			In:   "query",
 			Err:  err,
 		}

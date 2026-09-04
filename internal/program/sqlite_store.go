@@ -91,6 +91,8 @@ func (s *sqliteStore) List(ctx context.Context, query Query) ([]*Program, error)
 		NetworkID: nilOrInt64(query.NetworkID),
 		ServiceID: nilOrInt64(query.ServiceID),
 		EventID:   nilOrInt64(query.EventID),
+		StartAt:   nilOrInt64(query.StartAt),
+		EndAt:     nilOrInt64(query.EndAt),
 	}
 	rows, err := s.q.ListPrograms(ctx, params)
 	if err != nil {

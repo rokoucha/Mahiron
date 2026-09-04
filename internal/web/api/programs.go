@@ -63,6 +63,12 @@ func programQuery(params apigen.GetProgramsParams) program.Query {
 		v := uint16(value)
 		query.EventID = &v
 	}
+	if value, ok := params.StartAt.Get(); ok {
+		query.StartAt = &value
+	}
+	if value, ok := params.EndAt.Get(); ok {
+		query.EndAt = &value
+	}
 	return query
 }
 

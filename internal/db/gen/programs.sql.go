@@ -109,6 +109,8 @@ WHERE (?1 IS NULL OR id = ?1)
   AND (?2 IS NULL OR network_id = ?2)
   AND (?3 IS NULL OR service_id = ?3)
   AND (?4 IS NULL OR event_id = ?4)
+  AND (?5 IS NULL OR start_at + duration >= ?5)
+  AND (?6 IS NULL OR start_at <= ?6)
 ORDER BY start_at, id
 `
 
@@ -117,6 +119,8 @@ type ListProgramsParams struct {
 	NetworkID interface{} `json:"network_id"`
 	ServiceID interface{} `json:"service_id"`
 	EventID   interface{} `json:"event_id"`
+	StartAt   interface{} `json:"start_at"`
+	EndAt     interface{} `json:"end_at"`
 }
 
 func (q *Queries) ListPrograms(ctx context.Context, arg ListProgramsParams) ([]Program, error) {
@@ -125,6 +129,8 @@ func (q *Queries) ListPrograms(ctx context.Context, arg ListProgramsParams) ([]P
 		arg.NetworkID,
 		arg.ServiceID,
 		arg.EventID,
+		arg.StartAt,
+		arg.EndAt,
 	)
 	if err != nil {
 		return nil, err

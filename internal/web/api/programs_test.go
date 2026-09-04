@@ -81,6 +81,28 @@ func TestGetProgramsFiltersAndSorts(t *testing.T) {
 	}
 }
 
+func TestGetProgramsFiltersByOverlappingTimeWindow(t *testing.T) {
+	handler := testProgramHandler(t)
+
+	res, err := handler.GetPrograms(context.Background(), apigen.GetProgramsParams{
+		StartAt: apigen.NewOptInt64(32000),
+		EndAt:   apigen.NewOptInt64(32000),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	programs, ok := res.(*apigen.GetProgramsOKApplicationJSON)
+	if !ok {
+		t.Fatalf("response type = %T, want *GetProgramsOKApplicationJSON", res)
+	}
+	if got, want := len(*programs), 1; got != want {
+		t.Fatalf("programs length = %d, want %d", got, want)
+	}
+	if got, want := (*programs)[0].Name.Value, "second"; got != want {
+		t.Fatalf("program name = %q, want %q", got, want)
+	}
+}
+
 func TestGetProgramReturnsProgramAndNotFound(t *testing.T) {
 	handler := testProgramHandler(t)
 
