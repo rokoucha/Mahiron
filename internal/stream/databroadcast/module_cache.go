@@ -222,6 +222,12 @@ func cloneCachedModule(module ts.DSMCCModule) ts.DSMCCModule {
 // It is deliberately separate from the application's primary database: cache
 // loss must never affect EPG or recording data.
 type SQLiteModuleStore struct {
+	// handle owns the connections backing db; Close closes it. The module
+	// cache is a separate database from the application's primary one and
+	// does not need the read/write connection split that database uses to
+	// avoid blocking API reads — db is simply its read pool, sized for
+	// concurrent access from both reads and the occasional write.
+	handle         *mahirondb.DB
 	db             *sql.DB
 	queries        *cachedb.Queries
 	maxBytes       uint64
@@ -277,13 +283,14 @@ func NewSQLiteModuleStoreWithOptions(path string, options SQLiteModuleStoreOptio
 }
 
 func openSQLiteModuleStore(path string, maxBytes uint64, maxAge, snapshotMaxAge time.Duration) (*SQLiteModuleStore, error) {
-	db, err := mahirondb.OpenCache(path)
+	handle, err := mahirondb.OpenCache(path)
 	if err != nil {
 		return nil, err
 	}
-	store := &SQLiteModuleStore{db: db, queries: cachedb.New(db), maxBytes: maxBytes, maxAge: maxAge, snapshotMaxAge: snapshotMaxAge, touched: map[ModuleCacheKey]time.Time{}}
-	if err := cachedb.Migrate(context.Background(), db); err != nil {
-		_ = db.Close()
+	db := handle.Read
+	store := &SQLiteModuleStore{handle: handle, db: db, queries: cachedb.New(db), maxBytes: maxBytes, maxAge: maxAge, snapshotMaxAge: snapshotMaxAge, touched: map[ModuleCacheKey]time.Time{}}
+	if err := cachedb.Migrate(context.Background(), handle.Write); err != nil {
+		_ = handle.Close()
 		return nil, err
 	}
 	store.prune()
@@ -769,8 +776,8 @@ func (s *SQLiteModuleStore) pruneSnapshots() {
 }
 
 func (s *SQLiteModuleStore) Close() error {
-	if s == nil || s.db == nil {
+	if s == nil || s.handle == nil {
 		return nil
 	}
-	return s.db.Close()
+	return s.handle.Close()
 }

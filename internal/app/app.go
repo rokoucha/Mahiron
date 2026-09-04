@@ -128,7 +128,7 @@ func Run(ctx context.Context, args []string) int {
 
 type applicationRuntime struct {
 	dataBroadcastStore *databroadcast.SQLiteModuleStore
-	database           *sql.DB
+	database           *db.DB
 	jobs               *job.JobManager
 	obs                observability.SetupResult
 	epgScan            *epg.Service
@@ -140,7 +140,7 @@ type applicationRuntime struct {
 	tuners             *tuner.TunerManager
 }
 
-func buildRuntime(cfg *config.Config, database *sql.DB, obs observability.SetupResult) (*applicationRuntime, string, error) {
+func buildRuntime(cfg *config.Config, database *db.DB, obs observability.SetupResult) (*applicationRuntime, string, error) {
 	serviceStore := service.NewSQLiteStore(database)
 	programStore := program.NewSQLiteStore(database)
 	events := event.New()
@@ -326,7 +326,7 @@ func (r *applicationRuntime) shutdown() {
 	slog.Info("observability shut down")
 }
 
-func runStartupTasks(ctx context.Context, services *service.ServiceManager, programs *program.ProgramManager, jobs *job.JobManager, scanner *servicescan.Service, epgScan *epg.Service, database *sql.DB, cfg *config.Config) error {
+func runStartupTasks(ctx context.Context, services *service.ServiceManager, programs *program.ProgramManager, jobs *job.JobManager, scanner *servicescan.Service, epgScan *epg.Service, database *db.DB, cfg *config.Config) error {
 	if err := services.ReconcileChannels(ctx); err != nil {
 		return fmt.Errorf("reconcile service channels: %w", err)
 	}
@@ -369,16 +369,16 @@ func (s channelConfigState) previouslyStored() bool {
 	return s.storedHash != ""
 }
 
-func loadChannelConfigState(ctx context.Context, database *sql.DB, channels config.ChannelsConfig) channelConfigState {
+func loadChannelConfigState(ctx context.Context, database *db.DB, channels config.ChannelsConfig) channelConfigState {
 	state := channelConfigState{currentHash: hashChannelConfig(channels)}
-	storedHash, err := readMetadata(ctx, database, "channels_hash")
+	storedHash, err := readMetadata(ctx, database.Read, "channels_hash")
 	if err != nil {
 		slog.Warn("failed to read channels hash", "err", err)
 	}
 	state.storedHash = storedHash
 	if state.changed() {
 		slog.Info("channel config changed, will trigger service update")
-		if err := writeMetadata(ctx, database, "channels_hash", state.currentHash); err != nil {
+		if err := writeMetadata(ctx, database.Write, "channels_hash", state.currentHash); err != nil {
 			slog.Warn("failed to write channels hash", "err", err)
 		}
 	}

@@ -89,7 +89,7 @@ func TestBuildRuntimeWiresCurrentApplication(t *testing.T) {
 	}
 
 	runtime.shutdown()
-	if err := database.PingContext(t.Context()); err == nil {
+	if err := database.Write.PingContext(t.Context()); err == nil {
 		t.Fatal("runtime shutdown left the database open")
 	}
 }

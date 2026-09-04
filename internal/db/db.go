@@ -11,10 +11,45 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+// DB splits reads and writes across separate connection pools so that a
+// blocked writer cannot starve API reads.
+//
+// SQLite allows only one writer at a time; every write transaction that
+// cannot immediately acquire the write lock sleeps for up to busy_timeout
+// (5s) before giving up. When writes and reads shared one *sql.DB with
+// several pooled connections, a burst of concurrent writers (remote program
+// event upserts, EPG sync, EIT merges, ...) could occupy every pooled
+// connection while asleep waiting on SQLITE_BUSY. Reads then had to wait in
+// database/sql's connection-acquisition queue behind those sleeping writers,
+// which is what turned a single slow commit (NFS commits average ~2s, p90
+// ~10s) into tens of seconds of blocked /api/* requests.
+//
+// Write holds exactly one connection (SetMaxOpenConns(1)) and begins every
+// transaction with BEGIN IMMEDIATE (via the `_txlock=immediate` DSN option),
+// so writers queue up and acquire the write lock one at a time instead of
+// racing each other into SQLITE_BUSY sleeps. Read holds a small pool of
+// connections dedicated to read-only queries, which WAL lets proceed
+// concurrently with whatever the single writer is doing. In-memory databases
+// (tests) keep a single shared connection for both, since separate
+// connections would each see an independent, empty database.
+type DB struct {
+	Write *sql.DB
+	Read  *sql.DB
+}
+
+// Close closes both connection pools. It is safe to call on a DB returned for
+// an in-memory database, where Write and Read are the same connection.
+func (d *DB) Close() error {
+	if d.Write == d.Read {
+		return d.Write.Close()
+	}
+	return errors.Join(d.Write.Close(), d.Read.Close())
+}
+
 // Open opens a database whose contents cannot be rebuilt, and so commits
 // durably: SQLite's default synchronous=FULL flushes the write-ahead log on
 // every commit.
-func Open(path string) (*sql.DB, error) {
+func Open(path string) (*DB, error) {
 	return open(path, false)
 }
 
@@ -24,12 +59,41 @@ func Open(path string) (*sql.DB, error) {
 // checkpoints rather than on every commit. Losing recently committed rows to a
 // power cut costs a re-download; it cannot corrupt the database, which is the
 // guarantee NORMAL keeps and OFF does not.
-func OpenCache(path string) (*sql.DB, error) {
+func OpenCache(path string) (*DB, error) {
 	return open(path, true)
 }
 
-func open(path string, cache bool) (*sql.DB, error) {
-	dsn, err := sqliteDSN(path, cache)
+func open(path string, cache bool) (*DB, error) {
+	if isInMemory(path) {
+		database, err := openPool(path, cache, "", 1)
+		if err != nil {
+			return nil, err
+		}
+		return &DB{Write: database, Read: database}, nil
+	}
+
+	writeDB, err := openPool(path, cache, "immediate", 1)
+	if err != nil {
+		return nil, err
+	}
+
+	// journal_mode is persisted to the database file, so setting it once on
+	// the write connection is enough for every future connection, including
+	// the read pool opened below.
+	if _, err := writeDB.Exec("PRAGMA journal_mode = WAL"); err != nil {
+		return nil, errors.Join(fmt.Errorf("PRAGMA journal_mode = WAL: %w", err), writeDB.Close())
+	}
+
+	readDB, err := openPool(path, cache, "", 8)
+	if err != nil {
+		return nil, errors.Join(err, writeDB.Close())
+	}
+
+	return &DB{Write: writeDB, Read: readDB}, nil
+}
+
+func openPool(path string, cache bool, txlock string, maxConnections int) (*sql.DB, error) {
+	dsn, err := sqliteDSN(path, cache, txlock)
 	if err != nil {
 		return nil, fmt.Errorf("build database DSN: %w", err)
 	}
@@ -37,27 +101,8 @@ func open(path string, cache bool) (*sql.DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
 	}
-
-	maxConnections := 4
-	if isInMemory(path) {
-		// Keep test databases on their single in-memory connection. File-backed
-		// databases use WAL below, so additional connections allow API reads to
-		// continue while another request scans a large result set.
-		maxConnections = 1
-	}
 	database.SetMaxOpenConns(maxConnections)
 	database.SetMaxIdleConns(maxConnections)
-
-	pragmas := []string{}
-	if !isInMemory(path) {
-		pragmas = append(pragmas, "PRAGMA journal_mode = WAL")
-	}
-	for _, pragma := range pragmas {
-		if _, err := database.Exec(pragma); err != nil {
-			return nil, errors.Join(fmt.Errorf("%s: %w", pragma, err), database.Close())
-		}
-	}
-
 	return database, nil
 }
 
@@ -65,9 +110,17 @@ func open(path string, cache bool) (*sql.DB, error) {
 // Unlike journal_mode, synchronous is per connection and is not recorded in the
 // database file, so setting it once after opening would not survive a
 // connection being replaced.
-func sqliteDSN(path string, cache bool) (string, error) {
+//
+// txlock, when non-empty, sets modernc.org/sqlite's `_txlock` DSN option
+// (deferred/immediate/exclusive), which controls how BEGIN starts every
+// transaction opened on that connection.
+func sqliteDSN(path string, cache bool, txlock string) (string, error) {
 	if path == ":memory:" {
-		return "file::memory:?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)", nil
+		dsn := "file::memory:?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)"
+		if txlock != "" {
+			dsn += "&_txlock=" + txlock
+		}
+		return dsn, nil
 	}
 	u, err := url.Parse(path)
 	if err != nil {
@@ -79,11 +132,14 @@ func sqliteDSN(path string, cache bool) (string, error) {
 	if cache {
 		q.Add("_pragma", "synchronous(normal)")
 	}
+	if txlock != "" {
+		q.Set("_txlock", txlock)
+	}
 	u.RawQuery = q.Encode()
 	return u.String(), nil
 }
 
-func OpenInMemory() (*sql.DB, error) {
+func OpenInMemory() (*DB, error) {
 	database, err := Open(":memory:")
 	if err != nil {
 		return nil, err
@@ -98,7 +154,7 @@ func isInMemory(path string) bool {
 	return path == ":memory:" || strings.Contains(path, "mode=memory")
 }
 
-func Migrate(ctx context.Context, database *sql.DB) error {
-	mg := NewMigrator(database)
+func Migrate(ctx context.Context, database *DB) error {
+	mg := NewMigrator(database.Write)
 	return mg.Apply(ctx)
 }

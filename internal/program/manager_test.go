@@ -76,7 +76,7 @@ func TestSQLiteStoreRejectsInvalidJSON(t *testing.T) {
 	}
 	defer func() { _ = database.Close() }()
 	id := ProgramID(1, 2, 1)
-	_, err = database.ExecContext(ctx, `INSERT INTO programs
+	_, err = database.Write.ExecContext(ctx, `INSERT INTO programs
 		(id, event_id, service_id, network_id, start_at, duration, is_free, genres)
 		VALUES (?, 1, 2, 1, 0, 0, 1, '{')`, id)
 	if err != nil {
