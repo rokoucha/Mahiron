@@ -60,6 +60,7 @@ type ProgramManager interface {
 	Count(context.Context) (int, error)
 	Get(context.Context, int64) (*program.Program, bool, error)
 	List(context.Context, program.Query) ([]*program.Program, error)
+	ListFunc(context.Context, program.Query, func(*program.Program) error) error
 }
 
 type StreamManager interface {

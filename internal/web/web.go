@@ -58,6 +58,12 @@ func NewWeb(config WebConfig) (http.Handler, error) {
 		return nil, err
 	}
 
+	// GET /api/programs returns the whole EPG, which the generated server
+	// would build in memory in full before writing a byte of it. It is served
+	// by a hand-written streaming handler instead; ServeMux prefers this more
+	// specific pattern over the "/api/" prefix the generated server is
+	// mounted on.
+	mux.HandleFunc("GET /api/programs", apiHandler.WriteProgramsJSON)
 	mux.Handle("/api/", http.StripPrefix("/api", api))
 	if config.Pprof {
 		registerPprof(mux)
