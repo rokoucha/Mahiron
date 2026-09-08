@@ -1,7 +1,7 @@
 package api
 
 import (
-	"bytes"
+	"bufio"
 	"context"
 	"encoding/xml"
 	"fmt"
@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/server/middleware"
 	"github.com/21S1298001/mahiron/internal/service"
@@ -107,15 +108,15 @@ func IptvXmltvGet(ctx context.Context, h *Handler) (apigen.IptvXmltvGetRes, erro
 	if err != nil {
 		return nil, err
 	}
-	programs, err := h.programManager.List(ctx, program.Query{})
-	if err != nil {
-		return nil, err
-	}
-	data, err := buildXMLTV(services, programs)
-	if err != nil {
-		return nil, err
-	}
-	return &apigen.IptvXmltvGetOK{Data: bytes.NewReader(data)}, nil
+	// The guide covers every program the database holds, which is far too
+	// much to hold as xmltvProgram values and as a finished document at the
+	// same time, so it is written out as the rows are read. The generated
+	// server copies this reader straight to the response.
+	reader, writer := io.Pipe()
+	go func() {
+		_ = writer.CloseWithError(writeXMLTV(ctx, h, services, writer))
+	}()
+	return &apigen.IptvXmltvGetOK{Data: reader}, nil
 }
 
 func iptvBaseURL(ctx context.Context) string {
@@ -147,12 +148,9 @@ func m3uTextEscape(s string) string {
 	return replacer.Replace(s)
 }
 
-type xmltvDocument struct {
-	XMLName  xml.Name       `xml:"tv"`
-	Source   string         `xml:"source-info-name,attr,omitempty"`
-	Channels []xmltvChannel `xml:"channel"`
-	Programs []xmltvProgram `xml:"programme"`
-}
+// xmltvWriteBuffer is how much XML accumulates before it is flushed to the
+// response.
+const xmltvWriteBuffer = 64 << 10
 
 type xmltvChannel struct {
 	ID          string          `xml:"id,attr"`
@@ -173,61 +171,80 @@ type xmltvTextNode struct {
 	Value string `xml:",chardata"`
 }
 
-func buildXMLTV(services []*service.Service, programs []*program.Program) ([]byte, error) {
+func writeXMLTV(ctx context.Context, h *Handler, services []*service.Service, w io.Writer) (err error) {
+	ctx, span := observability.StartSpan(ctx, observability.SpanAPIIptvXmltv)
+	defer func() { observability.EndSpan(span, err) }()
+
+	buffered := bufio.NewWriterSize(w, xmltvWriteBuffer)
+	if _, err := buffered.WriteString(xml.Header); err != nil {
+		return err
+	}
+	encoder := xml.NewEncoder(buffered)
+	encoder.Indent("", "  ")
+
+	tv := xml.StartElement{
+		Name: xml.Name{Local: "tv"},
+		Attr: []xml.Attr{{Name: xml.Name{Local: "source-info-name"}, Value: iptvName}},
+	}
+	if err := encoder.EncodeToken(tv); err != nil {
+		return err
+	}
+
 	serviceNames := make(map[string]string, len(services))
-	channels := make([]xmltvChannel, 0, len(services))
+	channelStart := xml.StartElement{Name: xml.Name{Local: "channel"}}
 	for _, svc := range services {
 		guideID := iptvGuideID(svc)
 		serviceNames[guideID] = svc.Name
-		channels = append(channels, xmltvChannel{
-			ID: guideID,
-			DisplayName: []xmltvTextNode{
-				{Value: svc.Name},
-			},
-		})
+		channel := xmltvChannel{
+			ID:          guideID,
+			DisplayName: []xmltvTextNode{{Value: svc.Name}},
+		}
+		if err := encoder.EncodeElement(channel, channelStart); err != nil {
+			return err
+		}
 	}
 
-	xmlPrograms := make([]xmltvProgram, 0, len(programs))
-	for _, p := range programs {
-		channelID := iptvProgramGuideID(p)
-		title := p.Name
-		if title == "" {
-			title = serviceNames[channelID]
-		}
-		if title == "" {
-			title = "No Title"
-		}
-
-		item := xmltvProgram{
-			Start:   xmltvTime(p.StartAt),
-			Stop:    xmltvTime(p.StartAt + int64(p.Duration)),
-			Channel: channelID,
-			Title:   []xmltvTextNode{{Value: title}},
-		}
-		if p.Description != "" {
-			item.Desc = []xmltvTextNode{{Value: p.Description}}
-		}
-		item.Category = xmltvCategories(p.Genres)
-		xmlPrograms = append(xmlPrograms, item)
+	programStart := xml.StartElement{Name: xml.Name{Local: "programme"}}
+	err = h.programManager.ListFunc(ctx, program.Query{}, func(p *program.Program) error {
+		return encoder.EncodeElement(xmltvProgramOf(p, serviceNames), programStart)
+	})
+	if err != nil {
+		return err
 	}
 
-	doc := xmltvDocument{
-		Source:   iptvName,
-		Channels: channels,
-		Programs: xmlPrograms,
+	if err := encoder.EncodeToken(tv.End()); err != nil {
+		return err
 	}
-	var b bytes.Buffer
-	b.WriteString(xml.Header)
-	encoder := xml.NewEncoder(&b)
-	encoder.Indent("", "  ")
-	if err := encoder.Encode(doc); err != nil {
-		return nil, err
+	if err := encoder.Close(); err != nil {
+		return err
 	}
-	if err := encoder.Flush(); err != nil {
-		return nil, err
+	if err := buffered.WriteByte('\n'); err != nil {
+		return err
 	}
-	b.WriteByte('\n')
-	return b.Bytes(), nil
+	return buffered.Flush()
+}
+
+func xmltvProgramOf(p *program.Program, serviceNames map[string]string) xmltvProgram {
+	channelID := iptvProgramGuideID(p)
+	title := p.Name
+	if title == "" {
+		title = serviceNames[channelID]
+	}
+	if title == "" {
+		title = "No Title"
+	}
+
+	item := xmltvProgram{
+		Start:    xmltvTime(p.StartAt),
+		Stop:     xmltvTime(p.StartAt + int64(p.Duration)),
+		Channel:  channelID,
+		Title:    []xmltvTextNode{{Value: title}},
+		Category: xmltvCategories(p.Genres),
+	}
+	if p.Description != "" {
+		item.Desc = []xmltvTextNode{{Value: p.Description}}
+	}
+	return item
 }
 
 func xmltvTime(ms int64) string {

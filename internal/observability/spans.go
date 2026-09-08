@@ -10,6 +10,8 @@ import (
 )
 
 const (
+	SpanAPIGetPrograms                    = "api.get_programs"
+	SpanAPIIptvXmltv                      = "api.iptv_xmltv"
 	SpanDBProgramDeleteEndedBefore        = "db.program.delete_ended_before"
 	SpanDBProgramReplaceServicePrograms   = "db.program.replace_service_programs"
 	SpanDBProgramUpsertAll                = "db.program.upsert_all"

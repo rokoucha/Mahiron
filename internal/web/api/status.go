@@ -39,11 +39,35 @@ func apiStatusProcess() apigen.StatusProcess {
 		Platform: apigen.NewOptString(runtime.GOOS),
 		Pid:      apigen.NewOptInt(os.Getpid()),
 		MemoryUsage: apigen.NewOptStatusProcessMemoryUsage(apigen.StatusProcessMemoryUsage{
-			Rss:       apigen.NewOptInt(int(mem.Sys)),
+			Rss:       apigen.NewOptInt(int(processRSS(mem.Sys))),
 			HeapTotal: apigen.NewOptInt(int(mem.HeapSys)),
 			HeapUsed:  apigen.NewOptInt(int(mem.HeapAlloc)),
 		}),
 	}
+}
+
+// processRSS reports how much memory the process is actually holding.
+// runtime.MemStats.Sys counts every byte the runtime has ever taken from the
+// OS, including what the scavenger has since handed back, so after one large
+// transient allocation it keeps reporting that peak forever — 478 MB against a
+// process resident in 118 MB, in one case — which makes the figure useless for
+// judging whether the process is near its limit. Linux publishes the real
+// number in /proc/self/statm; everywhere else Sys is the closest thing there
+// is.
+func processRSS(fallback uint64) uint64 {
+	data, err := os.ReadFile("/proc/self/statm")
+	if err != nil {
+		return fallback
+	}
+	fields := strings.Fields(string(data))
+	if len(fields) < 2 {
+		return fallback
+	}
+	pages, err := strconv.ParseUint(fields[1], 10, 64)
+	if err != nil {
+		return fallback
+	}
+	return pages * uint64(os.Getpagesize())
 }
 
 func buildStatusEpg(ctx context.Context, h *Handler, now time.Time) *apigen.StatusEpg {

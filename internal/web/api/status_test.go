@@ -247,6 +247,10 @@ func (m failingStatusProgramManager) List(context.Context, program.Query) ([]*pr
 	return nil, errors.New("unexpected List call")
 }
 
+func (m failingStatusProgramManager) ListFunc(context.Context, program.Query, func(*program.Program) error) error {
+	return errors.New("unexpected ListFunc call")
+}
+
 type failingStatusServiceManager struct{}
 
 func (m failingStatusServiceManager) EPGSummary(context.Context, int64, int64) (int, int, *int64, error) {

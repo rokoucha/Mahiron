@@ -22,6 +22,7 @@ type Snapshot struct {
 type snapshotService struct {
 	tables      map[uint8]*snapshotTable
 	programs    map[int64]*program.Program
+	stale       bool
 	lastTableID map[uint8]uint8
 	readyGroups map[uint8]*snapshotReadyGroup
 }
@@ -107,7 +108,7 @@ func (s *Snapshot) Observe(section *EITSection, now time.Time) bool {
 	table.sections[section.SectionNumber] = struct{}{}
 	table.sectionPrograms[section.SectionNumber] = section.Programs()
 	table.sectionVersions[section.SectionNumber] = section.VersionNumber
-	rebuildServicePrograms(service)
+	service.stale = true
 
 	table.version = section.VersionNumber
 	table.hasVersion = true
@@ -368,6 +369,7 @@ func (s *Snapshot) Programs(key ServiceKey) []*program.Program {
 	if service == nil {
 		return nil
 	}
+	service.rebuildPrograms()
 	result := make([]*program.Program, 0, len(service.programs))
 	for _, id := range sortedProgramIDs(service.programs) {
 		result = append(result, service.programs[id])

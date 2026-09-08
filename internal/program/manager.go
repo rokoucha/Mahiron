@@ -111,6 +111,10 @@ func (m *ProgramManager) List(ctx context.Context, query Query) ([]*Program, err
 	return m.store.List(ctx, query)
 }
 
+func (m *ProgramManager) ListFunc(ctx context.Context, query Query, yield func(*Program) error) error {
+	return m.store.ListFunc(ctx, query, yield)
+}
+
 func (m *ProgramManager) DeleteEndedBefore(ctx context.Context, cutoff int64) error {
 	source := observability.EPGMetricSource(ctx)
 	removed, err := m.store.ListEndedIDsBefore(ctx, cutoff)

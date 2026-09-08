@@ -6,10 +6,23 @@ import (
 	"github.com/21S1298001/mahiron/internal/program"
 )
 
-func rebuildServicePrograms(service *snapshotService) {
-	service.programs = make(map[int64]*program.Program)
-	tableIDs := make([]int, 0, len(service.tables))
-	for tableID := range service.tables {
+// rebuildPrograms merges the observed sections back into the service's program
+// set, and does nothing if no section has arrived since the last time.
+//
+// It runs when the programs are read — every few seconds, on a partial flush
+// or at the end of a collection — rather than on every section observed. A
+// service's 8-day schedule arrives as hundreds of sections, and rebuilding
+// after each one made a collection quadratic in the number of sections: it
+// deep-copied every program of the service, maps included, once per section,
+// which for one service came to 300 MB of garbage and 1.6M allocations.
+func (s *snapshotService) rebuildPrograms() {
+	if !s.stale {
+		return
+	}
+	s.stale = false
+	s.programs = make(map[int64]*program.Program)
+	tableIDs := make([]int, 0, len(s.tables))
+	for tableID := range s.tables {
 		tableIDs = append(tableIDs, int(tableID))
 	}
 	sort.Ints(tableIDs)
@@ -17,7 +30,7 @@ func rebuildServicePrograms(service *snapshotService) {
 	extended := make(map[int64][]*program.Program)
 	for _, id := range tableIDs {
 		tableID := uint8(id)
-		table := service.tables[tableID]
+		table := s.tables[tableID]
 		sectionNumbers := make([]int, 0, len(table.sectionPrograms))
 		for sectionNumber := range table.sectionPrograms {
 			sectionNumbers = append(sectionNumbers, int(sectionNumber))
@@ -30,22 +43,22 @@ func rebuildServicePrograms(service *snapshotService) {
 				}
 				switch {
 				case isScheduleBasic(tableID):
-					if service.programs[item.ID] == nil {
-						service.programs[item.ID] = cloneProgram(item)
+					if s.programs[item.ID] == nil {
+						s.programs[item.ID] = cloneProgram(item)
 					} else {
-						mergeProgram(service.programs[item.ID], item, true)
+						mergeProgram(s.programs[item.ID], item, true)
 					}
 				case isScheduleExtended(tableID):
 					extended[item.ID] = append(extended[item.ID], item)
 				default:
-					service.programs[item.ID] = cloneProgram(item)
+					s.programs[item.ID] = cloneProgram(item)
 				}
 			}
 		}
 	}
-	for _, id := range sortedProgramIDs(service.programs) {
+	for _, id := range sortedProgramIDs(s.programs) {
 		for _, item := range extended[id] {
-			mergeProgram(service.programs[id], item, false)
+			mergeProgram(s.programs[id], item, false)
 		}
 	}
 }

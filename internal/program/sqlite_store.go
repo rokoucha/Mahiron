@@ -39,6 +39,22 @@ ON CONFLICT(id) DO UPDATE SET
   related_items=COALESCE(excluded.related_items, programs.related_items),
   series=COALESCE(excluded.series, programs.series)`
 
+// listProgramsSQL is written out here rather than declared in
+// queries/programs.sql because sqlc only generates row-returning queries that
+// collect every row into a slice first. /api/programs covers the whole EPG —
+// tens of thousands of programs — so the rows are scanned and handed on one at
+// a time instead.
+const listProgramsSQL = `SELECT id, event_id, service_id, network_id, start_at, duration, is_free,
+       name, description, genres, video, audios, extended, related_items, series
+FROM programs
+WHERE (?1 IS NULL OR id = ?1)
+  AND (?2 IS NULL OR network_id = ?2)
+  AND (?3 IS NULL OR service_id = ?3)
+  AND (?4 IS NULL OR event_id = ?4)
+  AND (?5 IS NULL OR start_at + duration >= ?5)
+  AND (?6 IS NULL OR start_at <= ?6)
+ORDER BY start_at, id`
+
 func NewSQLiteStore(database *db.DB) ProgramStore {
 	return &sqliteStore{
 		write: database.Write,
@@ -91,19 +107,63 @@ func (s *sqliteStore) Get(ctx context.Context, id int64) (*Program, bool, error)
 }
 
 func (s *sqliteStore) List(ctx context.Context, query Query) ([]*Program, error) {
-	params := gen.ListProgramsParams{
-		ID:        nilOrInt64(query.ID),
-		NetworkID: nilOrInt64(query.NetworkID),
-		ServiceID: nilOrInt64(query.ServiceID),
-		EventID:   nilOrInt64(query.EventID),
-		StartAt:   nilOrInt64(query.StartAt),
-		EndAt:     nilOrInt64(query.EndAt),
-	}
-	rows, err := s.rq.ListPrograms(ctx, params)
+	var programs []*Program
+	err := s.ListFunc(ctx, query, func(p *Program) error {
+		programs = append(programs, p)
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	return fromGenPrograms(rows)
+	return programs, nil
+}
+
+func (s *sqliteStore) ListFunc(ctx context.Context, query Query, yield func(*Program) error) error {
+	rows, err := s.read.QueryContext(ctx, listProgramsSQL,
+		nilOrInt64(query.ID),
+		nilOrInt64(query.NetworkID),
+		nilOrInt64(query.ServiceID),
+		nilOrInt64(query.EventID),
+		nilOrInt64(query.StartAt),
+		nilOrInt64(query.EndAt),
+	)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var row gen.Program
+		if err := rows.Scan(
+			&row.ID,
+			&row.EventID,
+			&row.ServiceID,
+			&row.NetworkID,
+			&row.StartAt,
+			&row.Duration,
+			&row.IsFree,
+			&row.Name,
+			&row.Description,
+			&row.Genres,
+			&row.Video,
+			&row.Audios,
+			&row.Extended,
+			&row.RelatedItems,
+			&row.Series,
+		); err != nil {
+			return err
+		}
+		p, err := fromGenProgram(row)
+		if err != nil {
+			return err
+		}
+		if err := yield(p); err != nil {
+			return err
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	return rows.Close()
 }
 
 func (s *sqliteStore) ListByIDs(ctx context.Context, ids []int64) ([]*Program, error) {

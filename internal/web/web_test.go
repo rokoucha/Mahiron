@@ -85,6 +85,26 @@ func TestHTTPContractRoundTripsThroughGeneratedClientAndSQLite(t *testing.T) {
 	if _, ok := status.(*apigen.Status); !ok {
 		t.Fatalf("GetStatus response = %T, want *apigen.Status", status)
 	}
+
+	// /api/programs is served outside the generated server so the whole EPG
+	// is never held in memory at once, which only works if the bytes it
+	// streams still satisfy the contract the generated client decodes.
+	if err := programs.UpsertPrograms(t.Context(), []*program.Program{{
+		ID: program.ProgramID(1, 101, 9), EventID: 9, ServiceID: 101, NetworkID: 1,
+		StartAt: 1000, Duration: 30000, Name: "first",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	gotPrograms, err := client.GetPrograms(t.Context(), apigen.GetProgramsParams{
+		ServiceId: apigen.NewOptInt(101),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	programList, ok := gotPrograms.(*apigen.GetProgramsOKApplicationJSON)
+	if !ok || len(*programList) != 1 || (*programList)[0].Name.Value != "first" {
+		t.Fatalf("GetPrograms response = %#v", gotPrograms)
+	}
 }
 
 type handlerClient struct{ handler http.Handler }

@@ -5,6 +5,11 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/21S1298001/mahiron/internal/config"
@@ -15,6 +20,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/stream"
 	"github.com/21S1298001/mahiron/internal/stream/databroadcast"
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
+	"github.com/go-faster/jx"
 )
 
 func testProgramHandler(t *testing.T) *Handler {
@@ -473,4 +479,91 @@ func TestApiProgramGenres(t *testing.T) {
 			t.Errorf("Genres[0].Lv2 = %d, %v; want 1, true", got, ok)
 		}
 	})
+}
+
+// TestWriteProgramsJSONMatchesGeneratedEncoding pins the streaming handler to
+// the bytes the generated server would have produced for the same operation.
+func TestWriteProgramsJSONMatchesGeneratedEncoding(t *testing.T) {
+	handler := testProgramHandler(t)
+
+	for name, query := range map[string]string{
+		"all":       "",
+		"service":   "networkId=1&serviceId=101",
+		"event":     "eventId=9",
+		"timeRange": "startAt=1000&endAt=2000",
+		"noMatch":   "serviceId=999",
+	} {
+		t.Run(name, func(t *testing.T) {
+			res, err := handler.GetPrograms(context.Background(), decodeTestProgramsParams(t, query))
+			if err != nil {
+				t.Fatal(err)
+			}
+			encoder := &jx.Encoder{}
+			res.(*apigen.GetProgramsOKApplicationJSON).Encode(encoder)
+
+			req := httptest.NewRequest(http.MethodGet, "/api/programs?"+query, nil)
+			rec := httptest.NewRecorder()
+			handler.WriteProgramsJSON(rec, req)
+
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200", rec.Code)
+			}
+			if got, want := rec.Body.String(), string(encoder.Bytes()); got != want {
+				t.Fatalf("streamed body =\n%s\nwant\n%s", got, want)
+			}
+			if got := rec.Header().Get("Content-Type"); got != "application/json; charset=utf-8" {
+				t.Fatalf("Content-Type = %q", got)
+			}
+		})
+	}
+}
+
+func decodeTestProgramsParams(t *testing.T, query string) apigen.GetProgramsParams {
+	t.Helper()
+	values, err := url.ParseQuery(query)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var params apigen.GetProgramsParams
+	for name, target := range map[string]*apigen.OptInt{
+		"networkId": &params.NetworkId,
+		"serviceId": &params.ServiceId,
+		"eventId":   &params.EventId,
+	} {
+		if raw := values.Get(name); raw != "" {
+			value, err := strconv.Atoi(raw)
+			if err != nil {
+				t.Fatal(err)
+			}
+			target.SetTo(value)
+		}
+	}
+	for name, target := range map[string]*apigen.OptInt64{
+		"startAt": &params.StartAt,
+		"endAt":   &params.EndAt,
+	} {
+		if raw := values.Get(name); raw != "" {
+			value, err := strconv.ParseInt(raw, 10, 64)
+			if err != nil {
+				t.Fatal(err)
+			}
+			target.SetTo(value)
+		}
+	}
+	return params
+}
+
+func TestWriteProgramsJSONRejectsInvalidParams(t *testing.T) {
+	handler := testProgramHandler(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/programs?serviceId=abc", nil)
+	rec := httptest.NewRecorder()
+	handler.WriteProgramsJSON(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "serviceId") {
+		t.Fatalf("body = %s", rec.Body.String())
+	}
 }
