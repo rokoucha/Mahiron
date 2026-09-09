@@ -483,6 +483,30 @@ func TestCollectServiceSnapshotsFailsWhenNoServicesObserved(t *testing.T) {
 	}
 }
 
+func TestCollectServiceSnapshotsAbortsEarlyOnDeadStream(t *testing.T) {
+	previous := eitsDeadStreamTimeout
+	eitsDeadStreamTimeout = 10 * time.Millisecond
+	t.Cleanup(func() { eitsDeadStreamTimeout = previous })
+
+	key := ServiceKey{NetworkID: 4, ServiceID: 101}
+	status := newRemoteSyncServiceStore()
+	session := &collectEITSession{}
+
+	started := time.Now()
+	_, err := CollectServiceSnapshots(context.Background(), &collectProgramStore{}, status, session, []ServiceKey{key}, time.Minute)
+	elapsed := time.Since(started)
+
+	if err == nil {
+		t.Fatal("CollectServiceSnapshots error = nil, want incomplete service error")
+	}
+	if got, want := status.errors[key], "service 101 EITS incomplete"; got != want {
+		t.Fatalf("service error = %q, want %q", got, want)
+	}
+	if elapsed >= time.Minute {
+		t.Fatalf("collection took %s, want it to abort well before the retrievalTime", elapsed)
+	}
+}
+
 func TestCollectServiceSnapshotsStoresLowQualityWarningWithoutFailing(t *testing.T) {
 	key := ServiceKey{NetworkID: 4, ServiceID: 101}
 	store := &collectProgramStore{}

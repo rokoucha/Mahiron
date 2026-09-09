@@ -28,6 +28,13 @@ const eitsCollectionBuffer = 4096
 var partialEITSFlushInterval = 5 * time.Second
 var eitsStableStopDuration = 3 * time.Second
 
+// eitsDeadStreamTimeout bounds how long a collection run will wait for the
+// very first EIT/TOT section before giving up on the assumption the tuner
+// connected but the stream is dead (e.g. an upstream lock failure that never
+// closes the connection). Without this, a dead stream is only noticed after
+// the full retrievalTime deadline, which can hold a tuner for minutes.
+var eitsDeadStreamTimeout = 30 * time.Second
+
 // expectedServiceIndex answers membership queries for the services a collection
 // run is targeting, keyed by original network / transport stream / service ID.
 type expectedServiceIndex struct {
@@ -183,11 +190,14 @@ func CollectServiceSnapshots(ctx context.Context, programStore ProgramStore, ser
 	defer partialFlushes.stop()
 	flushTicker := time.NewTicker(partialEITSFlushInterval)
 	defer flushTicker.Stop()
+	deadStreamTimer := time.NewTimer(eitsDeadStreamTimeout)
+	defer deadStreamTimer.Stop()
 	dirtyServices := make(map[ServiceKey]struct{})
 	observedServices := make(map[ServiceKey]struct{})
 	var eitpfSections int
 	var eitsSections int
 	var ignoredSections int
+	var sectionsReceived int
 	handleSection := func(section *EITSection) {
 		if section == nil || !index.matchesCollectionNetwork(section) {
 			ignoredSections++
@@ -214,6 +224,7 @@ func CollectServiceSnapshots(ctx context.Context, programStore ProgramStore, ser
 	for !finished {
 		select {
 		case section := <-sectionCh:
+			sectionsReceived++
 			handleSection(section)
 			if shouldStopEITSCollection(snapshot, expected) && snapshot.StableFor(clock.now(), eitsStableStopDuration) {
 				cancel()
@@ -223,6 +234,13 @@ func CollectServiceSnapshots(ctx context.Context, programStore ProgramStore, ser
 				dirtyServices = make(map[ServiceKey]struct{})
 			}
 			if shouldStopEITSCollection(snapshot, expected) && snapshot.StableFor(clock.now(), eitsStableStopDuration) {
+				cancel()
+			}
+		case <-deadStreamTimer.C:
+			if sectionsReceived == 0 {
+				slog.Warn("aborting EPG collection: no EIT/TOT sections received, tuner may be connected to a dead stream",
+					"expectedServices", len(expected),
+					"waited", eitsDeadStreamTimeout)
 				cancel()
 			}
 		case collectorResult = <-collectDone:
@@ -262,7 +280,7 @@ func CollectServiceSnapshots(ctx context.Context, programStore ProgramStore, ser
 	}
 	if collectorDone {
 		if collectorResult.collectErr != nil && !errors.Is(collectorResult.collectErr, context.Canceled) {
-			slog.Debug("EPG collector finished with error", "err", collectorResult.collectErr)
+			slog.Warn("EPG collector finished with error", "err", collectorResult.collectErr)
 		}
 		if pfErr := pfUpserts.Err(); pfErr != nil {
 			slog.Debug("EITPF upsert finished with error", "err", pfErr)
