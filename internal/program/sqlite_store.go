@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/21S1298001/mahiron/internal/db"
@@ -39,21 +40,55 @@ ON CONFLICT(id) DO UPDATE SET
   related_items=COALESCE(excluded.related_items, programs.related_items),
   series=COALESCE(excluded.series, programs.series)`
 
-// listProgramsSQL is written out here rather than declared in
+// listProgramsSelectSQL is written out here rather than declared in
 // queries/programs.sql because sqlc only generates row-returning queries that
 // collect every row into a slice first. /api/programs covers the whole EPG —
 // tens of thousands of programs — so the rows are scanned and handed on one at
 // a time instead.
-const listProgramsSQL = `SELECT id, event_id, service_id, network_id, start_at, duration, is_free,
+const listProgramsSelectSQL = `SELECT id, event_id, service_id, network_id, start_at, duration, is_free,
        name, description, genres, video, audios, extended, related_items, series
-FROM programs
-WHERE (?1 IS NULL OR id = ?1)
-  AND (?2 IS NULL OR network_id = ?2)
-  AND (?3 IS NULL OR service_id = ?3)
-  AND (?4 IS NULL OR event_id = ?4)
-  AND (?5 IS NULL OR start_at + duration >= ?5)
-  AND (?6 IS NULL OR start_at <= ?6)
-ORDER BY start_at, id`
+FROM programs`
+
+// buildListProgramsSQL only emits WHERE clauses for the filters that are
+// actually set. The previous `(?N IS NULL OR col = ?N)` form applied to every
+// column regardless of whether it was queried, which kept SQLite from using
+// idx_programs_service (network_id, service_id) and forced a full scan of the
+// programs table on every /api/programs request.
+func buildListProgramsSQL(query Query) (string, []any) {
+	var conds []string
+	var args []any
+	if query.ID != nil {
+		conds = append(conds, "id = ?")
+		args = append(args, *query.ID)
+	}
+	if query.NetworkID != nil {
+		conds = append(conds, "network_id = ?")
+		args = append(args, int64(*query.NetworkID))
+	}
+	if query.ServiceID != nil {
+		conds = append(conds, "service_id = ?")
+		args = append(args, int64(*query.ServiceID))
+	}
+	if query.EventID != nil {
+		conds = append(conds, "event_id = ?")
+		args = append(args, int64(*query.EventID))
+	}
+	if query.StartAt != nil {
+		conds = append(conds, "start_at + duration >= ?")
+		args = append(args, *query.StartAt)
+	}
+	if query.EndAt != nil {
+		conds = append(conds, "start_at <= ?")
+		args = append(args, *query.EndAt)
+	}
+
+	sqlStr := listProgramsSelectSQL
+	if len(conds) > 0 {
+		sqlStr += "\nWHERE " + strings.Join(conds, "\n  AND ")
+	}
+	sqlStr += "\nORDER BY start_at, id"
+	return sqlStr, args
+}
 
 func NewSQLiteStore(database *db.DB) ProgramStore {
 	return &sqliteStore{
@@ -119,14 +154,8 @@ func (s *sqliteStore) List(ctx context.Context, query Query) ([]*Program, error)
 }
 
 func (s *sqliteStore) ListFunc(ctx context.Context, query Query, yield func(*Program) error) error {
-	rows, err := s.read.QueryContext(ctx, listProgramsSQL,
-		nilOrInt64(query.ID),
-		nilOrInt64(query.NetworkID),
-		nilOrInt64(query.ServiceID),
-		nilOrInt64(query.EventID),
-		nilOrInt64(query.StartAt),
-		nilOrInt64(query.EndAt),
-	)
+	sqlStr, args := buildListProgramsSQL(query)
+	rows, err := s.read.QueryContext(ctx, sqlStr, args...)
 	if err != nil {
 		return err
 	}
@@ -301,13 +330,6 @@ func fromGenPrograms(rows []gen.Program) ([]*Program, error) {
 		result = append(result, p)
 	}
 	return result, nil
-}
-
-func nilOrInt64[T ~int | ~int8 | ~int16 | ~int32 | ~int64 | ~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64](p *T) interface{} {
-	if p == nil {
-		return nil
-	}
-	return int64(*p)
 }
 
 func encodeJSON(v any) (*string, error) {
