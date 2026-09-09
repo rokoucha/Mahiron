@@ -188,6 +188,46 @@ func TestTunerDeviceStartupRetryFailsWhenNoDataArrives(t *testing.T) {
 	}
 }
 
+func TestClassifyProcessExit(t *testing.T) {
+	tests := []struct {
+		name        string
+		err         error
+		copiedBytes int64
+		want        string
+	}{
+		{name: "success with data", err: nil, copiedBytes: 1, want: tunerProcessExitSuccess},
+		{name: "success with no data", err: nil, copiedBytes: 0, want: tunerProcessExitEmpty},
+		{name: "canceled with no data", err: context.Canceled, copiedBytes: 0, want: tunerProcessExitCanceled},
+		{name: "failure with no data", err: errors.New("boom"), copiedBytes: 0, want: tunerProcessExitFailure},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := classifyProcessExit(tt.err, tt.copiedBytes); got != tt.want {
+				t.Fatalf("classifyProcessExit(%v, %d) = %q, want %q", tt.err, tt.copiedBytes, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestTunerDeviceSucceedsWithNoDataDoesNotError(t *testing.T) {
+	// A command like `curl -fsSL <url>` can exit 0 while writing nothing to
+	// stdout (e.g. an upstream HTTP error the shell command itself doesn't
+	// treat as a failure). Device.Err() must stay untouched by the "empty"
+	// classification: it is a metrics/log concern, not a stream error.
+	device := NewCommandDevice(nil, "true")
+	if err := device.Start(context.Background(), bytes.NewBuffer(nil)); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-device.Done():
+	case <-time.After(2 * time.Second):
+		t.Fatal("tuner device did not finish")
+	}
+	if err := device.Err(); err != nil {
+		t.Fatalf("Err() = %v, want nil", err)
+	}
+}
+
 func writeTestScript(t *testing.T, dir, body string) string {
 	t.Helper()
 	path := filepath.Join(dir, "script.sh")

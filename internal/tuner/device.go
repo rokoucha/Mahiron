@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"sync"
 	"time"
@@ -403,7 +404,7 @@ func (d *processDevice) Stop(ctx context.Context) error {
 
 func (d *processDevice) copyRaw(src io.Reader, dst io.Writer) {
 	defer func() { _ = d.closeRawReader() }()
-	_, copyErr := io.Copy(dst, src)
+	copied, copyErr := io.Copy(dst, src)
 	if util.IsExpectedStreamCloseError(copyErr) {
 		copyErr = nil
 	}
@@ -415,8 +416,26 @@ func (d *processDevice) copyRaw(src io.Reader, dst io.Writer) {
 		waitErr = process.Wait()
 	}
 	err := errors.Join(copyErr, waitErr)
-	observability.RecordTunerProcessExit(context.Background(), channelTypeOf(d.channel), channelID(d.channel), tunerProcessExitResult(err))
+	result := classifyProcessExit(err, copied)
+	if result == tunerProcessExitEmpty {
+		slog.Warn("tuner process exited without producing any data",
+			"channelType", channelTypeOf(d.channel), "channelId", channelID(d.channel))
+	}
+	observability.RecordTunerProcessExit(context.Background(), channelTypeOf(d.channel), channelID(d.channel), result)
 	d.finish(err)
+}
+
+// classifyProcessExit turns a tuner process's exit error and the number of
+// bytes it wrote to the stream into a metric/log result label. A command
+// that shells out to an upstream HTTP source (e.g. curl against a
+// Mirakurun-compatible server) can exit 0 on a non-2xx response, so a
+// "success" exit alone does not mean the tuner actually produced data.
+func classifyProcessExit(err error, copiedBytes int64) string {
+	result := tunerProcessExitResult(err)
+	if result == tunerProcessExitSuccess && copiedBytes == 0 {
+		return tunerProcessExitEmpty
+	}
+	return result
 }
 
 func (d *processDevice) closeRawReader() error {
@@ -453,13 +472,20 @@ func (d *processDevice) finish(err error) {
 	}
 }
 
+const (
+	tunerProcessExitSuccess  = "success"
+	tunerProcessExitCanceled = "canceled"
+	tunerProcessExitFailure  = "failure"
+	tunerProcessExitEmpty    = "empty"
+)
+
 func tunerProcessExitResult(err error) string {
 	switch {
 	case err == nil:
-		return "success"
+		return tunerProcessExitSuccess
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
-		return "canceled"
+		return tunerProcessExitCanceled
 	default:
-		return "failure"
+		return tunerProcessExitFailure
 	}
 }
