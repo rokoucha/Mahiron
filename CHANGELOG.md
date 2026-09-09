@@ -1,5 +1,15 @@
 # Changelog
 
+## [v5.1.3](https://github.com/rokoucha/Mahiron/compare/v5.1.2...v5.1.3) - 2026-09-08
+
+- Update dependency eslint-plugin-react-refresh to v0.5.6 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/156
+- Update dependency @types/react-dom to v19.2.7 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/155
+- Update Songmu/tagpr action to v1.20.3 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/158
+- Update dependency eslint to v10.10.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/159
+- Update docker/setup-qemu-action action to v4.3.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/161
+- Update dependency globals to v17.12.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/160
+- 全EPGを返すエンドポイントをストリーミング化する by @rokoucha in https://github.com/rokoucha/Mahiron/pull/162
+
 ## [v5.1.2](https://github.com/rokoucha/Mahiron/compare/v5.1.1...v5.1.2) - 2026-09-04
 
 - Update dependency eslint-plugin-react-refresh to v0.5.5 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/137
