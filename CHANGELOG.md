@@ -1,5 +1,12 @@
 # Changelog
 
+## [v5.1.4](https://github.com/rokoucha/Mahiron/compare/v5.1.3...v5.1.4) - 2026-09-10
+
+- Abort EPG collection early on a dead stream, flag empty tuner exits by @rokoucha in https://github.com/rokoucha/Mahiron/pull/163
+- Build /api/programs query dynamically to keep idx_programs_service usable by @rokoucha in https://github.com/rokoucha/Mahiron/pull/165
+- Update dependency typescript-eslint to v8.70.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/166
+- Update module golang.org/x/sync to v0.23.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/167
+
 ## [v5.1.3](https://github.com/rokoucha/Mahiron/compare/v5.1.2...v5.1.3) - 2026-09-08
 
 - Update dependency eslint-plugin-react-refresh to v0.5.6 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/156
