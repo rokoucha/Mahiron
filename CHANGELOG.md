@@ -1,5 +1,10 @@
 # Changelog
 
+## [v5.1.5](https://github.com/rokoucha/Mahiron/compare/v5.1.4...v5.1.5) - 2026-09-12
+
+- Update dependency @types/node to v24.13.4 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/168
+- Update module golang.org/x/text to v0.42.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/169
+
 ## [v5.1.4](https://github.com/rokoucha/Mahiron/compare/v5.1.3...v5.1.4) - 2026-09-10
 
 - Abort EPG collection early on a dead stream, flag empty tuner exits by @rokoucha in https://github.com/rokoucha/Mahiron/pull/163
