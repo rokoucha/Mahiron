@@ -39,22 +39,18 @@ type filteringTracer struct {
 	noop     trace.Tracer
 }
 
+type tracingSuppressedKey struct{}
+
+func tracingSuppressed(ctx context.Context) bool {
+	return ctx.Value(tracingSuppressedKey{}) == true
+}
+
 func (t filteringTracer) Start(ctx context.Context, spanName string, opts ...trace.SpanStartOption) (context.Context, trace.Span) {
-	if _, ok := t.excluded[spanName]; ok {
+	if _, excluded := t.excluded[spanName]; excluded || tracingSuppressed(ctx) {
+		// Keep suppression in the context so internal spans cannot become new roots.
+		ctx = context.WithValue(ctx, tracingSuppressedKey{}, true)
+		ctx = trace.ContextWithSpanContext(ctx, trace.SpanContext{})
 		return t.noop.Start(ctx, spanName, opts...)
 	}
 	return t.delegate.Start(ctx, spanName, opts...)
-}
-
-var StreamOperationNames = []string{
-	"GetLogStream",
-	"GetEventsStream",
-	"GetServiceStream",
-	"GetProgramStream",
-	"GetChannelStream",
-	"GetServiceStreamByChannel",
-	"ChannelsTypeChannelServicesIDStreamHead",
-	"ProgramsIDStreamHead",
-	"ChannelsTypeChannelStreamHead",
-	"ChannelsTypeChannelServicesIDStreamHead",
 }

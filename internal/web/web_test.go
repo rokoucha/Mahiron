@@ -20,6 +20,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/version"
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 	"github.com/ogen-go/ogen/otelogen"
+	"go.opentelemetry.io/otel"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -207,31 +208,79 @@ func TestNewWebSetsServerHeader(t *testing.T) {
 	}
 }
 
-func TestNewWebFiltersStreamHTTPSpans(t *testing.T) {
+func TestNewWebFiltersHTTPSpans(t *testing.T) {
 	recorder := tracetest.NewSpanRecorder()
 	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	previous := otel.GetTracerProvider()
+	otel.SetTracerProvider(provider)
+	t.Cleanup(func() { otel.SetTracerProvider(previous); _ = provider.Shutdown(context.Background()) })
+	database, err := db.OpenInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
 	handler, err := NewWeb(WebConfig{
 		ServiceManager: testServiceManager{},
-		StreamManager:  testStreamManager{},
+		ProgramManager: program.NewProgramManager(program.NewSQLiteStore(database), event.New()),
+		StreamManager:  tracedTestStreamManager{},
+		EventHub:       event.New(),
 		TracerProvider: provider,
 	})
 	if err != nil {
-		t.Fatalf("NewWeb() = %v", err)
+		t.Fatal(err)
 	}
 
+	for _, tc := range []struct {
+		method, path string
+		status       int
+	}{
+		{http.MethodGet, "/api/version", 200},
+		{http.MethodGet, "/api/channels/GR/27/stream", 404},
+		{http.MethodHead, "/api/channels/GR/27/stream", 200},
+		{http.MethodGet, "/api/channels/GR/27/services/1/stream", 404},
+		{http.MethodHead, "/api/channels/GR/27/services/1/stream", 200},
+		{http.MethodGet, "/api/services/1/stream", 404},
+		{http.MethodHead, "/api/services/1/stream", 404},
+		{http.MethodGet, "/api/programs/10000000001/stream", 404},
+		{http.MethodHead, "/api/programs/10000000001/stream", 404},
+		{http.MethodGet, "/api/events/stream", 200},
+		{http.MethodGet, "/api/log/stream", 503},
+		{http.MethodGet, "/api/services/1/data-broadcast/events", 404},
+		{http.MethodGet, "/", 200},
+		{http.MethodGet, "/epg", 200},
+		{http.MethodGet, "/assets/missing.js", 404},
+	} {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			// End the event stream without waiting for an event.
+			if tc.path == "/api/events/stream" {
+				cancel()
+			}
+			defer cancel()
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, httptest.NewRequest(tc.method, tc.path, nil).WithContext(ctx))
+			if response.Code != tc.status {
+				t.Fatalf("status = %d, want %d", response.Code, tc.status)
+			}
+			if spans := recorder.Ended(); len(spans) != 0 {
+				t.Fatalf("unexpected spans: %v", spans)
+			}
+		})
+	}
+	// The UI's ordinary API requests must still produce traces.
 	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/status", nil))
-	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/channels/GR/27/stream", nil))
+	spans := recorder.Ended()
+	if len(spans) != 1 || spans[0].Name() != "GetStatus" {
+		t.Fatalf("ended spans = %v, want GetStatus", spans)
+	}
+}
 
-	var names []string
-	for _, span := range recorder.Ended() {
-		names = append(names, span.Name())
-	}
-	if !contains(names, "GetStatus") {
-		t.Fatalf("ended spans = %v, want GetStatus", names)
-	}
-	if contains(names, "GetChannelStream") {
-		t.Fatalf("ended spans = %v, want no GetChannelStream", names)
-	}
+type tracedTestStreamManager struct{ testStreamManager }
+
+func (tracedTestStreamManager) GetOrCreate(ctx context.Context, _, _ string) (stream.Session, error) {
+	_, span := observability.StartSpan(ctx, observability.SpanStreamGetOrCreate)
+	defer span.End()
+	return nil, stream.ErrChannelNotFound
 }
 
 func TestNewWebUsesConfiguredMeterProvider(t *testing.T) {
@@ -246,7 +295,7 @@ func TestNewWebUsesConfiguredMeterProvider(t *testing.T) {
 		t.Fatalf("NewWeb() = %v", err)
 	}
 
-	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/status", nil))
+	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/version", nil))
 
 	var data metricdata.ResourceMetrics
 	if err := reader.Collect(t.Context(), &data); err != nil {
@@ -310,15 +359,6 @@ func (testServiceManager) GetServicesByChannel(context.Context, string, string) 
 
 func (testServiceManager) GetServicesGroupedByChannel(context.Context) (map[service.ChannelKey][]*service.Service, error) {
 	return nil, nil
-}
-
-func contains(values []string, needle string) bool {
-	for _, value := range values {
-		if value == needle {
-			return true
-		}
-	}
-	return false
 }
 
 func int64MetricSum(data metricdata.ResourceMetrics, name string) int64 {

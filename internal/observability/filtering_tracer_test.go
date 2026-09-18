@@ -6,12 +6,14 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/version"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric/noop"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+	"go.opentelemetry.io/otel/trace"
 	tracenoop "go.opentelemetry.io/otel/trace/noop"
 )
 
@@ -273,4 +275,45 @@ func int64HistogramCount(data metricdata.ResourceMetrics, name string) uint64 {
 		}
 	}
 	return 0
+}
+
+func TestFilteringTracerProviderSuppressesDescendants(t *testing.T) {
+	recorder := tracetest.NewSpanRecorder()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	previous := otel.GetTracerProvider()
+	otel.SetTracerProvider(provider)
+	t.Cleanup(func() { otel.SetTracerProvider(previous); _ = provider.Shutdown(context.Background()) })
+	tracer := NewFilteringTracerProvider(provider, []string{"stream"}).Tracer("test")
+	for _, parent := range []bool{false, true} {
+		ctx := context.Background()
+		if parent {
+			var span trace.Span
+			ctx, span = provider.Tracer("test").Start(ctx, "parent")
+			defer span.End()
+		}
+		ctx, cancel := context.WithCancel(ctx)
+		ctx, span := tracer.Start(ctx, "stream")
+		ctx, child := tracer.Start(ctx, "normal-operation")
+		ctx, internal := StartSpan(ctx, SpanStreamGetOrCreate)
+		_, detached := StartSpan(context.WithoutCancel(ctx), SpanTunerProcessStart)
+		if span.IsRecording() || child.IsRecording() || internal.IsRecording() || detached.IsRecording() {
+			t.Fatal("excluded request recorded a span")
+		}
+		detached.End()
+		internal.End()
+		child.End()
+		span.End()
+		cancel()
+		if ctx.Err() != context.Canceled {
+			t.Fatal("suppression lost request cancellation")
+		}
+	}
+	if got := len(recorder.Ended()); got != 0 {
+		t.Fatalf("exportable spans = %d, want 0", got)
+	}
+	_, normal := StartSpan(context.Background(), SpanJobRun)
+	normal.End()
+	if got := len(recorder.Ended()); got != 1 {
+		t.Fatalf("normal spans = %d, want 1", got)
+	}
 }

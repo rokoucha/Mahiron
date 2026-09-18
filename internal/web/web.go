@@ -21,6 +21,23 @@ import (
 // Mirakurun互換サーバーかどうかを判定するため、常に付与する必要がある。
 const serverHeader = "Mahiron/" + version.Current
 
+// Streaming requests (including availability checks) and the Kubernetes health
+// check do not need traces. UI files are served outside the instrumented API.
+var untracedOperationNames = []string{
+	apigen.CheckVersionOperation,
+	apigen.GetLogStreamOperation,
+	apigen.GetEventsStreamOperation,
+	apigen.GetServiceDataBroadcastEventsOperation,
+	apigen.GetServiceStreamOperation,
+	apigen.GetProgramStreamOperation,
+	apigen.GetChannelStreamOperation,
+	apigen.GetServiceStreamByChannelOperation,
+	apigen.ServicesIDStreamHeadOperation,
+	apigen.ProgramsIDStreamHeadOperation,
+	apigen.ChannelsTypeChannelStreamHeadOperation,
+	apigen.ChannelsTypeChannelServicesIDStreamHeadOperation,
+}
+
 type WebConfig struct {
 	ServiceManager        api.ServiceManager
 	ProgramManager        api.ProgramManager
@@ -52,7 +69,7 @@ func NewWeb(config WebConfig) (http.Handler, error) {
 	})
 	api, err := apigen.NewServer(apiHandler, apiHandler,
 		apigen.WithMeterProvider(config.MeterProvider),
-		apigen.WithTracerProvider(observability.NewFilteringTracerProvider(config.TracerProvider, observability.StreamOperationNames)),
+		apigen.WithTracerProvider(observability.NewFilteringTracerProvider(config.TracerProvider, untracedOperationNames)),
 	)
 	if err != nil {
 		return nil, err

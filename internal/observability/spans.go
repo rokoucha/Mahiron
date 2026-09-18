@@ -7,6 +7,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
 )
 
 const (
@@ -40,6 +41,9 @@ const (
 )
 
 func StartSpan(ctx context.Context, name string, attrs ...attribute.KeyValue) (context.Context, trace.Span) {
+	if tracingSuppressed(ctx) {
+		return noop.NewTracerProvider().Tracer(instrumentationName).Start(ctx, name)
+	}
 	return otel.Tracer(instrumentationName).Start(ctx, name, trace.WithAttributes(attrs...))
 }
 

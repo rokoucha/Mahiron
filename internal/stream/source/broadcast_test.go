@@ -12,6 +12,9 @@ import (
 	"testing"
 
 	"github.com/21S1298001/mahiron/internal/config"
+	"github.com/21S1298001/mahiron/internal/observability"
+	"go.opentelemetry.io/otel"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
 func TestBroadcastStopsSourceAfterLastSubscriberDetaches(t *testing.T) {
@@ -20,10 +23,10 @@ func TestBroadcastStopsSourceAfterLastSubscriberDetaches(t *testing.T) {
 
 	var first bytes.Buffer
 	var second bytes.Buffer
-	if err := broadcast.attach(&first); err != nil {
+	if err := broadcast.attach(context.Background(), &first); err != nil {
 		t.Fatal(err)
 	}
-	if err := broadcast.attach(&second); err != nil {
+	if err := broadcast.attach(context.Background(), &second); err != nil {
 		t.Fatal(err)
 	}
 
@@ -78,6 +81,7 @@ func TestBroadcastRunsAllStopCallbacks(t *testing.T) {
 }
 
 type fakeLiveSourceForBroadcast struct {
+	ctx       context.Context
 	done      chan struct{}
 	closeOnce sync.Once
 	mu        sync.Mutex
@@ -89,9 +93,10 @@ func newFakeLiveSource() *fakeLiveSourceForBroadcast {
 	return &fakeLiveSourceForBroadcast{done: make(chan struct{})}
 }
 
-func (s *fakeLiveSourceForBroadcast) Start(context.Context, io.Writer) error {
+func (s *fakeLiveSourceForBroadcast) Start(ctx context.Context, _ io.Writer) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.ctx = ctx
 	s.startsN++
 	return nil
 }
@@ -147,7 +152,7 @@ func TestDetachDoesNotLogExpectedClosedFileStopError(t *testing.T) {
 	}, nil)
 
 	var dst bytes.Buffer
-	if err := broadcast.attach(&dst); err != nil {
+	if err := broadcast.attach(context.Background(), &dst); err != nil {
 		t.Fatal(err)
 	}
 	broadcast.detach(&dst)
@@ -162,7 +167,7 @@ type fakeStopErrorDevice struct {
 	stopErr error
 }
 
-func (d fakeStopErrorDevice) Start(context.Context, io.Writer) error {
+func (d fakeStopErrorDevice) Start(ctx context.Context, _ io.Writer) error {
 	return nil
 }
 
@@ -176,4 +181,37 @@ func (d fakeStopErrorDevice) Done() <-chan struct{} {
 
 func (d fakeStopErrorDevice) Err() error {
 	return nil
+}
+
+func TestBroadcastPreservesTraceSuppressionWithoutSubscriberCancellation(t *testing.T) {
+	provider := sdktrace.NewTracerProvider()
+	previous := otel.GetTracerProvider()
+	otel.SetTracerProvider(provider)
+	t.Cleanup(func() { otel.SetTracerProvider(previous); _ = provider.Shutdown(context.Background()) })
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ctx, span := observability.NewFilteringTracerProvider(provider, []string{"stream"}).Tracer("test").Start(ctx, "stream")
+	defer span.End()
+	source := newFakeLiveSource()
+	broadcast := NewBroadcast(source, nil)
+	var dst bytes.Buffer
+	if err := broadcast.attach(ctx, &dst); err != nil {
+		t.Fatal(err)
+	}
+	defer broadcast.detach(&dst)
+	cancel()
+	if source.ctx.Err() != nil {
+		t.Fatal("source canceled with its first subscriber")
+	}
+	_, startup := observability.StartSpan(source.ctx, observability.SpanTunerProcessStart)
+	defer startup.End()
+	if startup.IsRecording() {
+		t.Fatal("source lost trace suppression")
+	}
+	if err := broadcast.Stop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if source.ctx.Err() != context.Canceled {
+		t.Fatal("source not canceled on stop")
+	}
 }
