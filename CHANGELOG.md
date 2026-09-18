@@ -1,5 +1,18 @@
 # Changelog
 
+## [v5.1.5](https://github.com/rokoucha/Mahiron/compare/v5.1.4...v5.1.5) - 2026-09-18
+
+- Update dependency @types/node to v24.13.4 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/168
+- Update module golang.org/x/text to v0.42.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/169
+- Update dependency vite to v8.3.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/171
+- Update module modernc.org/sqlite to v1.58.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/172
+- Update react monorepo to v19.3.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/173
+- Update dependency vitest to v5 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/174
+- Update dependency eslint-plugin-react-refresh to v0.5.7 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/175
+- Update dependency vitest to v5.0.1 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/177
+- Update dependency @types/node to v24.13.5 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/176
+- ストリーミングとヘルスチェックのトレースを抑止 by @rokoucha in https://github.com/rokoucha/Mahiron/pull/178
+
 ## [v5.1.4](https://github.com/rokoucha/Mahiron/compare/v5.1.3...v5.1.4) - 2026-09-10
 
 - Abort EPG collection early on a dead stream, flag empty tuner exits by @rokoucha in https://github.com/rokoucha/Mahiron/pull/163
