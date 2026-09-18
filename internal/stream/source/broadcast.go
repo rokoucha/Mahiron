@@ -64,7 +64,7 @@ func (b *Broadcast) Subscribe(ctx context.Context, dst io.Writer) error {
 }
 
 func (b *Broadcast) SubscribeRaw(ctx context.Context, dst io.Writer) error {
-	if err := b.attach(dst); err != nil {
+	if err := b.attach(ctx, dst); err != nil {
 		return err
 	}
 	defer b.detach(dst)
@@ -115,7 +115,7 @@ func (b *Broadcast) SubscriberCount() int {
 	return b.hub.Count()
 }
 
-func (b *Broadcast) attach(dst io.Writer) error {
+func (b *Broadcast) attach(ctx context.Context, dst io.Writer) error {
 	b.mu.Lock()
 	if b.stopped {
 		b.mu.Unlock()
@@ -132,7 +132,7 @@ func (b *Broadcast) attach(dst io.Writer) error {
 			observability.RecordStreamFanoutQueueDepth(context.Background(), b.channelType, b.channelID, delta)
 		},
 	})
-	if err := b.startLocked(); err != nil {
+	if err := b.startLocked(ctx); err != nil {
 		b.refs--
 		b.hub.Detach(dst)
 		b.mu.Unlock()
@@ -168,11 +168,12 @@ func (b *Broadcast) detach(dst io.Writer) {
 	slog.Debug("broadcast subscriber detached", "refs", refs)
 }
 
-func (b *Broadcast) startLocked() error {
+func (b *Broadcast) startLocked(sourceCtx context.Context) error {
 	if b.started {
 		return nil
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	// The shared source outlives its first subscriber, but keeps trace suppression.
+	ctx, cancel := context.WithCancel(context.WithoutCancel(sourceCtx))
 	b.cancel = cancel
 	if err := b.source.Start(ctx, b.hub); err != nil {
 		cancel()
