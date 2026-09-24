@@ -531,6 +531,7 @@ func TestRemoteSessionObserveLogosUsesRemoteAPI(t *testing.T) {
 				t.Fatalf("query = %q, want channel.type=GR and channel.channel=27", r.URL.RawQuery)
 			}
 			return streamtest.StringResponse(http.StatusOK, `[{
+				"id": 400101,
 				"serviceId": 101,
 				"networkId": 4,
 				"transportStreamId": 4,
@@ -539,6 +540,7 @@ func TestRemoteSessionObserveLogosUsesRemoteAPI(t *testing.T) {
 				"logoId": 12,
 				"hasLogoData": true
 			}, {
+				"id": 400102,
 				"serviceId": 102,
 				"networkId": 4,
 				"transportStreamId": 4,
@@ -674,7 +676,7 @@ func TestReadRemoteEventsDispatchesProgramsAndTuners(t *testing.T) {
 	var eventType string
 	var status tuner.Status
 	err := readRemoteEvents(context.Background(), strings.NewReader(`[
-{"resource":"program","type":"update","data":{"id":401010001,"eventId":1,"serviceId":101,"networkId":4}},
+{"resource":"program","type":"update","data":{"id":401010001,"eventId":1,"serviceId":101,"networkId":4,"startAt":1000,"duration":1800000,"isFree":true}},
 {"resource":"tuner","type":"update","data":{"index":2,"name":"remote","types":["GR"],"isAvailable":true}}
 `), updater, func(typ string, item tuner.Status) {
 		eventType, status = typ, item
@@ -692,10 +694,10 @@ func TestReadRemoteEventsDispatchesProgramsAndTuners(t *testing.T) {
 
 func TestReadRemoteEventsBatchesProgramsAndKeepsLatestUpdate(t *testing.T) {
 	src := strings.NewReader(`[
-{"resource":"program","type":"update","data":{"id":401010001,"eventId":1,"serviceId":101,"networkId":4,"name":"old"}},
-{"resource":"program","type":"update","data":{"id":401010001,"eventId":1,"serviceId":101,"networkId":4,"name":"new"}},
-{"resource":"program","type":"create","data":{"id":401010002,"eventId":2,"serviceId":101,"networkId":4,"name":"next"}},
-{"resource":"program","type":"create","data":{"id":401010003,"eventId":3,"serviceId":101,"networkId":4,"name":"later"}}
+{"resource":"program","type":"update","data":{"id":401010001,"eventId":1,"serviceId":101,"networkId":4,"startAt":1000,"duration":1800000,"isFree":true,"name":"old"}},
+{"resource":"program","type":"update","data":{"id":401010001,"eventId":1,"serviceId":101,"networkId":4,"startAt":1000,"duration":1800000,"isFree":true,"name":"new"}},
+{"resource":"program","type":"create","data":{"id":401010002,"eventId":2,"serviceId":101,"networkId":4,"startAt":2000,"duration":1800000,"isFree":false,"name":"next"}},
+{"resource":"program","type":"create","data":{"id":401010003,"eventId":3,"serviceId":101,"networkId":4,"startAt":3000,"duration":1800000,"isFree":false,"name":"later"}}
 ]`)
 	updater := &batchRecordingProgramUpdater{}
 
@@ -719,7 +721,7 @@ func TestReadRemoteEventsBatchesProgramsAndKeepsLatestUpdate(t *testing.T) {
 func TestReadRemoteEventsReturnsBatchUpdateError(t *testing.T) {
 	want := errors.New("database unavailable")
 	updater := &batchRecordingProgramUpdater{err: want}
-	src := strings.NewReader(`{"resource":"program","type":"update","data":{"id":1,"eventId":1,"serviceId":1,"networkId":1}}`)
+	src := strings.NewReader(`{"resource":"program","type":"update","data":{"id":1,"eventId":1,"serviceId":1,"networkId":1,"startAt":1000,"duration":1000,"isFree":true}}`)
 
 	err := readRemoteEventsBatched(context.Background(), src, updater, nil, time.Hour, 256)
 	if !errors.Is(err, want) {
@@ -735,7 +737,7 @@ func TestReadRemoteEventsFlushesProgramsOnInterval(t *testing.T) {
 		done <- readRemoteEventsBatched(context.Background(), reader, updater, nil, 10*time.Millisecond, 256)
 	}()
 
-	if _, err := io.WriteString(writer, "{\"resource\":\"program\",\"type\":\"update\",\"data\":{\"id\":1,\"eventId\":1,\"serviceId\":1,\"networkId\":1}}\n"); err != nil {
+	if _, err := io.WriteString(writer, "{\"resource\":\"program\",\"type\":\"update\",\"data\":{\"id\":1,\"eventId\":1,\"serviceId\":1,\"networkId\":1,\"startAt\":1000,\"duration\":1000,\"isFree\":true}}\n"); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -778,7 +780,7 @@ func TestReadRemoteProgramEventsIgnoresMalformedAndFilteredEvents(t *testing.T) 
 not-json
 {"resource":"service","type":"update","data":{"id":1}}
 {"resource":"program","type":"remove","data":{"id":401010001,"eventId":1,"serviceId":101,"networkId":4}}
-{"resource":"program","type":"update","data":{"id":401010002,"eventId":2,"serviceId":101,"networkId":4,"name":"kept"}}
+{"resource":"program","type":"update","data":{"id":401010002,"eventId":2,"serviceId":101,"networkId":4,"startAt":1000,"duration":1800000,"isFree":true,"name":"kept"}}
 {"resource":"program","type":"update","data":}
 `)
 	updater := &recordingProgramUpdater{}

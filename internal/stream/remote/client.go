@@ -14,9 +14,11 @@ import (
 	"time"
 
 	"github.com/21S1298001/mahiron/internal/config"
+	"github.com/21S1298001/mahiron/internal/mirakurun"
 	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/tuner"
+	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 	"github.com/21S1298001/mahiron/ts"
 )
 
@@ -235,41 +237,14 @@ func (c *Client) ScanServices(ctx context.Context, channelType, channel string) 
 		return nil, err
 	}
 	scanned = make([]ts.ServiceInfo, len(services))
-	for i, svc := range services {
-		logoID := int64(-1)
-		var logoVersion *uint16
-		var logoDownloadDataID *uint16
-		if remoteServiceHasLogo(svc) {
-			logoID = *svc.LogoID
-			logoVersion = remoteLogoVersion()
-			logoDownloadDataID = remoteLogoDownloadDataID(svc)
-		}
-		scanned[i] = ts.ServiceInfo{
-			Nid:                 svc.NetworkID,
-			Tsid:                svc.TransportStreamID,
-			Sid:                 svc.ServiceID,
-			Name:                svc.Name,
-			Type:                uint8(svc.Type),
-			EITScheduleFlag:     remoteBoolDefault(svc.EITScheduleFlag, true),
-			EITPresentFollowing: remoteBoolDefault(svc.EITPresentFollowing, true),
-			LogoId:              logoID,
-			LogoVersion:         logoVersion,
-			LogoDownloadDataId:  logoDownloadDataID,
-			RemoteControlKeyId:  uint8Ptr(uint8(svc.RemoteControlKeyID)),
-		}
+	for i := range services {
+		scanned[i] = mirakurun.ScanServiceFromAPI(&services[i])
 	}
 	return scanned, nil
 }
 
-func remoteBoolDefault(value *bool, fallback bool) bool {
-	if value == nil {
-		return fallback
-	}
-	return *value
-}
-
-func (c *Client) ListChannelServices(ctx context.Context, channelType, channel string) ([]remoteService, error) {
-	var services []remoteService
+func (c *Client) ListChannelServices(ctx context.Context, channelType, channel string) ([]apigen.Service, error) {
+	var services []apigen.Service
 	// Use Mirakurun's standard service filter instead of Mahiron's newer
 	// /channels/{type}/{channel}/services endpoint. Some older Mahiron servers
 	// redirect that endpoint with a relative Location header, which net/http
@@ -294,25 +269,11 @@ func (c *Client) channelServiceItemID(ctx context.Context, channelType, channel 
 		return 0, err
 	}
 	for _, svc := range services {
-		if svc.ServiceID == serviceID {
-			return int64(svc.NetworkID)*100000 + int64(svc.ServiceID), nil
+		if uint16(svc.ServiceId) == serviceID {
+			return int64(svc.NetworkId)*100000 + int64(svc.ServiceId), nil
 		}
 	}
 	return 0, ErrChannelNotFound
-}
-
-func remoteServiceHasLogo(svc remoteService) bool {
-	return svc.LogoID != nil && *svc.LogoID >= 0 && svc.HasLogoData
-}
-
-func remoteLogoVersion() *uint16 {
-	version := uint16(0)
-	return &version
-}
-
-func remoteLogoDownloadDataID(svc remoteService) *uint16 {
-	downloadDataID := svc.ServiceID
-	return &downloadDataID
 }
 
 func (c *Client) ListServicePrograms(ctx context.Context, networkID, serviceID uint16) (programs []*program.Program, err error) {
@@ -337,13 +298,13 @@ func (c *Client) ListServicePrograms(ctx context.Context, networkID, serviceID u
 	query.Set("serviceId", fmt.Sprint(serviceID))
 	req.URL.RawQuery = query.Encode()
 
-	var remotePrograms []remoteProgram
-	if err := c.doJSON(req, &remotePrograms); err != nil {
+	var apiPrograms []apigen.Program
+	if err := c.doJSON(req, &apiPrograms); err != nil {
 		return nil, err
 	}
-	programs = make([]*program.Program, len(remotePrograms))
-	for i := range remotePrograms {
-		programs[i] = remotePrograms[i].Program()
+	programs = make([]*program.Program, len(apiPrograms))
+	for i := range apiPrograms {
+		programs[i] = mirakurun.ProgramFromAPI(&apiPrograms[i])
 	}
 	return programs, nil
 }

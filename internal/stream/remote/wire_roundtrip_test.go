@@ -7,7 +7,9 @@ import (
 	"testing"
 
 	mahirondb "github.com/21S1298001/mahiron/internal/db"
+	"github.com/21S1298001/mahiron/internal/mirakurun"
 	"github.com/21S1298001/mahiron/internal/program"
+	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 )
 
 // TestRemoteProgramRoundTripsThroughStore guards the normalization that lets
@@ -53,11 +55,7 @@ func TestRemoteProgramRoundTripsThroughStore(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			var remote remoteProgram
-			if err := json.Unmarshal([]byte(tc.json), &remote); err != nil {
-				t.Fatal(err)
-			}
-			converted := remote.Program()
+			converted := decodeTestProgram(t, tc.json)
 			if err := store.UpsertAll(ctx, []*program.Program{converted}); err != nil {
 				t.Fatal(err)
 			}
@@ -69,14 +67,19 @@ func TestRemoteProgramRoundTripsThroughStore(t *testing.T) {
 				t.Fatal("program not stored")
 			}
 
-			var remoteAgain remoteProgram
-			if err := json.Unmarshal([]byte(tc.json), &remoteAgain); err != nil {
-				t.Fatal(err)
-			}
-			wanted := remoteAgain.Program()
+			wanted := decodeTestProgram(t, tc.json)
 			if !reflect.DeepEqual(wanted, stored) {
 				t.Fatalf("round trip mismatch:\n  converted = %#v\n  stored    = %#v", wanted, stored)
 			}
 		})
 	}
+}
+
+func decodeTestProgram(t *testing.T, raw string) *program.Program {
+	t.Helper()
+	var api apigen.Program
+	if err := json.Unmarshal([]byte(raw), &api); err != nil {
+		t.Fatal(err)
+	}
+	return mirakurun.ProgramFromAPI(&api)
 }

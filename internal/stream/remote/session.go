@@ -6,6 +6,7 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/bml"
 	"github.com/21S1298001/mahiron/internal/config"
+	"github.com/21S1298001/mahiron/internal/mirakurun"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/stream/channel"
 	"github.com/21S1298001/mahiron/internal/stream/source"
@@ -73,15 +74,18 @@ func (s *Session) ObserveLogos(ctx context.Context, observe func(*ts.LogoImage) 
 	if err != nil {
 		return err
 	}
-	for _, svc := range services {
-		if !remoteServiceHasLogo(svc) {
+	for i := range services {
+		// The scan conversion holds the only logo heuristic: a logo counts
+		// only when the remote reports both an ID and actual logo data.
+		scan := mirakurun.ScanServiceFromAPI(&services[i])
+		if scan.LogoId < 0 || scan.LogoVersion == nil || scan.LogoDownloadDataId == nil {
 			continue
 		}
-		data, err := s.client.GetLogoImage(ctx, int64(svc.NetworkID)*100000+int64(svc.ServiceID))
+		data, err := s.client.GetLogoImage(ctx, int64(scan.Nid)*100000+int64(scan.Sid))
 		if err != nil {
 			return err
 		}
-		image := &ts.LogoImage{OriginalNetworkID: svc.NetworkID, LogoID: uint16(*svc.LogoID), LogoVersion: *remoteLogoVersion(), DownloadDataID: *remoteLogoDownloadDataID(svc), LogoType: 5, Data: data}
+		image := &ts.LogoImage{OriginalNetworkID: scan.Nid, LogoID: uint16(scan.LogoId), LogoVersion: *scan.LogoVersion, DownloadDataID: *scan.LogoDownloadDataId, LogoType: 5, Data: data}
 		if err := observe(image); err != nil {
 			return err
 		}
