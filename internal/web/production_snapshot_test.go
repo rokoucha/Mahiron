@@ -53,8 +53,8 @@ func TestProductionSnapshot(t *testing.T) {
 	}
 	database := openSnapshotDB(t, filepath.Join(dir, "mahiron.db"))
 	hub := event.NewWithCapacity(100000)
-	services := service.NewServiceManager(service.NewSQLiteStore(database), channels, hub)
-	programs := program.NewProgramManager(program.NewSQLiteStore(database))
+	services := service.NewManager(service.NewSQLiteStore(database), channels, hub)
+	programs := program.NewManager(program.NewSQLiteStore(database))
 	handler := newSnapshotHandler(t, services, programs, hub)
 
 	outputs := map[string][]byte{}
@@ -139,7 +139,7 @@ func newSnapshotHandler(t *testing.T, services *service.Manager, programs *progr
 		ServiceManager: services,
 		ProgramManager: programs,
 		StreamManager:  testStreamManager{},
-		TunerManager:   tuner.NewTunerManager(&tuner.ManagerConfig{}),
+		TunerManager:   tuner.NewManager(&tuner.ManagerConfig{}),
 		JobManager:     jobs,
 		LogStore:       observability.NewLogStore(16),
 		EventHub:       hub,
@@ -182,7 +182,7 @@ func programEvents(t *testing.T, source *program.Manager) []byte {
 	}
 	t.Cleanup(func() { _ = database.Close() })
 	hub := event.NewWithCapacity(len(sample))
-	manager := program.NewProgramManager(program.NewSQLiteStore(database), hub)
+	manager := program.NewManager(program.NewSQLiteStore(database), hub)
 	if err := manager.UpsertPrograms(t.Context(), sample); err != nil {
 		t.Fatal(err)
 	}

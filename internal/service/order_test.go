@@ -8,7 +8,7 @@ import (
 
 func TestOrderServicesUsesChannelTypeFirstSeenOrder(t *testing.T) {
 	yes := true
-	manager := NewServiceManager(nil, config.ChannelsConfig{
+	manager := NewManager(nil, config.ChannelsConfig{
 		{Type: "BS", Channel: "101"},
 		{Type: "GR", Channel: "27", IsDisabled: &yes},
 		{Type: "GR", Channel: "26"},
@@ -30,7 +30,7 @@ func TestOrderServicesUsesChannelTypeFirstSeenOrder(t *testing.T) {
 }
 
 func TestOrderServicesSortsRemoteKeysBeforeMissingThenServiceFallbacks(t *testing.T) {
-	manager := NewServiceManager(nil, config.ChannelsConfig{{Type: "GR", Channel: "27"}})
+	manager := NewManager(nil, config.ChannelsConfig{{Type: "GR", Channel: "27"}})
 	services := []*Service{
 		testOrderService("no-key-low-service", "GR", 0, 1, 1, 1),
 		testOrderService("key-three", "GR", 3, 99, 1, 1),

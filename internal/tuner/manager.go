@@ -37,7 +37,7 @@ type ManagerConfig struct {
 	EventHub     eventPublisher
 }
 
-func NewTunerManager(cfg *ManagerConfig) *Manager {
+func NewManager(cfg *ManagerConfig) *Manager {
 	tuners := make([]*Tuner, len(cfg.TunersConfig))
 	runtime := make(map[*Tuner]*tunerRuntime, len(tuners))
 	for i, tunerConfig := range cfg.TunersConfig {

@@ -82,8 +82,8 @@ func TestBuildRuntimeWiresCurrentApplication(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildRuntime() message=%q err=%v", message, err)
 	}
-	if runtime.database == nil || runtime.jobs == nil || runtime.epgScan == nil || runtime.programs == nil ||
-		runtime.scanner == nil || runtime.server == nil || runtime.services == nil ||
+	if runtime.database == nil || runtime.jobs == nil || runtime.epgGatherer == nil || runtime.programs == nil ||
+		runtime.serviceScanner == nil || runtime.server == nil || runtime.services == nil ||
 		runtime.streams == nil || runtime.tuners == nil {
 		t.Fatalf("incomplete runtime: %#v", runtime)
 	}
@@ -228,13 +228,13 @@ func TestMissingScannedChannelsFindsOnlyConfiguredEmptyChannels(t *testing.T) {
 		{Type: "GR", Channel: "26"},
 		{Type: "GR", Channel: "25", IsDisabled: &disabled},
 	}
-	manager := service.NewServiceManager(store, channels)
+	manager := service.NewManager(store, channels)
 	if err := store.ReplaceChannelServices(ctx, "GR", "27", []*service.Service{
 		{Id: "0000100101", ServiceId: 101, NetworkId: 1, Name: "NHK", ChannelType: "GR", ChannelId: "27"},
 	}); err != nil {
 		t.Fatal(err)
 	}
-	scanner := servicescan.NewService(manager, nil, channels, 0)
+	scanner := servicescan.NewScanner(manager, nil, channels, 0)
 
 	missing, err := missingScannedChannels(ctx, manager, scanner.Channels())
 	if err != nil {

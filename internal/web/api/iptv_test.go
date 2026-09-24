@@ -59,7 +59,7 @@ func testIPTVHandler(t *testing.T) *Handler {
 		t.Fatal(err)
 	}
 
-	programManager := program.NewProgramManager(program.NewSQLiteStore(database))
+	programManager := program.NewManager(program.NewSQLiteStore(database))
 	if err := programManager.UpsertPrograms(ctx, []*program.Program{
 		{
 			ID:          program.ProgramID(1, 101, 501),
@@ -79,7 +79,7 @@ func testIPTVHandler(t *testing.T) *Handler {
 
 	return NewHandler(HandlerConfig{
 		ProgramManager: programManager,
-		ServiceManager: service.NewServiceManager(serviceStore, config.ChannelsConfig{
+		ServiceManager: service.NewManager(serviceStore, config.ChannelsConfig{
 			{Name: "Terrestrial", Type: "GR", Channel: "27", IsDisabled: &no},
 			{Name: "Satellite", Type: "BS", Channel: "101", IsDisabled: &no},
 		}),

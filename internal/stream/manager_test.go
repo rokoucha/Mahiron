@@ -29,7 +29,7 @@ func testManager(t *testing.T, devices *fakeTunerDeviceRecorder) *Manager {
 
 func TestConfiguredRemoteTunersFiltersByRemoteRouteType(t *testing.T) {
 	disabled := true
-	manager := NewStreamManager(ManagerConfig{
+	manager := NewManager(ManagerConfig{
 		Channels: config.ChannelsConfig{
 			{Type: "GR", Channel: "27", Routes: []config.ChannelRouteConfig{{Type: "GR", Channel: "27", Remote: "living"}}},
 			{Type: "BS", Channel: "101", Routes: []config.ChannelRouteConfig{{Type: "BS", Channel: "101", Remote: "living", IsDisabled: &disabled}}},
@@ -54,7 +54,7 @@ func testManagerWithDescrambler(t *testing.T, devices *fakeTunerDeviceRecorder, 
 	if descramblers != nil {
 		factory = descramblers.NewDescrambler
 	}
-	return NewStreamManager(ManagerConfig{
+	return NewManager(ManagerConfig{
 		Channels: config.ChannelsConfig{
 			{
 				Name:       "NHK",
@@ -131,7 +131,7 @@ func TestManagerSelectsRouteByFreeChannelType(t *testing.T) {
 	routeManager := &routeSelectingTunerManager{
 		availableType: "CATV_BS",
 	}
-	manager := NewStreamManager(ManagerConfig{
+	manager := NewManager(ManagerConfig{
 		Channels: config.ChannelsConfig{
 			{
 				Name:       "NHK BS",
@@ -167,7 +167,7 @@ func TestManagerSelectsRouteByFreeChannelType(t *testing.T) {
 func TestManagerSharesLocalRouteAcrossLogicalChannels(t *testing.T) {
 	no := false
 	devices := &fakeTunerDeviceRecorder{}
-	manager := NewStreamManager(ManagerConfig{
+	manager := NewManager(ManagerConfig{
 		Channels: config.ChannelsConfig{
 			{
 				Name: "NHK 1", Type: "GR", Channel: "27", IsDisabled: &no,
@@ -222,7 +222,7 @@ func TestManagerSharesLocalRouteAcrossLogicalChannels(t *testing.T) {
 func TestManagerCoalescesConcurrentLocalRouteCreation(t *testing.T) {
 	no := false
 	tuners := &slowTunerManager{delay: 20 * time.Millisecond}
-	manager := NewStreamManager(ManagerConfig{
+	manager := NewManager(ManagerConfig{
 		Channels: config.ChannelsConfig{
 			{
 				Name: "NHK 1", Type: "GR", Channel: "27", IsDisabled: &no,
@@ -269,7 +269,7 @@ func TestManagerCoalescesConcurrentLocalRouteCreation(t *testing.T) {
 func TestManagerKeepsSharedRouteRunningUntilAllLogicalConsumersDetach(t *testing.T) {
 	no := false
 	device := &fakeLiveTunerDevice{}
-	manager := NewStreamManager(ManagerConfig{
+	manager := NewManager(ManagerConfig{
 		Channels: config.ChannelsConfig{
 			{
 				Name: "NHK 1", Type: "GR", Channel: "27", IsDisabled: &no,
@@ -333,7 +333,7 @@ func TestManagerKeepsSharedRouteRunningUntilAllLogicalConsumersDetach(t *testing
 func TestManagerPassesTunerUserPriorityToAllocator(t *testing.T) {
 	no := false
 	tuners := &priorityCapturingTunerManager{}
-	manager := NewStreamManager(ManagerConfig{
+	manager := NewManager(ManagerConfig{
 		Channels: config.ChannelsConfig{
 			{Name: "NHK", Type: "GR", Channel: "27", IsDisabled: &no},
 		},
@@ -352,7 +352,7 @@ func TestManagerPassesTunerUserPriorityToAllocator(t *testing.T) {
 func TestManagerPassesBackgroundWaitToAllocator(t *testing.T) {
 	no := false
 	tuners := &priorityCapturingTunerManager{}
-	manager := NewStreamManager(ManagerConfig{
+	manager := NewManager(ManagerConfig{
 		Channels:     config.ChannelsConfig{{Name: "NHK", Type: "GR", Channel: "27", IsDisabled: &no}},
 		TunerManager: tuners,
 	})
@@ -441,7 +441,7 @@ func TestSessionRegistryRemoveIfSameKeepsNewerSession(t *testing.T) {
 func TestManagerDoesNotBlockHasSessionDuringAcquire(t *testing.T) {
 	no := false
 	tuners := newBlockingTunerManager("27")
-	manager := NewStreamManager(ManagerConfig{
+	manager := NewManager(ManagerConfig{
 		Channels:     config.ChannelsConfig{{Name: "NHK", Type: "GR", Channel: "27", IsDisabled: &no}},
 		TunerManager: tuners,
 	})
@@ -473,7 +473,7 @@ func TestManagerDoesNotBlockHasSessionDuringAcquire(t *testing.T) {
 func TestManagerAllowsDifferentSessionCreationDuringAcquire(t *testing.T) {
 	no := false
 	tuners := newBlockingTunerManager("27")
-	manager := NewStreamManager(ManagerConfig{
+	manager := NewManager(ManagerConfig{
 		Channels: config.ChannelsConfig{
 			{Name: "NHK 1", Type: "GR", Channel: "27", IsDisabled: &no},
 			{Name: "NHK 2", Type: "GR", Channel: "28", IsDisabled: &no},
@@ -511,7 +511,7 @@ func TestManagerAllowsDifferentSessionCreationDuringAcquire(t *testing.T) {
 func TestManagerCoalescesConcurrentSameSessionCreation(t *testing.T) {
 	no := false
 	tuners := newBlockingTunerManager("27")
-	manager := NewStreamManager(ManagerConfig{
+	manager := NewManager(ManagerConfig{
 		Channels:     config.ChannelsConfig{{Name: "NHK", Type: "GR", Channel: "27", IsDisabled: &no}},
 		TunerManager: tuners,
 	})
@@ -553,7 +553,7 @@ func TestManagerShutdownWaitsForInflightSessionWithoutHoldingLock(t *testing.T) 
 	device := &fakeLiveTunerDevice{}
 	tuners := newBlockingTunerManager("27")
 	tuners.devices["27"] = device
-	manager := NewStreamManager(ManagerConfig{
+	manager := NewManager(ManagerConfig{
 		Channels:     config.ChannelsConfig{{Name: "NHK", Type: "GR", Channel: "27", IsDisabled: &no}},
 		TunerManager: tuners,
 	})
@@ -615,7 +615,7 @@ func TestManagerSelectsRemoteRouteWhenLocalUnavailable(t *testing.T) {
 		})}))
 	}
 
-	manager := NewStreamManager(ManagerConfig{
+	manager := NewManager(ManagerConfig{
 		Channels: config.ChannelsConfig{
 			{
 				Name: "NHK", Type: "GR", Channel: "27", IsDisabled: &no,
@@ -672,7 +672,7 @@ func TestManagerSelectsRemoteRouteWhenRemoteAlreadyTunedToSameRoute(t *testing.T
 		})}))
 	}
 
-	manager := NewStreamManager(ManagerConfig{
+	manager := NewManager(ManagerConfig{
 		Channels: config.ChannelsConfig{
 			{
 				Name: "NHK", Type: "GR", Channel: "27", IsDisabled: &no,
@@ -722,7 +722,7 @@ func TestManagerFallsBackWhenRemoteRouteUnavailable(t *testing.T) {
 		})}))
 	}
 
-	manager := NewStreamManager(ManagerConfig{
+	manager := NewManager(ManagerConfig{
 		Channels: config.ChannelsConfig{
 			{
 				Name: "NHK", Type: "GR", Channel: "27", IsDisabled: &no,
@@ -774,7 +774,7 @@ func TestManagerStartsRemoteProgramEventSyncOutsideSessionLifecycle(t *testing.T
 		})}))
 	}
 
-	manager := NewStreamManager(ManagerConfig{
+	manager := NewManager(ManagerConfig{
 		Channels: config.ChannelsConfig{{
 			Name:       "NHK",
 			Type:       "GR",

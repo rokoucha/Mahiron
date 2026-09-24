@@ -27,7 +27,7 @@ type Manager struct {
 	events   eventPublisher
 }
 
-func NewServiceManager(store Store, channels config.ChannelsConfig, events ...eventPublisher) *Manager {
+func NewManager(store Store, channels config.ChannelsConfig, events ...eventPublisher) *Manager {
 	var publisher eventPublisher
 	if len(events) > 0 {
 		publisher = events[0]

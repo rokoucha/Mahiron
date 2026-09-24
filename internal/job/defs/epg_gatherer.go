@@ -19,7 +19,7 @@ const (
 	EPGGathererDefaultSchedule = "20,50 * * * *"
 )
 
-func RegisterEPGGathererService(registry Registry, service EPGGatherer) {
+func RegisterEPGGatherer(registry Registry, service EPGGatherer) {
 	registry.Register(job.JobDefinition{
 		Key:           EPGGathererKey,
 		Name:          EPGGathererName,

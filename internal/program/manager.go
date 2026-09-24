@@ -35,7 +35,7 @@ type programEvent struct {
 	removeID int64
 }
 
-func NewProgramManager(store Store, events ...eventPublisher) *Manager {
+func NewManager(store Store, events ...eventPublisher) *Manager {
 	m := &Manager{store: store}
 	if len(events) > 0 {
 		m.events = events[0]

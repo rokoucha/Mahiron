@@ -29,7 +29,7 @@ type StoredProgramLister interface {
 	ListServicePrograms(context.Context, uint16, uint16) ([]*program.Program, error)
 }
 
-type Service struct {
+type Gatherer struct {
 	channels      config.ChannelsConfig
 	programStore  ProgramStore
 	retentionDays int
@@ -38,8 +38,8 @@ type Service struct {
 	streams       StreamManager
 }
 
-func NewService(programStore ProgramStore, serviceStore ServiceStore, streams StreamManager, channels config.ChannelsConfig, retentionDays int, retrievalTime time.Duration) *Service {
-	return &Service{
+func NewGatherer(programStore ProgramStore, serviceStore ServiceStore, streams StreamManager, channels config.ChannelsConfig, retentionDays int, retrievalTime time.Duration) *Gatherer {
+	return &Gatherer{
 		channels:      channels,
 		programStore:  programStore,
 		retentionDays: retentionDays,
@@ -49,7 +49,7 @@ func NewService(programStore ProgramStore, serviceStore ServiceStore, streams St
 	}
 }
 
-func (s *Service) Groups(ctx context.Context) (map[uint16]*Network, error) {
+func (s *Gatherer) Groups(ctx context.Context) (map[uint16]*Network, error) {
 	storedServices, err := s.serviceStore.GetServices(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("get services: %w", err)
@@ -60,15 +60,15 @@ func (s *Service) Groups(ctx context.Context) (map[uint16]*Network, error) {
 	return groupServicesByNetwork(storedServices, s.channels), nil
 }
 
-func (s *Service) BuildNetworkInputs(ctx context.Context, networkID uint16) ([]Candidate, []ServiceKey, error) {
+func (s *Gatherer) BuildNetworkInputs(ctx context.Context, networkID uint16) ([]Candidate, []ServiceKey, error) {
 	return buildNetworkInputs(ctx, s.serviceStore, s.channels, networkID)
 }
 
-func (s *Service) GatherNetwork(ctx context.Context, networkID uint16, candidates []Candidate, serviceKeys []ServiceKey) error {
+func (s *Gatherer) GatherNetwork(ctx context.Context, networkID uint16, candidates []Candidate, serviceKeys []ServiceKey) error {
 	return gatherNetwork(ctx, s.programStore, s.serviceStore, s.streams, networkID, candidates, serviceKeys, s.retrievalTime)
 }
 
-func (s *Service) Cleanup(ctx context.Context, now time.Time) error {
+func (s *Gatherer) Cleanup(ctx context.Context, now time.Time) error {
 	if s.retentionDays <= 0 {
 		slog.Debug("skipping EPG cleanup", "retentionDays", s.retentionDays)
 		return nil

@@ -27,7 +27,7 @@ func testStreamHeadHandler(t *testing.T) (*Handler, *service.Manager) {
 	t.Cleanup(func() { _ = database.Close() })
 
 	store := service.NewSQLiteStore(database)
-	pm := program.NewProgramManager(program.NewSQLiteStore(database))
+	pm := program.NewManager(program.NewSQLiteStore(database))
 	if err := store.ReplaceChannelServices(context.Background(), "GR", "27", []*service.Service{
 		{
 			Id:                 "0000100001",
@@ -57,13 +57,13 @@ func testStreamHeadHandler(t *testing.T) (*Handler, *service.Manager) {
 		t.Fatal(err)
 	}
 
-	tunerManager := tuner.NewTunerManager(&tuner.ManagerConfig{
+	tunerManager := tuner.NewManager(&tuner.ManagerConfig{
 		TunersConfig: config.TunersConfig{
 			{Name: "first", Types: []string{"GR"}, Command: "sleep 30"},
 		},
 	})
-	sm := service.NewServiceManager(store, channels)
-	stm := stream.NewStreamManager(stream.ManagerConfig{
+	sm := service.NewManager(store, channels)
+	stm := stream.NewManager(stream.ManagerConfig{
 		Channels:     channels,
 		EITUpdater:   epggather.NewUpdater(pm),
 		TunerManager: tunerManager,

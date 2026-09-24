@@ -29,8 +29,8 @@ func newStatusHandler(t *testing.T) (*Handler, *job.Manager, *service.Manager, *
 		t.Fatal(err)
 	}
 	store := service.NewSQLiteStore(database)
-	sm := service.NewServiceManager(store, config.ChannelsConfig{})
-	pm := program.NewProgramManager(program.NewSQLiteStore(database))
+	sm := service.NewManager(store, config.ChannelsConfig{})
+	pm := program.NewManager(program.NewSQLiteStore(database))
 	return NewHandler(HandlerConfig{ServiceManager: sm, ProgramManager: pm, JobManager: mgr, EpgStaleAfter: 5000}), mgr, sm, pm, database
 }
 

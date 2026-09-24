@@ -25,7 +25,7 @@ type StreamScanner interface {
 	ScanServices(scanCtx, acquireCtx context.Context, channelType, channelID string, wait bool) ([]ts.ServiceInfo, error)
 }
 
-type Service struct {
+type Scanner struct {
 	channels    config.ChannelsConfig
 	scanTimeout time.Duration
 	scanner     StreamScanner
@@ -37,8 +37,8 @@ type Channel struct {
 	ID   string
 }
 
-func NewService(store Store, scanner StreamScanner, channels config.ChannelsConfig, scanTimeout time.Duration) *Service {
-	return &Service{
+func NewScanner(store Store, scanner StreamScanner, channels config.ChannelsConfig, scanTimeout time.Duration) *Scanner {
+	return &Scanner{
 		channels:    channels,
 		scanTimeout: scanTimeout,
 		scanner:     scanner,
@@ -46,7 +46,7 @@ func NewService(store Store, scanner StreamScanner, channels config.ChannelsConf
 	}
 }
 
-func (s *Service) Channels() []Channel {
+func (s *Scanner) Channels() []Channel {
 	seen := make(map[Channel]struct{}, len(s.channels))
 	channels := make([]Channel, 0, len(s.channels))
 	for _, channel := range s.channels {
@@ -68,7 +68,7 @@ func (s *Service) Channels() []Channel {
 // filtered to them. Filtering only applies when every enabled entry for the
 // pair specifies a serviceId; a single entry without one means the whole mux
 // should be registered, matching prior behavior.
-func (s *Service) allowedServiceIDs(channelType, channelID string) (map[uint32]struct{}, bool) {
+func (s *Scanner) allowedServiceIDs(channelType, channelID string) (map[uint32]struct{}, bool) {
 	allowed := make(map[uint32]struct{})
 	matched := false
 	for _, channel := range s.channels {
@@ -90,7 +90,7 @@ func (s *Service) allowedServiceIDs(channelType, channelID string) (map[uint32]s
 	return allowed, true
 }
 
-func (s *Service) ScanChannel(ctx context.Context, channelType string, channelID string, wait bool) (newNIDs []uint16, err error) {
+func (s *Scanner) ScanChannel(ctx context.Context, channelType string, channelID string, wait bool) (newNIDs []uint16, err error) {
 	ctx, span := observability.StartSpan(ctx, observability.SpanServiceScanScanChannel,
 		observability.AttrChannelType.String(channelType),
 		observability.AttrChannelID.String(channelID),

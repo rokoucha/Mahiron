@@ -31,7 +31,7 @@ func testProgramHandler(t *testing.T) *Handler {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = database.Close() })
-	pm := program.NewProgramManager(program.NewSQLiteStore(database))
+	pm := program.NewManager(program.NewSQLiteStore(database))
 	updater := epggather.NewUpdater(pm)
 	if err := updater.UpsertEITSection(ctx, &epggather.EITSection{
 		OriginalNetworkID: 1,
@@ -60,7 +60,7 @@ func testProgramHandler(t *testing.T) *Handler {
 	}
 	return NewHandler(HandlerConfig{
 		ProgramManager: pm,
-		ServiceManager: service.NewServiceManager(serviceStore, config.ChannelsConfig{
+		ServiceManager: service.NewManager(serviceStore, config.ChannelsConfig{
 			{Name: "NHK", Type: "GR", Channel: "27"},
 		}),
 	})
@@ -190,7 +190,7 @@ func TestGetProgramStreamMissingProgramAndService(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = database.Close() })
-	pm := program.NewProgramManager(program.NewSQLiteStore(database))
+	pm := program.NewManager(program.NewSQLiteStore(database))
 	if err := pm.ReplaceServicePrograms(ctx, 1, 101, 0, []*program.Program{
 		{ID: program.ProgramID(1, 101, 9), NetworkID: 1, ServiceID: 101, EventID: 9, StartAt: 1000, Duration: 1000},
 	}); err != nil {
@@ -198,7 +198,7 @@ func TestGetProgramStreamMissingProgramAndService(t *testing.T) {
 	}
 	missingServiceHandler := NewHandler(HandlerConfig{
 		ProgramManager: pm,
-		ServiceManager: service.NewServiceManager(service.NewSQLiteStore(database), config.ChannelsConfig{}),
+		ServiceManager: service.NewManager(service.NewSQLiteStore(database), config.ChannelsConfig{}),
 		StreamManager:  fakeProgramStreamManager{session: fakeProgramStreamSession{}},
 	})
 	res, err = missingServiceHandler.GetProgramStream(context.Background(), apigen.GetProgramStreamParams{ID: program.ProgramID(1, 101, 9)})
@@ -230,7 +230,7 @@ func TestProgramsIDStreamHeadOnlyRequiresProgram(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = database.Close() })
-	pm := program.NewProgramManager(program.NewSQLiteStore(database))
+	pm := program.NewManager(program.NewSQLiteStore(database))
 	id := program.ProgramID(1, 101, 9)
 	if err := pm.ReplaceServicePrograms(ctx, 1, 101, 0, []*program.Program{
 		{ID: id, NetworkID: 1, ServiceID: 101, EventID: 9, StartAt: 1000, Duration: 1000},
@@ -239,7 +239,7 @@ func TestProgramsIDStreamHeadOnlyRequiresProgram(t *testing.T) {
 	}
 	handler := NewHandler(HandlerConfig{
 		ProgramManager: pm,
-		ServiceManager: service.NewServiceManager(service.NewSQLiteStore(database), config.ChannelsConfig{}),
+		ServiceManager: service.NewManager(service.NewSQLiteStore(database), config.ChannelsConfig{}),
 	})
 	res, err := handler.ProgramsIDStreamHead(context.Background(), apigen.ProgramsIDStreamHeadParams{ID: id})
 	if err != nil {
@@ -262,7 +262,7 @@ func TestApiProgramExposesExtendedRelatedAndSeries(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = database.Close() })
-	pm := program.NewProgramManager(program.NewSQLiteStore(database))
+	pm := program.NewManager(program.NewSQLiteStore(database))
 	id := program.ProgramID(1, 101, 7)
 	nid := uint16(1)
 	tsid := uint16(10)

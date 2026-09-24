@@ -58,8 +58,8 @@ func testListHandler(t *testing.T) *Handler {
 		t.Fatal(err)
 	}
 	return NewHandler(HandlerConfig{
-		ProgramManager: program.NewProgramManager(program.NewSQLiteStore(database)),
-		ServiceManager: service.NewServiceManager(serviceStore, config.ChannelsConfig{
+		ProgramManager: program.NewManager(program.NewSQLiteStore(database)),
+		ServiceManager: service.NewManager(serviceStore, config.ChannelsConfig{
 			{Name: "NHK", Type: "GR", Channel: "27", IsDisabled: &no},
 			{Name: "BS", Type: "BS", Channel: "101", IsDisabled: &no},
 			{Name: "Disabled", Type: "GR", Channel: "28", IsDisabled: &yes},
@@ -144,7 +144,7 @@ func TestGetChannelsFetchesServicesInOneQuery(t *testing.T) {
 
 	counting := &countingServiceStore{Store: baseStore}
 	handler := NewHandler(HandlerConfig{
-		ServiceManager: service.NewServiceManager(counting, config.ChannelsConfig{
+		ServiceManager: service.NewManager(counting, config.ChannelsConfig{
 			{Name: "NHK", Type: "GR", Channel: "27", IsDisabled: &no},
 			{Name: "BS", Type: "BS", Channel: "101", IsDisabled: &no},
 		}),
@@ -176,7 +176,7 @@ func TestGetChannelsPropagatesStoreError(t *testing.T) {
 	}
 	store := service.NewSQLiteStore(database)
 	handler := NewHandler(HandlerConfig{
-		ServiceManager: service.NewServiceManager(store, config.ChannelsConfig{{Type: "GR", Channel: "27"}}),
+		ServiceManager: service.NewManager(store, config.ChannelsConfig{{Type: "GR", Channel: "27"}}),
 	})
 	if err := database.Close(); err != nil {
 		t.Fatal(err)
@@ -280,8 +280,8 @@ func TestServiceListEndpointsReturnServerOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 	handler := NewHandler(HandlerConfig{
-		ProgramManager: program.NewProgramManager(program.NewSQLiteStore(database)),
-		ServiceManager: service.NewServiceManager(store, config.ChannelsConfig{
+		ProgramManager: program.NewManager(program.NewSQLiteStore(database)),
+		ServiceManager: service.NewManager(store, config.ChannelsConfig{
 			{Name: "BS", Type: "BS", Channel: "101"},
 			{Name: "GR", Type: "GR", Channel: "27"},
 		}),
@@ -419,7 +419,7 @@ func TestApiServiceExposesEPGStatus(t *testing.T) {
 			}); err != nil {
 				t.Fatal(err)
 			}
-			sm := service.NewServiceManager(store, config.ChannelsConfig{{Type: "GR", Channel: "27"}})
+			sm := service.NewManager(store, config.ChannelsConfig{{Type: "GR", Channel: "27"}})
 			if tt.setup != nil {
 				tt.setup(ctx, sm, t)
 			}
@@ -468,7 +468,7 @@ func TestApiServiceExposesMirakurunLogoFieldsAndImage(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	sm := service.NewServiceManager(store, config.ChannelsConfig{{Type: "GR", Channel: "27"}})
+	sm := service.NewManager(store, config.ChannelsConfig{{Type: "GR", Channel: "27"}})
 	handler := NewHandler(HandlerConfig{ServiceManager: sm})
 
 	res, err := handler.GetServices(ctx, apigen.GetServicesParams{})

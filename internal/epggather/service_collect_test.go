@@ -556,7 +556,7 @@ func TestCollectServiceSnapshotsUsesBroadcastClockForSuccessTimestamp(t *testing
 
 func TestServiceCleanupUsesCleanupMetricSource(t *testing.T) {
 	store := &collectProgramStore{}
-	service := NewService(store, newRemoteSyncServiceStore(), nil, nil, 1, time.Second)
+	service := NewGatherer(store, newRemoteSyncServiceStore(), nil, nil, 1, time.Second)
 
 	if err := service.Cleanup(context.Background(), time.Now()); err != nil {
 		t.Fatal(err)

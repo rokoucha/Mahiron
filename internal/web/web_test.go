@@ -37,9 +37,9 @@ func TestHTTPContractRoundTripsThroughGeneratedClientAndSQLite(t *testing.T) {
 	disabled := false
 	channels := config.ChannelsConfig{{Name: "NHK", Type: "GR", Channel: "27", IsDisabled: &disabled}}
 	hub := event.New()
-	services := service.NewServiceManager(service.NewSQLiteStore(database), channels, hub)
-	programs := program.NewProgramManager(program.NewSQLiteStore(database), hub)
-	tuners := tuner.NewTunerManager(&tuner.ManagerConfig{})
+	services := service.NewManager(service.NewSQLiteStore(database), channels, hub)
+	programs := program.NewManager(program.NewSQLiteStore(database), hub)
+	tuners := tuner.NewManager(&tuner.ManagerConfig{})
 	jobs, err := job.NewManager(job.Config{})
 	if err != nil {
 		t.Fatal(err)
@@ -221,7 +221,7 @@ func TestNewWebFiltersHTTPSpans(t *testing.T) {
 	t.Cleanup(func() { _ = database.Close() })
 	handler, err := NewWeb(WebConfig{
 		ServiceManager: testServiceManager{},
-		ProgramManager: program.NewProgramManager(program.NewSQLiteStore(database), event.New()),
+		ProgramManager: program.NewManager(program.NewSQLiteStore(database), event.New()),
 		StreamManager:  tracedTestStreamManager{},
 		EventHub:       event.New(),
 		TracerProvider: provider,

@@ -36,11 +36,11 @@ func TestServiceUpdaterDispatchesPerChannel(t *testing.T) {
 	defer func() { _ = database.Close() }()
 	mgr := newTestManager(t)
 	serviceStore := service.NewSQLiteStore(database)
-	sm := service.NewServiceManager(serviceStore, channels)
-	stm := stream.NewStreamManager(stream.ManagerConfig{Channels: channels, TunerManager: noTunerManager{}})
-	pm := program.NewProgramManager(program.NewSQLiteStore(database))
-	scanService := servicescan.NewService(sm, stream.NewServiceScannerAdapter(stm), channels, 30*time.Second)
-	epgService := epggather.NewService(pm, sm, stm, channels, 0, 10*time.Minute)
+	sm := service.NewManager(serviceStore, channels)
+	stm := stream.NewManager(stream.ManagerConfig{Channels: channels, TunerManager: noTunerManager{}})
+	pm := program.NewManager(program.NewSQLiteStore(database))
+	scanService := servicescan.NewScanner(sm, stream.NewServiceScannerAdapter(stm), channels, 30*time.Second)
+	epgService := epggather.NewGatherer(pm, sm, stm, channels, 0, 10*time.Minute)
 	RegisterServiceUpdater(mgr, scanService, epgService)
 	if _, err := mgr.Enqueue(ServiceUpdaterKey); err != nil {
 		t.Fatal(err)
@@ -62,10 +62,10 @@ func TestServiceUpdaterScansWithoutWaitingForBusyTuner(t *testing.T) {
 	defer func() { _ = database.Close() }()
 	mgr := newTestManager(t)
 	scanner := &recordingServiceScanner{channels: []servicescan.Channel{{Type: "EXT1", ID: "11"}}}
-	sm := service.NewServiceManager(service.NewSQLiteStore(database), channels)
-	pm := program.NewProgramManager(program.NewSQLiteStore(database))
-	stm := stream.NewStreamManager(stream.ManagerConfig{Channels: channels, TunerManager: noTunerManager{}})
-	epgService := epggather.NewService(pm, sm, stm, channels, 0, 10*time.Minute)
+	sm := service.NewManager(service.NewSQLiteStore(database), channels)
+	pm := program.NewManager(program.NewSQLiteStore(database))
+	stm := stream.NewManager(stream.ManagerConfig{Channels: channels, TunerManager: noTunerManager{}})
+	epgService := epggather.NewGatherer(pm, sm, stm, channels, 0, 10*time.Minute)
 	RegisterServiceUpdater(mgr, scanner, epgService)
 
 	if _, err := mgr.Enqueue(ServiceUpdaterKey); err != nil {
@@ -119,10 +119,10 @@ func TestServiceScanRetriesWhenTunerUnavailable(t *testing.T) {
 		channels: []servicescan.Channel{{Type: "EXT1", ID: "11"}},
 		err:      tuner.ErrTunerUnavailable,
 	}
-	sm := service.NewServiceManager(service.NewSQLiteStore(database), channels)
-	pm := program.NewProgramManager(program.NewSQLiteStore(database))
-	stm := stream.NewStreamManager(stream.ManagerConfig{Channels: channels, TunerManager: noTunerManager{}})
-	epgService := epggather.NewService(pm, sm, stm, channels, 0, 10*time.Minute)
+	sm := service.NewManager(service.NewSQLiteStore(database), channels)
+	pm := program.NewManager(program.NewSQLiteStore(database))
+	stm := stream.NewManager(stream.ManagerConfig{Channels: channels, TunerManager: noTunerManager{}})
+	epgService := epggather.NewGatherer(pm, sm, stm, channels, 0, 10*time.Minute)
 	RegisterServiceUpdater(mgr, scanner, epgService)
 
 	if _, err := mgr.Enqueue(ServiceUpdaterKey); err != nil {
@@ -150,10 +150,10 @@ func TestServiceScanDoesNotRetryChannelNotFound(t *testing.T) {
 		channels: []servicescan.Channel{{Type: "EXT1", ID: "29"}},
 		err:      errors.New("channel not found"),
 	}
-	sm := service.NewServiceManager(service.NewSQLiteStore(database), channels)
-	pm := program.NewProgramManager(program.NewSQLiteStore(database))
-	stm := stream.NewStreamManager(stream.ManagerConfig{Channels: channels, TunerManager: noTunerManager{}})
-	epgService := epggather.NewService(pm, sm, stm, channels, 0, 10*time.Minute)
+	sm := service.NewManager(service.NewSQLiteStore(database), channels)
+	pm := program.NewManager(program.NewSQLiteStore(database))
+	stm := stream.NewManager(stream.ManagerConfig{Channels: channels, TunerManager: noTunerManager{}})
+	epgService := epggather.NewGatherer(pm, sm, stm, channels, 0, 10*time.Minute)
 	RegisterServiceUpdater(mgr, scanner, epgService)
 
 	if _, err := mgr.Enqueue(ServiceUpdaterKey); err != nil {
@@ -185,7 +185,7 @@ func TestEPGGathererDispatchesPerNetwork(t *testing.T) {
 	}
 	defer func() { _ = database.Close() }()
 	serviceStore := service.NewSQLiteStore(database)
-	sm := service.NewServiceManager(serviceStore, channels)
+	sm := service.NewManager(serviceStore, channels)
 	if err := serviceStore.ReplaceChannelServices(ctx, "GR", "27", []*service.Service{
 		{Id: "327360001", NetworkId: 32736, ServiceId: 1, EITScheduleFlag: true, ChannelType: "GR", ChannelId: "27"},
 	}); err != nil {
@@ -208,9 +208,9 @@ func TestEPGGathererDispatchesPerNetwork(t *testing.T) {
 	}
 	defer func() { _ = programDatabase.Close() }()
 	mgr := newTestManager(t)
-	stm := stream.NewStreamManager(stream.ManagerConfig{Channels: channels, TunerManager: noTunerManager{}})
-	epgService := epggather.NewService(program.NewProgramManager(program.NewSQLiteStore(programDatabase)), sm, stm, channels, 3, 10*time.Minute)
-	RegisterEPGGathererService(mgr, epgService)
+	stm := stream.NewManager(stream.ManagerConfig{Channels: channels, TunerManager: noTunerManager{}})
+	epgService := epggather.NewGatherer(program.NewManager(program.NewSQLiteStore(programDatabase)), sm, stm, channels, 3, 10*time.Minute)
+	RegisterEPGGatherer(mgr, epgService)
 	if _, err := mgr.Enqueue(EPGGathererKey); err != nil {
 		t.Fatal(err)
 	}
@@ -230,10 +230,10 @@ func TestEnqueueEPGGatherForNetworkIgnoresMissingNetwork(t *testing.T) {
 	}
 	defer func() { _ = database.Close() }()
 	mgr := newTestManager(t)
-	sm := service.NewServiceManager(service.NewSQLiteStore(database), channels)
-	stm := stream.NewStreamManager(stream.ManagerConfig{Channels: channels, TunerManager: noTunerManager{}})
-	pm := program.NewProgramManager(program.NewSQLiteStore(database))
-	epgService := epggather.NewService(pm, sm, stm, channels, 0, 10*time.Minute)
+	sm := service.NewManager(service.NewSQLiteStore(database), channels)
+	stm := stream.NewManager(stream.ManagerConfig{Channels: channels, TunerManager: noTunerManager{}})
+	pm := program.NewManager(program.NewSQLiteStore(database))
+	epgService := epggather.NewGatherer(pm, sm, stm, channels, 0, 10*time.Minute)
 
 	enqueued, err := enqueueEPGGatherForNetwork(ctx, mgr, epgService, 999, nil, nil)
 	if err != nil {
@@ -342,15 +342,15 @@ func TestServiceUpdaterStartsEPGGatherAfterServiceScans(t *testing.T) {
 	}
 	defer func() { _ = database.Close() }()
 	serviceStore := service.NewSQLiteStore(database)
-	sm := service.NewServiceManager(serviceStore, channels)
+	sm := service.NewManager(serviceStore, channels)
 	mgr := newTestManager(t)
-	pm := program.NewProgramManager(program.NewSQLiteStore(database))
-	scanService := servicescan.NewService(sm, fakeScanScanner{services: []ts.ServiceInfo{
+	pm := program.NewManager(program.NewSQLiteStore(database))
+	scanService := servicescan.NewScanner(sm, fakeScanScanner{services: []ts.ServiceInfo{
 		{Nid: 4, Tsid: 1, Sid: 101, Name: "test", Type: 1, EITScheduleFlag: true},
 		{Nid: 4, Tsid: 1, Sid: 102, Name: "test", Type: 1, EITScheduleFlag: true},
 	}}, channels, 30*time.Second)
-	stm := stream.NewStreamManager(stream.ManagerConfig{Channels: channels, TunerManager: noTunerManager{}})
-	epgService := epggather.NewService(pm, sm, stm, channels, 0, 10*time.Minute)
+	stm := stream.NewManager(stream.ManagerConfig{Channels: channels, TunerManager: noTunerManager{}})
+	epgService := epggather.NewGatherer(pm, sm, stm, channels, 0, 10*time.Minute)
 	RegisterServiceUpdater(mgr, scanService, epgService)
 
 	if _, err := mgr.Enqueue(ServiceUpdaterKey); err != nil {

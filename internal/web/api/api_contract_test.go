@@ -331,7 +331,7 @@ func TestProgramContractExtendedKeepsEveryItem(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = database.Close() })
-	pm := program.NewProgramManager(program.NewSQLiteStore(database))
+	pm := program.NewManager(program.NewSQLiteStore(database))
 	full := contractFullProgram()
 	if err := pm.UpsertPrograms(ctx, []*program.Program{full}); err != nil {
 		t.Fatal(err)
@@ -446,7 +446,7 @@ func contractServiceHandler(t *testing.T, channels config.ChannelsConfig) *Handl
 		t.Fatal(err)
 	}
 	return NewHandler(HandlerConfig{
-		ServiceManager: service.NewServiceManager(store, channels),
+		ServiceManager: service.NewManager(store, channels),
 	})
 }
 
@@ -581,7 +581,7 @@ func TestMirakurunOutputsShareOneFixture(t *testing.T) {
 		t.Fatal(err)
 	}
 	programStore := program.NewSQLiteStore(database)
-	pm := program.NewProgramManager(programStore)
+	pm := program.NewManager(programStore)
 	full, minimal := contractFullProgram(), contractMinimalProgram()
 	orphan := &program.Program{ID: program.ProgramID(9, 109, 1), EventID: 1, ServiceID: 109, NetworkID: 9,
 		StartAt: 1788609060000, Duration: 1800000, IsFree: true}
@@ -594,7 +594,7 @@ func TestMirakurunOutputsShareOneFixture(t *testing.T) {
 	hub.PublishEvent(event.ResourceService, event.TypeUpdate, services[0].EventData(nil))
 	handler := NewHandler(HandlerConfig{
 		ProgramManager: pm,
-		ServiceManager: service.NewServiceManager(serviceStore, config.ChannelsConfig{
+		ServiceManager: service.NewManager(serviceStore, config.ChannelsConfig{
 			{Name: "Terrestrial", Type: "GR", Channel: "27"},
 			{Name: "Satellite", Type: "BS", Channel: "101"},
 		}),

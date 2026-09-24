@@ -15,7 +15,7 @@ func newTestProgramManager(t *testing.T) *program.Manager {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = database.Close() })
-	return program.NewProgramManager(program.NewSQLiteStore(database))
+	return program.NewManager(program.NewSQLiteStore(database))
 }
 
 func TestUpsertEITSectionDecodesDescriptors(t *testing.T) {

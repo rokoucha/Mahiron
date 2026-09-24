@@ -14,7 +14,7 @@ func newTestManager(t *testing.T) *Manager {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = database.Close() })
-	return NewProgramManager(NewSQLiteStore(database))
+	return NewManager(NewSQLiteStore(database))
 }
 
 func TestListFiltersAndSorts(t *testing.T) {
@@ -269,13 +269,13 @@ func TestUpsertProgramsSkipsWriteWhenUnchanged(t *testing.T) {
 	defer func() { _ = database.Close() }()
 
 	p := &Program{ID: ProgramID(1, 2, 1), NetworkID: 1, ServiceID: 2, EventID: 1, StartAt: 1000, Duration: 1000, Name: "title"}
-	seed := NewProgramManager(NewSQLiteStore(database))
+	seed := NewManager(NewSQLiteStore(database))
 	if err := seed.UpsertPrograms(ctx, []*Program{p}); err != nil {
 		t.Fatal(err)
 	}
 
 	recording := &recordingProgramStore{Store: NewSQLiteStore(database)}
-	manager := NewProgramManager(recording)
+	manager := NewManager(recording)
 	if err := manager.UpsertPrograms(ctx, []*Program{
 		{ID: p.ID, NetworkID: 1, ServiceID: 2, EventID: 1, StartAt: 1000, Duration: 1000, Name: "title"},
 	}); err != nil {
@@ -296,13 +296,13 @@ func TestUpsertProgramsWritesOnlyChangedPrograms(t *testing.T) {
 
 	unchanged := &Program{ID: ProgramID(1, 2, 1), NetworkID: 1, ServiceID: 2, EventID: 1, StartAt: 1000, Duration: 1000, Name: "unchanged"}
 	changed := &Program{ID: ProgramID(1, 2, 2), NetworkID: 1, ServiceID: 2, EventID: 2, StartAt: 2000, Duration: 1000, Name: "old name"}
-	seed := NewProgramManager(NewSQLiteStore(database))
+	seed := NewManager(NewSQLiteStore(database))
 	if err := seed.UpsertPrograms(ctx, []*Program{unchanged, changed}); err != nil {
 		t.Fatal(err)
 	}
 
 	recording := &recordingProgramStore{Store: NewSQLiteStore(database)}
-	manager := NewProgramManager(recording)
+	manager := NewManager(recording)
 	if err := manager.UpsertPrograms(ctx, []*Program{
 		{ID: unchanged.ID, NetworkID: 1, ServiceID: 2, EventID: 1, StartAt: 1000, Duration: 1000, Name: "unchanged"},
 		{ID: changed.ID, NetworkID: 1, ServiceID: 2, EventID: 2, StartAt: 2000, Duration: 1000, Name: "new name"},
@@ -326,13 +326,13 @@ func TestReplaceServiceProgramsSkipsWriteWhenIdentical(t *testing.T) {
 	defer func() { _ = database.Close() }()
 
 	p := &Program{ID: ProgramID(1, 2, 1), NetworkID: 1, ServiceID: 2, EventID: 1, StartAt: 1000, Duration: 1000, Name: "title"}
-	seed := NewProgramManager(NewSQLiteStore(database))
+	seed := NewManager(NewSQLiteStore(database))
 	if err := seed.ReplaceServicePrograms(ctx, 1, 2, 0, []*Program{p}); err != nil {
 		t.Fatal(err)
 	}
 
 	recording := &recordingProgramStore{Store: NewSQLiteStore(database)}
-	manager := NewProgramManager(recording)
+	manager := NewManager(recording)
 	if err := manager.ReplaceServicePrograms(ctx, 1, 2, 0, []*Program{
 		{ID: p.ID, NetworkID: 1, ServiceID: 2, EventID: 1, StartAt: 1000, Duration: 1000, Name: "title"},
 	}); err != nil {

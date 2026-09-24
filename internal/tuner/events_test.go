@@ -21,7 +21,7 @@ func (p *fakeTunerEventPublisher) PublishTunerStatusEvent(typ string, _ map[stri
 
 func TestTunerManagerPublishesCreateAndUpdateEvents(t *testing.T) {
 	publisher := &fakeTunerEventPublisher{}
-	mgr := NewTunerManager(&ManagerConfig{
+	mgr := NewManager(&ManagerConfig{
 		TunersConfig: config.TunersConfig{{Name: "first", Types: []string{"GR"}, Command: "true"}},
 		EventHub:     publisher,
 	})

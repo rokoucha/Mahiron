@@ -112,7 +112,7 @@ func Run(ctx context.Context, args []string) int {
 	runtime.jobs.Start()
 	runtime.streams.StartRemoteProgramEventSync(signalCtx)
 
-	if err := runStartupTasks(signalCtx, runtime.services, runtime.programs, runtime.jobs, runtime.scanner, runtime.epgScan, runtime.database, cfg); err != nil {
+	if err := runStartupTasks(signalCtx, runtime.services, runtime.programs, runtime.jobs, runtime.serviceScanner, runtime.epgGatherer, runtime.database, cfg); err != nil {
 		slog.Error("startup tasks failed", "err", err)
 	}
 	if err := runtime.services.SeedEventLog(signalCtx); err != nil {
@@ -135,10 +135,10 @@ type applicationRuntime struct {
 	database           *db.DB
 	jobs               *job.Manager
 	obs                observability.SetupResult
-	epgScan            *epggather.Service
+	epgGatherer        *epggather.Gatherer
 	programs           *program.Manager
 	server             *server.Server
-	scanner            *servicescan.Service
+	serviceScanner     *servicescan.Scanner
 	services           *service.Manager
 	streams            *stream.Manager
 	tuners             *tuner.Manager
@@ -150,14 +150,14 @@ func buildRuntime(cfg *config.Config, database *db.DB, obs observability.SetupRe
 	programStore := program.NewSQLiteStore(database)
 	events := event.New()
 
-	tuners := tuner.NewTunerManager(&tuner.ManagerConfig{
+	tuners := tuner.NewManager(&tuner.ManagerConfig{
 		TunersConfig: cfg.Tuners,
 		EventHub:     events,
 	})
 
-	services := service.NewServiceManager(serviceStore, cfg.Channels, events)
+	services := service.NewManager(serviceStore, cfg.Channels, events)
 
-	programs := program.NewProgramManager(programStore, events)
+	programs := program.NewManager(programStore, events)
 	epgUpdater := epggather.NewUpdater(programs)
 
 	var dataBroadcastStore *cache.SQLiteModuleStore
@@ -196,7 +196,7 @@ func buildRuntime(cfg *config.Config, database *db.DB, obs observability.SetupRe
 		// default.
 		moduleStore = cache.NewModuleCache(0)
 	}
-	streams := stream.NewStreamManager(stream.ManagerConfig{
+	streams := stream.NewManager(stream.ManagerConfig{
 		Channels:       cfg.Channels,
 		Remotes:        cfg.Remotes,
 		EITUpdater:     epgUpdater,
@@ -207,18 +207,18 @@ func buildRuntime(cfg *config.Config, database *db.DB, obs observability.SetupRe
 		TunerManager:   tuners,
 		ModuleStore:    moduleStore,
 	})
-	serviceScanner := stream.NewServiceScannerAdapter(streams)
+	scanAdapter := stream.NewServiceScannerAdapter(streams)
 	logoCollector := stream.NewLogoCollectorAdapter(streams)
-	scanService := servicescan.NewService(services, serviceScanner, cfg.Channels, time.Duration(cfg.System.ServiceScanTimeout)*time.Millisecond)
-	epgService := epggather.NewService(programs, services, streams, cfg.Channels, cfg.System.EpgRetentionDays, time.Duration(cfg.System.EpgRetrievalTime)*time.Millisecond)
+	serviceScanner := servicescan.NewScanner(services, scanAdapter, cfg.Channels, time.Duration(cfg.System.ServiceScanTimeout)*time.Millisecond)
+	epgGatherer := epggather.NewGatherer(programs, services, streams, cfg.Channels, cfg.System.EpgRetentionDays, time.Duration(cfg.System.EpgRetrievalTime)*time.Millisecond)
 
 	jobs, err := job.NewManager(job.Config{MaxHistory: 100, MaxConcurrentJobs: cfg.System.MaxConcurrentJobs}, events)
 	if err != nil {
 		return nil, "failed to create job manager", err
 	}
 
-	defs.RegisterServiceUpdater(jobs, scanService, epgService)
-	defs.RegisterEPGGathererService(jobs, epgService)
+	defs.RegisterServiceUpdater(jobs, serviceScanner, epgGatherer)
+	defs.RegisterEPGGatherer(jobs, epgGatherer)
 	defs.RegisterLogoGatherer(jobs, logoCollector, services, time.Duration(cfg.System.LogoGatherTimeout)*time.Millisecond)
 
 	schedules := cfg.System.Jobs
@@ -264,10 +264,10 @@ func buildRuntime(cfg *config.Config, database *db.DB, obs observability.SetupRe
 		database:           database,
 		jobs:               jobs,
 		obs:                obs,
-		epgScan:            epgService,
+		epgGatherer:        epgGatherer,
 		programs:           programs,
 		server:             server.NewServer(listenAddresses(cfg), handler),
-		scanner:            scanService,
+		serviceScanner:     serviceScanner,
 		services:           services,
 		streams:            streams,
 		tuners:             tuners,
@@ -345,7 +345,7 @@ func (r *applicationRuntime) shutdown() {
 	slog.Info("observability shut down")
 }
 
-func runStartupTasks(ctx context.Context, services *service.Manager, programs *program.Manager, jobs *job.Manager, scanner *servicescan.Service, epgScan *epggather.Service, database *db.DB, cfg *config.Config) error {
+func runStartupTasks(ctx context.Context, services *service.Manager, programs *program.Manager, jobs *job.Manager, serviceScanner *servicescan.Scanner, epgGatherer *epggather.Gatherer, database *db.DB, cfg *config.Config) error {
 	if err := services.ReconcileChannels(ctx); err != nil {
 		return fmt.Errorf("reconcile service channels: %w", err)
 	}
@@ -358,11 +358,11 @@ func runStartupTasks(ctx context.Context, services *service.Manager, programs *p
 
 	enqueuedFullUpdate := enqueueStartupServiceUpdate(jobs, count, channelState)
 	if !enqueuedFullUpdate {
-		missing, err := missingScannedChannels(ctx, services, scanner.Channels())
+		missing, err := missingScannedChannels(ctx, services, serviceScanner.Channels())
 		if err != nil {
 			return fmt.Errorf("find unscanned channels: %w", err)
 		}
-		enqueueStartupServiceScans(ctx, jobs, scanner, epgScan, missing)
+		enqueueStartupServiceScans(ctx, jobs, serviceScanner, epgGatherer, missing)
 	}
 
 	stale, _, _, err := services.EPGSummary(ctx, int64(cfg.System.EpgStaleAfter), time.Now().UnixMilli())

@@ -28,7 +28,7 @@ func TestProgramManagerPublishesCreateUpdateAndRemoveEvents(t *testing.T) {
 	}
 	defer func() { _ = database.Close() }()
 	publisher := &fakeProgramEventPublisher{}
-	manager := NewProgramManager(NewSQLiteStore(database), publisher)
+	manager := NewManager(NewSQLiteStore(database), publisher)
 
 	p := &Program{ID: ProgramID(1, 101, 1), NetworkID: 1, ServiceID: 101, EventID: 1, Name: "first"}
 	if err := manager.UpsertPrograms(ctx, []*Program{p}); err != nil {
@@ -67,7 +67,7 @@ func TestProgramManagerPublishesMergedSparseUpdateEvent(t *testing.T) {
 	}
 	defer func() { _ = database.Close() }()
 	publisher := &fakeProgramEventPublisher{}
-	manager := NewProgramManager(NewSQLiteStore(database), publisher)
+	manager := NewManager(NewSQLiteStore(database), publisher)
 
 	id := ProgramID(1, 101, 1)
 	if err := manager.UpsertPrograms(ctx, []*Program{{

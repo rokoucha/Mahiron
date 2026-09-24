@@ -90,7 +90,7 @@ var (
 	_ BMLSource = (*remote.Session)(nil)
 )
 
-func NewStreamManager(cfg ManagerConfig) *Manager {
+func NewManager(cfg ManagerConfig) *Manager {
 	descramblerFactory := cfg.DescramblerFactory
 	if descramblerFactory == nil {
 		descramblerFactory = source.NewCommandDescrambler

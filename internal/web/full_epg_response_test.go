@@ -97,10 +97,10 @@ func newFullEPGHandler(t *testing.T) http.Handler {
 	t.Cleanup(func() { _ = jobs.Shutdown(context.Background()) })
 
 	handler, err := NewWeb(WebConfig{
-		ServiceManager: service.NewServiceManager(service.NewSQLiteStore(database), nil, hub),
-		ProgramManager: program.NewProgramManager(store, hub),
+		ServiceManager: service.NewManager(service.NewSQLiteStore(database), nil, hub),
+		ProgramManager: program.NewManager(store, hub),
 		StreamManager:  testStreamManager{},
-		TunerManager:   tuner.NewTunerManager(&tuner.ManagerConfig{}),
+		TunerManager:   tuner.NewManager(&tuner.ManagerConfig{}),
 		JobManager:     jobs,
 		LogStore:       observability.NewLogStore(16),
 		EventHub:       hub,
@@ -198,10 +198,10 @@ func newContentEPGHandler(t *testing.T) http.Handler {
 	t.Cleanup(func() { _ = jobs.Shutdown(context.Background()) })
 
 	handler, err := NewWeb(WebConfig{
-		ServiceManager: service.NewServiceManager(serviceStore, nil, hub),
-		ProgramManager: program.NewProgramManager(store, hub),
+		ServiceManager: service.NewManager(serviceStore, nil, hub),
+		ProgramManager: program.NewManager(store, hub),
 		StreamManager:  testStreamManager{},
-		TunerManager:   tuner.NewTunerManager(&tuner.ManagerConfig{}),
+		TunerManager:   tuner.NewManager(&tuner.ManagerConfig{}),
 		JobManager:     jobs,
 		LogStore:       observability.NewLogStore(16),
 		EventHub:       hub,
