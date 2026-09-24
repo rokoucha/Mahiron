@@ -238,32 +238,6 @@ func TestEventsFromContentAndParentalDescriptors(t *testing.T) {
 	}
 }
 
-func TestServiceFromScanInfo(t *testing.T) {
-	remoteKey := uint8(7)
-	version := uint16(3)
-	download := uint16(9)
-	info := ts.ServiceInfo{
-		Nid: 4, Tsid: 0x4010, Sid: 104, Name: "NHK",
-		Type: 1, EITScheduleFlag: true, EITPresentFollowing: true,
-		LogoId: 100, LogoVersion: &version, LogoDownloadDataId: &download,
-		RemoteControlKeyId: &remoteKey,
-	}
-	svc := ServiceFromScanInfo(info)
-	if svc.Key != (model.ServiceKey{NetworkID: 4, StreamID: 0x4010, ServiceID: 104}) {
-		t.Fatalf("key = %+v", svc.Key)
-	}
-	if svc.Logo == nil || svc.Logo.LogoID != 100 || svc.Logo.Version != 3 || svc.Logo.DownloadDataID != 9 {
-		t.Fatalf("logo = %+v", svc.Logo)
-	}
-	if svc.RemoteControlKey == nil || *svc.RemoteControlKey != 7 {
-		t.Fatalf("remote key = %+v", svc.RemoteControlKey)
-	}
-	info.LogoId = -1
-	if ServiceFromScanInfo(info).Logo != nil {
-		t.Fatal("negative logo ID must yield no logo")
-	}
-}
-
 func TestLogoFromImageDeleted(t *testing.T) {
 	logo, err := LogoFromImage(&ts.LogoImage{OriginalNetworkID: 4, LogoID: 1, IsDeleted: true})
 	if err != nil {

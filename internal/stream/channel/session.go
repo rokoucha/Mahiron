@@ -9,6 +9,7 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/bml"
 	"github.com/21S1298001/mahiron/internal/bml/cache"
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/stream/demux"
 	"github.com/21S1298001/mahiron/internal/stream/source"
@@ -130,8 +131,8 @@ func (s *Session) ProgramStream(ctx context.Context, p *program.Program, decode 
 	return s.programStream(ctx, p, decode, dst)
 }
 
-func (s *Session) ScanServices(ctx context.Context) ([]ts.ServiceInfo, error) {
-	scan := ts.NewServiceScan()
+func (s *Session) ScanServices(ctx context.Context) ([]model.Service, error) {
+	scan := newServiceScan()
 	err := s.input.WithUser(ctx, func(ctx context.Context) error {
 		return s.rawDemuxer.ObserveSections(ctx, func(section ts.Section) bool {
 			switch section.TableID() {

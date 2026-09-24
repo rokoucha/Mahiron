@@ -15,6 +15,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/bml/cache"
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/job/run"
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/stream/channel"
@@ -70,7 +71,7 @@ type Session interface {
 	ChannelStream(context.Context, bool, io.Writer) error
 	ProgramStream(context.Context, *program.Program, bool, io.Writer) error
 	ServiceStream(context.Context, uint16, bool, io.Writer) error
-	ScanServices(context.Context) ([]ts.ServiceInfo, error)
+	ScanServices(context.Context) ([]model.Service, error)
 	CollectEIT(context.Context, func(*ts.EIT) error) error
 	ObserveLogos(context.Context, func(*ts.LogoImage) error) error
 	Stop(context.Context) error
@@ -268,7 +269,7 @@ func (m *Manager) CheckAvailable(ctx context.Context, channelType, channel strin
 	return m.sources.CheckAvailable(ctx, channelType, channel)
 }
 
-func (m *Manager) scanRemoteServices(ctx context.Context, channelType, channel string) ([]ts.ServiceInfo, bool, error) {
+func (m *Manager) scanRemoteServices(ctx context.Context, channelType, channel string) ([]model.Service, bool, error) {
 	return m.sources.ScanRemoteServices(ctx, channelType, channel)
 }
 

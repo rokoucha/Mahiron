@@ -7,6 +7,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/bml"
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/mirakurun"
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/stream/channel"
 	"github.com/21S1298001/mahiron/internal/stream/source"
@@ -57,7 +58,7 @@ func (s *Session) Users() []tuner.User {
 	return users
 }
 
-func (s *Session) ScanServices(ctx context.Context) ([]ts.ServiceInfo, error) {
+func (s *Session) ScanServices(ctx context.Context) ([]model.Service, error) {
 	return s.client.ScanServices(ctx, s.routeChannel.Type, s.routeChannel.Channel)
 }
 

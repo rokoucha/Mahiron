@@ -15,6 +15,7 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/bml"
 	"github.com/21S1298001/mahiron/internal/config"
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/service"
 	"github.com/21S1298001/mahiron/internal/stream/internal/streamtest"
@@ -502,10 +503,10 @@ func TestRemoteSessionScanServicesUsesRemoteAPI(t *testing.T) {
 	if auth != wantAuth {
 		t.Fatalf("Authorization = %q, want %q", auth, wantAuth)
 	}
-	if len(got) != 1 || got[0].Nid != 32736 || got[0].Sid != 1024 || got[0].Tsid != 32736 || got[0].Name != "remote service" || got[0].RemoteControlKeyId == nil || *got[0].RemoteControlKeyId != 5 {
+	if len(got) != 1 || got[0].Key != (model.ServiceKey{NetworkID: 32736, StreamID: 32736, ServiceID: 1024}) || got[0].Name != "remote service" || got[0].RemoteControlKey == nil || *got[0].RemoteControlKey != 5 {
 		t.Fatalf("services = %#v", got)
 	}
-	if got[0].LogoId != 12 || got[0].LogoVersion == nil || *got[0].LogoVersion != 0 || got[0].LogoDownloadDataId == nil || *got[0].LogoDownloadDataId != 1024 {
+	if got[0].Logo == nil || got[0].Logo.LogoID != 12 || got[0].Logo.Version == nil || *got[0].Logo.Version != 0 || got[0].Logo.DownloadDataID == nil || *got[0].Logo.DownloadDataID != 1024 {
 		t.Fatalf("logo metadata = %#v", got[0])
 	}
 }

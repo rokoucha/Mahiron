@@ -3,6 +3,7 @@ package stream
 import (
 	"context"
 
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/ts"
 )
 
@@ -30,7 +31,7 @@ func NewServiceScannerAdapter(manager *Manager) *ServiceScannerAdapter {
 	return &ServiceScannerAdapter{manager: manager}
 }
 
-func (a *ServiceScannerAdapter) ScanServices(scanCtx, acquireCtx context.Context, channelType, channelID string, wait bool) ([]ts.ServiceInfo, error) {
+func (a *ServiceScannerAdapter) ScanServices(scanCtx, acquireCtx context.Context, channelType, channelID string, wait bool) ([]model.Service, error) {
 	if services, handled, err := a.manager.scanRemoteServices(scanCtx, channelType, channelID); handled {
 		return services, err
 	}

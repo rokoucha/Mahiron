@@ -13,6 +13,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/bml"
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/job/run"
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/stream/channel"
 	"github.com/21S1298001/mahiron/internal/stream/internal/streamtest"
@@ -373,7 +374,7 @@ func (fakeDeadSession) ProgramStream(context.Context, *program.Program, bool, io
 	return nil
 }
 func (fakeDeadSession) ServiceStream(context.Context, uint16, bool, io.Writer) error { return nil }
-func (fakeDeadSession) ScanServices(context.Context) ([]ts.ServiceInfo, error)       { return nil, nil }
+func (fakeDeadSession) ScanServices(context.Context) ([]model.Service, error)        { return nil, nil }
 func (fakeDeadSession) CollectEIT(context.Context, func(*ts.EIT) error) error        { return nil }
 func (fakeDeadSession) ObserveLogos(context.Context, func(*ts.LogoImage) error) error {
 	return nil

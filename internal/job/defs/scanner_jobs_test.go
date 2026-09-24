@@ -10,6 +10,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/db"
 	"github.com/21S1298001/mahiron/internal/epggather"
 	"github.com/21S1298001/mahiron/internal/job"
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/service"
 	"github.com/21S1298001/mahiron/internal/servicescan"
@@ -345,9 +346,9 @@ func TestServiceUpdaterStartsEPGGatherAfterServiceScans(t *testing.T) {
 	sm := service.NewManager(serviceStore, channels)
 	mgr := newTestManager(t)
 	pm := program.NewManager(program.NewSQLiteStore(database))
-	scanService := servicescan.NewScanner(sm, fakeScanScanner{services: []ts.ServiceInfo{
-		{Nid: 4, Tsid: 1, Sid: 101, Name: "test", Type: 1, EITScheduleFlag: true},
-		{Nid: 4, Tsid: 1, Sid: 102, Name: "test", Type: 1, EITScheduleFlag: true},
+	scanService := servicescan.NewScanner(sm, fakeScanScanner{services: []model.Service{
+		{Key: model.ServiceKey{NetworkID: 4, StreamID: 1, ServiceID: 101}, Name: "test", Type: 1, EITSchedule: true},
+		{Key: model.ServiceKey{NetworkID: 4, StreamID: 1, ServiceID: 102}, Name: "test", Type: 1, EITSchedule: true},
 	}}, channels, 30*time.Second)
 	stm := stream.NewManager(stream.ManagerConfig{Channels: channels, TunerManager: noTunerManager{}})
 	epgService := epggather.NewGatherer(pm, sm, stm, channels, 0, 10*time.Minute)
@@ -365,11 +366,11 @@ func TestServiceUpdaterStartsEPGGatherAfterServiceScans(t *testing.T) {
 }
 
 type fakeScanScanner struct {
-	services []ts.ServiceInfo
+	services []model.Service
 }
 
-func (f fakeScanScanner) ScanServices(context.Context, context.Context, string, string, bool) ([]ts.ServiceInfo, error) {
-	return append([]ts.ServiceInfo(nil), f.services...), nil
+func (f fakeScanScanner) ScanServices(context.Context, context.Context, string, string, bool) ([]model.Service, error) {
+	return append([]model.Service(nil), f.services...), nil
 }
 
 type recordingServiceScanner struct {

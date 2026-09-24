@@ -22,59 +22,6 @@ func TestParseLogoTransmissionDescriptorType1(t *testing.T) {
 	}
 }
 
-func TestServiceScanUsesLogoTransmissionDescriptor(t *testing.T) {
-	section := buildSDT(t, 0x1234, 0x5678, []sdtServiceSpec{{
-		serviceID: 100,
-		descriptors: append(
-			serviceDescriptor(1, nil, []byte{0x0e, 'L', 'O', 'G', 'O'}),
-			DescriptorTagLogoTransmission, 7, 0x01, 0xff, 0x2a, 0xf0, 0x01, 0x12, 0x34,
-		),
-	}})
-	scan := NewServiceScan()
-	scan.Observe(buildPAT(t, map[uint16]uint16{100: 0x0100}))
-	scan.Observe(section)
-	got := scan.Services()
-	if len(got) != 1 || got[0].LogoId != 0x12a {
-		t.Fatalf("services = %#v", got)
-	}
-	if got[0].LogoVersion == nil || *got[0].LogoVersion != 1 {
-		t.Fatalf("logo version = %v, want 1", got[0].LogoVersion)
-	}
-	if got[0].LogoDownloadDataId == nil || *got[0].LogoDownloadDataId != 0x1234 {
-		t.Fatalf("logo download data id = %v, want 0x1234", got[0].LogoDownloadDataId)
-	}
-}
-
-func TestServiceScanResolvesIndirectLogoTransmissionDescriptor(t *testing.T) {
-	section := buildSDT(t, 0x1234, 0x5678, []sdtServiceSpec{
-		{
-			serviceID: 100,
-			descriptors: append(
-				serviceDescriptor(1, nil, []byte{0x0e, 'A'}),
-				DescriptorTagLogoTransmission, 7, 0x01, 0xff, 0x2a, 0xf0, 0x03, 0x12, 0x34,
-			),
-		},
-		{
-			serviceID: 101,
-			descriptors: append(
-				serviceDescriptor(1, nil, []byte{0x0e, 'B'}),
-				DescriptorTagLogoTransmission, 3, 0x02, 0xff, 0x2a,
-			),
-		},
-	})
-	scan := NewServiceScan()
-	scan.Observe(buildPAT(t, map[uint16]uint16{100: 0x0100, 101: 0x0101}))
-	scan.Observe(section)
-	got := scan.Services()
-	if len(got) != 2 {
-		t.Fatalf("services = %#v", got)
-	}
-	if got[1].LogoId != 0x12a || got[1].LogoVersion == nil || *got[1].LogoVersion != 3 ||
-		got[1].LogoDownloadDataId == nil || *got[1].LogoDownloadDataId != 0x1234 {
-		t.Fatalf("indirect logo service = %#v", got[1])
-	}
-}
-
 func TestParseCDTLogoImage(t *testing.T) {
 	png := append([]byte(nil), pngSignature...)
 	png = append(png, 0, 1, 2, 3)

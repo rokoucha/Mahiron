@@ -8,38 +8,6 @@ import (
 	"github.com/21S1298001/mahiron/ts"
 )
 
-// ServiceFromScanInfo converts one TS service scan entry to the internal
-// broadcast model. A negative logo ID means the scan found no logo
-// reference, so the model carries no Logo.
-func ServiceFromScanInfo(info ts.ServiceInfo) model.Service {
-	svc := model.Service{
-		Key: model.ServiceKey{
-			NetworkID: info.Nid,
-			StreamID:  info.Tsid,
-			ServiceID: info.Sid,
-		},
-		Name:             info.Name,
-		Type:             info.Type,
-		EITSchedule:      info.EITScheduleFlag,
-		EITPresentFollow: info.EITPresentFollowing,
-	}
-	if info.RemoteControlKeyId != nil {
-		v := *info.RemoteControlKeyId
-		svc.RemoteControlKey = &v
-	}
-	if info.LogoId >= 0 {
-		logo := &model.LogoRef{LogoID: uint16(info.LogoId)}
-		if info.LogoVersion != nil {
-			logo.Version = *info.LogoVersion
-		}
-		if info.LogoDownloadDataId != nil {
-			logo.DownloadDataID = *info.LogoDownloadDataId
-		}
-		svc.Logo = logo
-	}
-	return svc
-}
-
 // EventsFromEIT converts one TS EIT section to model events. Descriptors
 // are decoded directly into meaning values; the intermediate string-keyed
 // descriptor map is gone. A zero start time or a zero duration means

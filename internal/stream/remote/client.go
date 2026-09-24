@@ -15,11 +15,11 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/mirakurun"
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/tuner"
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
-	"github.com/21S1298001/mahiron/ts"
 )
 
 const xMirakurunTunerUserID = "X-Mirakurun-Tuner-User-ID"
@@ -219,7 +219,7 @@ func (c *Client) GetLogoImage(ctx context.Context, serviceItemID int64) (data []
 	return io.ReadAll(resp.Body)
 }
 
-func (c *Client) ScanServices(ctx context.Context, channelType, channel string) (scanned []ts.ServiceInfo, err error) {
+func (c *Client) ScanServices(ctx context.Context, channelType, channel string) (scanned []model.Service, err error) {
 	start := time.Now()
 	defer func() {
 		observability.RecordRemoteOperation(ctx, remoteOperationScanServices, remoteOperationResult(err), time.Since(start).Milliseconds())
@@ -236,9 +236,9 @@ func (c *Client) ScanServices(ctx context.Context, channelType, channel string) 
 	if err != nil {
 		return nil, err
 	}
-	scanned = make([]ts.ServiceInfo, len(services))
+	scanned = make([]model.Service, len(services))
 	for i := range services {
-		scanned[i] = mirakurun.ScanServiceFromAPI(&services[i])
+		scanned[i] = mirakurun.ScanServiceModelFromAPI(&services[i])
 	}
 	return scanned, nil
 }

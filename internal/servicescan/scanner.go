@@ -9,10 +9,10 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/job/run"
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/internal/service"
 	"github.com/21S1298001/mahiron/internal/tuner"
-	"github.com/21S1298001/mahiron/ts"
 	"github.com/google/uuid"
 )
 
@@ -22,7 +22,7 @@ type Store interface {
 }
 
 type StreamScanner interface {
-	ScanServices(scanCtx, acquireCtx context.Context, channelType, channelID string, wait bool) ([]ts.ServiceInfo, error)
+	ScanServices(scanCtx, acquireCtx context.Context, channelType, channelID string, wait bool) ([]model.Service, error)
 }
 
 type Scanner struct {
@@ -137,9 +137,9 @@ func (s *Scanner) ScanChannel(ctx context.Context, channelType string, channelID
 	}
 
 	if allowed, filter := s.allowedServiceIDs(channelType, channelID); filter {
-		filtered := make([]ts.ServiceInfo, 0, len(services))
+		filtered := make([]model.Service, 0, len(services))
 		for _, svc := range services {
-			if _, ok := allowed[uint32(svc.Sid)]; ok {
+			if _, ok := allowed[uint32(svc.Key.ServiceID)]; ok {
 				filtered = append(filtered, svc)
 			}
 		}
@@ -149,33 +149,33 @@ func (s *Scanner) ScanChannel(ctx context.Context, channelType string, channelID
 	scanned := make([]*service.Service, len(services))
 	for i, svc := range services {
 		var remoteControlKeyID uint8
-		if svc.RemoteControlKeyId != nil {
-			remoteControlKeyID = *svc.RemoteControlKeyId
+		if svc.RemoteControlKey != nil {
+			remoteControlKeyID = *svc.RemoteControlKey
 		}
 		var logoID *int64
 		var logoVersion *int64
 		var logoDownloadDataID *int64
-		if svc.LogoId >= 0 {
-			v := svc.LogoId
+		if svc.Logo != nil {
+			v := int64(svc.Logo.LogoID)
 			logoID = &v
 		}
-		if svc.LogoVersion != nil {
-			v := int64(*svc.LogoVersion)
+		if svc.Logo != nil && svc.Logo.Version != nil {
+			v := int64(*svc.Logo.Version)
 			logoVersion = &v
 		}
-		if svc.LogoDownloadDataId != nil {
-			v := int64(*svc.LogoDownloadDataId)
+		if svc.Logo != nil && svc.Logo.DownloadDataID != nil {
+			v := int64(*svc.Logo.DownloadDataID)
 			logoDownloadDataID = &v
 		}
 		scanned[i] = &service.Service{
-			Id:                  fmt.Sprintf("%05d%05d", svc.Nid, svc.Sid),
-			ServiceId:           svc.Sid,
-			NetworkId:           svc.Nid,
-			TransportStreamId:   svc.Tsid,
+			Id:                  fmt.Sprintf("%05d%05d", svc.Key.NetworkID, svc.Key.ServiceID),
+			ServiceId:           svc.Key.ServiceID,
+			NetworkId:           svc.Key.NetworkID,
+			TransportStreamId:   svc.Key.StreamID,
 			Name:                svc.Name,
 			Type:                svc.Type,
-			EITScheduleFlag:     svc.EITScheduleFlag,
-			EITPresentFollowing: svc.EITPresentFollowing,
+			EITScheduleFlag:     svc.EITSchedule,
+			EITPresentFollowing: svc.EITPresentFollow,
 			LogoId:              logoID,
 			LogoVersion:         logoVersion,
 			LogoDownloadDataId:  logoDownloadDataID,

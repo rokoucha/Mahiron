@@ -11,9 +11,9 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/job/run"
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/internal/tuner"
-	"github.com/21S1298001/mahiron/ts"
 	"github.com/google/uuid"
 )
 
@@ -53,7 +53,7 @@ type RemoteClient interface {
 
 // ScanRemoteServices reads a remote channel's already-scanned services without
 // acquiring a tuner. handled is false when the selected route is local.
-func (p *Pool) ScanRemoteServices(ctx context.Context, channelType, channel string) (services []ts.ServiceInfo, handled bool, err error) {
+func (p *Pool) ScanRemoteServices(ctx context.Context, channelType, channel string) (services []model.Service, handled bool, err error) {
 	channelConfig := p.findChannel(channelType, channel)
 	if channelConfig == nil {
 		return nil, true, ErrChannelNotFound
@@ -69,7 +69,7 @@ func (p *Pool) ScanRemoteServices(ctx context.Context, channelType, channel stri
 			continue
 		}
 		scanner, ok := client.(interface {
-			ScanServices(context.Context, string, string) ([]ts.ServiceInfo, error)
+			ScanServices(context.Context, string, string) ([]model.Service, error)
 		})
 		if !ok {
 			return nil, false, nil

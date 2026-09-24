@@ -10,8 +10,8 @@ import (
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/db"
 	"github.com/21S1298001/mahiron/internal/job/run"
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/service"
-	"github.com/21S1298001/mahiron/ts"
 )
 
 func TestServiceScanChannelStoresScannedServicesAndReturnsNewNetworks(t *testing.T) {
@@ -23,10 +23,10 @@ func TestServiceScanChannelStoresScannedServicesAndReturnsNewNetworks(t *testing
 	defer func() { _ = database.Close() }()
 	store := service.NewSQLiteStore(database)
 	manager := service.NewManager(store, nil)
-	scanner := &staticScanner{services: []ts.ServiceInfo{
-		{Nid: 4, Tsid: 1, Sid: 101, Name: "BS 101", Type: 1, EITScheduleFlag: true, EITPresentFollowing: true, RemoteControlKeyId: uint8Ptr(1)},
-		{Nid: 4, Tsid: 1, Sid: 102, Name: "BS 102", Type: 1, EITScheduleFlag: false, EITPresentFollowing: true, RemoteControlKeyId: uint8Ptr(2)},
-		{Nid: 5, Tsid: 2, Sid: 201, Name: "BS 201", Type: 2, EITScheduleFlag: true, EITPresentFollowing: false, RemoteControlKeyId: uint8Ptr(3)},
+	scanner := &staticScanner{services: []model.Service{
+		{Key: model.ServiceKey{NetworkID: 4, StreamID: 1, ServiceID: 101}, Name: "BS 101", Type: 1, EITSchedule: true, EITPresentFollow: true, RemoteControlKey: uint8Ptr(1)},
+		{Key: model.ServiceKey{NetworkID: 4, StreamID: 1, ServiceID: 102}, Name: "BS 102", Type: 1, EITSchedule: false, EITPresentFollow: true, RemoteControlKey: uint8Ptr(2)},
+		{Key: model.ServiceKey{NetworkID: 5, StreamID: 2, ServiceID: 201}, Name: "BS 201", Type: 2, EITSchedule: true, EITPresentFollow: false, RemoteControlKey: uint8Ptr(3)},
 	}}
 
 	got, err := NewScanner(manager, scanner, nil, time.Second).ScanChannel(ctx, "BS", "BS01", true)
@@ -73,11 +73,11 @@ func TestServiceScanChannelReturnsOnlyNewNetworks(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	scanner := &staticScanner{services: []ts.ServiceInfo{
-		{Nid: 4, Tsid: 1, Sid: 101, Name: "known", Type: 1},
-		{Nid: 4, Tsid: 1, Sid: 102, Name: "new same network", Type: 1},
-		{Nid: 5, Tsid: 1, Sid: 201, Name: "new network", Type: 1},
-		{Nid: 5, Tsid: 1, Sid: 202, Name: "new network duplicate", Type: 1},
+	scanner := &staticScanner{services: []model.Service{
+		{Key: model.ServiceKey{NetworkID: 4, StreamID: 1, ServiceID: 101}, Name: "known", Type: 1},
+		{Key: model.ServiceKey{NetworkID: 4, StreamID: 1, ServiceID: 102}, Name: "new same network", Type: 1},
+		{Key: model.ServiceKey{NetworkID: 5, StreamID: 1, ServiceID: 201}, Name: "new network", Type: 1},
+		{Key: model.ServiceKey{NetworkID: 5, StreamID: 1, ServiceID: 202}, Name: "new network duplicate", Type: 1},
 	}}
 
 	got, err := NewScanner(manager, scanner, nil, time.Second).ScanChannel(ctx, "BS", "BS01", false)
@@ -104,9 +104,9 @@ func TestServiceScanReportsNamedServiceResults(t *testing.T) {
 	}
 	reporter := &captureReporter{}
 	ctx = run.WithReporter(ctx, reporter)
-	scanner := &staticScanner{services: []ts.ServiceInfo{
-		{Nid: 4, Tsid: 1, Sid: 101, Name: "Known", Type: 1},
-		{Nid: 4, Tsid: 1, Sid: 102, Name: "New Service", Type: 1, RemoteControlKeyId: uint8Ptr(2)},
+	scanner := &staticScanner{services: []model.Service{
+		{Key: model.ServiceKey{NetworkID: 4, StreamID: 1, ServiceID: 101}, Name: "Known", Type: 1},
+		{Key: model.ServiceKey{NetworkID: 4, StreamID: 1, ServiceID: 102}, Name: "New Service", Type: 1, RemoteControlKey: uint8Ptr(2)},
 	}}
 
 	if _, err := NewScanner(manager, scanner, nil, time.Second).ScanChannel(ctx, "BS", "BS01", false); err != nil {
@@ -146,7 +146,7 @@ func TestServiceScanChannelReturnsNoNetworksWhenAllServicesKnown(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	scanner := &staticScanner{services: []ts.ServiceInfo{{Nid: 4, Tsid: 1, Sid: 101, Name: "known", Type: 1}}}
+	scanner := &staticScanner{services: []model.Service{{Key: model.ServiceKey{NetworkID: 4, StreamID: 1, ServiceID: 101}, Name: "known", Type: 1}}}
 
 	got, err := NewScanner(manager, scanner, nil, time.Second).ScanChannel(ctx, "BS", "BS01", false)
 	if err != nil {
@@ -213,8 +213,8 @@ func TestServiceScanTimeoutDoesNotApplyToAcquireContext(t *testing.T) {
 	defer func() { _ = database.Close() }()
 	store := service.NewSQLiteStore(database)
 	manager := service.NewManager(store, nil)
-	scanner := &contextCapturingScanner{services: []ts.ServiceInfo{
-		{Nid: 4, Tsid: 1, Sid: 101, Name: "BS 101", Type: 1},
+	scanner := &contextCapturingScanner{services: []model.Service{
+		{Key: model.ServiceKey{NetworkID: 4, StreamID: 1, ServiceID: 101}, Name: "BS 101", Type: 1},
 	}}
 
 	if _, err := NewScanner(manager, scanner, nil, time.Minute).ScanChannel(ctx, "BS", "BS01", true); err != nil {
@@ -267,9 +267,9 @@ func TestServiceScanChannelFiltersToConfiguredServiceId(t *testing.T) {
 	defer func() { _ = database.Close() }()
 	store := service.NewSQLiteStore(database)
 	manager := service.NewManager(store, nil)
-	scanner := &staticScanner{services: []ts.ServiceInfo{
-		{Nid: 4, Tsid: 1, Sid: 100, Name: "other service", Type: 1},
-		{Nid: 4, Tsid: 1, Sid: 119, Name: "iTSCOMLive", Type: 1},
+	scanner := &staticScanner{services: []model.Service{
+		{Key: model.ServiceKey{NetworkID: 4, StreamID: 1, ServiceID: 100}, Name: "other service", Type: 1},
+		{Key: model.ServiceKey{NetworkID: 4, StreamID: 1, ServiceID: 119}, Name: "iTSCOMLive", Type: 1},
 	}}
 	channels := config.ChannelsConfig{{Type: "EXT1", Channel: "38", ServiceId: uint32Ptr(119)}}
 
@@ -294,10 +294,10 @@ func TestServiceScanChannelUnionsServiceIdsAcrossMultipleEnabledEntries(t *testi
 	defer func() { _ = database.Close() }()
 	store := service.NewSQLiteStore(database)
 	manager := service.NewManager(store, nil)
-	scanner := &staticScanner{services: []ts.ServiceInfo{
-		{Nid: 4, Tsid: 1, Sid: 100, Name: "first", Type: 1},
-		{Nid: 4, Tsid: 1, Sid: 119, Name: "second", Type: 1},
-		{Nid: 4, Tsid: 1, Sid: 200, Name: "excluded", Type: 1},
+	scanner := &staticScanner{services: []model.Service{
+		{Key: model.ServiceKey{NetworkID: 4, StreamID: 1, ServiceID: 100}, Name: "first", Type: 1},
+		{Key: model.ServiceKey{NetworkID: 4, StreamID: 1, ServiceID: 119}, Name: "second", Type: 1},
+		{Key: model.ServiceKey{NetworkID: 4, StreamID: 1, ServiceID: 200}, Name: "excluded", Type: 1},
 	}}
 	channels := config.ChannelsConfig{
 		{Type: "EXT1", Channel: "38", ServiceId: uint32Ptr(100)},
@@ -329,9 +329,9 @@ func TestServiceScanChannelDoesNotFilterWhenAnyEnabledEntryLacksServiceId(t *tes
 	defer func() { _ = database.Close() }()
 	store := service.NewSQLiteStore(database)
 	manager := service.NewManager(store, nil)
-	scanner := &staticScanner{services: []ts.ServiceInfo{
-		{Nid: 4, Tsid: 1, Sid: 100, Name: "first", Type: 1},
-		{Nid: 4, Tsid: 1, Sid: 119, Name: "second", Type: 1},
+	scanner := &staticScanner{services: []model.Service{
+		{Key: model.ServiceKey{NetworkID: 4, StreamID: 1, ServiceID: 100}, Name: "first", Type: 1},
+		{Key: model.ServiceKey{NetworkID: 4, StreamID: 1, ServiceID: 119}, Name: "second", Type: 1},
 	}}
 	channels := config.ChannelsConfig{{Type: "EXT1", Channel: "38"}}
 
@@ -356,9 +356,9 @@ func TestServiceScanChannelIgnoresDisabledEntryServiceId(t *testing.T) {
 	defer func() { _ = database.Close() }()
 	store := service.NewSQLiteStore(database)
 	manager := service.NewManager(store, nil)
-	scanner := &staticScanner{services: []ts.ServiceInfo{
-		{Nid: 4, Tsid: 1, Sid: 100, Name: "disabled-only", Type: 1},
-		{Nid: 4, Tsid: 1, Sid: 119, Name: "enabled", Type: 1},
+	scanner := &staticScanner{services: []model.Service{
+		{Key: model.ServiceKey{NetworkID: 4, StreamID: 1, ServiceID: 100}, Name: "disabled-only", Type: 1},
+		{Key: model.ServiceKey{NetworkID: 4, StreamID: 1, ServiceID: 119}, Name: "enabled", Type: 1},
 	}}
 	disabled := true
 	channels := config.ChannelsConfig{
@@ -393,7 +393,7 @@ func TestNewNetworkIDsFromDiffEmptyInputs(t *testing.T) {
 
 type staticScanner struct {
 	err      error
-	services []ts.ServiceInfo
+	services []model.Service
 	wait     bool
 }
 
@@ -402,7 +402,7 @@ type blockingScanner struct{}
 type contextCapturingScanner struct {
 	acquireCtx context.Context
 	scanCtx    context.Context
-	services   []ts.ServiceInfo
+	services   []model.Service
 	wait       bool
 }
 
@@ -414,12 +414,12 @@ func (r *captureReporter) SetJobResult(result run.Result) {
 	r.result = run.Clone(&result)
 }
 
-func (blockingScanner) ScanServices(ctx, _ context.Context, _, _ string, _ bool) ([]ts.ServiceInfo, error) {
+func (blockingScanner) ScanServices(ctx, _ context.Context, _, _ string, _ bool) ([]model.Service, error) {
 	<-ctx.Done()
 	return nil, ctx.Err()
 }
 
-func (s *staticScanner) ScanServices(_, _ context.Context, _ string, _ string, wait bool) ([]ts.ServiceInfo, error) {
+func (s *staticScanner) ScanServices(_, _ context.Context, _ string, _ string, wait bool) ([]model.Service, error) {
 	s.wait = wait
 	if s.err != nil {
 		return nil, s.err
@@ -427,7 +427,7 @@ func (s *staticScanner) ScanServices(_, _ context.Context, _ string, _ string, w
 	return s.services, nil
 }
 
-func (s *contextCapturingScanner) ScanServices(scanCtx, acquireCtx context.Context, _ string, _ string, wait bool) ([]ts.ServiceInfo, error) {
+func (s *contextCapturingScanner) ScanServices(scanCtx, acquireCtx context.Context, _ string, _ string, wait bool) ([]model.Service, error) {
 	s.scanCtx = scanCtx
 	s.acquireCtx = acquireCtx
 	s.wait = wait

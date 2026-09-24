@@ -35,10 +35,12 @@ func (k ServiceKey) MirakurunID() int64 {
 
 // LogoRef points at the logo images for a service. A nil *LogoRef means the
 // service carries no logo reference; the sentinel -1 scheme is not used.
+// Version and DownloadDataID stay nil when the scan could not resolve them
+// (e.g. an indirect reference without a matching direct entry).
 type LogoRef struct {
 	LogoID         uint16
-	Version        uint16
-	DownloadDataID uint16
+	Version        *uint16
+	DownloadDataID *uint16
 	SimpleLogo     string
 	HasSimpleLogo  bool
 }

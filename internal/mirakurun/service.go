@@ -4,6 +4,7 @@ import (
 	"github.com/go-faster/jx"
 
 	"github.com/21S1298001/mahiron/internal/config"
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/service"
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 	"github.com/21S1298001/mahiron/ts"
@@ -112,46 +113,75 @@ func channelRoutesToAPI(routes []config.ChannelRouteConfig) []apigen.ChannelRout
 	return result
 }
 
-// ScanServiceFromAPI converts a service received from a remote
-// Mirakurun-compatible server to a scan result. It carries the same logo
-// heuristics the remote scan applies: a logo counts only when the remote
-// reports both an ID and actual logo data, and the version and download ID
-// are synthesized because remotes do not expose the broadcast values.
-func ScanServiceFromAPI(svc *apigen.Service) ts.ServiceInfo {
-	logoID := int64(-1)
-	var logoVersion *uint16
-	var logoDownloadDataID *uint16
+// ScanServiceModelFromAPI converts a service received from a remote
+// Mirakurun-compatible server to the internal broadcast model. It carries
+// the same logo heuristics the remote scan applies: a logo counts only
+// when the remote reports both an ID and actual logo data, and the version
+// and download ID are synthesized because remotes do not expose the
+// broadcast values.
+func ScanServiceModelFromAPI(svc *apigen.Service) model.Service {
+	out := model.Service{
+		Key: model.ServiceKey{
+			NetworkID: uint16(svc.NetworkId),
+			StreamID:  uint16(svc.TransportStreamId.Value),
+			ServiceID: uint16(svc.ServiceId),
+		},
+		Name: svc.Name,
+		Type: uint8(svc.Type),
+	}
+	if eitScheduleFlag, ok := svc.EitScheduleFlag.Get(); ok {
+		out.EITSchedule = eitScheduleFlag
+	} else {
+		out.EITSchedule = true
+	}
+	if eitPresentFollowing, ok := svc.EitPresentFollowing.Get(); ok {
+		out.EITPresentFollow = eitPresentFollowing
+	} else {
+		out.EITPresentFollow = true
+	}
+	if remoteControlKeyID, ok := svc.RemoteControlKeyId.Get(); ok {
+		v := uint8(remoteControlKeyID)
+		out.RemoteControlKey = &v
+	}
 	if logoIDValue, ok := svc.LogoId.Get(); ok {
 		if hasLogoData, _ := svc.HasLogoData.Get(); int64(logoIDValue) >= 0 && hasLogoData {
-			logoID = int64(logoIDValue)
 			version := uint16(0)
-			logoVersion = &version
 			downloadDataID := uint16(svc.ServiceId)
-			logoDownloadDataID = &downloadDataID
+			out.Logo = &model.LogoRef{
+				LogoID:         uint16(logoIDValue),
+				Version:        &version,
+				DownloadDataID: &downloadDataID,
+			}
 		}
 	}
-	eitScheduleFlag, ok := svc.EitScheduleFlag.Get()
-	if !ok {
-		eitScheduleFlag = true
+	return out
+}
+
+// ScanServiceFromAPI converts a service received from a remote
+// Mirakurun-compatible server to a scan result, adapting the model
+// conversion above back to the legacy TS shape.
+func ScanServiceFromAPI(svc *apigen.Service) ts.ServiceInfo {
+	m := ScanServiceModelFromAPI(svc)
+	info := ts.ServiceInfo{
+		Nid:                 m.Key.NetworkID,
+		Tsid:                m.Key.StreamID,
+		Sid:                 m.Key.ServiceID,
+		Name:                m.Name,
+		Type:                m.Type,
+		EITScheduleFlag:     m.EITSchedule,
+		EITPresentFollowing: m.EITPresentFollow,
+		LogoId:              -1,
+		RemoteControlKeyId:  uint8Ptr(0),
 	}
-	eitPresentFollowing, ok := svc.EitPresentFollowing.Get()
-	if !ok {
-		eitPresentFollowing = true
+	if m.RemoteControlKey != nil {
+		info.RemoteControlKeyId = m.RemoteControlKey
 	}
-	remoteControlKeyID, _ := svc.RemoteControlKeyId.Get()
-	return ts.ServiceInfo{
-		Nid:                 uint16(svc.NetworkId),
-		Tsid:                uint16(svc.TransportStreamId.Value),
-		Sid:                 uint16(svc.ServiceId),
-		Name:                svc.Name,
-		Type:                uint8(svc.Type),
-		EITScheduleFlag:     eitScheduleFlag,
-		EITPresentFollowing: eitPresentFollowing,
-		LogoId:              logoID,
-		LogoVersion:         logoVersion,
-		LogoDownloadDataId:  logoDownloadDataID,
-		RemoteControlKeyId:  uint8Ptr(uint8(remoteControlKeyID)),
+	if m.Logo != nil {
+		info.LogoId = int64(m.Logo.LogoID)
+		info.LogoVersion = m.Logo.Version
+		info.LogoDownloadDataId = m.Logo.DownloadDataID
 	}
+	return info
 }
 
 func uint8Ptr(v uint8) *uint8 { return &v }
