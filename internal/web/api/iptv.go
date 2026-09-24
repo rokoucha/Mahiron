@@ -86,8 +86,8 @@ func IptvPlaylistGet(ctx context.Context, h *Handler) (apigen.IptvPlaylistGetRes
 			channelName = channel.Name
 		}
 		chno := guideID
-		if svc.RemoteControlKeyId != 0 {
-			chno = strconv.Itoa(int(svc.RemoteControlKeyId))
+		if svc.RemoteControlKey != nil {
+			chno = strconv.Itoa(int(*svc.RemoteControlKey))
 		}
 		fmt.Fprintf(
 			&b,

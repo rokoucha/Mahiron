@@ -29,15 +29,15 @@ func groupServicesByNetwork(services []*service.Service, channels config.Channel
 	typeNetworks := make(map[string]map[uint16]bool)
 	for _, item := range services {
 		key := epgChannelKey(item.ChannelType, item.ChannelId)
-		byChannel[key] = append(byChannel[key], item.NetworkId)
-		if networkTypes[item.NetworkId] == nil {
-			networkTypes[item.NetworkId] = make(map[string]bool)
+		byChannel[key] = append(byChannel[key], item.Key.NetworkID)
+		if networkTypes[item.Key.NetworkID] == nil {
+			networkTypes[item.Key.NetworkID] = make(map[string]bool)
 		}
-		networkTypes[item.NetworkId][item.ChannelType] = true
+		networkTypes[item.Key.NetworkID][item.ChannelType] = true
 		if typeNetworks[item.ChannelType] == nil {
 			typeNetworks[item.ChannelType] = make(map[uint16]bool)
 		}
-		typeNetworks[item.ChannelType][item.NetworkId] = true
+		typeNetworks[item.ChannelType][item.Key.NetworkID] = true
 	}
 	groups := make(map[uint16]*Network)
 	seen := make(map[uint16]map[string]bool)
@@ -66,12 +66,12 @@ func groupServicesByNetwork(services []*service.Service, channels config.Channel
 	}
 	serviceSeen := make(map[model.ServiceKey]bool)
 	for _, svc := range services {
-		if !svc.EITScheduleFlag {
+		if !svc.EITSchedule {
 			continue
 		}
-		key := model.ServiceKey{NetworkID: svc.NetworkId, ServiceID: svc.ServiceId, StreamID: svc.TransportStreamId}
-		if groups[svc.NetworkId] != nil && !serviceSeen[key] {
-			groups[svc.NetworkId].Services = append(groups[svc.NetworkId].Services, key)
+		key := svc.Key
+		if groups[svc.Key.NetworkID] != nil && !serviceSeen[key] {
+			groups[svc.Key.NetworkID].Services = append(groups[svc.Key.NetworkID].Services, key)
 			serviceSeen[key] = true
 		}
 	}
@@ -90,8 +90,8 @@ func buildNetworkInputs(ctx context.Context, serviceStore ServiceStore, channels
 		if typeNetworks[item.ChannelType] == nil {
 			typeNetworks[item.ChannelType] = make(map[uint16]bool)
 		}
-		typeNetworks[item.ChannelType][item.NetworkId] = true
-		if item.NetworkId != networkID {
+		typeNetworks[item.ChannelType][item.Key.NetworkID] = true
+		if item.Key.NetworkID != networkID {
 			continue
 		}
 		key := epgChannelKey(item.ChannelType, item.ChannelId)
@@ -111,13 +111,13 @@ func buildNetworkInputs(ctx context.Context, serviceStore ServiceStore, channels
 	serviceSeen := make(map[model.ServiceKey]bool)
 	var networkServices []model.ServiceKey
 	for _, svc := range storedServices {
-		if svc.NetworkId != networkID {
+		if svc.Key.NetworkID != networkID {
 			continue
 		}
-		if !svc.EITScheduleFlag {
+		if !svc.EITSchedule {
 			continue
 		}
-		key := model.ServiceKey{NetworkID: svc.NetworkId, ServiceID: svc.ServiceId, StreamID: svc.TransportStreamId}
+		key := svc.Key
 		if !serviceSeen[key] {
 			serviceSeen[key] = true
 			networkServices = append(networkServices, key)

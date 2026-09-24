@@ -231,7 +231,7 @@ func TestMissingScannedChannelsFindsOnlyConfiguredEmptyChannels(t *testing.T) {
 	}
 	manager := service.NewManager(store, channels)
 	if err := store.ReplaceChannelServices(ctx, "GR", "27", []*service.Service{
-		{Id: "0000100101", ServiceId: 101, NetworkId: 1, Name: "NHK", ChannelType: "GR", ChannelId: "27"},
+		{Id: "0000100101", Service: model.Service{Key: model.ServiceKey{ServiceID: 101, NetworkID: 1}, Name: "NHK"}, ChannelType: "GR", ChannelId: "27"},
 	}); err != nil {
 		t.Fatal(err)
 	}

@@ -29,8 +29,8 @@ func GetServiceDataBroadcastEvents(ctx context.Context, h *Handler, params apige
 		return nil
 	}
 	decode := shouldDecode(params.Decode)
-	serviceID := service.ServiceId
-	networkID := service.NetworkId
+	serviceID := service.Key.ServiceID
+	networkID := service.Key.NetworkID
 	ctx, userID := tunerUserContext(ctx, params.XMirakurunPriority, decode, h.serviceManager.GetChannel(service.ChannelType, service.ChannelId), &networkID, &serviceID)
 	session, err := h.streamManager.GetOrCreate(ctx, service.ChannelType, service.ChannelId)
 	if err != nil {
@@ -54,7 +54,7 @@ func GetServiceDataBroadcastEvents(ctx context.Context, h *Handler, params apige
 	w.Header().Set("X-Mirakurun-Tuner-User-ID", userID)
 	w.WriteHeader(http.StatusOK)
 	flusher := flushWriter{w: w}
-	return bmlSession.ObserveDataBroadcast(ctx, service.ServiceId, decode, func(event bml.Event) error {
+	return bmlSession.ObserveDataBroadcast(ctx, service.Key.ServiceID, decode, func(event bml.Event) error {
 		return writeDataBroadcastSSE(flusher, params.ID, event)
 	})
 }
@@ -85,9 +85,9 @@ func GetServiceDataBroadcastState(ctx context.Context, h *Handler, params apigen
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
-		return json.NewEncoder(w).Encode(apiDataBroadcastSnapshot(params.ID, bmlSession.DataBroadcastSnapshot(service.ServiceId), "live", nil))
+		return json.NewEncoder(w).Encode(apiDataBroadcastSnapshot(params.ID, bmlSession.DataBroadcastSnapshot(service.Key.ServiceID), "live", nil))
 	}
-	if snapshot, storedAtUnixMilli, found := provisionalDataBroadcastSnapshot(h, params.AllowCache, service.ChannelType, service.ChannelId, service.ServiceId); found {
+	if snapshot, storedAtUnixMilli, found := provisionalDataBroadcastSnapshot(h, params.AllowCache, service.ChannelType, service.ChannelId, service.Key.ServiceID); found {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
 		return json.NewEncoder(w).Encode(apiDataBroadcastSnapshot(params.ID, snapshot, "cache", &storedAtUnixMilli))
@@ -218,7 +218,7 @@ func dataBroadcastModuleResources(ctx context.Context, h *Handler, serviceItemID
 	if service != nil {
 		if store, ok := h.bmlStore.(cache.DecodedModuleStore); ok {
 			if resources, found := store.GetDecodedResources(bml.ModuleVersionKey{
-				ChannelType: service.ChannelType, ChannelID: service.ChannelId, ServiceID: service.ServiceId,
+				ChannelType: service.ChannelType, ChannelID: service.ChannelId, ServiceID: service.Key.ServiceID,
 				ComponentTag: module.ComponentTag, DownloadID: module.DownloadID, ModuleID: module.ModuleID, Version: module.Version,
 			}); found {
 				return resources, nil
@@ -241,11 +241,11 @@ func dataBroadcastVersionModule(ctx context.Context, h *Handler, serviceItemID i
 		if !ok {
 			return bml.Module{}, http.StatusNotFound, nil
 		}
-		module, found := bmlSession.DataBroadcastModuleVersion(service.ServiceId, componentTag, downloadID, moduleID, version)
+		module, found := bmlSession.DataBroadcastModuleVersion(service.Key.ServiceID, componentTag, downloadID, moduleID, version)
 		if found {
 			return module, 0, nil
 		}
-		if announced, rejected := announcedModuleVersion(bmlSession.DataBroadcastSnapshot(service.ServiceId), componentTag, downloadID, moduleID, version); rejected {
+		if announced, rejected := announcedModuleVersion(bmlSession.DataBroadcastSnapshot(service.Key.ServiceID), componentTag, downloadID, moduleID, version); rejected {
 			return bml.Module{}, http.StatusInsufficientStorage, nil
 		} else if announced {
 			return bml.Module{}, http.StatusTooEarly, nil
@@ -256,14 +256,14 @@ func dataBroadcastVersionModule(ctx context.Context, h *Handler, serviceItemID i
 	// exist.
 	if h.bmlStore != nil {
 		if cached, found := h.bmlStore.GetVersion(bml.ModuleVersionKey{
-			ChannelType: service.ChannelType, ChannelID: service.ChannelId, ServiceID: service.ServiceId,
+			ChannelType: service.ChannelType, ChannelID: service.ChannelId, ServiceID: service.Key.ServiceID,
 			ComponentTag: componentTag, DownloadID: downloadID, ModuleID: moduleID, Version: version,
 		}); found {
 			return bml.CompletedModule(componentTag, cached), 0, nil
 		}
 	}
 	if store, ok := h.bmlStore.(bml.EvictedModuleStore); ok && store.WasEvicted(bml.ModuleVersionKey{
-		ChannelType: service.ChannelType, ChannelID: service.ChannelId, ServiceID: service.ServiceId,
+		ChannelType: service.ChannelType, ChannelID: service.ChannelId, ServiceID: service.Key.ServiceID,
 		ComponentTag: componentTag, DownloadID: downloadID, ModuleID: moduleID, Version: version,
 	}) {
 		return bml.Module{}, http.StatusGone, nil

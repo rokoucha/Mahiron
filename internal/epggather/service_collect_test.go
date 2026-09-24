@@ -321,9 +321,9 @@ func TestGatherNetworkCarriesUnobservedServicesToNextCandidate(t *testing.T) {
 
 func TestBuildNetworkInputsFiltersServicesWithoutEITSchedule(t *testing.T) {
 	store := &staticEPGServiceStore{services: []*servicepkg.Service{
-		{NetworkId: 4, ServiceId: 101, EITScheduleFlag: true, ChannelType: "GR", ChannelId: "27"},
-		{NetworkId: 4, ServiceId: 102, EITScheduleFlag: false, ChannelType: "GR", ChannelId: "27"},
-		{NetworkId: 5, ServiceId: 201, EITScheduleFlag: true, ChannelType: "GR", ChannelId: "27"},
+		{Service: model.Service{Key: model.ServiceKey{NetworkID: 4, ServiceID: 101}, EITSchedule: true}, ChannelType: "GR", ChannelId: "27"},
+		{Service: model.Service{Key: model.ServiceKey{NetworkID: 4, ServiceID: 102}, EITSchedule: false}, ChannelType: "GR", ChannelId: "27"},
+		{Service: model.Service{Key: model.ServiceKey{NetworkID: 5, ServiceID: 201}, EITSchedule: true}, ChannelType: "GR", ChannelId: "27"},
 	}}
 	channels := []config.ChannelConfig{{Type: "GR", Channel: "27"}}
 
@@ -339,7 +339,7 @@ func TestBuildNetworkInputsFiltersServicesWithoutEITSchedule(t *testing.T) {
 
 func TestBuildNetworkInputsUsesAllConfiguredChannelsForNetworkType(t *testing.T) {
 	store := &staticEPGServiceStore{services: []*servicepkg.Service{
-		{NetworkId: 4, ServiceId: 151, EITScheduleFlag: true, ChannelType: "USER_DEFINED", ChannelId: "BS01"},
+		{Service: model.Service{Key: model.ServiceKey{NetworkID: 4, ServiceID: 151}, EITSchedule: true}, ChannelType: "USER_DEFINED", ChannelId: "BS01"},
 	}}
 	channels := []config.ChannelConfig{
 		{Type: "USER_DEFINED", Channel: "BS01"},
@@ -359,9 +359,9 @@ func TestBuildNetworkInputsUsesAllConfiguredChannelsForNetworkType(t *testing.T)
 
 func TestBuildNetworkInputsLimitsBroadTypeWhenMultipleNetworksExist(t *testing.T) {
 	store := &staticEPGServiceStore{services: []*servicepkg.Service{
-		{NetworkId: 6, ServiceId: 296, EITScheduleFlag: true, ChannelType: "USER_DEFINED", ChannelId: "CS2"},
-		{NetworkId: 7, ServiceId: 250, EITScheduleFlag: true, ChannelType: "USER_DEFINED", ChannelId: "CS4"},
-		{NetworkId: 7, ServiceId: 294, EITScheduleFlag: true, ChannelType: "USER_DEFINED", ChannelId: "CS6"},
+		{Service: model.Service{Key: model.ServiceKey{NetworkID: 6, ServiceID: 296}, EITSchedule: true}, ChannelType: "USER_DEFINED", ChannelId: "CS2"},
+		{Service: model.Service{Key: model.ServiceKey{NetworkID: 7, ServiceID: 250}, EITSchedule: true}, ChannelType: "USER_DEFINED", ChannelId: "CS4"},
+		{Service: model.Service{Key: model.ServiceKey{NetworkID: 7, ServiceID: 294}, EITSchedule: true}, ChannelType: "USER_DEFINED", ChannelId: "CS6"},
 	}}
 	channels := []config.ChannelConfig{
 		{Type: "USER_DEFINED", Channel: "CS2"},
@@ -382,7 +382,7 @@ func TestBuildNetworkInputsLimitsBroadTypeWhenMultipleNetworksExist(t *testing.T
 
 func TestBuildNetworkInputsDoesNotUseBroadCandidatesForTerrestrialNetwork(t *testing.T) {
 	store := &staticEPGServiceStore{services: []*servicepkg.Service{
-		{NetworkId: 32736, ServiceId: 101, EITScheduleFlag: true, ChannelType: "USER_DEFINED", ChannelId: "27"},
+		{Service: model.Service{Key: model.ServiceKey{NetworkID: 32736, ServiceID: 101}, EITSchedule: true}, ChannelType: "USER_DEFINED", ChannelId: "27"},
 	}}
 	channels := []config.ChannelConfig{
 		{Type: "USER_DEFINED", Channel: "27"},
@@ -401,9 +401,9 @@ func TestBuildNetworkInputsDoesNotUseBroadCandidatesForTerrestrialNetwork(t *tes
 
 func TestGroupServicesByNetworkLimitsBroadTypeWhenMultipleNetworksExist(t *testing.T) {
 	services := []*servicepkg.Service{
-		{NetworkId: 6, ServiceId: 296, EITScheduleFlag: true, ChannelType: "USER_DEFINED", ChannelId: "CS2"},
-		{NetworkId: 7, ServiceId: 250, EITScheduleFlag: true, ChannelType: "USER_DEFINED", ChannelId: "CS4"},
-		{NetworkId: 7, ServiceId: 294, EITScheduleFlag: true, ChannelType: "USER_DEFINED", ChannelId: "CS6"},
+		{Service: model.Service{Key: model.ServiceKey{NetworkID: 6, ServiceID: 296}, EITSchedule: true}, ChannelType: "USER_DEFINED", ChannelId: "CS2"},
+		{Service: model.Service{Key: model.ServiceKey{NetworkID: 7, ServiceID: 250}, EITSchedule: true}, ChannelType: "USER_DEFINED", ChannelId: "CS4"},
+		{Service: model.Service{Key: model.ServiceKey{NetworkID: 7, ServiceID: 294}, EITSchedule: true}, ChannelType: "USER_DEFINED", ChannelId: "CS6"},
 	}
 	channels := []config.ChannelConfig{
 		{Type: "USER_DEFINED", Channel: "CS2"},
@@ -424,8 +424,8 @@ func TestGroupServicesByNetworkLimitsBroadTypeWhenMultipleNetworksExist(t *testi
 
 func TestGroupServicesByNetworkUsesBroadCandidatesOnlyForSatelliteNetwork(t *testing.T) {
 	services := []*servicepkg.Service{
-		{NetworkId: 4, ServiceId: 151, EITScheduleFlag: true, ChannelType: "USER_DEFINED", ChannelId: "BS01"},
-		{NetworkId: 32736, ServiceId: 101, EITScheduleFlag: true, ChannelType: "LOCAL", ChannelId: "27"},
+		{Service: model.Service{Key: model.ServiceKey{NetworkID: 4, ServiceID: 151}, EITSchedule: true}, ChannelType: "USER_DEFINED", ChannelId: "BS01"},
+		{Service: model.Service{Key: model.ServiceKey{NetworkID: 32736, ServiceID: 101}, EITSchedule: true}, ChannelType: "LOCAL", ChannelId: "27"},
 	}
 	channels := []config.ChannelConfig{
 		{Type: "USER_DEFINED", Channel: "BS01"},
@@ -557,18 +557,6 @@ func TestCollectServiceSnapshotsUsesBroadcastClockForSuccessTimestamp(t *testing
 	}
 	if session.collectCalls != 1 {
 		t.Fatalf("CollectSchedule calls = %d, want 1", session.collectCalls)
-	}
-}
-
-func TestServiceCleanupUsesCleanupMetricSource(t *testing.T) {
-	store := &collectProgramStore{}
-	service := NewGatherer(store, store, newRemoteSyncServiceStore(), nil, nil, 1, time.Second)
-
-	if err := service.Cleanup(context.Background(), time.Now()); err != nil {
-		t.Fatal(err)
-	}
-	if store.deleteSource != "cleanup" {
-		t.Fatalf("delete source = %q, want cleanup", store.deleteSource)
 	}
 }
 
@@ -741,11 +729,6 @@ func (s *collectProgramStore) UpsertPrograms(ctx context.Context, programs []*pr
 	if len(programs) > 0 && programs[0].EventID == s.failEventID {
 		return s.failErr
 	}
-	return nil
-}
-
-func (s *collectProgramStore) DeleteEndedBefore(ctx context.Context, _ int64) error {
-	s.deleteSource = observability.EPGMetricSource(ctx)
 	return nil
 }
 

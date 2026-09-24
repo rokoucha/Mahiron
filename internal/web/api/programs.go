@@ -38,8 +38,8 @@ func GetServicePrograms(ctx context.Context, h *Handler, params apigen.GetServic
 	if service == nil {
 		return notFound("service not found"), nil
 	}
-	networkID := service.NetworkId
-	serviceID := service.ServiceId
+	networkID := service.Key.NetworkID
+	serviceID := service.Key.ServiceID
 	programs, err := h.programManager.List(ctx, program.Query{
 		NetworkID: &networkID,
 		ServiceID: &serviceID,

@@ -146,6 +146,16 @@ func (m *Manager) DeleteEndedBefore(ctx context.Context, cutoff int64) error {
 	return nil
 }
 
+// DeleteExpired deletes the programs that ended more than retentionDays
+// before now. A retentionDays of 0 or less keeps every program.
+func (m *Manager) DeleteExpired(ctx context.Context, now time.Time, retentionDays int) error {
+	if retentionDays <= 0 {
+		return nil
+	}
+	cutoff := now.Add(-time.Duration(retentionDays) * 24 * time.Hour).UnixMilli()
+	return m.DeleteEndedBefore(observability.ContextWithEPGMetricSource(ctx, "cleanup"), cutoff)
+}
+
 func (m *Manager) ReplaceServicePrograms(ctx context.Context, networkID, serviceID uint16, from int64, programs []*Program) error {
 	source := observability.EPGMetricSource(ctx)
 	attempted := nonNilProgramCount(programs)

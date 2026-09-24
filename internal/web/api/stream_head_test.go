@@ -30,14 +30,15 @@ func testStreamHeadHandler(t *testing.T) (*Handler, *service.Manager) {
 	pm := program.NewManager(program.NewSQLiteStore(database))
 	if err := store.ReplaceChannelServices(context.Background(), "GR", "27", []*service.Service{
 		{
-			Id:                 "0000100001",
-			ServiceId:          1,
-			NetworkId:          1,
-			Name:               "Test Service",
-			Type:               1,
-			RemoteControlKeyId: 1,
-			ChannelType:        "GR",
-			ChannelId:          "27",
+			Id: "0000100001",
+			Service: model.Service{
+				Key:              model.ServiceKey{ServiceID: 1, NetworkID: 1},
+				Name:             "Test Service",
+				Type:             1,
+				RemoteControlKey: new(uint8(1)),
+			},
+			ChannelType: "GR",
+			ChannelId:   "27",
 		},
 	}); err != nil {
 		t.Fatal(err)

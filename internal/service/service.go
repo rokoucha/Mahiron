@@ -1,22 +1,16 @@
 package service
 
+import "github.com/21S1298001/mahiron/internal/model"
+
+// Service is a stored service: the broadcast service and the state Mahiron
+// keeps for it.
 type Service struct {
-	Id                  string
-	ServiceId           uint16
-	NetworkId           uint16
-	TransportStreamId   uint16
-	Name                string
-	Type                uint8
-	EITScheduleFlag     bool
-	EITPresentFollowing bool
-	LogoId              *int64
-	LogoVersion         *int64
-	LogoDownloadDataId  *int64
-	HasLogoData         bool
-	RemoteControlKeyId  uint8
-	ChannelType         string
-	ChannelId           string
-	EPG                 EPGStatus
+	Id string
+	model.Service
+	HasLogoData bool
+	ChannelType string
+	ChannelId   string
+	EPG         EPGStatus
 }
 
 type EPGStatus struct {
@@ -49,8 +43,9 @@ type CommonDataAnnouncement struct {
 	SeenAt              int64
 }
 
+// ItemId returns the Mirakurun-compatible service ID.
 func (s *Service) ItemId() int64 {
-	return int64(s.NetworkId)*100000 + int64(s.ServiceId)
+	return s.Key.MirakurunID()
 }
 
 // Event payloads and API shapes are built in internal/mirakurun from Services.

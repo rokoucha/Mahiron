@@ -43,7 +43,7 @@ func testProgramHandler(t *testing.T) *Handler {
 
 	serviceStore := service.NewSQLiteStore(database)
 	if err := serviceStore.ReplaceChannelServices(ctx, "GR", "27", []*service.Service{
-		{Id: "0000100101", ServiceId: 101, NetworkId: 1, Name: "NHK Service", ChannelType: "GR", ChannelId: "27"},
+		{Id: "0000100101", Service: model.Service{Key: model.ServiceKey{ServiceID: 101, NetworkID: 1}, Name: "NHK Service"}, ChannelType: "GR", ChannelId: "27"},
 	}); err != nil {
 		t.Fatal(err)
 	}

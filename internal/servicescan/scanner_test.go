@@ -45,14 +45,14 @@ func TestServiceScanChannelStoresScannedServicesAndReturnsNewNetworks(t *testing
 	if got, want := services[0].Id, "0000400101"; got != want {
 		t.Fatalf("service id = %q, want %q", got, want)
 	}
-	if got, want := services[0].RemoteControlKeyId, uint8(1); got != want {
-		t.Fatalf("remoteControlKeyId = %d, want %d", got, want)
+	if got, want := services[0].RemoteControlKey, uint8(1); got == nil || *got != want {
+		t.Fatalf("remoteControlKeyId = %v, want %d", got, want)
 	}
-	if !services[0].EITScheduleFlag || !services[0].EITPresentFollowing {
-		t.Fatalf("service 101 EIT flags = %v/%v, want true/true", services[0].EITScheduleFlag, services[0].EITPresentFollowing)
+	if !services[0].EITSchedule || !services[0].EITPresentFollow {
+		t.Fatalf("service 101 EIT flags = %v/%v, want true/true", services[0].EITSchedule, services[0].EITPresentFollow)
 	}
-	if services[1].EITScheduleFlag || !services[1].EITPresentFollowing {
-		t.Fatalf("service 102 EIT flags = %v/%v, want false/true", services[1].EITScheduleFlag, services[1].EITPresentFollowing)
+	if services[1].EITSchedule || !services[1].EITPresentFollow {
+		t.Fatalf("service 102 EIT flags = %v/%v, want false/true", services[1].EITSchedule, services[1].EITPresentFollow)
 	}
 	if !scanner.wait {
 		t.Fatal("scanner wait = false, want true")
@@ -69,7 +69,7 @@ func TestServiceScanChannelReturnsOnlyNewNetworks(t *testing.T) {
 	store := service.NewSQLiteStore(database)
 	manager := service.NewManager(store, nil)
 	if err := store.ReplaceChannelServices(ctx, "BS", "BS01", []*service.Service{
-		{Id: idFor(4, 101), NetworkId: 4, ServiceId: 101, ChannelType: "BS", ChannelId: "BS01"},
+		{Id: idFor(4, 101), Service: model.Service{Key: model.ServiceKey{NetworkID: 4, ServiceID: 101}}, ChannelType: "BS", ChannelId: "BS01"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -97,8 +97,8 @@ func TestServiceScanReportsNamedServiceResults(t *testing.T) {
 	store := service.NewSQLiteStore(database)
 	manager := service.NewManager(store, nil)
 	if err := store.ReplaceChannelServices(ctx, "BS", "BS01", []*service.Service{
-		{Id: idFor(4, 100), NetworkId: 4, ServiceId: 100, TransportStreamId: 1, Name: "Removed", ChannelType: "BS", ChannelId: "BS01"},
-		{Id: idFor(4, 101), NetworkId: 4, ServiceId: 101, TransportStreamId: 1, Name: "Known", ChannelType: "BS", ChannelId: "BS01"},
+		{Id: idFor(4, 100), Service: model.Service{Key: model.ServiceKey{NetworkID: 4, ServiceID: 100, StreamID: 1}, Name: "Removed"}, ChannelType: "BS", ChannelId: "BS01"},
+		{Id: idFor(4, 101), Service: model.Service{Key: model.ServiceKey{NetworkID: 4, ServiceID: 101, StreamID: 1}, Name: "Known"}, ChannelType: "BS", ChannelId: "BS01"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +142,7 @@ func TestServiceScanChannelReturnsNoNetworksWhenAllServicesKnown(t *testing.T) {
 	store := service.NewSQLiteStore(database)
 	manager := service.NewManager(store, nil)
 	if err := store.ReplaceChannelServices(ctx, "BS", "BS01", []*service.Service{
-		{Id: idFor(4, 101), NetworkId: 4, ServiceId: 101, ChannelType: "BS", ChannelId: "BS01"},
+		{Id: idFor(4, 101), Service: model.Service{Key: model.ServiceKey{NetworkID: 4, ServiceID: 101}}, ChannelType: "BS", ChannelId: "BS01"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -184,8 +184,13 @@ func TestServiceScanChannelTimesOutAndPreservesStoredServices(t *testing.T) {
 	store := service.NewSQLiteStore(database)
 	manager := service.NewManager(store, nil)
 	want := &service.Service{
-		Id: idFor(4, 101), NetworkId: 4, ServiceId: 101,
-		ChannelType: "BS", ChannelId: "BS01", Name: "stored",
+		Id: idFor(4, 101),
+		Service: model.Service{
+			Key:  model.ServiceKey{NetworkID: 4, ServiceID: 101},
+			Name: "stored",
+		},
+		ChannelType: "BS",
+		ChannelId:   "BS01",
 	}
 	if err := store.ReplaceChannelServices(ctx, "BS", "BS01", []*service.Service{want}); err != nil {
 		t.Fatal(err)
@@ -280,7 +285,7 @@ func TestServiceScanChannelFiltersToConfiguredServiceId(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(services) != 1 || services[0].ServiceId != 119 {
+	if len(services) != 1 || services[0].Key.ServiceID != 119 {
 		t.Fatalf("stored services = %#v, want only sid 119", services)
 	}
 }
@@ -313,7 +318,7 @@ func TestServiceScanChannelUnionsServiceIdsAcrossMultipleEnabledEntries(t *testi
 	}
 	got := map[uint16]bool{}
 	for _, svc := range services {
-		got[svc.ServiceId] = true
+		got[svc.Key.ServiceID] = true
 	}
 	if len(got) != 2 || !got[100] || !got[119] {
 		t.Fatalf("stored services = %#v, want sids 100 and 119", services)
@@ -373,7 +378,7 @@ func TestServiceScanChannelIgnoresDisabledEntryServiceId(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(services) != 1 || services[0].ServiceId != 119 {
+	if len(services) != 1 || services[0].Key.ServiceID != 119 {
 		t.Fatalf("stored services = %#v, want only sid 119 (disabled entry's sid 100 excluded)", services)
 	}
 }
@@ -384,7 +389,7 @@ func TestNewNetworkIDsFromDiffEmptyInputs(t *testing.T) {
 	}
 	before := map[string]struct{}{idFor(1, 101): {}}
 	allKnown := []*service.Service{
-		{Id: idFor(1, 101), NetworkId: 1, ServiceId: 101},
+		{Id: idFor(1, 101), Service: model.Service{Key: model.ServiceKey{NetworkID: 1, ServiceID: 101}}},
 	}
 	if got := newNetworkIDsFromDiff(before, allKnown); got != nil {
 		t.Errorf("all-known scanned = %v, want nil", got)

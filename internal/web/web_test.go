@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"github.com/21S1298001/mahiron/internal/web/api"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
@@ -39,7 +40,7 @@ func TestHTTPContractRoundTripsThroughGeneratedClientAndSQLite(t *testing.T) {
 	disabled := false
 	channels := config.ChannelsConfig{{Name: "NHK", Type: "GR", Channel: "27", IsDisabled: &disabled}}
 	hub := event.New()
-	services := service.NewManager(service.NewSQLiteStore(database), channels, mirakurun.NewEventPublisher(hub))
+	services := service.NewManager(service.NewSQLiteStore(database), channels, api.NewServiceEventPublisher(mirakurun.NewEventPublisher(hub)))
 	programs := program.NewManager(program.NewSQLiteStore(database), mirakurun.NewEventPublisher(hub))
 	tuners := tuner.NewManager(&tuner.ManagerConfig{})
 	jobs, err := job.NewManager(job.Config{})

@@ -35,7 +35,7 @@ func RegisterServiceUpdater(registry Registry, scanner ServiceScanner, epgServic
 			if _, err := registry.EnqueueDefinition(job.JobDefinition{
 				Key:           serviceUpdateEPGGathererKey,
 				Name:          "EPG Gatherer After Service Update",
-				Handler:       epgGathererHandler(registry, epgService),
+				Handler:       epgGathererHandler(registry, epgService, nil),
 				DependsOn:     serviceScanJobKeys(channels),
 				ExclusiveKeys: []string{"epg-service-topology"},
 				IsRerunnable:  true,

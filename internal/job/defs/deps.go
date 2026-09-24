@@ -41,5 +41,9 @@ type EPGGatherer interface {
 	Groups(context.Context) (map[uint16]*epggather.Network, error)
 	BuildNetworkInputs(context.Context, uint16) ([]epggather.Candidate, []model.ServiceKey, error)
 	GatherNetwork(context.Context, uint16, []epggather.Candidate, []model.ServiceKey) error
-	Cleanup(context.Context, time.Time) error
+}
+
+// ProgramCleaner deletes the programs past the retention period.
+type ProgramCleaner interface {
+	DeleteExpired(ctx context.Context, now time.Time, retentionDays int) error
 }

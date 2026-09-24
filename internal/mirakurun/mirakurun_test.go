@@ -6,9 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/model"
-	"github.com/21S1298001/mahiron/internal/service"
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 )
 
@@ -89,48 +87,54 @@ func TestProgramToAPIKeepsExtendedOrder(t *testing.T) {
 }
 
 func TestServiceToAPI(t *testing.T) {
-	logoID := int64(5)
 	lastSuccess := int64(1700000000000)
-	svc := &service.Service{
-		Id:                  "0000100101",
-		ServiceId:           101,
-		NetworkId:           1,
-		TransportStreamId:   10,
-		Name:                "NHK",
-		Type:                1,
-		EITScheduleFlag:     true,
-		EITPresentFollowing: true,
-		LogoId:              &logoID,
-		HasLogoData:         true,
-		RemoteControlKeyId:  3,
-		ChannelType:         "GR",
-		ChannelId:           "27",
-		EPG:                 service.EPGStatus{LastSuccessAt: &lastSuccess},
+	svc := &model.Service{
+		Key:              model.ServiceKey{ServiceID: 101, NetworkID: 1, StreamID: 10},
+		Name:             "NHK",
+		Type:             1,
+		EITSchedule:      true,
+		EITPresentFollow: true,
+		RemoteControlKey: new(uint8(3)),
+		Logo:             &model.LogoRef{LogoID: 5},
 	}
-	channel := &config.ChannelConfig{Type: "GR", Channel: "27", Name: "NHK"}
-	api := ServiceToAPI(svc, channel, true)
-	if api.Name != "NHK" || int(api.ServiceId) != 101 {
+	api := ServiceToAPI(svc, ServiceState{
+		Channel:          &apigen.Channel{Type: "GR", Channel: "27"},
+		HasLogoData:      true,
+		EPGLastSuccessAt: &lastSuccess,
+	})
+	if api.Name != "NHK" || int(api.ServiceId) != 101 || int(api.ID) != 100101 || api.RemoteControlKeyId.Value != 3 ||
+		api.LogoId.Value != 5 || !api.HasLogoData.Value || !api.EpgReady.Value {
 		t.Fatalf("service = %#v", api)
 	}
 	channelValue, ok := api.Channel.Get()
 	if !ok || channelValue.Channel != "27" {
 		t.Fatalf("channel = %#v", api.Channel)
 	}
-	without := ServiceToAPI(svc, nil, false)
-	if _, ok := without.Channel.Get(); ok {
-		t.Fatalf("channel present without includeChannel")
+
+	// Without a channel, remote control key or logo, the key is written as
+	// 0 and the channel and logo ID stay absent.
+	bare := ServiceToAPI(&model.Service{Key: svc.Key, Name: "bare"}, ServiceState{})
+	if _, ok := bare.Channel.Get(); ok {
+		t.Fatalf("channel present without a channel")
+	}
+	if key, ok := bare.RemoteControlKeyId.Get(); !ok || key != 0 {
+		t.Fatalf("remoteControlKeyId = %#v, want 0", bare.RemoteControlKeyId)
+	}
+	if _, ok := bare.LogoId.Get(); ok {
+		t.Fatalf("logoId present without a logo")
 	}
 }
 
 func TestScanServiceModelFromAPI(t *testing.T) {
-	logoID := 12
-	api := ServiceToAPI(&service.Service{
-		ServiceId: 1024, NetworkId: 32736, TransportStreamId: 32736,
-		Name: "remote service", Type: 1,
-		EITScheduleFlag: true, EITPresentFollowing: true,
-		LogoId:      func() *int64 { v := int64(logoID); return &v }(),
-		HasLogoData: true, RemoteControlKeyId: 5,
-	}, nil, false)
+	api := ServiceToAPI(&model.Service{
+		Key:              model.ServiceKey{ServiceID: 1024, NetworkID: 32736, StreamID: 32736},
+		Name:             "remote service",
+		Type:             1,
+		EITSchedule:      true,
+		EITPresentFollow: true,
+		RemoteControlKey: new(uint8(5)),
+		Logo:             &model.LogoRef{LogoID: 12},
+	}, ServiceState{HasLogoData: true})
 	got := ScanServiceModelFromAPI(&api)
 	if got.Key != (model.ServiceKey{NetworkID: 32736, StreamID: 32736, ServiceID: 1024}) || got.Name != "remote service" {
 		t.Fatalf("scan = %#v", got)

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"github.com/21S1298001/mahiron/internal/model"
 	"testing"
 
 	"github.com/21S1298001/mahiron/internal/config"
@@ -33,18 +34,18 @@ func TestServiceManagerPublishesCreateUpdateRemoveAndEPGUpdateEvents(t *testing.
 	}, publisher)
 
 	if err := manager.ReplaceChannelServices(ctx, "GR", "27", []*Service{
-		{Id: "0000100101", NetworkId: 1, ServiceId: 101, Name: "first", ChannelType: "GR", ChannelId: "27"},
+		{Id: "0000100101", Service: model.Service{Key: model.ServiceKey{NetworkID: 1, ServiceID: 101}, Name: "first"}, ChannelType: "GR", ChannelId: "27"},
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := manager.ReplaceChannelServices(ctx, "GR", "27", []*Service{
-		{Id: "0000100101", NetworkId: 1, ServiceId: 101, Name: "updated", ChannelType: "GR", ChannelId: "27"},
-		{Id: "0000100102", NetworkId: 1, ServiceId: 102, Name: "second", ChannelType: "GR", ChannelId: "27"},
+		{Id: "0000100101", Service: model.Service{Key: model.ServiceKey{NetworkID: 1, ServiceID: 101}, Name: "updated"}, ChannelType: "GR", ChannelId: "27"},
+		{Id: "0000100102", Service: model.Service{Key: model.ServiceKey{NetworkID: 1, ServiceID: 102}, Name: "second"}, ChannelType: "GR", ChannelId: "27"},
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := manager.ReplaceChannelServices(ctx, "GR", "27", []*Service{
-		{Id: "0000100102", NetworkId: 1, ServiceId: 102, Name: "second", ChannelType: "GR", ChannelId: "27"},
+		{Id: "0000100102", Service: model.Service{Key: model.ServiceKey{NetworkID: 1, ServiceID: 102}, Name: "second"}, ChannelType: "GR", ChannelId: "27"},
 	}); err != nil {
 		t.Fatal(err)
 	}

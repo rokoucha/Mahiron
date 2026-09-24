@@ -10,6 +10,7 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/db"
 	"github.com/21S1298001/mahiron/internal/db/gen"
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/observability"
 )
 
@@ -36,7 +37,7 @@ func (s *sqliteStore) List(ctx context.Context) ([]*Service, error) {
 	}
 	result := make([]*Service, len(svcs))
 	for i := range svcs {
-		result[i] = fromServiceRow(listServiceRow(svcs[i]))
+		result[i] = fromServiceRow(listServicesRow(svcs[i]))
 	}
 	return result, nil
 }
@@ -362,20 +363,13 @@ func (s *sqliteStore) ReplaceChannelServices(ctx context.Context, channelType, c
 	if err != nil {
 		return fmt.Errorf("load existing services: %w", err)
 	}
-	existingLogos := make(map[serviceTriplet]logoMetadata, len(existingRows))
+	existingLogos := make(map[model.ServiceKey]model.LogoRef, len(existingRows))
 	for _, row := range existingRows {
-		if row.LogoID == nil || row.LogoVersion == nil || row.LogoDownloadDataID == nil {
+		svc := fromServiceRow(getServicesByChannelRow(row))
+		if svc.Logo == nil || svc.Logo.Version == nil || svc.Logo.DownloadDataID == nil {
 			continue
 		}
-		existingLogos[serviceTriplet{
-			networkID:         uint16(row.NetworkID),
-			transportStreamID: uint16(row.TransportStreamID),
-			serviceID:         uint16(row.ServiceID),
-		}] = logoMetadata{
-			logoID:         *row.LogoID,
-			logoVersion:    *row.LogoVersion,
-			downloadDataID: *row.LogoDownloadDataID,
-		}
+		existingLogos[svc.Key] = *svc.Logo
 	}
 
 	if err := q.DeleteServicesByChannel(ctx, gen.DeleteServicesByChannelParams{
@@ -387,22 +381,7 @@ func (s *sqliteStore) ReplaceChannelServices(ctx context.Context, channelType, c
 
 	for _, svc := range services {
 		preserveServiceLogoMetadata(svc, existingLogos)
-		if err := q.UpsertService(ctx, gen.UpsertServiceParams{
-			ID:                  svc.Id,
-			ServiceID:           int64(svc.ServiceId),
-			NetworkID:           int64(svc.NetworkId),
-			TransportStreamID:   int64(svc.TransportStreamId),
-			Name:                svc.Name,
-			Type:                int64(svc.Type),
-			EitScheduleFlag:     boolToInt64(svc.EITScheduleFlag),
-			EitPresentFollowing: boolToInt64(svc.EITPresentFollowing),
-			LogoID:              svc.LogoId,
-			LogoVersion:         svc.LogoVersion,
-			LogoDownloadDataID:  svc.LogoDownloadDataId,
-			RemoteControlKeyID:  int64(svc.RemoteControlKeyId),
-			ChannelType:         channelType,
-			ChannelID:           channelId,
-		}); err != nil {
+		if err := q.UpsertService(ctx, upsertServiceParams(svc, channelType, channelId)); err != nil {
 			return fmt.Errorf("upsert service %s: %w", svc.Id, err)
 		}
 	}
@@ -410,37 +389,52 @@ func (s *sqliteStore) ReplaceChannelServices(ctx context.Context, channelType, c
 	return tx.Commit()
 }
 
-type serviceTriplet struct {
-	networkID, transportStreamID, serviceID uint16
-}
-
-type logoMetadata struct {
-	logoID, logoVersion, downloadDataID int64
-}
-
-func preserveServiceLogoMetadata(svc *Service, existing map[serviceTriplet]logoMetadata) {
-	if svc.LogoId != nil && svc.LogoVersion != nil && svc.LogoDownloadDataId != nil {
-		return
+func upsertServiceParams(svc *Service, channelType, channelId string) gen.UpsertServiceParams {
+	params := gen.UpsertServiceParams{
+		ID:                  svc.Id,
+		ServiceID:           int64(svc.Key.ServiceID),
+		NetworkID:           int64(svc.Key.NetworkID),
+		TransportStreamID:   int64(svc.Key.StreamID),
+		Name:                svc.Name,
+		ProviderName:        svc.ProviderName,
+		Type:                int64(svc.Type),
+		RunningStatus:       int64(svc.RunningStatus),
+		FreeCa:              boolToInt64(svc.FreeCA),
+		EitScheduleFlag:     boolToInt64(svc.EITSchedule),
+		EitPresentFollowing: boolToInt64(svc.EITPresentFollow),
+		RemoteControlKeyID:  uint8Ptr64(svc.RemoteControlKey),
+		ChannelType:         channelType,
+		ChannelID:           channelId,
 	}
-	metadata, ok := existing[serviceTriplet{
-		networkID:         svc.NetworkId,
-		transportStreamID: svc.TransportStreamId,
-		serviceID:         svc.ServiceId,
-	}]
+	if logo := svc.Logo; logo != nil {
+		logoID := int64(logo.LogoID)
+		params.LogoID = &logoID
+		params.LogoVersion = uint16Ptr64(logo.Version)
+		params.LogoDownloadDataID = uint16Ptr64(logo.DownloadDataID)
+		if logo.HasSimpleLogo {
+			params.SimpleLogo = &logo.SimpleLogo
+		}
+	}
+	return params
+}
+
+// preserveServiceLogoMetadata keeps the logo a previous scan resolved when
+// this scan could not resolve it, e.g. when the SDT carried only an
+// indirect reference.
+func preserveServiceLogoMetadata(svc *Service, existing map[model.ServiceKey]model.LogoRef) {
+	previous, ok := existing[svc.Key]
 	if !ok {
 		return
 	}
-	if svc.LogoId == nil {
-		v := metadata.logoID
-		svc.LogoId = &v
+	if svc.Logo == nil {
+		svc.Logo = &previous
+		return
 	}
-	if svc.LogoVersion == nil {
-		v := metadata.logoVersion
-		svc.LogoVersion = &v
+	if svc.Logo.Version == nil {
+		svc.Logo.Version = previous.Version
 	}
-	if svc.LogoDownloadDataId == nil {
-		v := metadata.downloadDataID
-		svc.LogoDownloadDataId = &v
+	if svc.Logo.DownloadDataID == nil {
+		svc.Logo.DownloadDataID = previous.DownloadDataID
 	}
 }
 
@@ -455,7 +449,7 @@ func (s *sqliteStore) PruneChannels(ctx context.Context, active []ChannelKey) (e
 	}
 	stale := make(map[ChannelKey]struct{})
 	for _, svc := range services {
-		key := ChannelKey{Type: svc.ChannelType, ID: svc.ChannelID}
+		key := ChannelKey{Type: svc.Service.ChannelType, ID: svc.Service.ChannelID}
 		if _, ok := allowed[key]; !ok {
 			stale[key] = struct{}{}
 		}
@@ -482,80 +476,90 @@ func (s *sqliteStore) PruneChannels(ctx context.Context, active []ChannelKey) (e
 }
 
 type serviceRow struct {
-	id                  string
-	serviceID           int64
-	networkID           int64
-	transportStreamID   int64
-	name                string
-	typ                 int64
-	eitScheduleFlag     int64
-	eitPresentFollowing int64
-	logoID              *int64
-	logoVersion         *int64
-	logoDownloadDataID  *int64
-	hasLogoData         bool
-	remoteControlKeyID  int64
-	channelType         string
-	channelID           string
-	lastAttemptAt       *int64
-	lastSuccessAt       *int64
-	lastError           *string
+	service       gen.Service
+	hasLogoData   bool
+	lastAttemptAt *int64
+	lastSuccessAt *int64
+	lastError     *string
 }
 
-func fromServiceRow(s serviceRow) *Service {
+func fromServiceRow(row serviceRow) *Service {
+	s := row.service
 	result := &Service{
-		Id:                  s.id,
-		ServiceId:           uint16(s.serviceID),
-		NetworkId:           uint16(s.networkID),
-		TransportStreamId:   uint16(s.transportStreamID),
-		Name:                s.name,
-		Type:                uint8(s.typ),
-		EITScheduleFlag:     s.eitScheduleFlag != 0,
-		EITPresentFollowing: s.eitPresentFollowing != 0,
-		LogoId:              s.logoID,
-		LogoVersion:         s.logoVersion,
-		LogoDownloadDataId:  s.logoDownloadDataID,
-		HasLogoData:         s.hasLogoData,
-		RemoteControlKeyId:  uint8(s.remoteControlKeyID),
-		ChannelType:         s.channelType,
-		ChannelId:           s.channelID,
+		Id: s.ID,
+		Service: model.Service{
+			Key: model.ServiceKey{
+				NetworkID: uint16(s.NetworkID),
+				StreamID:  uint16(s.TransportStreamID),
+				ServiceID: uint16(s.ServiceID),
+			},
+			Name:             s.Name,
+			ProviderName:     s.ProviderName,
+			Type:             uint8(s.Type),
+			RunningStatus:    uint8(s.RunningStatus),
+			FreeCA:           s.FreeCa != 0,
+			EITSchedule:      s.EitScheduleFlag != 0,
+			EITPresentFollow: s.EitPresentFollowing != 0,
+		},
+		HasLogoData: row.hasLogoData,
+		ChannelType: s.ChannelType,
+		ChannelId:   s.ChannelID,
 		EPG: EPGStatus{
-			LastAttemptAt: s.lastAttemptAt,
-			LastSuccessAt: s.lastSuccessAt,
+			LastAttemptAt: row.lastAttemptAt,
+			LastSuccessAt: row.lastSuccessAt,
 		},
 	}
-	if s.lastError != nil {
-		result.EPG.LastError = *s.lastError
+	if s.RemoteControlKeyID != nil {
+		key := uint8(*s.RemoteControlKeyID)
+		result.RemoteControlKey = &key
+	}
+	if s.LogoID != nil {
+		logo := &model.LogoRef{LogoID: uint16(*s.LogoID)}
+		if s.LogoVersion != nil {
+			version := uint16(*s.LogoVersion)
+			logo.Version = &version
+		}
+		if s.LogoDownloadDataID != nil {
+			downloadDataID := uint16(*s.LogoDownloadDataID)
+			logo.DownloadDataID = &downloadDataID
+		}
+		if s.SimpleLogo != nil {
+			logo.SimpleLogo, logo.HasSimpleLogo = *s.SimpleLogo, true
+		}
+		result.Logo = logo
+	}
+	if row.lastError != nil {
+		result.EPG.LastError = *row.lastError
 	}
 	return result
 }
 
-func listServiceRow(s gen.ListServicesRow) serviceRow {
-	return serviceRow{s.ID, s.ServiceID, s.NetworkID, s.TransportStreamID, s.Name, s.Type, s.EitScheduleFlag, s.EitPresentFollowing, s.LogoID, s.LogoVersion, s.LogoDownloadDataID, s.HasLogoData, s.RemoteControlKeyID, s.ChannelType, s.ChannelID, s.LastAttemptAt, s.LastSuccessAt, s.LastError}
+func listServicesRow(s gen.ListServicesRow) serviceRow {
+	return serviceRow{s.Service, s.HasLogoData, s.LastAttemptAt, s.LastSuccessAt, s.LastError}
 }
 
 func getServiceByIDRow(s gen.GetServiceByIDRow) serviceRow {
-	return serviceRow{s.ID, s.ServiceID, s.NetworkID, s.TransportStreamID, s.Name, s.Type, s.EitScheduleFlag, s.EitPresentFollowing, s.LogoID, s.LogoVersion, s.LogoDownloadDataID, s.HasLogoData, s.RemoteControlKeyID, s.ChannelType, s.ChannelID, s.LastAttemptAt, s.LastSuccessAt, s.LastError}
+	return serviceRow{s.Service, s.HasLogoData, s.LastAttemptAt, s.LastSuccessAt, s.LastError}
 }
 
 func getServiceByItemIDRow(s gen.GetServiceByItemIDRow) serviceRow {
-	return serviceRow{s.ID, s.ServiceID, s.NetworkID, s.TransportStreamID, s.Name, s.Type, s.EitScheduleFlag, s.EitPresentFollowing, s.LogoID, s.LogoVersion, s.LogoDownloadDataID, s.HasLogoData, s.RemoteControlKeyID, s.ChannelType, s.ChannelID, s.LastAttemptAt, s.LastSuccessAt, s.LastError}
+	return serviceRow{s.Service, s.HasLogoData, s.LastAttemptAt, s.LastSuccessAt, s.LastError}
 }
 
 func getServiceByNetworkServiceIDRow(s gen.GetServiceByNetworkServiceIDRow) serviceRow {
-	return serviceRow{s.ID, s.ServiceID, s.NetworkID, s.TransportStreamID, s.Name, s.Type, s.EitScheduleFlag, s.EitPresentFollowing, s.LogoID, s.LogoVersion, s.LogoDownloadDataID, s.HasLogoData, s.RemoteControlKeyID, s.ChannelType, s.ChannelID, s.LastAttemptAt, s.LastSuccessAt, s.LastError}
+	return serviceRow{s.Service, s.HasLogoData, s.LastAttemptAt, s.LastSuccessAt, s.LastError}
 }
 
 func getServicesByChannelRow(s gen.GetServicesByChannelRow) serviceRow {
-	return serviceRow{s.ID, s.ServiceID, s.NetworkID, s.TransportStreamID, s.Name, s.Type, s.EitScheduleFlag, s.EitPresentFollowing, s.LogoID, s.LogoVersion, s.LogoDownloadDataID, s.HasLogoData, s.RemoteControlKeyID, s.ChannelType, s.ChannelID, s.LastAttemptAt, s.LastSuccessAt, s.LastError}
+	return serviceRow{s.Service, s.HasLogoData, s.LastAttemptAt, s.LastSuccessAt, s.LastError}
 }
 
 func getServiceByChannelAndIDRow(s gen.GetServiceByChannelAndIDRow) serviceRow {
-	return serviceRow{s.ID, s.ServiceID, s.NetworkID, s.TransportStreamID, s.Name, s.Type, s.EitScheduleFlag, s.EitPresentFollowing, s.LogoID, s.LogoVersion, s.LogoDownloadDataID, s.HasLogoData, s.RemoteControlKeyID, s.ChannelType, s.ChannelID, s.LastAttemptAt, s.LastSuccessAt, s.LastError}
+	return serviceRow{s.Service, s.HasLogoData, s.LastAttemptAt, s.LastSuccessAt, s.LastError}
 }
 
 func getServiceByTripletRow(s gen.GetServiceByTripletRow) serviceRow {
-	return serviceRow{s.ID, s.ServiceID, s.NetworkID, s.TransportStreamID, s.Name, s.Type, s.EitScheduleFlag, s.EitPresentFollowing, s.LogoID, s.LogoVersion, s.LogoDownloadDataID, s.HasLogoData, s.RemoteControlKeyID, s.ChannelType, s.ChannelID, s.LastAttemptAt, s.LastSuccessAt, s.LastError}
+	return serviceRow{s.Service, s.HasLogoData, s.LastAttemptAt, s.LastSuccessAt, s.LastError}
 }
 
 func boolToInt64(value bool) int64 {
@@ -563,4 +567,20 @@ func boolToInt64(value bool) int64 {
 		return 1
 	}
 	return 0
+}
+
+func uint8Ptr64(value *uint8) *int64 {
+	if value == nil {
+		return nil
+	}
+	v := int64(*value)
+	return &v
+}
+
+func uint16Ptr64(value *uint16) *int64 {
+	if value == nil {
+		return nil
+	}
+	v := int64(*value)
+	return &v
 }

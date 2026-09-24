@@ -76,7 +76,7 @@ func (u *knownServiceProgramUpdater) refresh(ctx context.Context) error {
 		if svc == nil {
 			continue
 		}
-		known[serviceKey{networkID: svc.NetworkId, serviceID: svc.ServiceId}] = struct{}{}
+		known[serviceKey{networkID: svc.Key.NetworkID, serviceID: svc.Key.ServiceID}] = struct{}{}
 	}
 	u.mu.Lock()
 	u.known = known

@@ -20,18 +20,22 @@ const (
 	EPGGathererDefaultSchedule = "20,50 * * * *"
 )
 
-func RegisterEPGGatherer(registry Registry, service EPGGatherer) {
+func RegisterEPGGatherer(registry Registry, service EPGGatherer, programs ProgramCleaner, retentionDays int) {
 	registry.Register(job.JobDefinition{
-		Key:           EPGGathererKey,
-		Name:          EPGGathererName,
-		Handler:       epgGathererHandler(registry, service),
+		Key:  EPGGathererKey,
+		Name: EPGGathererName,
+		Handler: epgGathererHandler(registry, service, func(ctx context.Context) error {
+			return programs.DeleteExpired(ctx, time.Now(), retentionDays)
+		}),
 		ExclusiveKeys: []string{"epg-service-topology"},
 		IsRerunnable:  true,
 		RetryDelays:   []time.Duration{time.Minute, 2 * time.Minute, 4 * time.Minute},
 	})
 }
 
-func epgGathererHandler(registry Registry, service EPGGatherer) func(context.Context) error {
+// epgGathererHandler dispatches the per-network EPG gather jobs, then runs
+// cleanup when it is set.
+func epgGathererHandler(registry Registry, service EPGGatherer, cleanup func(context.Context) error) func(context.Context) error {
 	return func(ctx context.Context) error {
 		grouped, err := service.Groups(ctx)
 		if err != nil {
@@ -60,12 +64,14 @@ func epgGathererHandler(registry Registry, service EPGGatherer) func(context.Con
 				"queued":   queued,
 			},
 		}
-		if err := service.Cleanup(ctx, time.Now()); err != nil {
-			result.Warnings = append(result.Warnings, fmt.Sprintf("cleanup failed: %v", err))
-			slog.Warn("failed to clean up old EPG data", "err", err)
-		} else {
-			result.Counts["cleanupSucceeded"] = 1
-			slog.Debug("EPG cleanup completed")
+		if cleanup != nil {
+			if err := cleanup(ctx); err != nil {
+				result.Warnings = append(result.Warnings, fmt.Sprintf("cleanup failed: %v", err))
+				slog.Warn("failed to clean up old EPG data", "err", err)
+			} else {
+				result.Counts["cleanupSucceeded"] = 1
+				slog.Debug("EPG cleanup completed")
+			}
 		}
 		run.Set(ctx, result)
 		return nil

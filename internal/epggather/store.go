@@ -13,8 +13,7 @@ type EventWriter interface {
 }
 
 // ProgramStore keeps the stored programs: syncing from a remote replaces a
-// service's programs, and cleanup removes the ended ones.
+// service's programs.
 type ProgramStore interface {
-	DeleteEndedBefore(context.Context, int64) error
 	ReplaceServicePrograms(context.Context, uint16, uint16, int64, []*program.Program) error
 }

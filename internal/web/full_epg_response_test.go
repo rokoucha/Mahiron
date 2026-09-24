@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/21S1298001/mahiron/internal/web/api"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -97,7 +98,7 @@ func newFullEPGHandler(t *testing.T) http.Handler {
 	t.Cleanup(func() { _ = jobs.Shutdown(context.Background()) })
 
 	handler, err := NewWeb(WebConfig{
-		ServiceManager: service.NewManager(service.NewSQLiteStore(database), nil, mirakurun.NewEventPublisher(hub)),
+		ServiceManager: service.NewManager(service.NewSQLiteStore(database), nil, api.NewServiceEventPublisher(mirakurun.NewEventPublisher(hub))),
 		ProgramManager: program.NewManager(store, mirakurun.NewEventPublisher(hub)),
 		StreamManager:  testStreamManager{},
 		TunerManager:   tuner.NewManager(&tuner.ManagerConfig{}),
@@ -160,8 +161,17 @@ func newContentEPGHandler(t *testing.T) http.Handler {
 
 	serviceStore := service.NewSQLiteStore(database)
 	if err := serviceStore.ReplaceChannelServices(t.Context(), "GR", "27", []*service.Service{
-		{Id: "0000100101", ServiceId: 101, NetworkId: 1, TransportStreamId: 10,
-			Name: "NHK", Type: 1, RemoteControlKeyId: 1, ChannelType: "GR", ChannelId: "27"},
+		{
+			Id: "0000100101",
+			Service: model.Service{
+				Key:              model.ServiceKey{ServiceID: 101, NetworkID: 1, StreamID: 10},
+				Name:             "NHK",
+				Type:             1,
+				RemoteControlKey: new(uint8(1)),
+			},
+			ChannelType: "GR",
+			ChannelId:   "27",
+		},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -192,7 +202,7 @@ func newContentEPGHandler(t *testing.T) http.Handler {
 	t.Cleanup(func() { _ = jobs.Shutdown(context.Background()) })
 
 	handler, err := NewWeb(WebConfig{
-		ServiceManager: service.NewManager(serviceStore, nil, mirakurun.NewEventPublisher(hub)),
+		ServiceManager: service.NewManager(serviceStore, nil, api.NewServiceEventPublisher(mirakurun.NewEventPublisher(hub))),
 		ProgramManager: program.NewManager(store, mirakurun.NewEventPublisher(hub)),
 		StreamManager:  testStreamManager{},
 		TunerManager:   tuner.NewManager(&tuner.ManagerConfig{}),

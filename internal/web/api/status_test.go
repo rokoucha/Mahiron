@@ -40,8 +40,8 @@ func TestGetStatusExposesEPGSnapshot(t *testing.T) {
 	handler, mgr, sm, pm, database := newStatusHandler(t)
 	store := service.NewSQLiteStore(database)
 	if err := store.ReplaceChannelServices(ctx, "GR", "27", []*service.Service{
-		{Id: "0000100101", ServiceId: 101, NetworkId: 1, ChannelType: "GR", ChannelId: "27"},
-		{Id: "0000100102", ServiceId: 102, NetworkId: 1, ChannelType: "GR", ChannelId: "27"},
+		{Id: "0000100101", Service: model.Service{Key: model.ServiceKey{ServiceID: 101, NetworkID: 1}}, ChannelType: "GR", ChannelId: "27"},
+		{Id: "0000100102", Service: model.Service{Key: model.ServiceKey{ServiceID: 102, NetworkID: 1}}, ChannelType: "GR", ChannelId: "27"},
 	}); err != nil {
 		t.Fatal(err)
 	}

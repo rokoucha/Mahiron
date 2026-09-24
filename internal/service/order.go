@@ -41,16 +41,16 @@ func (o serviceDisplayOrder) less(a, b *Service) bool {
 	if cmp := compareStrings(a.ChannelType, b.ChannelType); cmp != 0 {
 		return cmp < 0
 	}
-	if cmp := compareRemoteControlKeys(a.RemoteControlKeyId, b.RemoteControlKeyId); cmp != 0 {
+	if cmp := compareRemoteControlKeys(a.RemoteControlKey, b.RemoteControlKey); cmp != 0 {
 		return cmp < 0
 	}
-	if cmp := compareUint16s(a.ServiceId, b.ServiceId); cmp != 0 {
+	if cmp := compareUint16s(a.Key.ServiceID, b.Key.ServiceID); cmp != 0 {
 		return cmp < 0
 	}
-	if cmp := compareUint16s(a.NetworkId, b.NetworkId); cmp != 0 {
+	if cmp := compareUint16s(a.Key.NetworkID, b.Key.NetworkID); cmp != 0 {
 		return cmp < 0
 	}
-	if cmp := compareUint16s(a.TransportStreamId, b.TransportStreamId); cmp != 0 {
+	if cmp := compareUint16s(a.Key.StreamID, b.Key.StreamID); cmp != 0 {
 		return cmp < 0
 	}
 	if cmp := compareInt64s(serviceSortID(a), serviceSortID(b)); cmp != 0 {
@@ -66,17 +66,18 @@ func (o serviceDisplayOrder) channelTypeSortNumber(service *Service) int {
 	return math.MaxInt
 }
 
-func compareRemoteControlKeys(a, b uint8) int {
-	if a == 0 && b == 0 {
+// compareRemoteControlKeys sorts services without a remote control key last.
+func compareRemoteControlKeys(a, b *uint8) int {
+	if a == nil && b == nil {
 		return 0
 	}
-	if a == 0 {
+	if a == nil {
 		return 1
 	}
-	if b == 0 {
+	if b == nil {
 		return -1
 	}
-	return compareInts(int(a), int(b))
+	return compareInts(int(*a), int(*b))
 }
 
 func serviceSortID(service *Service) int64 {

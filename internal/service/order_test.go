@@ -1,6 +1,7 @@
 package service
 
 import (
+	"github.com/21S1298001/mahiron/internal/model"
 	"testing"
 
 	"github.com/21S1298001/mahiron/internal/config"
@@ -58,16 +59,20 @@ func TestOrderServicesSortsRemoteKeysBeforeMissingThenServiceFallbacks(t *testin
 	}
 }
 
+// testOrderService builds a service; a remoteKey of 0 means no key.
 func testOrderService(name, channelType string, remoteKey uint8, serviceID, networkID, transportStreamID uint16) *Service {
-	return &Service{
-		Id:                 name,
-		Name:               name,
-		ChannelType:        channelType,
-		RemoteControlKeyId: remoteKey,
-		ServiceId:          serviceID,
-		NetworkId:          networkID,
-		TransportStreamId:  transportStreamID,
+	svc := &Service{
+		Id: name,
+		Service: model.Service{
+			Key:  model.ServiceKey{ServiceID: serviceID, NetworkID: networkID, StreamID: transportStreamID},
+			Name: name,
+		},
+		ChannelType: channelType,
 	}
+	if remoteKey != 0 {
+		svc.RemoteControlKey = &remoteKey
+	}
+	return svc
 }
 
 func serviceNames(services []*Service) []string {

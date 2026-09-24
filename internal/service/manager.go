@@ -267,10 +267,10 @@ func (s *Manager) appendCommonLogoTargets(ctx context.Context, targets []LogoTar
 	}
 	var refreshTarget *LogoTarget
 	for _, svc := range services {
-		if !ts.IsSatelliteOriginalNetworkID(svc.NetworkId) {
+		if !ts.IsSatelliteOriginalNetworkID(svc.Key.NetworkID) {
 			continue
 		}
-		if _, ok := commonServices[commonDataServiceKey{svc.NetworkId, svc.TransportStreamId, svc.ServiceId}]; ok {
+		if _, ok := commonServices[commonDataServiceKey{svc.Key.NetworkID, svc.Key.StreamID, svc.Key.ServiceID}]; ok {
 			continue
 		}
 		target := commonLogoTargetForService(svc, commonChannel)
@@ -304,9 +304,9 @@ func commonLogoTargetForService(svc *Service, commonChannel *ChannelKey) LogoTar
 		isProbe = false
 	}
 	return LogoTarget{
-		NetworkId:         svc.NetworkId,
-		ServiceId:         svc.ServiceId,
-		TransportStreamId: svc.TransportStreamId,
+		NetworkId:         svc.Key.NetworkID,
+		ServiceId:         svc.Key.ServiceID,
+		TransportStreamId: svc.Key.StreamID,
 		ChannelType:       channel.Type,
 		ChannelId:         channel.ID,
 		IsCommonData:      true,

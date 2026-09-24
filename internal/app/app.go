@@ -34,6 +34,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/stream"
 	"github.com/21S1298001/mahiron/internal/tuner"
 	"github.com/21S1298001/mahiron/internal/web"
+	"github.com/21S1298001/mahiron/internal/web/api"
 )
 
 type runOptions struct {
@@ -156,9 +157,10 @@ func buildRuntime(cfg *config.Config, database *db.DB, obs observability.SetupRe
 		EventHub:     events,
 	})
 
-	services := service.NewManager(serviceStore, cfg.Channels, mirakurun.NewEventPublisher(events))
+	apiEvents := mirakurun.NewEventPublisher(events)
+	services := service.NewManager(serviceStore, cfg.Channels, api.NewServiceEventPublisher(apiEvents))
 
-	programs := program.NewManager(programStore, mirakurun.NewEventPublisher(events))
+	programs := program.NewManager(programStore, apiEvents)
 
 	var dataBroadcastStore *cache.SQLiteModuleStore
 	var moduleStore bml.ModuleStore
@@ -209,7 +211,7 @@ func buildRuntime(cfg *config.Config, database *db.DB, obs observability.SetupRe
 	scanAdapter := stream.NewServiceScanAdapter(streams)
 	logoAdapter := stream.NewLogoGatherAdapter(streams)
 	serviceScanner := servicescan.NewScanner(services, scanAdapter, cfg.Channels, time.Duration(cfg.System.ServiceScanTimeout)*time.Millisecond)
-	epgGatherer := epggather.NewGatherer(programs, programs, services, stream.NewEPGGatherAdapter(streams), cfg.Channels, cfg.System.EpgRetentionDays, time.Duration(cfg.System.EpgRetrievalTime)*time.Millisecond)
+	epgGatherer := epggather.NewGatherer(programs, programs, services, stream.NewEPGGatherAdapter(streams), cfg.Channels, time.Duration(cfg.System.EpgRetrievalTime)*time.Millisecond)
 
 	jobs, err := job.NewManager(job.Config{MaxHistory: 100, MaxConcurrentJobs: cfg.System.MaxConcurrentJobs}, events)
 	if err != nil {
@@ -217,7 +219,7 @@ func buildRuntime(cfg *config.Config, database *db.DB, obs observability.SetupRe
 	}
 
 	defs.RegisterServiceUpdater(jobs, serviceScanner, epgGatherer)
-	defs.RegisterEPGGatherer(jobs, epgGatherer)
+	defs.RegisterEPGGatherer(jobs, epgGatherer, programs, cfg.System.EpgRetentionDays)
 	defs.RegisterLogoGatherer(jobs, logoAdapter, services, time.Duration(cfg.System.LogoGatherTimeout)*time.Millisecond)
 
 	schedules := cfg.System.Jobs
@@ -465,14 +467,8 @@ func enqueueStartupEPGGather(jobs *job.Manager, serviceCount int, staleServices 
 }
 
 func cleanupOldEPG(ctx context.Context, programs *program.Manager, retentionDays int) {
-	if retentionDays <= 0 {
-		return
-	}
-	cutoff := time.Now().Add(-time.Duration(retentionDays) * 24 * time.Hour).UnixMilli()
-	if err := programs.DeleteEndedBefore(ctx, cutoff); err != nil {
+	if err := programs.DeleteExpired(ctx, time.Now(), retentionDays); err != nil {
 		slog.Warn("failed to clean up old EPG data", "err", err)
-	} else {
-		slog.Info("cleaned up EPG data", "cutoffDays", retentionDays)
 	}
 }
 

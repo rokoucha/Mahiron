@@ -62,8 +62,10 @@ func testBuildPAT(t *testing.T, programs map[uint16]uint16) ts.Section {
 }
 
 type testSDTService struct {
-	serviceID   uint16
-	descriptors []byte
+	serviceID     uint16
+	runningStatus byte
+	freeCA        bool
+	descriptors   []byte
 }
 
 func testServiceDescriptor(serviceType uint8, providerName, serviceName []byte) []byte {
@@ -96,7 +98,10 @@ func testBuildSDT(t *testing.T, tsid, onid uint16, services []testSDTService) ts
 		s[off] = byte(svc.serviceID >> 8)
 		s[off+1] = byte(svc.serviceID)
 		s[off+2] = 0xff
-		s[off+3] = 0xf0 | byte(len(svc.descriptors)>>8)
+		s[off+3] = svc.runningStatus<<5 | byte(len(svc.descriptors)>>8)
+		if svc.freeCA {
+			s[off+3] |= 0x10
+		}
 		s[off+4] = byte(len(svc.descriptors))
 		copy(s[off+5:], svc.descriptors)
 		off += 5 + len(svc.descriptors)
@@ -173,12 +178,12 @@ func TestScanDoesNotFilterServiceTypes(t *testing.T) {
 	scan := newServiceScan()
 	scan.Observe(testBuildPAT(t, map[uint16]uint16{100: 0x0100, 101: 0x0101}))
 	scan.Observe(testBuildSDT(t, 0x1234, 0x5678, []testSDTService{
-		{serviceID: 100, descriptors: testServiceDescriptor(0xAD, nil, []byte{0x0e, '4', 'K'})},
+		{serviceID: 100, runningStatus: 4, freeCA: true, descriptors: testServiceDescriptor(0xAD, []byte{0x0e, 'N', 'H', 'K'}, []byte{0x0e, '4', 'K'})},
 		{serviceID: 101, descriptors: testServiceDescriptor(0xC0, nil, []byte{0x0e, 'D', 'A', 'T', 'A'})},
 	}))
 	got := scan.Services()
 	want := []model.Service{
-		{Key: model.ServiceKey{NetworkID: 0x5678, StreamID: 0x1234, ServiceID: 100}, Name: "４Ｋ", Type: 0xAD, EITSchedule: true, EITPresentFollow: true},
+		{Key: model.ServiceKey{NetworkID: 0x5678, StreamID: 0x1234, ServiceID: 100}, Name: "４Ｋ", ProviderName: "ＮＨＫ", Type: 0xAD, RunningStatus: 4, FreeCA: true, EITSchedule: true, EITPresentFollow: true},
 		{Key: model.ServiceKey{NetworkID: 0x5678, StreamID: 0x1234, ServiceID: 101}, Name: "ＤＡＴＡ", Type: 0xC0, EITSchedule: true, EITPresentFollow: true},
 	}
 	if !reflect.DeepEqual(got, want) {

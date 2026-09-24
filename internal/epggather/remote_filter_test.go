@@ -11,7 +11,7 @@ import (
 func TestKnownServiceProgramUpdaterFiltersUnknownServicesAfterRefresh(t *testing.T) {
 	inner := &recordingProgramUpdater{}
 	lister := &recordingServiceLister{
-		services: []*service.Service{{NetworkId: 4, ServiceId: 101}},
+		services: []*service.Service{{Service: model.Service{Key: model.ServiceKey{NetworkID: 4, ServiceID: 101}}}},
 	}
 	updater := NewKnownServiceProgramUpdater(inner, lister)
 
@@ -36,10 +36,10 @@ func TestKnownServiceProgramUpdaterFiltersUnknownServicesAfterRefresh(t *testing
 func TestKnownServiceProgramUpdaterRefreshesUnknownOnce(t *testing.T) {
 	inner := &recordingProgramUpdater{}
 	lister := &recordingServiceLister{
-		services: []*service.Service{{NetworkId: 4, ServiceId: 101}},
+		services: []*service.Service{{Service: model.Service{Key: model.ServiceKey{NetworkID: 4, ServiceID: 101}}}},
 		refreshServices: []*service.Service{
-			{NetworkId: 4, ServiceId: 101},
-			{NetworkId: 4, ServiceId: 102},
+			{Service: model.Service{Key: model.ServiceKey{NetworkID: 4, ServiceID: 101}}},
+			{Service: model.Service{Key: model.ServiceKey{NetworkID: 4, ServiceID: 102}}},
 		},
 	}
 	updater := NewKnownServiceProgramUpdater(inner, lister)

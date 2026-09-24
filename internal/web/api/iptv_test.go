@@ -31,26 +31,26 @@ func testIPTVHandler(t *testing.T) *Handler {
 	serviceStore := service.NewSQLiteStore(database)
 	services := []*service.Service{
 		{
-			Id:                 "0000100101",
-			ServiceId:          101,
-			NetworkId:          1,
-			TransportStreamId:  10,
-			Name:               "NHK & News",
-			Type:               1,
-			RemoteControlKeyId: 3,
-			ChannelType:        "GR",
-			ChannelId:          "27",
+			Id: "0000100101",
+			Service: model.Service{
+				Key:              model.ServiceKey{ServiceID: 101, NetworkID: 1, StreamID: 10},
+				Name:             "NHK & News",
+				Type:             1,
+				RemoteControlKey: new(uint8(3)),
+			},
+			ChannelType: "GR",
+			ChannelId:   "27",
 		},
 		{
-			Id:                 "0000200102",
-			ServiceId:          102,
-			NetworkId:          2,
-			TransportStreamId:  20,
-			Name:               "BS Service",
-			Type:               1,
-			RemoteControlKeyId: 4,
-			ChannelType:        "BS",
-			ChannelId:          "101",
+			Id: "0000200102",
+			Service: model.Service{
+				Key:              model.ServiceKey{ServiceID: 102, NetworkID: 2, StreamID: 20},
+				Name:             "BS Service",
+				Type:             1,
+				RemoteControlKey: new(uint8(4)),
+			},
+			ChannelType: "BS",
+			ChannelId:   "101",
 		},
 	}
 	if err := serviceStore.ReplaceChannelServices(ctx, "GR", "27", []*service.Service{services[0]}); err != nil {

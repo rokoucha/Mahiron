@@ -5,10 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/event"
 	"github.com/21S1298001/mahiron/internal/model"
-	"github.com/21S1298001/mahiron/internal/service"
+	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 )
 
 func TestServiceEventCarriesMirakurunPayload(t *testing.T) {
@@ -18,22 +17,18 @@ func TestServiceEventCarriesMirakurunPayload(t *testing.T) {
 	tsmfRelTs := uint8(1)
 	hub := event.New()
 	publisher := NewEventPublisher(hub)
-	publisher.PublishServiceEvent(event.TypeUpdate, &service.Service{
-		ServiceId:         101,
-		NetworkId:         1,
-		TransportStreamId: 10,
-		Name:              "NHK",
-		Type:              1,
-		LogoId:            &logoID,
-		HasLogoData:       true,
-		EPG: service.EPGStatus{
-			LastAttemptAt: &attemptedAt,
-			LastSuccessAt: &succeededAt,
-			LastError:     "failed once",
-		},
-		ChannelType: "GR",
-		ChannelId:   "27",
-	}, &config.ChannelConfig{Type: "GR", Channel: "27", Name: "NHK", TsmfRelTs: &tsmfRelTs})
+	publisher.PublishServiceEvent(event.TypeUpdate, &model.Service{
+		Key:  model.ServiceKey{ServiceID: 101, NetworkID: 1, StreamID: 10},
+		Name: "NHK",
+		Type: 1,
+		Logo: &model.LogoRef{LogoID: uint16(logoID)},
+	}, ServiceState{
+		Channel:          &apigen.Channel{Type: "GR", Channel: "27", Name: apigen.NewOptString("NHK"), TsmfRelTs: apigen.NewOptInt(int(tsmfRelTs))},
+		HasLogoData:      true,
+		EPGLastAttemptAt: &attemptedAt,
+		EPGLastSuccessAt: &succeededAt,
+		EPGLastError:     "failed once",
+	})
 
 	events := hub.Log()
 	if len(events) != 1 {

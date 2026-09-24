@@ -26,8 +26,8 @@ func TestOpenInMemoryAppliesAtlasMigrationsIdempotently(t *testing.T) {
 	if err := database.Write.QueryRow("SELECT COUNT(*) FROM atlas_schema_revisions").Scan(&revisions); err != nil {
 		t.Fatal(err)
 	}
-	if revisions != 7 {
-		t.Fatalf("revision count = %d, want 7", revisions)
+	if revisions != 8 {
+		t.Fatalf("revision count = %d, want 8", revisions)
 	}
 }
 

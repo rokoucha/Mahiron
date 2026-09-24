@@ -165,6 +165,8 @@ func (s *serviceScan) handleSDT() {
 				Name:             desc.ServiceName,
 				ProviderName:     desc.ServiceProviderName,
 				Type:             desc.ServiceType,
+				RunningStatus:    svc.RunningStatus,
+				FreeCA:           svc.FreeCAMode,
 				EITSchedule:      svc.EITScheduleFlag,
 				EITPresentFollow: svc.EITPresentFollowing,
 			}

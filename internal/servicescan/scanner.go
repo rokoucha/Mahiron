@@ -148,40 +148,11 @@ func (s *Scanner) ScanChannel(ctx context.Context, channelType string, channelID
 
 	scanned := make([]*service.Service, len(services))
 	for i, svc := range services {
-		var remoteControlKeyID uint8
-		if svc.RemoteControlKey != nil {
-			remoteControlKeyID = *svc.RemoteControlKey
-		}
-		var logoID *int64
-		var logoVersion *int64
-		var logoDownloadDataID *int64
-		if svc.Logo != nil {
-			v := int64(svc.Logo.LogoID)
-			logoID = &v
-		}
-		if svc.Logo != nil && svc.Logo.Version != nil {
-			v := int64(*svc.Logo.Version)
-			logoVersion = &v
-		}
-		if svc.Logo != nil && svc.Logo.DownloadDataID != nil {
-			v := int64(*svc.Logo.DownloadDataID)
-			logoDownloadDataID = &v
-		}
 		scanned[i] = &service.Service{
-			Id:                  fmt.Sprintf("%05d%05d", svc.Key.NetworkID, svc.Key.ServiceID),
-			ServiceId:           svc.Key.ServiceID,
-			NetworkId:           svc.Key.NetworkID,
-			TransportStreamId:   svc.Key.StreamID,
-			Name:                svc.Name,
-			Type:                svc.Type,
-			EITScheduleFlag:     svc.EITSchedule,
-			EITPresentFollowing: svc.EITPresentFollow,
-			LogoId:              logoID,
-			LogoVersion:         logoVersion,
-			LogoDownloadDataId:  logoDownloadDataID,
-			RemoteControlKeyId:  remoteControlKeyID,
-			ChannelType:         channelType,
-			ChannelId:           channelID,
+			Id:          fmt.Sprintf("%05d%05d", svc.Key.NetworkID, svc.Key.ServiceID),
+			Service:     svc,
+			ChannelType: channelType,
+			ChannelId:   channelID,
 		}
 	}
 
@@ -235,13 +206,13 @@ func serviceScanResult(channelType, channelID string, scanned []*service.Service
 			Kind:    "service",
 			Summary: svc.Name,
 			Data: map[string]any{
-				"networkId":          svc.NetworkId,
-				"serviceId":          svc.ServiceId,
-				"transportStreamId":  svc.TransportStreamId,
+				"networkId":          svc.Key.NetworkID,
+				"serviceId":          svc.Key.ServiceID,
+				"transportStreamId":  svc.Key.StreamID,
 				"name":               svc.Name,
 				"type":               svc.Type,
-				"remoteControlKeyId": svc.RemoteControlKeyId,
-				"hasLogoInfo":        svc.LogoId != nil || svc.LogoVersion != nil || svc.LogoDownloadDataId != nil,
+				"remoteControlKeyId": svc.RemoteControlKey,
+				"hasLogoInfo":        svc.Logo != nil,
 				"change":             change,
 			},
 		})
@@ -256,13 +227,13 @@ func serviceScanResult(channelType, channelID string, scanned []*service.Service
 			Kind:    "service",
 			Summary: svc.Name,
 			Data: map[string]any{
-				"networkId":          svc.NetworkId,
-				"serviceId":          svc.ServiceId,
-				"transportStreamId":  svc.TransportStreamId,
+				"networkId":          svc.Key.NetworkID,
+				"serviceId":          svc.Key.ServiceID,
+				"transportStreamId":  svc.Key.StreamID,
 				"name":               svc.Name,
 				"type":               svc.Type,
-				"remoteControlKeyId": svc.RemoteControlKeyId,
-				"hasLogoInfo":        svc.LogoId != nil || svc.LogoVersion != nil || svc.LogoDownloadDataId != nil,
+				"remoteControlKeyId": svc.RemoteControlKey,
+				"hasLogoInfo":        svc.Logo != nil,
 				"change":             "removed",
 			},
 		})
@@ -306,11 +277,11 @@ func newNetworkIDsFromDiff(before map[string]struct{}, scanned []*service.Servic
 		if _, ok := before[svc.Id]; ok {
 			continue
 		}
-		if _, ok := seen[svc.NetworkId]; ok {
+		if _, ok := seen[svc.Key.NetworkID]; ok {
 			continue
 		}
-		seen[svc.NetworkId] = struct{}{}
-		nids = append(nids, svc.NetworkId)
+		seen[svc.Key.NetworkID] = struct{}{}
+		nids = append(nids, svc.Key.NetworkID)
 	}
 	return nids
 }

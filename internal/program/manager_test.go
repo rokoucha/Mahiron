@@ -4,9 +4,11 @@ import (
 	"context"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/21S1298001/mahiron/internal/db"
 	"github.com/21S1298001/mahiron/internal/model"
+	"github.com/21S1298001/mahiron/internal/observability"
 )
 
 func newTestManager(t *testing.T) *Manager {
@@ -348,5 +350,41 @@ func TestUpsertProgramsFillsSparseProgramWithLaterDetails(t *testing.T) {
 	}
 	if got.Name != "later title" || got.Description != "later description" || len(got.Genres) != 1 || len(got.Audios) != 1 {
 		t.Fatalf("program was not filled by later details: %#v", got)
+	}
+}
+
+type cleanupRecordingStore struct {
+	Store
+	cutoffs []int64
+	sources []string
+}
+
+func (s *cleanupRecordingStore) DeleteEndedBefore(ctx context.Context, cutoff int64) error {
+	s.cutoffs = append(s.cutoffs, cutoff)
+	s.sources = append(s.sources, observability.EPGMetricSource(ctx))
+	return s.Store.DeleteEndedBefore(ctx, cutoff)
+}
+
+func TestDeleteExpiredDeletesProgramsPastRetention(t *testing.T) {
+	ctx := context.Background()
+	base := newTestManager(t)
+	store := &cleanupRecordingStore{Store: base.store}
+	manager := NewManager(store)
+	now := time.UnixMilli(10 * 24 * 60 * 60 * 1000)
+
+	if err := manager.DeleteExpired(ctx, now, 0); err != nil {
+		t.Fatal(err)
+	}
+	if len(store.cutoffs) != 0 {
+		t.Fatalf("cutoffs = %v, want none without retention", store.cutoffs)
+	}
+	if err := manager.DeleteExpired(ctx, now, 3); err != nil {
+		t.Fatal(err)
+	}
+	if want := now.Add(-3 * 24 * time.Hour).UnixMilli(); len(store.cutoffs) != 1 || store.cutoffs[0] != want {
+		t.Fatalf("cutoffs = %v, want [%d]", store.cutoffs, want)
+	}
+	if store.sources[0] != "cleanup" {
+		t.Fatalf("delete source = %q, want cleanup", store.sources[0])
 	}
 }

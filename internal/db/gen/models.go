@@ -43,20 +43,24 @@ type Program struct {
 }
 
 type Service struct {
-	ID                  string `json:"id"`
-	ServiceID           int64  `json:"service_id"`
-	NetworkID           int64  `json:"network_id"`
-	TransportStreamID   int64  `json:"transport_stream_id"`
-	Name                string `json:"name"`
-	Type                int64  `json:"type"`
-	EitScheduleFlag     int64  `json:"eit_schedule_flag"`
-	EitPresentFollowing int64  `json:"eit_present_following"`
-	LogoID              *int64 `json:"logo_id"`
-	LogoVersion         *int64 `json:"logo_version"`
-	LogoDownloadDataID  *int64 `json:"logo_download_data_id"`
-	RemoteControlKeyID  int64  `json:"remote_control_key_id"`
-	ChannelType         string `json:"channel_type"`
-	ChannelID           string `json:"channel_id"`
+	ID                  string  `json:"id"`
+	ServiceID           int64   `json:"service_id"`
+	NetworkID           int64   `json:"network_id"`
+	TransportStreamID   int64   `json:"transport_stream_id"`
+	Name                string  `json:"name"`
+	ProviderName        string  `json:"provider_name"`
+	Type                int64   `json:"type"`
+	RunningStatus       int64   `json:"running_status"`
+	FreeCa              int64   `json:"free_ca"`
+	EitScheduleFlag     int64   `json:"eit_schedule_flag"`
+	EitPresentFollowing int64   `json:"eit_present_following"`
+	LogoID              *int64  `json:"logo_id"`
+	LogoVersion         *int64  `json:"logo_version"`
+	LogoDownloadDataID  *int64  `json:"logo_download_data_id"`
+	SimpleLogo          *string `json:"simple_logo"`
+	RemoteControlKeyID  *int64  `json:"remote_control_key_id"`
+	ChannelType         string  `json:"channel_type"`
+	ChannelID           string  `json:"channel_id"`
 }
 
 type ServiceLogo struct {

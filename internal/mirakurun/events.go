@@ -4,10 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/event"
 	"github.com/21S1298001/mahiron/internal/model"
-	"github.com/21S1298001/mahiron/internal/service"
 )
 
 // RawEventPublisher accepts event payloads that are already encoded, such as
@@ -17,8 +15,8 @@ type RawEventPublisher interface {
 }
 
 // EventPublisher turns program and service changes into the /api/events
-// payloads. The program and service managers publish their own types through
-// it, so that neither they nor the event hub know the Mirakurun shape. The
+// payloads, so that neither the managers nor the event hub know the
+// Mirakurun shape. The
 // payload is encoded once here, and the hub keeps the same bytes the API
 // serves.
 type EventPublisher struct {
@@ -29,11 +27,11 @@ func NewEventPublisher(raw RawEventPublisher) *EventPublisher {
 	return &EventPublisher{raw: raw}
 }
 
-func (p *EventPublisher) PublishServiceEvent(typ string, svc *service.Service, channel *config.ChannelConfig) {
+func (p *EventPublisher) PublishServiceEvent(typ string, svc *model.Service, state ServiceState) {
 	if svc == nil {
 		return
 	}
-	api := ServiceToAPI(svc, channel, true)
+	api := ServiceToAPI(svc, state)
 	p.raw.PublishEventRaw(event.ResourceService, typ, MarshalService(&api))
 }
 

@@ -434,7 +434,7 @@ func contractServiceHandler(t *testing.T, channels config.ChannelsConfig) *Handl
 	t.Cleanup(func() { _ = database.Close() })
 	store := service.NewSQLiteStore(database)
 	if err := store.ReplaceChannelServices(context.Background(), "GR", "27", []*service.Service{
-		{Id: "0000100101", ServiceId: 101, NetworkId: 1, TransportStreamId: 10, Name: "NHK", Type: 1, ChannelType: "GR", ChannelId: "27"},
+		{Id: "0000100101", Service: model.Service{Key: model.ServiceKey{ServiceID: 101, NetworkID: 1, StreamID: 10}, Name: "NHK", Type: 1}, ChannelType: "GR", ChannelId: "27"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -446,8 +446,16 @@ func contractServiceHandler(t *testing.T, channels config.ChannelsConfig) *Handl
 func TestServiceContractOmitsEmptyKeys(t *testing.T) {
 	handler := contractServiceHandler(t, config.ChannelsConfig{{Name: "NHK", Type: "GR", Channel: "27"}})
 
-	bare := &service.Service{Id: "0000100101", ServiceId: 101, NetworkId: 1, TransportStreamId: 10,
-		Name: "NHK", Type: 1, ChannelType: "GR", ChannelId: "27"}
+	bare := &service.Service{
+		Id: "0000100101",
+		Service: model.Service{
+			Key:  model.ServiceKey{ServiceID: 101, NetworkID: 1, StreamID: 10},
+			Name: "NHK",
+			Type: 1,
+		},
+		ChannelType: "GR",
+		ChannelId:   "27",
+	}
 	raw, err := apiService(handler, bare, true).MarshalJSON()
 	if err != nil {
 		t.Fatal(err)
@@ -468,10 +476,20 @@ func TestServiceContractOmitsEmptyKeys(t *testing.T) {
 
 	logoID := int64(42)
 	attemptAt, successAt := int64(2000), int64(3000)
-	full := &service.Service{Id: "0000100101", ServiceId: 101, NetworkId: 1, TransportStreamId: 10,
-		Name: "NHK", Type: 1, LogoId: &logoID, HasLogoData: true, RemoteControlKeyId: 3,
-		ChannelType: "GR", ChannelId: "27",
-		EPG: service.EPGStatus{LastAttemptAt: &attemptAt, LastSuccessAt: &successAt, LastError: "boom"}}
+	full := &service.Service{
+		Id: "0000100101",
+		Service: model.Service{
+			Key:              model.ServiceKey{ServiceID: 101, NetworkID: 1, StreamID: 10},
+			Name:             "NHK",
+			Type:             1,
+			RemoteControlKey: new(uint8(3)),
+			Logo:             &model.LogoRef{LogoID: uint16(logoID)},
+		},
+		HasLogoData: true,
+		ChannelType: "GR",
+		ChannelId:   "27",
+		EPG:         service.EPGStatus{LastAttemptAt: &attemptAt, LastSuccessAt: &successAt, LastError: "boom"},
+	}
 	raw, err = apiService(handler, full, true).MarshalJSON()
 	if err != nil {
 		t.Fatal(err)
@@ -481,8 +499,16 @@ func TestServiceContractOmitsEmptyKeys(t *testing.T) {
 		[]string{"logoId", "epgReady", "epgUpdatedAt", "epgLastAttemptAt", "epgLastError", "channel"}, nil)
 
 	// A service whose channel is not configured carries no channel key.
-	orphan := &service.Service{Id: "0000200102", ServiceId: 102, NetworkId: 2, TransportStreamId: 20,
-		Name: "orphan", Type: 1, ChannelType: "BS", ChannelId: "101"}
+	orphan := &service.Service{
+		Id: "0000200102",
+		Service: model.Service{
+			Key:  model.ServiceKey{ServiceID: 102, NetworkID: 2, StreamID: 20},
+			Name: "orphan",
+			Type: 1,
+		},
+		ChannelType: "BS",
+		ChannelId:   "101",
+	}
 	raw, err = apiService(handler, orphan, true).MarshalJSON()
 	if err != nil {
 		t.Fatal(err)
@@ -508,13 +534,23 @@ func TestServiceEventsShareAPIEncoding(t *testing.T) {
 	logoID := int64(42)
 	attemptAt, successAt := int64(2000), int64(3000)
 	for _, svc := range []*service.Service{
-		{Id: "0000100101", ServiceId: 101, NetworkId: 1, TransportStreamId: 10, Name: "NHK", Type: 1, ChannelType: "GR", ChannelId: "27"},
-		{Id: "0000100101", ServiceId: 101, NetworkId: 1, TransportStreamId: 10, Name: "NHK", Type: 1,
-			LogoId: &logoID, HasLogoData: true, ChannelType: "GR", ChannelId: "27",
-			EPG: service.EPGStatus{LastAttemptAt: &attemptAt, LastSuccessAt: &successAt, LastError: "boom"}},
+		{Id: "0000100101", Service: model.Service{Key: model.ServiceKey{ServiceID: 101, NetworkID: 1, StreamID: 10}, Name: "NHK", Type: 1}, ChannelType: "GR", ChannelId: "27"},
+		{
+			Id: "0000100101",
+			Service: model.Service{
+				Key:  model.ServiceKey{ServiceID: 101, NetworkID: 1, StreamID: 10},
+				Name: "NHK",
+				Type: 1,
+				Logo: &model.LogoRef{LogoID: uint16(logoID)},
+			},
+			HasLogoData: true,
+			ChannelType: "GR",
+			ChannelId:   "27",
+			EPG:         service.EPGStatus{LastAttemptAt: &attemptAt, LastSuccessAt: &successAt, LastError: "boom"},
+		},
 	} {
 		hub := event.New()
-		mirakurun.NewEventPublisher(hub).PublishServiceEvent(event.TypeUpdate, svc, channel)
+		NewServiceEventPublisher(mirakurun.NewEventPublisher(hub)).PublishServiceEvent(event.TypeUpdate, svc, channel)
 		events := hub.Log()
 		if len(events) != 1 {
 			t.Fatalf("events length = %d, want 1", len(events))
@@ -543,10 +579,27 @@ func TestMirakurunOutputsShareOneFixture(t *testing.T) {
 
 	serviceStore := service.NewSQLiteStore(database)
 	services := []*service.Service{
-		{Id: "0000100101", ServiceId: 101, NetworkId: 1, TransportStreamId: 10,
-			Name: "NHK \"総合\"", Type: 1, RemoteControlKeyId: 1, ChannelType: "GR", ChannelId: "27"},
-		{Id: "0000200102", ServiceId: 102, NetworkId: 2, TransportStreamId: 20,
-			Name: "BS Service", Type: 1, ChannelType: "BS", ChannelId: "101"},
+		{
+			Id: "0000100101",
+			Service: model.Service{
+				Key:              model.ServiceKey{ServiceID: 101, NetworkID: 1, StreamID: 10},
+				Name:             "NHK \"総合\"",
+				Type:             1,
+				RemoteControlKey: new(uint8(1)),
+			},
+			ChannelType: "GR",
+			ChannelId:   "27",
+		},
+		{
+			Id: "0000200102",
+			Service: model.Service{
+				Key:  model.ServiceKey{ServiceID: 102, NetworkID: 2, StreamID: 20},
+				Name: "BS Service",
+				Type: 1,
+			},
+			ChannelType: "BS",
+			ChannelId:   "101",
+		},
 	}
 	if err := serviceStore.ReplaceChannelServices(ctx, "GR", "27", services[:1]); err != nil {
 		t.Fatal(err)
@@ -564,7 +617,7 @@ func TestMirakurunOutputsShareOneFixture(t *testing.T) {
 
 	hub := event.New()
 	mirakurun.NewEventPublisher(hub).PublishProgramEvent(event.TypeCreate, &full.Event)
-	mirakurun.NewEventPublisher(hub).PublishServiceEvent(event.TypeUpdate, services[0], nil)
+	NewServiceEventPublisher(mirakurun.NewEventPublisher(hub)).PublishServiceEvent(event.TypeUpdate, services[0], nil)
 	handler := NewHandler(HandlerConfig{
 		ProgramManager: pm,
 		ServiceManager: service.NewManager(serviceStore, config.ChannelsConfig{
@@ -680,7 +733,7 @@ func TestMirakurunOutputsShareOneFixture(t *testing.T) {
 			t.Fatal(err)
 		}
 		body := string(raw)
-		// RemoteControlKeyId 0 falls back to the guide ID for tvg-chno.
+		// A service without a remote control key falls back to the guide ID for tvg-chno.
 		for _, want := range []string{
 			`tvg-id="100101"`,
 			`tvg-name="NHK \"総合\""`,

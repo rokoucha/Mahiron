@@ -4,12 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"time"
 
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/model"
-	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/internal/service"
 )
 
@@ -40,18 +38,16 @@ type Gatherer struct {
 	channels      config.ChannelsConfig
 	events        EventWriter
 	programStore  ProgramStore
-	retentionDays int
 	retrievalTime time.Duration
 	serviceStore  ServiceStore
 	streams       StreamManager
 }
 
-func NewGatherer(events EventWriter, programStore ProgramStore, serviceStore ServiceStore, streams StreamManager, channels config.ChannelsConfig, retentionDays int, retrievalTime time.Duration) *Gatherer {
+func NewGatherer(events EventWriter, programStore ProgramStore, serviceStore ServiceStore, streams StreamManager, channels config.ChannelsConfig, retrievalTime time.Duration) *Gatherer {
 	return &Gatherer{
 		channels:      channels,
 		events:        events,
 		programStore:  programStore,
-		retentionDays: retentionDays,
 		retrievalTime: retrievalTime,
 		serviceStore:  serviceStore,
 		streams:       streams,
@@ -75,16 +71,6 @@ func (s *Gatherer) BuildNetworkInputs(ctx context.Context, networkID uint16) ([]
 
 func (s *Gatherer) GatherNetwork(ctx context.Context, networkID uint16, candidates []Candidate, serviceKeys []model.ServiceKey) error {
 	return gatherNetwork(ctx, s.events, s.programStore, s.serviceStore, s.streams, networkID, candidates, serviceKeys, s.retrievalTime)
-}
-
-func (s *Gatherer) Cleanup(ctx context.Context, now time.Time) error {
-	if s.retentionDays <= 0 {
-		slog.Debug("skipping EPG cleanup", "retentionDays", s.retentionDays)
-		return nil
-	}
-	cutoff := now.Add(-time.Duration(s.retentionDays) * 24 * time.Hour).UnixMilli()
-	slog.Debug("cleaning up old EPG data", "retentionDays", s.retentionDays, "cutoff", cutoff)
-	return s.programStore.DeleteEndedBefore(observability.ContextWithEPGMetricSource(ctx, "cleanup"), cutoff)
 }
 
 func RetryableError(err error) bool {

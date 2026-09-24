@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"github.com/21S1298001/mahiron/internal/web/api"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -54,7 +55,7 @@ func TestProductionSnapshot(t *testing.T) {
 	}
 	database := openSnapshotDB(t, filepath.Join(dir, "mahiron.db"))
 	hub := event.NewWithCapacity(100000)
-	services := service.NewManager(service.NewSQLiteStore(database), channels, mirakurun.NewEventPublisher(hub))
+	services := service.NewManager(service.NewSQLiteStore(database), channels, api.NewServiceEventPublisher(mirakurun.NewEventPublisher(hub)))
 	programs := program.NewManager(program.NewSQLiteStore(database))
 	handler := newSnapshotHandler(t, services, programs, hub)
 
