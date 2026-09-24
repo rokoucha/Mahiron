@@ -282,11 +282,11 @@ func TestApiProgramExposesExtendedRelatedAndSeries(t *testing.T) {
 	if !ok {
 		t.Fatalf("response type = %T, want *Program", res)
 	}
-	if !p.Extended.IsSet() {
+	if len(p.Extended) == 0 {
 		t.Fatal("Extended not set")
 	}
-	if p.Extended.Value["出演者"] != "Foo" {
-		t.Errorf("Extended[出演者] = %q, want Foo", p.Extended.Value["出演者"])
+	if !strings.Contains(string(p.Extended), `"出演者":"Foo"`) {
+		t.Errorf("Extended = %s, want 出演者 Foo", p.Extended)
 	}
 	if len(p.RelatedItems) != 1 {
 		t.Fatalf("RelatedItems = %d, want 1", len(p.RelatedItems))
@@ -434,8 +434,8 @@ func TestApiProgramRelatedItemsEmptyWhenNone(t *testing.T) {
 	if len(p.RelatedItems) != 0 {
 		t.Errorf("RelatedItems = %d, want 0", len(p.RelatedItems))
 	}
-	if p.Extended.IsSet() {
-		t.Errorf("Extended = %#v, want unset", p.Extended)
+	if len(p.Extended) != 0 {
+		t.Errorf("Extended = %s, want unset", p.Extended)
 	}
 	if p.Series.IsSet() {
 		t.Errorf("Series = %#v, want unset", p.Series)

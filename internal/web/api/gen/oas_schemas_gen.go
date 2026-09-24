@@ -3121,52 +3121,6 @@ func (o OptProgramEpisodeNumber) Or(d ProgramEpisodeNumber) ProgramEpisodeNumber
 	return d
 }
 
-// NewOptProgramExtended returns new OptProgramExtended with value set to v.
-func NewOptProgramExtended(v ProgramExtended) OptProgramExtended {
-	return OptProgramExtended{
-		Value: v,
-		Set:   true,
-	}
-}
-
-// OptProgramExtended is optional ProgramExtended.
-type OptProgramExtended struct {
-	Value ProgramExtended
-	Set   bool
-}
-
-// IsSet returns true if OptProgramExtended was set.
-func (o OptProgramExtended) IsSet() bool { return o.Set }
-
-// Reset unsets value.
-func (o *OptProgramExtended) Reset() {
-	var v ProgramExtended
-	o.Value = v
-	o.Set = false
-}
-
-// SetTo sets value to v.
-func (o *OptProgramExtended) SetTo(v ProgramExtended) {
-	o.Set = true
-	o.Value = v
-}
-
-// Get returns value and boolean that denotes whether value was set.
-func (o OptProgramExtended) Get() (v ProgramExtended, ok bool) {
-	if !o.Set {
-		return v, false
-	}
-	return o.Value, true
-}
-
-// Or returns value if set, or given parameter if does not.
-func (o OptProgramExtended) Or(d ProgramExtended) ProgramExtended {
-	if v, ok := o.Get(); ok {
-		return v
-	}
-	return d
-}
-
 // NewOptProgramPattern returns new OptProgramPattern with value set to v.
 func NewOptProgramPattern(v ProgramPattern) OptProgramPattern {
 	return OptProgramPattern{
@@ -4135,21 +4089,24 @@ func (o OptUnixtimeMS) Or(d UnixtimeMS) UnixtimeMS {
 
 // Ref: #/components/schemas/Program
 type Program struct {
-	ID           ProgramId           `json:"id"`
-	EventId      EventId             `json:"eventId"`
-	ServiceId    ServiceId           `json:"serviceId"`
-	NetworkId    NetworkId           `json:"networkId"`
-	StartAt      UnixtimeMS          `json:"startAt"`
-	Duration     int                 `json:"duration"`
-	IsFree       bool                `json:"isFree"`
-	Name         OptString           `json:"name"`
-	Description  OptString           `json:"description"`
-	Genres       []ProgramGenre      `json:"genres"`
-	Video        OptProgramVideo     `json:"video"`
-	Audios       []ProgramAudiosItem `json:"audios"`
-	Extended     OptProgramExtended  `json:"extended"`
-	RelatedItems []RelatedItem       `json:"relatedItems"`
-	Series       OptProgramSeries    `json:"series"`
+	ID          ProgramId           `json:"id"`
+	EventId     EventId             `json:"eventId"`
+	ServiceId   ServiceId           `json:"serviceId"`
+	NetworkId   NetworkId           `json:"networkId"`
+	StartAt     UnixtimeMS          `json:"startAt"`
+	Duration    int                 `json:"duration"`
+	IsFree      bool                `json:"isFree"`
+	Name        OptString           `json:"name"`
+	Description OptString           `json:"description"`
+	Genres      []ProgramGenre      `json:"genres"`
+	Video       OptProgramVideo     `json:"video"`
+	Audios      []ProgramAudiosItem `json:"audios"`
+	// The extended event description as an object of strings, whose keys are item headings in the order
+	// the broadcaster sends them. The schema leaves the type open so that the generated code keeps the
+	// order instead of decoding it into a map.
+	Extended     jx.Raw           `json:"extended"`
+	RelatedItems []RelatedItem    `json:"relatedItems"`
+	Series       OptProgramSeries `json:"series"`
 }
 
 // GetID returns the value of ID.
@@ -4213,7 +4170,7 @@ func (s *Program) GetAudios() []ProgramAudiosItem {
 }
 
 // GetExtended returns the value of Extended.
-func (s *Program) GetExtended() OptProgramExtended {
+func (s *Program) GetExtended() jx.Raw {
 	return s.Extended
 }
 
@@ -4288,7 +4245,7 @@ func (s *Program) SetAudios(val []ProgramAudiosItem) {
 }
 
 // SetExtended sets the value of Extended.
-func (s *Program) SetExtended(val OptProgramExtended) {
+func (s *Program) SetExtended(val jx.Raw) {
 	s.Extended = val
 }
 
@@ -4484,17 +4441,6 @@ func (s *ProgramAudiosItemLangsItem) UnmarshalText(data []byte) error {
 }
 
 type ProgramEpisodeNumber int
-
-type ProgramExtended map[string]string
-
-func (s *ProgramExtended) init() ProgramExtended {
-	m := *s
-	if m == nil {
-		m = map[string]string{}
-		*s = m
-	}
-	return m
-}
 
 // Ref: #/components/schemas/ProgramGenre
 type ProgramGenre struct {

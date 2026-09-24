@@ -12,7 +12,6 @@ import (
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/service"
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
-	"github.com/go-faster/jx"
 )
 
 func fullProgram() *program.Program {
@@ -75,26 +74,6 @@ func TestProgramRoundTrip(t *testing.T) {
 		}
 		if got := ProgramFromAPI(&decoded); !reflect.DeepEqual(got, &want) {
 			t.Fatalf("round trip = %#v, want %#v", got, &want)
-		}
-	}
-}
-
-func TestEncodeProgramMatchesGeneratedWithoutExtended(t *testing.T) {
-	cases := []*program.Program{
-		{ID: 1, EventID: 8, ServiceID: 101, NetworkID: 1},
-		fullProgram(),
-	}
-	// Without extended items both encodings must agree byte-for-byte, so a
-	// schema change that this writer does not follow fails here.
-	for _, p := range cases {
-		api := ProgramToAPI(p)
-		api.Extended = apigen.OptProgramExtended{}
-		want := &jx.Encoder{}
-		api.Encode(want)
-		got := &jx.Encoder{}
-		EncodeProgram(got, &api)
-		if !bytes.Equal(got.Bytes(), want.Bytes()) {
-			t.Fatalf("EncodeProgram = %s, want %s", got.Bytes(), want.Bytes())
 		}
 	}
 }

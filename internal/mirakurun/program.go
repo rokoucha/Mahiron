@@ -32,9 +32,7 @@ func ProgramToAPI(p *program.Program) apigen.Program {
 	if p.Video != nil {
 		result.Video = apigen.NewOptProgramVideo(programVideoToAPI(p.Video))
 	}
-	if len(p.Extended) > 0 {
-		result.Extended = apigen.NewOptProgramExtended(apigen.ProgramExtended(p.Extended))
-	}
+	result.Extended = extendedToAPI(p.Extended)
 	if p.Series != nil {
 		result.Series = apigen.NewOptProgramSeries(programSeriesToAPI(p.Series))
 	}
@@ -218,7 +216,7 @@ func ProgramFromAPI(p *apigen.Program) *program.Program {
 		IsFree:       p.IsFree,
 		Genres:       programGenresFromAPI(p.Genres),
 		Audios:       programAudiosFromAPI(p.Audios),
-		Extended:     normalizeStringMap(map[string]string(p.Extended.Value)),
+		Extended:     extendedFromAPI(p.Extended),
 		RelatedItems: relatedItemsFromAPI(p.RelatedItems),
 	}
 	if name, ok := p.Name.Get(); ok {
@@ -334,11 +332,4 @@ func programSeriesFromAPI(s *apigen.ProgramSeries) *program.Series {
 		series.Name = name
 	}
 	return series
-}
-
-func normalizeStringMap(m map[string]string) map[string]string {
-	if len(m) == 0 {
-		return nil
-	}
-	return m
 }

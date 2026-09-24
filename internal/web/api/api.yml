@@ -1805,9 +1805,11 @@ components:
                     - spa
                     - etc
         extended:
-          type: object
-          additionalProperties:
-            type: string
+          description: >-
+            The extended event description as an object of strings, whose keys
+            are item headings in the order the broadcaster sends them. The
+            schema leaves the type open so that the generated code keeps the
+            order instead of decoding it into a map.
         relatedItems:
           type: array
           items:

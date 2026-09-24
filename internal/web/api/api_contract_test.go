@@ -372,8 +372,9 @@ func TestProgramContractExtendedKeepsEveryItem(t *testing.T) {
 	if got := decodeExtended(t, raw); !reflect.DeepEqual(got, full.Extended) {
 		t.Fatalf("encoded extended = %#v, want %#v", got, full.Extended)
 	}
-	// The streaming /api/programs path encodes with mirakurun.EncodeProgram;
-	// the item set must be identical there too, with keys in sorted order.
+	// The streaming /api/programs path and /api/events encode through
+	// mirakurun.MarshalProgram; the item set must be identical there too,
+	// with keys in sorted order.
 	streamed := mirakurun.MarshalProgram(contractAPIProgram(stored))
 	if got := decodeExtended(t, streamed); !reflect.DeepEqual(got, full.Extended) {
 		t.Fatalf("streamed extended = %#v, want %#v", got, full.Extended)
