@@ -1,24 +1,35 @@
 package mirakurun
 
 import (
+	"github.com/go-faster/jx"
+
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/service"
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 	"github.com/21S1298001/mahiron/ts"
 )
 
+// MarshalService encodes a service with the generated encoding and returns
+// the bytes. The service shape holds no maps, so the generated encoding is
+// already stable across runs.
+func MarshalService(svc *apigen.Service) []byte {
+	e := &jx.Encoder{}
+	svc.Encode(e)
+	return e.Bytes()
+}
+
 // ServiceToAPI converts a service to its Mirakurun-compatible API shape.
 // The channel is attached only when includeChannel is set and the channel is
 // known; the EPG status and logo presence travel as plain values.
 func ServiceToAPI(svc *service.Service, channel *config.ChannelConfig, includeChannel bool) apigen.Service {
 	result := apigen.Service{
-		ID:                apigen.ServiceItemId(svc.ItemId()),
-		ServiceId:         apigen.ServiceId(svc.ServiceId),
-		NetworkId:         apigen.NetworkId(svc.NetworkId),
-		TransportStreamId: apigen.NewOptTransportStreamId(apigen.TransportStreamId(svc.TransportStreamId)),
-		Name:              svc.Name,
-		Type:              int(svc.Type),
-		EitScheduleFlag:   apigen.NewOptBool(svc.EITScheduleFlag),
+		ID:                  apigen.ServiceItemId(svc.ItemId()),
+		ServiceId:           apigen.ServiceId(svc.ServiceId),
+		NetworkId:           apigen.NetworkId(svc.NetworkId),
+		TransportStreamId:   apigen.NewOptTransportStreamId(apigen.TransportStreamId(svc.TransportStreamId)),
+		Name:                svc.Name,
+		Type:                int(svc.Type),
+		EitScheduleFlag:     apigen.NewOptBool(svc.EITScheduleFlag),
 		EitPresentFollowing: apigen.NewOptBool(svc.EITPresentFollowing),
 		RemoteControlKeyId: apigen.NewOptInt(
 			int(svc.RemoteControlKeyId),

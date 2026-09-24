@@ -73,7 +73,7 @@ func TestGetEventsReturnsOnlyLast100Events(t *testing.T) {
 
 func TestGetEventsReturnsMirakurunCompatibleData(t *testing.T) {
 	hub := event.New()
-	hub.PublishServiceEvent(event.TypeUpdate, map[string]any{
+	hub.PublishEvent(event.ResourceService, event.TypeUpdate, map[string]any{
 		"id":                 int64(100101),
 		"serviceId":          uint16(101),
 		"networkId":          uint16(1),

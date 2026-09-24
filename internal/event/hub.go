@@ -3,10 +3,15 @@ package event
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"sync"
 	"time"
 
+	"github.com/21S1298001/mahiron/internal/config"
+	"github.com/21S1298001/mahiron/internal/mirakurun"
 	"github.com/21S1298001/mahiron/internal/observability"
+	"github.com/21S1298001/mahiron/internal/program"
+	"github.com/21S1298001/mahiron/internal/service"
 )
 
 const (
@@ -85,16 +90,58 @@ func (h *Hub) PublishEvent(resource, typ string, data any) {
 	h.mu.Unlock()
 }
 
-func (h *Hub) PublishServiceEvent(typ string, data map[string]any) {
-	h.PublishEvent(ResourceService, typ, data)
+func (h *Hub) PublishEventRaw(resource, typ string, raw json.RawMessage) {
+	raw = append(json.RawMessage(nil), raw...)
+	observability.RecordEventPublished(context.Background(), resource, typ)
+	event := Event{
+		Resource: resource,
+		Type:     typ,
+		Data:     raw,
+		Time:     h.now().UnixMilli(),
+	}
+
+	h.mu.Lock()
+	h.log = append(h.log, event)
+	if overflow := len(h.log) - h.capacity; overflow > 0 {
+		h.log = append([]Event(nil), h.log[overflow:]...)
+	}
+	for ch := range h.subscribers {
+		select {
+		case ch <- cloneEvent(event):
+		default:
+			observability.RecordEventDropped(context.Background())
+		}
+	}
+	h.mu.Unlock()
+}
+
+// PublishServiceEvent stores the Mirakurun-compatible service payload. The
+// payload is encoded here so the log holds the same bytes the API serves.
+func (h *Hub) PublishServiceEvent(typ string, svc *service.Service, channel *config.ChannelConfig) {
+	if svc == nil {
+		return
+	}
+	api := mirakurun.ServiceToAPI(svc, channel, true)
+	h.PublishEventRaw(ResourceService, typ, mirakurun.MarshalService(&api))
+}
+
+// PublishProgramEvent stores the Mirakurun-compatible program payload. The
+// payload is encoded here so the log holds the same bytes the API serves.
+func (h *Hub) PublishProgramEvent(typ string, p *program.Program) {
+	if p == nil {
+		return
+	}
+	api := mirakurun.ProgramToAPI(p)
+	h.PublishEventRaw(ResourceProgram, typ, mirakurun.MarshalProgram(&api))
+}
+
+// PublishProgramRemove stores a program removal carrying only the program ID.
+func (h *Hub) PublishProgramRemove(typ string, id int64) {
+	h.PublishEventRaw(ResourceProgram, typ, json.RawMessage(fmt.Sprintf(`{"id":%d}`, id)))
 }
 
 func (h *Hub) PublishTunerStatusEvent(typ string, data map[string]any) {
 	h.PublishEvent(ResourceTuner, typ, data)
-}
-
-func (h *Hub) PublishProgramEvent(typ string, data map[string]any) {
-	h.PublishEvent(ResourceProgram, typ, data)
 }
 
 func (h *Hub) PublishJobEvent(typ string, data map[string]any) {

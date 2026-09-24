@@ -18,7 +18,6 @@ import (
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/service"
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
-	"github.com/go-faster/jx"
 )
 
 func TestOpenAPIDoesNotExposeContainerHostileOperations(t *testing.T) {
@@ -328,10 +327,8 @@ func TestProgramContractVideoTypeAndResolution(t *testing.T) {
 }
 
 // TestProgramContractExtendedKeepsEveryItem pins that extended items survive
-// the database round trip and both JSON encodings as a set. The items are held
-// in a map, so their order is already lost; the streaming encoder (jx) also
-// emits map keys in iteration order. Clients must not depend on the order,
-// but every item must be present.
+// the database round trip and both JSON encodings as a set, and that the
+// streaming encoding writes them sorted by key so the output is stable.
 func TestProgramContractExtendedKeepsEveryItem(t *testing.T) {
 	ctx := context.Background()
 	database, err := db.OpenInMemory()
@@ -375,68 +372,43 @@ func TestProgramContractExtendedKeepsEveryItem(t *testing.T) {
 	if got := decodeExtended(t, raw); !reflect.DeepEqual(got, full.Extended) {
 		t.Fatalf("encoded extended = %#v, want %#v", got, full.Extended)
 	}
-	// The streaming /api/programs path encodes with jx instead of
-	// encoding/json; the item set must be identical there too.
-	encoder := &jx.Encoder{}
-	contractAPIProgram(stored).Encode(encoder)
-	if got := decodeExtended(t, encoder.Bytes()); !reflect.DeepEqual(got, full.Extended) {
+	// The streaming /api/programs path encodes with mirakurun.EncodeProgram;
+	// the item set must be identical there too, with keys in sorted order.
+	streamed := mirakurun.MarshalProgram(contractAPIProgram(stored))
+	if got := decodeExtended(t, streamed); !reflect.DeepEqual(got, full.Extended) {
 		t.Fatalf("streamed extended = %#v, want %#v", got, full.Extended)
 	}
-	if got := decodeExtended(t, encoder.Bytes()); !reflect.DeepEqual(got, decodeExtended(t, raw)) {
-		t.Fatalf("streamed extended = %#v, want %#v", got, decodeExtended(t, raw))
+	extendedJSON := `"extended":{` + `"出演者":"Foo","原作・脚本":"　【作】八津弘幸","番組内容":"本文"}`
+	if !strings.Contains(string(streamed), extendedJSON) {
+		t.Errorf("streamed extended keys not sorted: %s", streamed)
 	}
 }
 
-// TestProgramEventDataMatchesAPIContract pins that /api/events program payloads
-// (built from EventData) agree with /api/programs on key omission and on video
-// type/resolution, since the two paths will be unified on the internal model.
-func TestProgramEventDataMatchesAPIContract(t *testing.T) {
+// TestProgramEventsShareAPIEncoding pins that /api/events program payloads
+// are the shared conversion's bytes, so /api/events and /api/programs cannot
+// drift apart on key omission or on video type/resolution.
+func TestProgramEventsShareAPIEncoding(t *testing.T) {
 	for _, p := range []*program.Program{contractMinimalProgram(), contractFullProgram()} {
-		data := p.EventData()
-		raw, err := json.Marshal(data)
-		if err != nil {
-			t.Fatal(err)
+		hub := event.New()
+		hub.PublishProgramEvent(event.TypeCreate, p)
+		events := hub.Log()
+		if len(events) != 1 {
+			t.Fatalf("events length = %d, want 1", len(events))
 		}
-		eventData := contractJSONKeys(t, raw)
-		apiRaw, err := contractAPIProgram(p).MarshalJSON()
-		if err != nil {
-			t.Fatal(err)
-		}
-		apiKeys := contractJSONKeys(t, apiRaw)
-		for _, key := range []string{"name", "description", "genres", "video", "extended", "series"} {
-			_, inEvent := eventData[key]
-			_, inAPI := apiKeys[key]
-			if inEvent != inAPI {
-				t.Errorf("eventId=%d key %q: EventData present=%v, apiProgram present=%v",
-					p.EventID, key, inEvent, inAPI)
-			}
-		}
-		if p.Video != nil {
-			var eventVideo, apiVideo map[string]json.RawMessage
-			if err := json.Unmarshal(eventData["video"], &eventVideo); err != nil {
-				t.Fatal(err)
-			}
-			if err := json.Unmarshal(apiKeys["video"], &apiVideo); err != nil {
-				t.Fatal(err)
-			}
-			for _, key := range []string{"type", "resolution"} {
-				_, inEvent := eventVideo[key]
-				_, inAPI := apiVideo[key]
-				if inEvent != inAPI {
-					t.Errorf("eventId=%d video key %q: EventData present=%v, apiProgram present=%v",
-						p.EventID, key, inEvent, inAPI)
-				}
-			}
-			if string(eventVideo["type"]) != string(apiVideo["type"]) ||
-				string(eventVideo["resolution"]) != string(apiVideo["resolution"]) {
-				t.Errorf("eventId=%d video mismatch: EventData=%s apiProgram=%s",
-					p.EventID, eventVideo, apiVideo)
-			}
+		api := contractAPIProgram(p)
+		if want := mirakurun.MarshalProgram(api); string(events[0].Data) != string(want) {
+			t.Errorf("eventId=%d event data = %s, want %s", p.EventID, events[0].Data, want)
 		}
 		// /api/events must stay decodable as apigen.EventData.
-		if _, err := apiEventData(data); err != nil {
+		if _, err := apiEventData(events[0].Data); err != nil {
 			t.Fatal(err)
 		}
+	}
+	// Removals carry only the program ID.
+	hub := event.New()
+	hub.PublishProgramRemove(event.TypeRemove, 42)
+	if got := string(hub.Log()[0].Data); got != `{"id":42}` {
+		t.Errorf("remove data = %s, want %s", got, `{"id":42}`)
 	}
 }
 
@@ -514,9 +486,10 @@ func TestServiceContractOmitsEmptyKeys(t *testing.T) {
 	}
 }
 
-// TestServiceEventDataMatchesAPIContract pins that /api/events service payloads
-// agree with /api/services on the optional logo and EPG keys.
-func TestServiceEventDataMatchesAPIContract(t *testing.T) {
+// TestServiceEventsShareAPIEncoding pins that /api/events service payloads
+// are the shared conversion's bytes, so /api/events and /api/services cannot
+// drift apart on the optional logo and EPG keys.
+func TestServiceEventsShareAPIEncoding(t *testing.T) {
 	handler := contractServiceHandler(t, config.ChannelsConfig{{Name: "NHK", Type: "GR", Channel: "27"}})
 	channel := handler.serviceManager.GetChannel("GR", "27")
 	logoID := int64(42)
@@ -527,40 +500,20 @@ func TestServiceEventDataMatchesAPIContract(t *testing.T) {
 			LogoId: &logoID, HasLogoData: true, ChannelType: "GR", ChannelId: "27",
 			EPG: service.EPGStatus{LastAttemptAt: &attemptAt, LastSuccessAt: &successAt, LastError: "boom"}},
 	} {
-		raw, err := json.Marshal(svc.EventData(channel))
-		if err != nil {
-			t.Fatal(err)
+		hub := event.New()
+		hub.PublishServiceEvent(event.TypeUpdate, svc, channel)
+		events := hub.Log()
+		if len(events) != 1 {
+			t.Fatalf("events length = %d, want 1", len(events))
 		}
-		eventData := contractJSONKeys(t, raw)
-		apiRaw, err := apiService(handler, svc, true).MarshalJSON()
-		if err != nil {
-			t.Fatal(err)
+		want := mirakurun.MarshalService(apiService(handler, svc, true))
+		if string(events[0].Data) != string(want) {
+			t.Errorf("service %q event data = %s, want %s", svc.Id, events[0].Data, want)
 		}
-		apiKeys := contractJSONKeys(t, apiRaw)
-		for _, key := range []string{"logoId", "epgReady", "epgUpdatedAt", "epgLastAttemptAt", "epgLastError", "channel"} {
-			_, inEvent := eventData[key]
-			_, inAPI := apiKeys[key]
-			if inEvent != inAPI {
-				t.Errorf("service %q key %q: EventData present=%v, apiService present=%v",
-					svc.Id, key, inEvent, inAPI)
-			}
-		}
-		if _, err := apiEventData(svc.EventData(channel)); err != nil {
+		if _, err := apiEventData(events[0].Data); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, ok := contractJSONKeys(t, mustMarshal(t, (&service.Service{}).EventData(nil)))["channel"]; ok {
-		t.Error("channel present for nil channel config, want absent")
-	}
-}
-
-func mustMarshal(t *testing.T, value any) []byte {
-	t.Helper()
-	raw, err := json.Marshal(value)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return raw
 }
 
 // TestMirakurunOutputsShareOneFixture records the Mirakurun-compatible outputs
@@ -598,8 +551,8 @@ func TestMirakurunOutputsShareOneFixture(t *testing.T) {
 	}
 
 	hub := event.New()
-	hub.PublishEvent(event.ResourceProgram, event.TypeCreate, full.EventData())
-	hub.PublishEvent(event.ResourceService, event.TypeUpdate, services[0].EventData(nil))
+	hub.PublishProgramEvent(event.TypeCreate, full)
+	hub.PublishServiceEvent(event.TypeUpdate, services[0], nil)
 	handler := NewHandler(HandlerConfig{
 		ProgramManager: pm,
 		ServiceManager: service.NewManager(serviceStore, config.ChannelsConfig{

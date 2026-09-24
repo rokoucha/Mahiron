@@ -86,6 +86,10 @@ func NewWeb(config WebConfig) (http.Handler, error) {
 	// specific pattern over the "/api/" prefix the generated server is
 	// mounted on.
 	mux.HandleFunc("GET /api/programs", apiHandler.WriteProgramsJSON)
+	// GET /api/events embeds pre-encoded payloads as-is so the key order
+	// stays stable; the generated server would re-encode EventData maps with
+	// jx in iteration order. Same ServeMux precedence as above.
+	mux.HandleFunc("GET /api/events", apiHandler.WriteEventsJSON)
 	mux.Handle("/api/", http.StripPrefix("/api", api))
 	if config.Pprof {
 		registerPprof(mux)

@@ -16,7 +16,7 @@ type fakeServiceEventPublisher struct {
 	events []publishedServiceEvent
 }
 
-func (p *fakeServiceEventPublisher) PublishServiceEvent(typ string, _ map[string]any) {
+func (p *fakeServiceEventPublisher) PublishServiceEvent(typ string, _ *Service, _ *config.ChannelConfig) {
 	p.events = append(p.events, publishedServiceEvent{typ: typ})
 }
 

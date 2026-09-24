@@ -18,7 +18,8 @@ const (
 )
 
 type eventPublisher interface {
-	PublishProgramEvent(typ string, data map[string]any)
+	PublishProgramEvent(typ string, p *Program)
+	PublishProgramRemove(typ string, id int64)
 }
 
 type Manager struct {
@@ -378,9 +379,9 @@ func (m *Manager) flushEvents() {
 
 	for _, event := range queue {
 		if event.typ == eventTypeRemove {
-			m.events.PublishProgramEvent(event.typ, map[string]any{"id": event.removeID})
+			m.events.PublishProgramRemove(event.typ, event.removeID)
 		} else {
-			m.events.PublishProgramEvent(event.typ, event.program.EventData())
+			m.events.PublishProgramEvent(event.typ, event.program)
 		}
 		time.Sleep(10 * time.Millisecond)
 	}

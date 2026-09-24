@@ -3,8 +3,8 @@ package mirakurun
 import (
 	"sort"
 
-	"github.com/go-faster/jx"
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
+	"github.com/go-faster/jx"
 )
 
 // EncodeProgram writes a program in the same field order as the generated

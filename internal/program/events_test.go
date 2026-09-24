@@ -8,16 +8,22 @@ import (
 )
 
 type publishedProgramEvent struct {
-	typ  string
-	data map[string]any
+	typ      string
+	program  *Program
+	removeID int64
+	isRemove bool
 }
 
 type fakeProgramEventPublisher struct {
 	events []publishedProgramEvent
 }
 
-func (p *fakeProgramEventPublisher) PublishProgramEvent(typ string, data map[string]any) {
-	p.events = append(p.events, publishedProgramEvent{typ: typ, data: data})
+func (p *fakeProgramEventPublisher) PublishProgramEvent(typ string, program *Program) {
+	p.events = append(p.events, publishedProgramEvent{typ: typ, program: program})
+}
+
+func (p *fakeProgramEventPublisher) PublishProgramRemove(typ string, id int64) {
+	p.events = append(p.events, publishedProgramEvent{typ: typ, removeID: id, isRemove: true})
 }
 
 func TestProgramManagerPublishesCreateUpdateAndRemoveEvents(t *testing.T) {
@@ -54,8 +60,8 @@ func TestProgramManagerPublishesCreateUpdateAndRemoveEvents(t *testing.T) {
 	if events[0].typ != eventTypeCreate || events[1].typ != eventTypeUpdate || events[2].typ != eventTypeRemove {
 		t.Fatalf("event types = %s/%s/%s", events[0].typ, events[1].typ, events[2].typ)
 	}
-	if got, want := events[2].data["id"], p.ID; got != want {
-		t.Fatalf("remove payload id = %v, want %d", got, want)
+	if !events[2].isRemove || events[2].removeID != p.ID {
+		t.Fatalf("remove payload = %#v, want id %d", events[2], p.ID)
 	}
 }
 
@@ -105,26 +111,16 @@ func TestProgramManagerPublishesMergedSparseUpdateEvent(t *testing.T) {
 	if update.typ != eventTypeUpdate {
 		t.Fatalf("event type = %s, want %s", update.typ, eventTypeUpdate)
 	}
-	if got, want := update.data["name"], "existing title"; got != want {
+	if update.program == nil {
+		t.Fatalf("update payload = nil, want program")
+	}
+	if got, want := update.program.Name, "existing title"; got != want {
 		t.Fatalf("update payload name = %v, want %q", got, want)
 	}
-	if got, want := update.data["startAt"], int64(2000); got != want {
+	if got, want := update.program.StartAt, int64(2000); got != want {
 		t.Fatalf("update payload startAt = %v, want %d", got, want)
 	}
 }
 
-func TestProgramEventDataOmitsEmptyGenres(t *testing.T) {
-	p := &Program{ID: ProgramID(1, 101, 1), NetworkID: 1, ServiceID: 101, EventID: 1}
-	if _, ok := p.EventData()["genres"]; ok {
-		t.Errorf("genres key present for program without genres")
-	}
-
-	p.Genres = []Genre{{Lv1: 0, Lv2: 1, Un1: 15, Un2: 15}}
-	genres, ok := p.EventData()["genres"].([]map[string]any)
-	if !ok {
-		t.Fatalf("genres = %#v, want []map[string]any", p.EventData()["genres"])
-	}
-	if len(genres) != 1 || genres[0]["lv1"] != 0 || genres[0]["lv2"] != 1 {
-		t.Errorf("genres = %#v, want one entry with lv1=0 lv2=1", genres)
-	}
-}
+// Genres omission in the Mirakurun shape is pinned by
+// TestProgramContractOmitsEmptyKeys via internal/mirakurun.

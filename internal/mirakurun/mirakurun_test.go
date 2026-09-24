@@ -7,11 +7,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/go-faster/jx"
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/service"
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
+	"github.com/go-faster/jx"
 )
 
 func fullProgram() *program.Program {
@@ -162,7 +162,7 @@ func TestScanServiceFromAPI(t *testing.T) {
 		ServiceId: 1024, NetworkId: 32736, TransportStreamId: 32736,
 		Name: "remote service", Type: 1,
 		EITScheduleFlag: true, EITPresentFollowing: true,
-		LogoId: func() *int64 { v := int64(logoID); return &v }(),
+		LogoId:      func() *int64 { v := int64(logoID); return &v }(),
 		HasLogoData: true, RemoteControlKeyId: 5,
 	}, nil, false)
 	got := ScanServiceFromAPI(&api)
