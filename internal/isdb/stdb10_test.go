@@ -1,4 +1,4 @@
-package ts
+package isdb
 
 import "testing"
 

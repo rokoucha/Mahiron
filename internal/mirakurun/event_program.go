@@ -3,9 +3,9 @@ package mirakurun
 import (
 	"context"
 
+	"github.com/21S1298001/mahiron/internal/isdb"
 	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/program"
-	"github.com/21S1298001/mahiron/ts"
 )
 
 // ProgramFromEvent converts a decoded broadcast event into the
@@ -42,8 +42,9 @@ func ProgramFromEvent(e model.Event) *program.Program {
 	}
 	if len(e.Videos) > 0 {
 		video := e.Videos[len(e.Videos)-1]
-		componentType, _ := ts.VideoComponentTypeToRaw(string(video.Resolution), string(video.Aspect))
-		p.Video = &program.Video{StreamContent: tsVideoStreamContent(video.Codec), ComponentType: int(componentType)}
+		componentType, _ := isdb.VideoComponentTypeToRaw(string(video.Resolution), string(video.Aspect))
+		streamContent, _ := isdb.TSStreamContentForVideoCodec(string(video.Codec))
+		p.Video = &program.Video{StreamContent: int(streamContent), ComponentType: int(componentType)}
 	}
 	for _, audio := range e.Audios {
 		tag := int(audio.Tag)
@@ -96,19 +97,6 @@ func ProgramFromEvent(e model.Event) *program.Program {
 		p.Series = series
 	}
 	return p
-}
-
-func tsVideoStreamContent(codec model.VideoCodec) int {
-	switch codec {
-	case model.VideoCodecMPEG2:
-		return 0x01
-	case model.VideoCodecH264:
-		return 0x05
-	case model.VideoCodecH265:
-		return 0x09
-	default:
-		return 0
-	}
 }
 
 func relatedItemType(groupType model.EventGroupType) program.RelatedItemType {

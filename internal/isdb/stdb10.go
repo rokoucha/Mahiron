@@ -1,4 +1,9 @@
-package ts
+package isdb
+
+// This file holds the ARIB STD-B10 component tables that ISDB-T/S EIT
+// carries and that the Mirakurun-compatible API exposes as raw values
+// (streamContent, componentType). Meanings are plain strings so that the
+// table stays free of the internal model.
 
 // ComponentVideo describes a TS video component_descriptor's component_type
 // as meaning values: resolution and aspect ratio. The high nibble selects
@@ -111,5 +116,35 @@ func AudioCodecForTSStreamContent(streamContent byte) (string, bool) {
 		return "aac", true
 	default:
 		return "", false
+	}
+}
+
+// VideoCodecForTSStreamContent maps a TS video stream_content to its codec:
+// "mpeg2", "h264" or "h265".
+func VideoCodecForTSStreamContent(streamContent byte) (string, bool) {
+	switch streamContent {
+	case 0x01:
+		return "mpeg2", true
+	case 0x05:
+		return "h264", true
+	case 0x09:
+		return "h265", true
+	default:
+		return "", false
+	}
+}
+
+// TSStreamContentForVideoCodec is the inverse of
+// VideoCodecForTSStreamContent.
+func TSStreamContentForVideoCodec(codec string) (byte, bool) {
+	switch codec {
+	case "mpeg2":
+		return 0x01, true
+	case "h264":
+		return 0x05, true
+	case "h265":
+		return 0x09, true
+	default:
+		return 0, false
 	}
 }

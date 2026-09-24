@@ -258,19 +258,6 @@ func parseContentDescriptor(desc ts.Descriptor) []model.Genre {
 	return out
 }
 
-func videoCodecFromTSStreamContent(streamContent byte) model.VideoCodec {
-	switch streamContent {
-	case 0x01:
-		return model.VideoCodecMPEG2
-	case 0x05:
-		return model.VideoCodecH264
-	case 0x09:
-		return model.VideoCodecH265
-	default:
-		return model.VideoCodecUnknown
-	}
-}
-
 func parseComponentDescriptor(desc ts.Descriptor) (model.VideoComponent, bool) {
 	data := desc.Data()
 	if len(data) < 6 {
@@ -282,11 +269,13 @@ func parseComponentDescriptor(desc ts.Descriptor) (model.VideoComponent, bool) {
 	}
 	video := model.VideoComponent{
 		Tag:      uint16(data[2]),
-		Codec:    videoCodecFromTSStreamContent(data[0] & 0x0f),
 		Language: string(data[3:6]),
 		Text:     text,
 	}
-	if parsed, ok := ts.ParseVideoComponentType(data[1]); ok {
+	if codec, ok := isdb.VideoCodecForTSStreamContent(data[0] & 0x0f); ok {
+		video.Codec = model.VideoCodec(codec)
+	}
+	if parsed, ok := isdb.ParseVideoComponentType(data[1]); ok {
 		video.Resolution = model.VideoResolution(parsed.Resolution)
 		video.Aspect = model.VideoAspect(parsed.Aspect)
 		switch video.Resolution {
@@ -332,7 +321,7 @@ func parseAudioComponentDescriptor(desc ts.Descriptor) (model.AudioComponent, bo
 		SamplingHz:    audioSamplingHz((data[5] >> 1) & 0x07),
 		Languages:     []string{string(data[6:9])},
 	}
-	if codec, ok := ts.AudioCodecForTSStreamContent(data[0] & 0x0f); ok {
+	if codec, ok := isdb.AudioCodecForTSStreamContent(data[0] & 0x0f); ok {
 		audio.Codec = model.AudioCodec(codec)
 	}
 	quality := (data[5] >> 4) & 0x03
