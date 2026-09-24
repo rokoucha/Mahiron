@@ -10,16 +10,18 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/21S1298001/mahiron/internal/bml"
+	"github.com/21S1298001/mahiron/internal/bml/cache"
+	"github.com/21S1298001/mahiron/internal/bml/resource"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/stream"
-	"github.com/21S1298001/mahiron/internal/stream/databroadcast"
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 	"github.com/21S1298001/mahiron/ts"
 )
 
 func TestAPIDataBroadcastBITUsesWebBMLFieldNames(t *testing.T) {
 	name := "局"
-	payload := apiDataBroadcastEvent(1, databroadcast.DataBroadcastEvent{Type: "bit", BIT: &databroadcast.DataBroadcastBIT{OriginalNetworkID: 0x7fe0, Broadcasters: []databroadcast.DataBroadcastBroadcaster{{BroadcasterID: 0xff, BroadcasterName: &name, Affiliations: []byte{1, 2}, Services: []databroadcast.DataBroadcastService{{ServiceID: 101, ServiceType: 1}}}}}})
+	payload := apiDataBroadcastEvent(1, bml.Event{Type: "bit", BIT: &bml.BIT{OriginalNetworkID: 0x7fe0, Broadcasters: []bml.Broadcaster{{BroadcasterID: 0xff, BroadcasterName: &name, Affiliations: []byte{1, 2}, Services: []bml.Service{{ServiceID: 101, ServiceType: 1}}}}}})
 	bit, ok := payload["bit"].(map[string]any)
 	if !ok || bit["originalNetworkId"] != uint16(0x7fe0) {
 		t.Fatalf("bit = %#v", payload["bit"])
@@ -32,7 +34,7 @@ func TestAPIDataBroadcastBITUsesWebBMLFieldNames(t *testing.T) {
 
 func TestAPIDataBroadcastPCRAndNPTUseWebBMLFieldNames(t *testing.T) {
 	npt := uint64(0x112345678)
-	event := apiDataBroadcastEvent(1, databroadcast.DataBroadcastEvent{Type: "esEventUpdated", ESEvent: &databroadcast.DataBroadcastESEvent{ComponentTag: 0x40, DataEventID: 3, Events: []databroadcast.DataBroadcastGeneralEvent{{Type: "nptEvent", TimeMode: 2, EventMessageNPT: &npt}}}})
+	event := apiDataBroadcastEvent(1, bml.Event{Type: "esEventUpdated", ESEvent: &bml.ESEvent{ComponentTag: 0x40, DataEventID: 3, Events: []bml.GeneralEvent{{Type: "nptEvent", TimeMode: 2, EventMessageNPT: &npt}}}})
 	es := event["esEvent"].(map[string]any)
 	if es["componentId"] != byte(0x40) || es["dataEventId"] != byte(3) {
 		t.Fatalf("esEvent = %#v", es)
@@ -41,18 +43,18 @@ func TestAPIDataBroadcastPCRAndNPTUseWebBMLFieldNames(t *testing.T) {
 	if len(events) != 1 || events[0]["eventMessageNPT"] != npt {
 		t.Fatalf("events = %#v", events)
 	}
-	pcr := apiDataBroadcastEvent(1, databroadcast.DataBroadcastEvent{Type: "pcr", PCR: &databroadcast.DataBroadcastPCR{PCRBase: 10, PCRExtension: 20}})["pcr"].(map[string]any)
+	pcr := apiDataBroadcastEvent(1, bml.Event{Type: "pcr", PCR: &bml.PCR{PCRBase: 10, PCRExtension: 20}})["pcr"].(map[string]any)
 	if pcr["pcrBase"] != uint64(10) || pcr["pcrExtension"] != uint16(20) {
 		t.Fatalf("pcr = %#v", pcr)
 	}
 }
 
 func TestAPIDataBroadcastProgramInfoAndCurrentTimeUseLowerCamelCase(t *testing.T) {
-	programPayload, err := json.Marshal(apiDataBroadcastEvent(1, databroadcast.DataBroadcastEvent{Type: "programInfo", ProgramInfo: &databroadcast.DataBroadcastProgramInfo{ServiceID: 101, EventIDs: []uint16{1}, RawSectionHex: "00"}}))
+	programPayload, err := json.Marshal(apiDataBroadcastEvent(1, bml.Event{Type: "programInfo", ProgramInfo: &bml.ProgramInfo{ServiceID: 101, EventIDs: []uint16{1}, RawSectionHex: "00"}}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	currentPayload, err := json.Marshal(apiDataBroadcastEvent(1, databroadcast.DataBroadcastEvent{Type: "currentTime", CurrentTime: &databroadcast.DataBroadcastCurrentTime{JSTTimeUnixMilli: 123}}))
+	currentPayload, err := json.Marshal(apiDataBroadcastEvent(1, bml.Event{Type: "currentTime", CurrentTime: &bml.CurrentTime{JSTTimeUnixMilli: 123}}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +67,7 @@ func TestAPIDataBroadcastProgramInfoAndCurrentTimeUseLowerCamelCase(t *testing.T
 }
 
 func TestAPIDataBroadcastDirectModuleHasNullContentLocation(t *testing.T) {
-	manifest := apiDataBroadcastModuleManifest(1, databroadcast.DataBroadcastModule{}, []databroadcast.ModuleResource{{ID: "0", ContentType: "text/bml"}})
+	manifest := apiDataBroadcastModuleManifest(1, bml.Module{}, []resource.ModuleResource{{ID: "0", ContentType: "text/bml"}})
 	encoded, err := json.Marshal(manifest)
 	if err != nil {
 		t.Fatal(err)
@@ -77,8 +79,8 @@ func TestAPIDataBroadcastDirectModuleHasNullContentLocation(t *testing.T) {
 
 func TestAPIDataBroadcastByteFieldsEncodeAsNumberArrays(t *testing.T) {
 	payloads := []map[string]any{
-		apiDataBroadcastEvent(1, databroadcast.DataBroadcastEvent{Type: "bit", BIT: &databroadcast.DataBroadcastBIT{Broadcasters: []databroadcast.DataBroadcastBroadcaster{{Affiliations: []byte{1, 128, 255}}}}}),
-		apiDataBroadcastEvent(1, databroadcast.DataBroadcastEvent{Type: "esEventUpdated", ESEvent: &databroadcast.DataBroadcastESEvent{Events: []databroadcast.DataBroadcastGeneralEvent{{Type: "immediateEvent", PrivateData: []byte{0, 127, 255}}}}}),
+		apiDataBroadcastEvent(1, bml.Event{Type: "bit", BIT: &bml.BIT{Broadcasters: []bml.Broadcaster{{Affiliations: []byte{1, 128, 255}}}}}),
+		apiDataBroadcastEvent(1, bml.Event{Type: "esEventUpdated", ESEvent: &bml.ESEvent{Events: []bml.GeneralEvent{{Type: "immediateEvent", PrivateData: []byte{0, 127, 255}}}}}),
 	}
 	for _, payload := range payloads {
 		encoded, err := json.Marshal(payload)
@@ -106,8 +108,8 @@ func TestAPIDataBroadcastByteFieldsEncodeAsNumberArrays(t *testing.T) {
 
 func TestAPIDataBroadcastModuleExposesParsedMetadata(t *testing.T) {
 	priority := byte(80)
-	payload := apiDataBroadcastModule(100101, &databroadcast.DataBroadcastModule{
-		Metadata: &ts.DSMCCModuleMetadata{Name: "index.bml", Type: "text/bml", CachingPriority: &priority},
+	payload := apiDataBroadcastModule(100101, &bml.Module{
+		Metadata: &bml.ModuleMetadata{Name: "index.bml", Type: "text/bml", CachingPriority: &priority},
 	})
 	metadata := payload["metadata"].(map[string]any)
 	if metadata["name"] != "index.bml" || metadata["type"] != "text/bml" || metadata["cachingPriority"] != &priority {
@@ -187,10 +189,10 @@ func TestGetServiceDataBroadcastStateReturnsAuthoritativeSnapshot(t *testing.T) 
 
 func TestGetServiceDataBroadcastStateFallsBackToProvisionalSnapshot(t *testing.T) {
 	handler := testProgramHandler(t)
-	handler.streamManager = fakeDataBroadcastStreamManager{
-		provisionalFound:    true,
-		provisionalSnapshot: databroadcast.DataBroadcastSnapshot{ServiceID: 101, Revision: 0},
-		provisionalStoredAt: 1700000000,
+	handler.streamManager = fakeDataBroadcastStreamManager{}
+	handler.bmlSnapshotStore = stubBMLSnapshotStore{
+		service: bml.PersistedService{ServiceID: 101, PMTSection: testBMLPMTSection(101, 0x0200, 0x40), StoredAt: 1700000000},
+		found:   true,
 	}
 	rec := httptest.NewRecorder()
 	err := handler.GetServiceDataBroadcastState(context.Background(), apigen.GetServiceDataBroadcastStateParams{ID: 100101}, rec)
@@ -208,7 +210,8 @@ func TestGetServiceDataBroadcastStateFallsBackToProvisionalSnapshot(t *testing.T
 
 func TestGetServiceDataBroadcastStateReturns404WithoutLiveOrCacheSnapshot(t *testing.T) {
 	handler := testProgramHandler(t)
-	handler.streamManager = fakeDataBroadcastStreamManager{provisionalFound: false}
+	handler.streamManager = fakeDataBroadcastStreamManager{}
+	handler.bmlSnapshotStore = stubBMLSnapshotStore{}
 	rec := httptest.NewRecorder()
 	err := handler.GetServiceDataBroadcastState(context.Background(), apigen.GetServiceDataBroadcastStateParams{ID: 100101}, rec)
 	if err != nil {
@@ -221,10 +224,10 @@ func TestGetServiceDataBroadcastStateReturns404WithoutLiveOrCacheSnapshot(t *tes
 
 func TestGetServiceDataBroadcastStateAllowCacheZeroSkipsProvisionalSnapshot(t *testing.T) {
 	handler := testProgramHandler(t)
-	handler.streamManager = fakeDataBroadcastStreamManager{
-		provisionalFound:    true,
-		provisionalSnapshot: databroadcast.DataBroadcastSnapshot{ServiceID: 101},
-		provisionalStoredAt: 1700000000,
+	handler.streamManager = fakeDataBroadcastStreamManager{}
+	handler.bmlSnapshotStore = stubBMLSnapshotStore{
+		service: bml.PersistedService{ServiceID: 101, PMTSection: testBMLPMTSection(101, 0x0200, 0x40), StoredAt: 1700000000},
+		found:   true,
 	}
 	params := apigen.GetServiceDataBroadcastStateParams{ID: 100101}
 	params.AllowCache.SetTo(0)
@@ -241,11 +244,12 @@ func TestGetServiceDataBroadcastStateAllowCacheZeroSkipsProvisionalSnapshot(t *t
 func TestGetServiceDataBroadcastStateLiveSessionTakesPriorityOverCache(t *testing.T) {
 	handler := testProgramHandler(t)
 	handler.streamManager = fakeDataBroadcastStreamManager{
-		session:             fakeDataBroadcastSession{},
-		existing:            true,
-		provisionalFound:    true,
-		provisionalSnapshot: databroadcast.DataBroadcastSnapshot{ServiceID: 101},
-		provisionalStoredAt: 1700000000,
+		session:  fakeDataBroadcastSession{},
+		existing: true,
+	}
+	handler.bmlSnapshotStore = stubBMLSnapshotStore{
+		service: bml.PersistedService{ServiceID: 101, PMTSection: testBMLPMTSection(101, 0x0200, 0x40), StoredAt: 1700000000},
+		found:   true,
 	}
 	rec := httptest.NewRecorder()
 	err := handler.GetServiceDataBroadcastState(context.Background(), apigen.GetServiceDataBroadcastStateParams{ID: 100101}, rec)
@@ -260,7 +264,7 @@ func TestGetServiceDataBroadcastStateLiveSessionTakesPriorityOverCache(t *testin
 
 func TestGetServiceDataBroadcastModuleVersionUsesImmutableURL(t *testing.T) {
 	handler := testProgramHandler(t)
-	module := databroadcast.DataBroadcastModule{ComponentTag: 0x40, DownloadID: 7, ModuleID: 2, Version: 3, ETag: `"dsmcc-test"`, Data: []byte("Content-Type: multipart/mixed; boundary=x\r\n\r\n--x\r\nContent-Location: startup.bml\r\nContent-Type: text/bml\r\n\r\nmodule\r\n--x--\r\n")}
+	module := bml.Module{ComponentTag: 0x40, DownloadID: 7, ModuleID: 2, Version: 3, ETag: `"dsmcc-test"`, Data: []byte("Content-Type: multipart/mixed; boundary=x\r\n\r\n--x\r\nContent-Location: startup.bml\r\nContent-Type: text/bml\r\n\r\nmodule\r\n--x--\r\n")}
 	handler.streamManager = fakeDataBroadcastStreamManager{session: fakeDataBroadcastSession{module: module}, existing: true}
 	rec := httptest.NewRecorder()
 	err := handler.GetServiceDataBroadcastModuleVersion(context.Background(), apigen.GetServiceDataBroadcastModuleVersionParams{ID: 100101, ComponentTag: 0x40, DownloadId: 7, ModuleId: 2, ModuleVersion: 3}, rec)
@@ -274,7 +278,7 @@ func TestGetServiceDataBroadcastModuleVersionUsesImmutableURL(t *testing.T) {
 
 func TestGetServiceDataBroadcastModuleRawReturnsNotModified(t *testing.T) {
 	handler := testProgramHandler(t)
-	module := databroadcast.DataBroadcastModule{ComponentTag: 0x40, DownloadID: 7, ModuleID: 2, Version: 3, ETag: `"dsmcc-test"`, Data: []byte("module")}
+	module := bml.Module{ComponentTag: 0x40, DownloadID: 7, ModuleID: 2, Version: 3, ETag: `"dsmcc-test"`, Data: []byte("module")}
 	handler.streamManager = fakeDataBroadcastStreamManager{session: fakeDataBroadcastSession{module: module}, existing: true}
 	params := apigen.GetServiceDataBroadcastModuleRawParams{ID: 100101, ComponentTag: 0x40, DownloadId: 7, ModuleId: 2, ModuleVersion: 3}
 	params.IfNoneMatch.SetTo(`"dsmcc-test"`)
@@ -289,8 +293,11 @@ func TestGetServiceDataBroadcastModuleRawReturnsNotModified(t *testing.T) {
 
 func TestGetServiceDataBroadcastModuleRawUsesRetainedModuleWithoutSession(t *testing.T) {
 	handler := testProgramHandler(t)
-	module := databroadcast.DataBroadcastModule{ComponentTag: 0x40, DownloadID: 7, ModuleID: 2, Version: 3, ETag: `"dsmcc-test"`, Data: []byte("retained")}
-	handler.streamManager = fakeDataBroadcastStreamManager{cachedModule: module}
+	handler.streamManager = fakeDataBroadcastStreamManager{}
+	store := cache.NewModuleCache(1024)
+	key := bml.ModuleCacheKey{ChannelType: "GR", ChannelID: "27", ServiceID: 101, ComponentTag: 0x40, DownloadID: 7, ModuleID: 2, Version: 3, Size: 8}
+	store.Put(key, ts.DSMCCModule{DownloadID: 7, ModuleID: 2, Version: 3, Size: 8, Data: []byte("retained")})
+	handler.bmlStore = store
 	rec := httptest.NewRecorder()
 	err := handler.GetServiceDataBroadcastModuleRaw(context.Background(), apigen.GetServiceDataBroadcastModuleRawParams{ID: 100101, ComponentTag: 0x40, DownloadId: 7, ModuleId: 2, ModuleVersion: 3}, rec)
 	if err != nil {
@@ -303,7 +310,7 @@ func TestGetServiceDataBroadcastModuleRawUsesRetainedModuleWithoutSession(t *tes
 
 func TestGetServiceDataBroadcastModuleResourceServesDecodedPart(t *testing.T) {
 	handler := testProgramHandler(t)
-	module := databroadcast.DataBroadcastModule{ComponentTag: 0x40, DownloadID: 7, ModuleID: 2, Version: 3, ETag: `"dsmcc-test"`, Data: []byte("Content-Type: multipart/mixed; boundary=x\r\n\r\n--x\r\nContent-Location: startup.bml\r\nContent-Type: text/bml\r\n\r\nmodule\r\n--x--\r\n")}
+	module := bml.Module{ComponentTag: 0x40, DownloadID: 7, ModuleID: 2, Version: 3, ETag: `"dsmcc-test"`, Data: []byte("Content-Type: multipart/mixed; boundary=x\r\n\r\n--x\r\nContent-Location: startup.bml\r\nContent-Type: text/bml\r\n\r\nmodule\r\n--x--\r\n")}
 	handler.streamManager = fakeDataBroadcastStreamManager{session: fakeDataBroadcastSession{module: module}, existing: true}
 	rec := httptest.NewRecorder()
 	err := handler.GetServiceDataBroadcastModuleResource(context.Background(), apigen.GetServiceDataBroadcastModuleResourceParams{ID: 100101, ComponentTag: 0x40, DownloadId: 7, ModuleId: 2, ModuleVersion: 3, ResourceId: "0"}, rec)
@@ -317,7 +324,7 @@ func TestGetServiceDataBroadcastModuleResourceServesDecodedPart(t *testing.T) {
 
 func TestGetServiceDataBroadcastModuleVersionRejectsMalformedEntity(t *testing.T) {
 	handler := testProgramHandler(t)
-	module := databroadcast.DataBroadcastModule{ComponentTag: 0x40, DownloadID: 7, ModuleID: 2, Version: 3, Data: []byte("not a MIME entity")}
+	module := bml.Module{ComponentTag: 0x40, DownloadID: 7, ModuleID: 2, Version: 3, Data: []byte("not a MIME entity")}
 	handler.streamManager = fakeDataBroadcastStreamManager{session: fakeDataBroadcastSession{module: module}, existing: true}
 	rec := httptest.NewRecorder()
 	err := handler.GetServiceDataBroadcastModuleVersion(context.Background(), apigen.GetServiceDataBroadcastModuleVersionParams{ID: 100101, ComponentTag: 0x40, DownloadId: 7, ModuleId: 2, ModuleVersion: 3}, rec)
@@ -331,7 +338,8 @@ func TestGetServiceDataBroadcastModuleVersionRejectsMalformedEntity(t *testing.T
 
 func TestGetServiceDataBroadcastModuleRawReportsEvictedGeneration(t *testing.T) {
 	handler := testProgramHandler(t)
-	handler.streamManager = fakeDataBroadcastStreamManager{evicted: true}
+	handler.streamManager = fakeDataBroadcastStreamManager{}
+	handler.bmlStore = stubEvictedModuleStore{ModuleStore: cache.NewModuleCache(1024), evicted: true}
 	rec := httptest.NewRecorder()
 	err := handler.GetServiceDataBroadcastModuleRaw(context.Background(), apigen.GetServiceDataBroadcastModuleRawParams{ID: 100101, ComponentTag: 0x40, DownloadId: 7, ModuleId: 2, ModuleVersion: 3}, rec)
 	if err != nil {
@@ -344,12 +352,15 @@ func TestGetServiceDataBroadcastModuleRawReportsEvictedGeneration(t *testing.T) 
 
 func TestGetServiceDataBroadcastModuleVersionUsesCachedResources(t *testing.T) {
 	handler := testProgramHandler(t)
-	module := databroadcast.DataBroadcastModule{ComponentTag: 0x40, DownloadID: 7, ModuleID: 2, Version: 3, ETag: `"dsmcc-test"`, Data: []byte("not a MIME entity")}
+	module := bml.Module{ComponentTag: 0x40, DownloadID: 7, ModuleID: 2, Version: 3, ETag: `"dsmcc-test"`, Data: []byte("not a MIME entity")}
 	contentLocation := "index.bml"
 	handler.streamManager = fakeDataBroadcastStreamManager{
-		session:         fakeDataBroadcastSession{module: module},
-		existing:        true,
-		cachedResources: []databroadcast.ModuleResource{{ID: "0", ContentLocation: &contentLocation, ContentType: "text/bml", Data: []byte("cached")}},
+		session:  fakeDataBroadcastSession{module: module},
+		existing: true,
+	}
+	handler.bmlStore = stubDecodedModuleStore{
+		ModuleStore: cache.NewModuleCache(1024),
+		resources:   []resource.ModuleResource{{ID: "0", ContentLocation: &contentLocation, ContentType: "text/bml", Data: []byte("cached")}},
 	}
 	rec := httptest.NewRecorder()
 	err := handler.GetServiceDataBroadcastModuleVersion(context.Background(), apigen.GetServiceDataBroadcastModuleVersionParams{ID: 100101, ComponentTag: 0x40, DownloadId: 7, ModuleId: 2, ModuleVersion: 3}, rec)
@@ -363,7 +374,7 @@ func TestGetServiceDataBroadcastModuleVersionUsesCachedResources(t *testing.T) {
 
 func TestGetServiceDataBroadcastModuleVersionRejectsResourceLimit(t *testing.T) {
 	handler := testProgramHandler(t)
-	module := databroadcast.DataBroadcastModule{ComponentTag: 0x40, DownloadID: 7, ModuleID: 2, Version: 3, Data: []byte("Content-Type: text/bml\r\n\r\n" + strings.Repeat("x", 8*1024*1024+1))}
+	module := bml.Module{ComponentTag: 0x40, DownloadID: 7, ModuleID: 2, Version: 3, Data: []byte("Content-Type: text/bml\r\n\r\n" + strings.Repeat("x", 8*1024*1024+1))}
 	handler.streamManager = fakeDataBroadcastStreamManager{session: fakeDataBroadcastSession{module: module}, existing: true}
 	rec := httptest.NewRecorder()
 	err := handler.GetServiceDataBroadcastModuleVersion(context.Background(), apigen.GetServiceDataBroadcastModuleVersionParams{ID: 100101, ComponentTag: 0x40, DownloadId: 7, ModuleId: 2, ModuleVersion: 3}, rec)
@@ -376,19 +387,9 @@ func TestGetServiceDataBroadcastModuleVersionRejectsResourceLimit(t *testing.T) 
 }
 
 type fakeDataBroadcastStreamManager struct {
-	err                 error
-	existing            bool
-	session             fakeDataBroadcastSession
-	cachedModule        databroadcast.DataBroadcastModule
-	cachedResources     []databroadcast.ModuleResource
-	evicted             bool
-	provisionalFound    bool
-	provisionalSnapshot databroadcast.DataBroadcastSnapshot
-	provisionalStoredAt int64
-}
-
-func (m fakeDataBroadcastStreamManager) DataBroadcastProvisionalSnapshot(string, string, uint16) (databroadcast.DataBroadcastSnapshot, int64, bool) {
-	return m.provisionalSnapshot, m.provisionalStoredAt, m.provisionalFound
+	err      error
+	existing bool
+	session  fakeDataBroadcastSession
 }
 
 func (m fakeDataBroadcastStreamManager) GetOrCreate(context.Context, string, string) (stream.Session, error) {
@@ -404,25 +405,82 @@ func (m fakeDataBroadcastStreamManager) GetExisting(string, string) (stream.Sess
 
 func (m fakeDataBroadcastStreamManager) ActiveSessionCount() int { return 0 }
 
-func (m fakeDataBroadcastStreamManager) DataBroadcastCachedModule(_ string, _ string, _ uint16, componentTag byte, downloadID uint32, moduleID uint16, version byte) (databroadcast.DataBroadcastModule, bool) {
-	module := m.cachedModule
-	if module.ComponentTag != componentTag || module.DownloadID != downloadID || module.ModuleID != moduleID || module.Version != version {
-		return databroadcast.DataBroadcastModule{}, false
+// stubBMLSnapshotStore serves a canned persisted PMT/DII state for
+// provisional-snapshot tests. The handler replays it through bml.Hub, the
+// same path production uses.
+type stubBMLSnapshotStore struct {
+	service bml.PersistedService
+	found   bool
+}
+
+func (s stubBMLSnapshotStore) PutSnapshot(_, _ string, _ bml.PersistedService) error { return nil }
+
+func (s stubBMLSnapshotStore) GetSnapshot(_, _ string, _ uint16) (bml.PersistedService, bool) {
+	return s.service, s.found
+}
+
+// stubEvictedModuleStore reports a canned eviction verdict while delegating
+// module reads to an embedded store.
+type stubEvictedModuleStore struct {
+	bml.ModuleStore
+	evicted bool
+}
+
+func (s stubEvictedModuleStore) WasEvicted(bml.ModuleVersionKey) bool { return s.evicted }
+
+// stubDecodedModuleStore serves canned decoded resources while delegating
+// module reads to an embedded store.
+type stubDecodedModuleStore struct {
+	bml.ModuleStore
+	resources []resource.ModuleResource
+}
+
+func (s stubDecodedModuleStore) GetDecodedResources(bml.ModuleVersionKey) ([]resource.ModuleResource, bool) {
+	return s.resources, len(s.resources) != 0
+}
+
+// testBMLPMTSection builds a minimal valid PMT section carrying one
+// data-carousel component, enough for RestoreSnapshot to replay.
+func testBMLPMTSection(serviceID, carouselPID uint16, componentTag byte) []byte {
+	esInfo := []byte{0x52, 0x01, componentTag}
+	length := 9 + 5 + len(esInfo) + 4
+	s := make([]byte, 3+length)
+	s[0] = ts.TableIDPMT
+	s[1] = 0xb0 | byte(length>>8)
+	s[2] = byte(length)
+	s[3] = byte(serviceID >> 8)
+	s[4] = byte(serviceID)
+	s[5] = 0xc1
+	s[8] = 0x1f
+	s[9] = 0xff
+	off := 12
+	s[off] = ts.StreamTypeDSMCCDataCarousel
+	s[off+1] = 0xe0 | byte(carouselPID>>8)
+	s[off+2] = byte(carouselPID)
+	s[off+3] = 0xf0 | byte(len(esInfo)>>8)
+	s[off+4] = byte(len(esInfo))
+	copy(s[off+5:], esInfo)
+	var crc uint32 = 0xffffffff
+	for _, b := range s[:len(s)-4] {
+		crc ^= uint32(b) << 24
+		for range 8 {
+			if crc&0x80000000 != 0 {
+				crc = (crc << 1) ^ 0x04c11db7
+			} else {
+				crc <<= 1
+			}
+		}
 	}
-	return module, true
-}
-
-func (m fakeDataBroadcastStreamManager) DataBroadcastModuleWasEvicted(string, string, uint16, byte, uint32, uint16, byte) bool {
-	return m.evicted
-}
-
-func (m fakeDataBroadcastStreamManager) DataBroadcastCachedResources(string, string, uint16, byte, uint32, uint16, byte) ([]databroadcast.ModuleResource, bool) {
-	return m.cachedResources, len(m.cachedResources) != 0
+	s[len(s)-4] = byte(crc >> 24)
+	s[len(s)-3] = byte(crc >> 16)
+	s[len(s)-2] = byte(crc >> 8)
+	s[len(s)-1] = byte(crc)
+	return s
 }
 
 type fakeDataBroadcastSession struct {
 	stream.Session
-	module databroadcast.DataBroadcastModule
+	module bml.Module
 }
 
 func (s fakeDataBroadcastSession) ChannelStream(context.Context, bool, io.Writer) error {
@@ -437,35 +495,35 @@ func (s fakeDataBroadcastSession) ServiceStream(context.Context, uint16, bool, i
 	return errors.New("unexpected ServiceStream call")
 }
 
-func (s fakeDataBroadcastSession) ObserveDataBroadcast(_ context.Context, serviceID uint16, _ bool, observe func(databroadcast.DataBroadcastEvent) error) error {
-	return observe(databroadcast.DataBroadcastEvent{
+func (s fakeDataBroadcastSession) ObserveDataBroadcast(_ context.Context, serviceID uint16, _ bool, observe func(bml.Event) error) error {
+	return observe(bml.Event{
 		Type:     "snapshot",
 		Revision: 42,
-		Snapshot: databroadcast.DataBroadcastSnapshot{
+		Snapshot: bml.Snapshot{
 			ServiceID: serviceID,
 			Revision:  42,
 		},
 	})
 }
 
-func (s fakeDataBroadcastSession) DataBroadcastModule(_ uint16, componentTag byte, moduleID uint16) (databroadcast.DataBroadcastModule, bool) {
+func (s fakeDataBroadcastSession) DataBroadcastModule(_ uint16, componentTag byte, moduleID uint16) (bml.Module, bool) {
 	if s.module.ComponentTag != componentTag || s.module.ModuleID != moduleID {
-		return databroadcast.DataBroadcastModule{}, false
+		return bml.Module{}, false
 	}
 	return s.module, true
 }
 
-func (s fakeDataBroadcastSession) DataBroadcastSnapshot(serviceID uint16) databroadcast.DataBroadcastSnapshot {
-	snapshot := databroadcast.DataBroadcastSnapshot{ServiceID: serviceID, Revision: 42}
+func (s fakeDataBroadcastSession) DataBroadcastSnapshot(serviceID uint16) bml.Snapshot {
+	snapshot := bml.Snapshot{ServiceID: serviceID, Revision: 42}
 	if s.module.ModuleID != 0 {
-		snapshot.Components = []databroadcast.DataBroadcastComponent{{ComponentTag: s.module.ComponentTag, Modules: []databroadcast.DataBroadcastModule{s.module}}}
+		snapshot.Components = []bml.Component{{ComponentTag: s.module.ComponentTag, Modules: []bml.Module{s.module}}}
 	}
 	return snapshot
 }
 
-func (s fakeDataBroadcastSession) DataBroadcastModuleVersion(_ uint16, componentTag byte, downloadID uint32, moduleID uint16, version byte) (databroadcast.DataBroadcastModule, bool) {
+func (s fakeDataBroadcastSession) DataBroadcastModuleVersion(_ uint16, componentTag byte, downloadID uint32, moduleID uint16, version byte) (bml.Module, bool) {
 	if s.module.ComponentTag != componentTag || s.module.DownloadID != downloadID || s.module.ModuleID != moduleID || s.module.Version != version {
-		return databroadcast.DataBroadcastModule{}, false
+		return bml.Module{}, false
 	}
 	return s.module, true
 }

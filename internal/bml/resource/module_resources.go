@@ -1,4 +1,4 @@
-package databroadcast
+package resource
 
 import (
 	"bufio"
@@ -13,8 +13,13 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/21S1298001/mahiron/internal/bml"
 	"github.com/21S1298001/mahiron/ts"
 )
+
+// Module aliases the canonical BML module type so resource
+// callers keep compiling; the canonical definition lives in bml.
+type Module = bml.Module
 
 const (
 	maxDecodedModuleBytes = 8 * 1024 * 1024
@@ -39,12 +44,13 @@ type ModuleResource struct {
 // DecodeModuleResources expands the ARIB module entity. Compression type 0 is
 // zlib as specified by ARIB TR-B14 and web-bml's CompressionType.Zlib. Other advertised formats are
 // rejected rather than serving compressed bytes as BML content.
-func DecodeModuleResources(module DataBroadcastModule) ([]ModuleResource, error) {
+func DecodeModuleResources(module Module) ([]ModuleResource, error) {
 	data := module.Data
 	metadata := module.Metadata
 	if metadata == nil {
 		if parsed, ok := (ts.DSMCCModuleInfo{Info: module.Info}).Metadata(); ok {
-			metadata = &parsed
+			converted := bml.ModuleMetadataFromTS(parsed)
+			metadata = &converted
 		}
 	}
 	if metadata != nil && metadata.CompressionType != nil {
@@ -86,7 +92,7 @@ func inflateModule(data []byte, originalSize *uint32) ([]byte, error) {
 	return decoded, nil
 }
 
-func parseModuleEntity(data []byte, metadata *ts.DSMCCModuleMetadata) ([]ModuleResource, error) {
+func parseModuleEntity(data []byte, metadata *bml.ModuleMetadata) ([]ModuleResource, error) {
 	// A Type descriptor may map one resource directly to a module. Only
 	// multipart modules use a MIME entity wrapper around individual resources.
 	if metadata != nil && metadata.Type != "" {

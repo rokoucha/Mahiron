@@ -6,16 +6,15 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"path/filepath"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/21S1298001/mahiron/internal/bml"
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/job/run"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/stream/channel"
-	"github.com/21S1298001/mahiron/internal/stream/databroadcast"
 	"github.com/21S1298001/mahiron/internal/stream/internal/streamtest"
 	"github.com/21S1298001/mahiron/internal/stream/remote"
 	"github.com/21S1298001/mahiron/internal/stream/source"
@@ -45,52 +44,6 @@ func TestConfiguredRemoteTunersFiltersByRemoteRouteType(t *testing.T) {
 	})
 	if len(statuses) != 2 || statuses[0].Name != "GR" || statuses[1].Name != "mixed" {
 		t.Fatalf("statuses = %+v, want GR-compatible tuners only", statuses)
-	}
-}
-
-func TestDataBroadcastCachedModuleOutlivesSession(t *testing.T) {
-	cache := databroadcast.NewModuleCache(1024)
-	key := databroadcast.ModuleCacheKey{ChannelType: "GR", ChannelID: "27", ServiceID: 101, ComponentTag: 0x40, DownloadID: 7, ModuleID: 2, Version: 3, Size: 4}
-	cache.Put(key, ts.DSMCCModule{DownloadID: 7, ModuleID: 2, Version: 3, Size: 4, Data: []byte("data")})
-	manager := NewStreamManager(ManagerConfig{ModuleStore: cache})
-	module, ok := manager.DataBroadcastCachedModule("GR", "27", 101, 0x40, 7, 2, 3)
-	if !ok || string(module.Data) != "data" || module.ETag == "" {
-		t.Fatalf("module = %#v, found = %v", module, ok)
-	}
-}
-
-func TestDataBroadcastProvisionalSnapshotUsesConfiguredSnapshotStore(t *testing.T) {
-	store, err := databroadcast.NewSQLiteModuleStore(filepath.Join(t.TempDir(), "cache.sqlite3"), 1024)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = store.Close() })
-	if err := store.PutSnapshot("GR", "27", databroadcast.PersistedService{ServiceID: 101}); err != nil {
-		t.Fatal(err)
-	}
-	manager := NewStreamManager(ManagerConfig{ModuleStore: store, SnapshotStore: store})
-	snapshot, storedAt, found := manager.DataBroadcastProvisionalSnapshot("GR", "27", 101)
-	if !found || storedAt == 0 || snapshot.ServiceID != 101 {
-		t.Fatalf("snapshot = %#v, storedAt = %d, found = %v", snapshot, storedAt, found)
-	}
-}
-
-func TestDataBroadcastProvisionalSnapshotNotFoundWithoutSnapshotStore(t *testing.T) {
-	manager := NewStreamManager(ManagerConfig{ModuleStore: databroadcast.NewModuleCache(1024)})
-	if _, _, found := manager.DataBroadcastProvisionalSnapshot("GR", "27", 101); found {
-		t.Fatal("expected no provisional snapshot without a configured SnapshotStore")
-	}
-}
-
-func TestDataBroadcastProvisionalSnapshotMissingReturnsNotFound(t *testing.T) {
-	store, err := databroadcast.NewSQLiteModuleStore(filepath.Join(t.TempDir(), "cache.sqlite3"), 1024)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = store.Close() })
-	manager := NewStreamManager(ManagerConfig{ModuleStore: store, SnapshotStore: store})
-	if _, _, found := manager.DataBroadcastProvisionalSnapshot("GR", "27", 101); found {
-		t.Fatal("expected no provisional snapshot when nothing was ever persisted")
 	}
 }
 
@@ -425,17 +378,17 @@ func (fakeDeadSession) CollectEIT(context.Context, func(*ts.EIT) error) error   
 func (fakeDeadSession) ObserveLogos(context.Context, func(*ts.LogoImage) error) error {
 	return nil
 }
-func (fakeDeadSession) ObserveDataBroadcast(context.Context, uint16, bool, func(databroadcast.DataBroadcastEvent) error) error {
+func (fakeDeadSession) ObserveDataBroadcast(context.Context, uint16, bool, func(bml.Event) error) error {
 	return nil
 }
-func (fakeDeadSession) DataBroadcastSnapshot(serviceID uint16) databroadcast.DataBroadcastSnapshot {
-	return databroadcast.DataBroadcastSnapshot{ServiceID: serviceID}
+func (fakeDeadSession) DataBroadcastSnapshot(serviceID uint16) bml.Snapshot {
+	return bml.Snapshot{ServiceID: serviceID}
 }
-func (fakeDeadSession) DataBroadcastModule(uint16, byte, uint16) (databroadcast.DataBroadcastModule, bool) {
-	return databroadcast.DataBroadcastModule{}, false
+func (fakeDeadSession) DataBroadcastModule(uint16, byte, uint16) (bml.Module, bool) {
+	return bml.Module{}, false
 }
-func (fakeDeadSession) DataBroadcastModuleVersion(uint16, byte, uint32, uint16, byte) (databroadcast.DataBroadcastModule, bool) {
-	return databroadcast.DataBroadcastModule{}, false
+func (fakeDeadSession) DataBroadcastModuleVersion(uint16, byte, uint32, uint16, byte) (bml.Module, bool) {
+	return bml.Module{}, false
 }
 func (fakeDeadSession) Stop(context.Context) error { return nil }
 func (fakeDeadSession) Alive() bool                { return false }

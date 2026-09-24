@@ -670,7 +670,7 @@ paths:
         default:
           description: Unexpected Error
           content: {}
-  /services/{id}/data-broadcast/state:
+  /services/{id}/data-broadcast/bml/state:
     parameters: []
     get:
       description: >-
@@ -719,7 +719,7 @@ paths:
         default:
           description: Unexpected Error
           content: {}
-  /services/{id}/data-broadcast/events:
+  /services/{id}/data-broadcast/bml/events:
     parameters: []
     get:
       description: >-
@@ -773,7 +773,7 @@ paths:
         default:
           description: Unexpected Error
           content: {}
-  /services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}:
+  /services/{id}/data-broadcast/bml/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}:
     parameters: []
     get:
       description: >-
@@ -859,7 +859,7 @@ paths:
         default:
           description: Unexpected Error
           content: {}
-  /services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}/raw:
+  /services/{id}/data-broadcast/bml/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}/raw:
     parameters: []
     get:
       tags: [services, stream]
@@ -882,7 +882,7 @@ paths:
         "304": {description: Not Modified}
         "410": {description: Module generation was evicted from the completed-module cache}
         "425": {description: Module generation announced but not complete}
-  /services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}/resources/{resourceId}:
+  /services/{id}/data-broadcast/bml/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}/resources/{resourceId}:
     parameters: []
     get:
       tags: [services, stream]

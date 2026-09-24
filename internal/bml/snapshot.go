@@ -1,4 +1,4 @@
-package databroadcast
+package bml
 
 import (
 	"fmt"
@@ -6,9 +6,9 @@ import (
 	"github.com/21S1298001/mahiron/ts"
 )
 
-func (h *DataBroadcastHub) snapshotLocked(serviceID uint16) DataBroadcastSnapshot {
+func (h *Hub) snapshotLocked(serviceID uint16) Snapshot {
 	service := h.services[serviceID]
-	snapshot := DataBroadcastSnapshot{ServiceID: serviceID, BIT: cloneBIT(h.bit)}
+	snapshot := Snapshot{ServiceID: serviceID, BIT: cloneBIT(h.bit)}
 	if service == nil {
 		return snapshot
 	}
@@ -55,22 +55,23 @@ func (h *DataBroadcastHub) snapshotLocked(serviceID uint16) DataBroadcastSnapsho
 	return snapshot
 }
 
-func rejectedModule(componentTag byte, downloadID uint32, rejection ts.DSMCCModuleRejection) DataBroadcastModule {
+func rejectedModule(componentTag byte, downloadID uint32, rejection ts.DSMCCModuleRejection) Module {
 	reason := rejection.Reason
-	module := DataBroadcastModule{
+	module := Module{
 		ComponentTag: componentTag, ModuleID: rejection.Module.ModuleID,
 		DownloadID: downloadID, Version: rejection.Module.Version, Size: rejection.Module.ModuleSize,
 		Info: append([]byte(nil), rejection.Module.Info...), Status: "rejected", RejectionReason: &reason,
 		ETag: moduleETag(downloadID, rejection.Module.ModuleID, rejection.Module.Version, rejection.Module.ModuleSize),
 	}
 	if metadata, ok := rejection.Module.Metadata(); ok {
-		module.Metadata = &metadata
+		converted := ModuleMetadataFromTS(metadata)
+		module.Metadata = &converted
 	}
 	return module
 }
 
-func apiModule(componentTag byte, module ts.DSMCCModule, includeData bool) DataBroadcastModule {
-	result := DataBroadcastModule{
+func apiModule(componentTag byte, module ts.DSMCCModule, includeData bool) Module {
+	result := Module{
 		ComponentTag: componentTag,
 		ModuleID:     module.ModuleID,
 		DownloadID:   module.DownloadID,
@@ -82,7 +83,8 @@ func apiModule(componentTag byte, module ts.DSMCCModule, includeData bool) DataB
 		ETag:         moduleETag(module.DownloadID, module.ModuleID, module.Version, module.Size),
 	}
 	if metadata, ok := (ts.DSMCCModuleInfo{Info: module.Info}).Metadata(); ok {
-		result.Metadata = &metadata
+		converted := ModuleMetadataFromTS(metadata)
+		result.Metadata = &converted
 	}
 	if includeData {
 		result.Data = append([]byte(nil), module.Data...)
@@ -92,7 +94,7 @@ func apiModule(componentTag byte, module ts.DSMCCModule, includeData bool) DataB
 
 // CompletedModule exposes a cached completed DSM-CC module using the same
 // representation as live carousel modules.
-func CompletedModule(componentTag byte, module ts.DSMCCModule) DataBroadcastModule {
+func CompletedModule(componentTag byte, module ts.DSMCCModule) Module {
 	return apiModule(componentTag, module, true)
 }
 

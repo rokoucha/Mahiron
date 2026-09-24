@@ -180,21 +180,21 @@ func (UnimplementedHandler) GetServiceByChannel(ctx context.Context, params GetS
 // available. URL fields in event payloads are absolute paths rooted at the API mount; clients deployed
 // through a subpath proxy should construct request URLs from the endpoint paths instead.
 //
-// GET /services/{id}/data-broadcast/events
+// GET /services/{id}/data-broadcast/bml/events
 func (UnimplementedHandler) GetServiceDataBroadcastEvents(ctx context.Context, params GetServiceDataBroadcastEventsParams, w http.ResponseWriter) error {
 	return ht.ErrNotImplemented
 }
 
 // GetServiceDataBroadcastModuleRaw implements getServiceDataBroadcastModuleRaw operation.
 //
-// GET /services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}/raw
+// GET /services/{id}/data-broadcast/bml/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}/raw
 func (UnimplementedHandler) GetServiceDataBroadcastModuleRaw(ctx context.Context, params GetServiceDataBroadcastModuleRawParams, w http.ResponseWriter) error {
 	return ht.ErrNotImplemented
 }
 
 // GetServiceDataBroadcastModuleResource implements getServiceDataBroadcastModuleResource operation.
 //
-// GET /services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}/resources/{resourceId}
+// GET /services/{id}/data-broadcast/bml/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}/resources/{resourceId}
 func (UnimplementedHandler) GetServiceDataBroadcastModuleResource(ctx context.Context, params GetServiceDataBroadcastModuleResourceParams, w http.ResponseWriter) error {
 	return ht.ErrNotImplemented
 }
@@ -205,7 +205,7 @@ func (UnimplementedHandler) GetServiceDataBroadcastModuleResource(ctx context.Co
 // directly to one module-scoped resource, and is a string only for a named multipart resource. rawUrl
 // and resource url values are absolute paths rooted at the API mount.
 //
-// GET /services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}
+// GET /services/{id}/data-broadcast/bml/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}
 func (UnimplementedHandler) GetServiceDataBroadcastModuleVersion(ctx context.Context, params GetServiceDataBroadcastModuleVersionParams, w http.ResponseWriter) error {
 	return ht.ErrNotImplemented
 }
@@ -222,7 +222,7 @@ func (UnimplementedHandler) GetServiceDataBroadcastModuleVersion(ctx context.Con
 // samples rather than carousel state and a stale value would be misleading. Pass allowCache=0 to
 // require live state, returning 404 instead of a cache snapshot.
 //
-// GET /services/{id}/data-broadcast/state
+// GET /services/{id}/data-broadcast/bml/state
 func (UnimplementedHandler) GetServiceDataBroadcastState(ctx context.Context, params GetServiceDataBroadcastStateParams, w http.ResponseWriter) error {
 	return ht.ErrNotImplemented
 }

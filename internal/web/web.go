@@ -6,6 +6,7 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/21S1298001/mahiron/internal/bml"
 	"github.com/21S1298001/mahiron/internal/event"
 	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/internal/version"
@@ -48,6 +49,8 @@ type WebConfig struct {
 	EventHub              *event.Hub
 	EpgStaleAfter         int64
 	DataBroadcastDisabled bool
+	BMLStore              bml.ModuleStore
+	BMLSnapshotStore      bml.SnapshotStore
 	MeterProvider         metric.MeterProvider
 	TracerProvider        trace.TracerProvider
 	// Pprof serves the net/http/pprof handlers under /debug/pprof.
@@ -66,6 +69,8 @@ func NewWeb(config WebConfig) (http.Handler, error) {
 		EventHub:              config.EventHub,
 		EpgStaleAfter:         config.EpgStaleAfter,
 		DataBroadcastDisabled: config.DataBroadcastDisabled,
+		BMLStore:              config.BMLStore,
+		BMLSnapshotStore:      config.BMLSnapshotStore,
 	})
 	api, err := apigen.NewServer(apiHandler, apiHandler,
 		apigen.WithMeterProvider(config.MeterProvider),

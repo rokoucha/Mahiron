@@ -12,13 +12,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/21S1298001/mahiron/internal/bml"
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/db"
 	"github.com/21S1298001/mahiron/internal/epggather"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/service"
 	"github.com/21S1298001/mahiron/internal/stream"
-	"github.com/21S1298001/mahiron/internal/stream/databroadcast"
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 	"github.com/go-faster/jx"
 )
@@ -423,12 +423,12 @@ func (s fakeProgramStreamSession) ProgramStream(_ context.Context, _ *program.Pr
 	return err
 }
 
-func (s fakeProgramStreamSession) ObserveDataBroadcast(context.Context, uint16, bool, func(databroadcast.DataBroadcastEvent) error) error {
+func (s fakeProgramStreamSession) ObserveDataBroadcast(context.Context, uint16, bool, func(bml.Event) error) error {
 	return errors.New("unexpected ObserveDataBroadcast call")
 }
 
-func (s fakeProgramStreamSession) DataBroadcastModule(uint16, byte, uint16) (databroadcast.DataBroadcastModule, bool) {
-	return databroadcast.DataBroadcastModule{}, false
+func (s fakeProgramStreamSession) DataBroadcastModule(uint16, byte, uint16) (bml.Module, bool) {
+	return bml.Module{}, false
 }
 
 func TestApiProgramRelatedItemsEmptyWhenNone(t *testing.T) {

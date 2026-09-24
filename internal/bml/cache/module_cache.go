@@ -1,4 +1,4 @@
-package databroadcast
+package cache
 
 import (
 	"context"
@@ -10,9 +10,27 @@ import (
 	"sync"
 	"time"
 
+	"github.com/21S1298001/mahiron/internal/bml"
+	"github.com/21S1298001/mahiron/internal/bml/cache/cachedb"
+	"github.com/21S1298001/mahiron/internal/bml/resource"
 	mahirondb "github.com/21S1298001/mahiron/internal/db"
-	"github.com/21S1298001/mahiron/internal/stream/databroadcast/cachedb"
 	"github.com/21S1298001/mahiron/ts"
+)
+
+// Aliases to the canonical BML store types. The interfaces and keys are
+// defined in the parent bml package so the transient Hub can use them
+// without importing this persistence package; this package implements them.
+type (
+	ModuleCacheKey        = bml.ModuleCacheKey
+	ModuleVersionKey      = bml.ModuleVersionKey
+	ModuleStore           = bml.ModuleStore
+	PersistentModuleStore = bml.PersistentModuleStore
+	EvictedModuleStore    = bml.EvictedModuleStore
+	ModuleExistenceStore  = bml.ModuleExistenceStore
+	PersistedService      = bml.PersistedService
+	PersistedCarousel     = bml.PersistedCarousel
+	SnapshotStore         = bml.SnapshotStore
+	ModuleResource        = resource.ModuleResource
 )
 
 const (
@@ -33,70 +51,10 @@ const (
 	moduleCacheExpiryCheckInterval = time.Minute
 )
 
-type ModuleCacheKey struct {
-	ChannelType  string
-	ChannelID    string
-	ServiceID    uint16
-	ComponentTag byte
-	DownloadID   uint32
-	ModuleID     uint16
-	Version      byte
-	Size         uint32
-}
-
-// ModuleVersionKey is the immutable URL identity of a module. Size remains a
-// part of the DII identity used while restoring a live carousel, but is not
-// present in resource URLs, so retained generations are looked up by this key.
-type ModuleVersionKey struct {
-	ChannelType  string
-	ChannelID    string
-	ServiceID    uint16
-	ComponentTag byte
-	DownloadID   uint32
-	ModuleID     uint16
-	Version      byte
-}
-
-func (k ModuleCacheKey) VersionKey() ModuleVersionKey {
-	return ModuleVersionKey{
-		ChannelType: k.ChannelType, ChannelID: k.ChannelID, ServiceID: k.ServiceID,
-		ComponentTag: k.ComponentTag, DownloadID: k.DownloadID, ModuleID: k.ModuleID, Version: k.Version,
-	}
-}
-
-// ModuleStore keeps completed modules across channel-session lifetimes. The
-// assembler remains memory bounded; only completed, validated modules enter a
-// store. ModuleCache is the small in-memory implementation used by default.
-type ModuleStore interface {
-	Get(ModuleCacheKey) (ts.DSMCCModule, bool)
-	GetVersion(ModuleVersionKey) (ts.DSMCCModule, bool)
-	Put(ModuleCacheKey, ts.DSMCCModule) bool
-}
-
-// PersistentModuleStore keeps successfully written modules independently of
-// the live carousel, allowing its completed payload buffer to be released.
-type PersistentModuleStore interface {
-	ModuleStore
-	PersistsCompletedModules()
-}
-
-// EvictedModuleStore records immutable module identities that were once
-// completed but were removed to satisfy its cache limit.
-type EvictedModuleStore interface {
-	WasEvicted(ModuleVersionKey) bool
-}
-
 // DecodedModuleStore optionally retains expanded MIME resources alongside raw
 // modules so requests do not repeatedly decompress and parse a carousel module.
 type DecodedModuleStore interface {
 	GetDecodedResources(ModuleVersionKey) ([]ModuleResource, bool)
-}
-
-// ModuleExistenceStore reports whether a completed module is retained without
-// reading its payload. RestoreSnapshot uses this to mark modules complete in a
-// provisional snapshot without paying for a full module read per module.
-type ModuleExistenceStore interface {
-	Has(ModuleCacheKey) bool
 }
 
 type moduleCacheEntry struct {
@@ -382,7 +340,7 @@ func (s *SQLiteModuleStore) Put(key ModuleCacheKey, module ts.DSMCCModule) bool 
 	if s == nil || s.db == nil || uint64(len(module.Data)) > s.maxBytes {
 		return false
 	}
-	resources, _ := DecodeModuleResources(CompletedModule(key.ComponentTag, module))
+	resources, _ := resource.DecodeModuleResources(bml.CompletedModule(key.ComponentTag, module))
 	storedBytes := uint64(len(module.Data))
 	for _, resource := range resources {
 		storedBytes += uint64(len(resource.Data))

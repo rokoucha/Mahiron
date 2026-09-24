@@ -1,4 +1,4 @@
-package databroadcast
+package bml
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 	"github.com/21S1298001/mahiron/ts"
 )
 
-func (h *DataBroadcastHub) Observe(section ts.PIDSection) {
+func (h *Hub) Observe(section ts.PIDSection) {
 	switch section.Section.TableID() {
 	case ts.TableIDPMT:
 		h.observePMT(section)
@@ -29,7 +29,7 @@ func (h *DataBroadcastHub) Observe(section ts.PIDSection) {
 	}
 }
 
-func (h *DataBroadcastHub) ObservePacket(packet ts.Packet) {
+func (h *Hub) ObservePacket(packet ts.Packet) {
 	base, extension, ok := packet.ProgramClockReference()
 	if !ok {
 		return
@@ -40,20 +40,20 @@ func (h *DataBroadcastHub) ObservePacket(packet ts.Packet) {
 		if service.pmt == nil || service.pmt.PCRPID != packet.PID() {
 			continue
 		}
-		pcr := &DataBroadcastPCR{PCRBase: base, PCRExtension: extension}
+		pcr := &PCR{PCRBase: base, PCRExtension: extension}
 		service.pcr = pcr
-		h.broadcastLocked(serviceID, DataBroadcastEvent{Type: "pcr", PCR: clonePCR(pcr)})
+		h.broadcastLocked(serviceID, Event{Type: "pcr", PCR: clonePCR(pcr)})
 	}
 }
 
-func (h *DataBroadcastHub) observeBIT(section ts.Section) {
+func (h *Hub) observeBIT(section ts.Section) {
 	bit, err := ts.ParseBIT(section)
 	if err != nil || !bit.CurrentNext {
 		return
 	}
-	value := &DataBroadcastBIT{OriginalNetworkID: bit.OriginalNetworkID, Version: bit.VersionNumber, RawSectionHex: hex.EncodeToString(section)}
+	value := &BIT{OriginalNetworkID: bit.OriginalNetworkID, Version: bit.VersionNumber, RawSectionHex: hex.EncodeToString(section)}
 	for _, source := range bit.Broadcasters {
-		b := DataBroadcastBroadcaster{BroadcasterID: source.BroadcasterID, Services: []DataBroadcastService{}, Affiliations: []byte{}, AffiliationBroadcasters: []DataBroadcastAffiliatedBroadcaster{}}
+		b := Broadcaster{BroadcasterID: source.BroadcasterID, Services: []Service{}, Affiliations: []byte{}, AffiliationBroadcasters: []AffiliatedBroadcaster{}}
 		for _, descriptor := range source.Descriptors {
 			switch descriptor.Tag() {
 			case ts.DescriptorTagBroadcasterName:
@@ -63,7 +63,7 @@ func (h *DataBroadcastHub) observeBIT(section ts.Section) {
 			case ts.DescriptorTagServiceList:
 				if list, err := ts.ParseServiceListDescriptor(descriptor); err == nil {
 					for _, service := range list.Services {
-						b.Services = append(b.Services, DataBroadcastService{ServiceID: service.ServiceID, ServiceType: service.ServiceType})
+						b.Services = append(b.Services, Service{ServiceID: service.ServiceID, ServiceType: service.ServiceType})
 					}
 				}
 			case ts.DescriptorTagExtendedBroadcaster:
@@ -76,7 +76,7 @@ func (h *DataBroadcastHub) observeBIT(section ts.Section) {
 					b.TerrestrialBroadcasterID = ptr(extended.TerrestrialBroadcasterID)
 				}
 				for _, affiliated := range extended.Broadcasters {
-					b.AffiliationBroadcasters = append(b.AffiliationBroadcasters, DataBroadcastAffiliatedBroadcaster{OriginalNetworkID: affiliated.OriginalNetworkID, BroadcasterID: affiliated.BroadcasterID})
+					b.AffiliationBroadcasters = append(b.AffiliationBroadcasters, AffiliatedBroadcaster{OriginalNetworkID: affiliated.OriginalNetworkID, BroadcasterID: affiliated.BroadcasterID})
 				}
 			}
 		}
@@ -85,17 +85,17 @@ func (h *DataBroadcastHub) observeBIT(section ts.Section) {
 	h.mu.Lock()
 	h.bit = value
 	for serviceID := range h.subs {
-		h.broadcastLocked(serviceID, DataBroadcastEvent{Type: "bit", BIT: cloneBIT(value)})
+		h.broadcastLocked(serviceID, Event{Type: "bit", BIT: cloneBIT(value)})
 	}
 	h.mu.Unlock()
 }
 
-func (h *DataBroadcastHub) observePMT(section ts.PIDSection) {
+func (h *Hub) observePMT(section ts.PIDSection) {
 	pmt, err := ts.ParsePMT(section.Section)
 	if err != nil {
 		return
 	}
-	components := make([]DataBroadcastComponent, 0)
+	components := make([]Component, 0)
 	pidToTag := map[uint16]byte{}
 	for _, elem := range pmt.Elements {
 		if elem.StreamType != ts.StreamTypeDSMCCUNMessages && elem.StreamType != ts.StreamTypeDSMCCDataCarousel && elem.StreamType != ts.StreamTypeDSMCCStreamDescriptors {
@@ -106,7 +106,7 @@ func (h *DataBroadcastHub) observePMT(section ts.PIDSection) {
 			continue
 		}
 		pidToTag[elem.ElementaryPID] = tag
-		component := DataBroadcastComponent{
+		component := Component{
 			ComponentTag:   tag,
 			PID:            elem.ElementaryPID,
 			StreamType:     elem.StreamType,
@@ -115,12 +115,13 @@ func (h *DataBroadcastHub) observePMT(section ts.PIDSection) {
 		if descriptor, ok := dataComponentDescriptor(elem.Descriptors); ok {
 			component.DataComponentID = ptr(descriptor.DataComponentID)
 			if isAribBXMLDataComponent(descriptor.DataComponentID) {
-				component.BXMLInfo, _ = ts.ParseAdditionalAribBXMLInfo(descriptor.AdditionalDataComponentInfo)
+				parsed, _ := ts.ParseAdditionalAribBXMLInfo(descriptor.AdditionalDataComponentInfo)
+				component.BXMLInfo = bxmlInfoFromTS(parsed)
 			}
 		}
 		components = append(components, component)
 	}
-	slices.SortFunc(components, func(a, b DataBroadcastComponent) int {
+	slices.SortFunc(components, func(a, b Component) int {
 		return int(a.ComponentTag) - int(b.ComponentTag)
 	})
 	h.mu.Lock()
@@ -131,7 +132,7 @@ func (h *DataBroadcastHub) observePMT(section ts.PIDSection) {
 		return
 	}
 	service.pmtSection = pmtSection
-	service.pmt = &DataBroadcastPMT{
+	service.pmt = &PMT{
 		ServiceID:     pmt.ProgramNumber,
 		Version:       pmt.VersionNumber,
 		PCRPID:        pmt.PCRPID,
@@ -153,20 +154,20 @@ func (h *DataBroadcastHub) observePMT(section ts.PIDSection) {
 			service.carousels[component.ComponentTag] = ts.NewDSMCCCarousel(ts.DSMCCCarouselLimits{})
 		}
 	}
-	event := DataBroadcastEvent{Type: "pmt", PMT: clonePMT(service.pmt)}
+	event := Event{Type: "pmt", PMT: clonePMT(service.pmt)}
 	h.broadcastLocked(pmt.ProgramNumber, event)
 	h.mu.Unlock()
 }
 
-func (h *DataBroadcastHub) observeES(section ts.PIDSection) {
+func (h *Hub) observeES(section ts.PIDSection) {
 	stream, err := ts.ParseDSMCCStream(section.Section)
 	if err != nil || !stream.CurrentNext {
 		return
 	}
-	events := make([]DataBroadcastGeneralEvent, 0, len(stream.Descriptors))
+	events := make([]GeneralEvent, 0, len(stream.Descriptors))
 	for _, descriptor := range stream.Descriptors {
 		if reference, ok := ts.ParseDSMCCNPTReference(descriptor); ok {
-			events = append(events, DataBroadcastGeneralEvent{Type: "nptReference", NPTReference: &DataBroadcastNPTReference{PostDiscontinuityIndicator: reference.PostDiscontinuityIndicator, DSMContentID: reference.DSMContentID, STCReference: reference.STCReference, NPTReference: reference.NPTReference, ScaleNumerator: reference.ScaleNumerator, ScaleDenominator: reference.ScaleDenominator}})
+			events = append(events, GeneralEvent{Type: "nptReference", NPTReference: &NPTReference{PostDiscontinuityIndicator: reference.PostDiscontinuityIndicator, DSMContentID: reference.DSMContentID, STCReference: reference.STCReference, NPTReference: reference.NPTReference, ScaleNumerator: reference.ScaleNumerator, ScaleDenominator: reference.ScaleDenominator}})
 			continue
 		}
 		item, ok := ts.ParseDSMCCGeneralEvent(descriptor)
@@ -180,7 +181,7 @@ func (h *DataBroadcastHub) observeES(section ts.PIDSection) {
 		case 2:
 			eventType = "nptEvent"
 		}
-		event := DataBroadcastGeneralEvent{Type: eventType, EventMessageGroupID: item.EventMessageGroupID, TimeMode: item.TimeMode, TimeValueHex: hex.EncodeToString(item.TimeValue), EventMessageType: item.EventMessageType, EventMessageID: item.EventMessageID, PrivateData: item.PrivateData}
+		event := GeneralEvent{Type: eventType, EventMessageGroupID: item.EventMessageGroupID, TimeMode: item.TimeMode, TimeValueHex: hex.EncodeToString(item.TimeValue), EventMessageType: item.EventMessageType, EventMessageID: item.EventMessageID, PrivateData: item.PrivateData}
 		if npt, ok := item.EventMessageNPT(); ok {
 			event.EventMessageNPT = ptr(npt)
 		}
@@ -188,13 +189,13 @@ func (h *DataBroadcastHub) observeES(section ts.PIDSection) {
 	}
 	h.mu.Lock()
 	for _, ref := range h.carouselsByPIDLocked(section.PID) {
-		e := &DataBroadcastESEvent{ComponentTag: ref.componentTag, DataEventID: stream.DataEventID, EventMessageGroupID: stream.EventMessageGroupID, Version: stream.VersionNumber, SectionNumber: stream.SectionNumber, RawSectionHex: hex.EncodeToString(section.Section), Events: events}
-		h.broadcastLocked(ref.serviceID, DataBroadcastEvent{Type: "esEventUpdated", ESEvent: e})
+		e := &ESEvent{ComponentTag: ref.componentTag, DataEventID: stream.DataEventID, EventMessageGroupID: stream.EventMessageGroupID, Version: stream.VersionNumber, SectionNumber: stream.SectionNumber, RawSectionHex: hex.EncodeToString(section.Section), Events: events}
+		h.broadcastLocked(ref.serviceID, Event{Type: "esEventUpdated", ESEvent: e})
 	}
 	h.mu.Unlock()
 }
 
-func (h *DataBroadcastHub) observeDII(section ts.PIDSection) {
+func (h *Hub) observeDII(section ts.PIDSection) {
 	dii, err := ts.ParseDSMCCDII(section.Section)
 	if err != nil {
 		h.recordCarousel("dii", "invalid")
@@ -219,7 +220,7 @@ func (h *DataBroadcastHub) observeDII(section ts.PIDSection) {
 
 // observeDIIForServiceLocked applies one parsed DII to a single service's
 // carousel and returns the metric result for that delivery.
-func (h *DataBroadcastHub) observeDIIForServiceLocked(ref dataBroadcastCarouselRef, dii *ts.DSMCCDII, section ts.PIDSection) string {
+func (h *Hub) observeDIIForServiceLocked(ref dataBroadcastCarouselRef, dii *ts.DSMCCDII, section ts.PIDSection) string {
 	serviceID, componentTag, carousel := ref.serviceID, ref.componentTag, ref.carousel
 	service := h.services[serviceID]
 	diiSection := string(section.Section)
@@ -261,12 +262,12 @@ func (h *DataBroadcastHub) observeDIIForServiceLocked(ref dataBroadcastCarouselR
 			delete(service.moduleStarts, key)
 		}
 	}
-	modules := make([]DataBroadcastModule, 0, len(infos)+len(rejections))
-	restored := make([]DataBroadcastModule, 0)
+	modules := make([]Module, 0, len(infos)+len(rejections))
+	restored := make([]Module, 0)
 	for _, info := range infos {
 		key := dataBroadcastModuleKey{componentTag: componentTag, downloadID: dii.DownloadID, moduleID: info.ModuleID, version: info.Version}
 		service.moduleStarts[key] = now
-		module := DataBroadcastModule{
+		module := Module{
 			ComponentTag: componentTag,
 			ModuleID:     info.ModuleID,
 			DownloadID:   dii.DownloadID,
@@ -278,7 +279,8 @@ func (h *DataBroadcastHub) observeDIIForServiceLocked(ref dataBroadcastCarouselR
 			TotalBlocks:  int((info.ModuleSize + uint32(dii.BlockSize) - 1) / uint32(dii.BlockSize)),
 		}
 		if metadata, ok := info.Metadata(); ok {
-			module.Metadata = &metadata
+			converted := ModuleMetadataFromTS(metadata)
+			module.Metadata = &converted
 		}
 		modules = append(modules, module)
 		cacheKey := h.moduleCacheKey(serviceID, componentTag, dii.DownloadID, info.ModuleID, info.Version, info.ModuleSize)
@@ -302,7 +304,7 @@ func (h *DataBroadcastHub) observeDIIForServiceLocked(ref dataBroadcastCarouselR
 	for _, rejection := range rejections {
 		modules = append(modules, rejectedModule(componentTag, dii.DownloadID, rejection))
 	}
-	event := DataBroadcastEvent{Type: "moduleListUpdated", ModuleList: &DataBroadcastModuleList{
+	event := Event{Type: "moduleListUpdated", ModuleList: &ModuleList{
 		ComponentTag:  componentTag,
 		DownloadID:    dii.DownloadID,
 		BlockSize:     dii.BlockSize,
@@ -312,7 +314,7 @@ func (h *DataBroadcastHub) observeDIIForServiceLocked(ref dataBroadcastCarouselR
 	}}
 	h.broadcastLocked(serviceID, event)
 	for i := range restored {
-		h.broadcastLocked(serviceID, DataBroadcastEvent{Type: "moduleUpdated", Module: &restored[i]})
+		h.broadcastLocked(serviceID, Event{Type: "moduleUpdated", Module: &restored[i]})
 	}
 	return "accepted"
 }
@@ -333,7 +335,7 @@ func diiReturnToEntry(privateData []byte) *bool {
 	return nil
 }
 
-func (h *DataBroadcastHub) observeDDB(section ts.PIDSection) {
+func (h *Hub) observeDDB(section ts.PIDSection) {
 	ddb, err := ts.ParseDSMCCDDB(section.Section)
 	if err != nil {
 		h.recordCarousel("ddb", "invalid")
@@ -369,7 +371,7 @@ func (h *DataBroadcastHub) observeDDB(section ts.PIDSection) {
 // service's carousel, persisting and broadcasting a completed module for that
 // service. It returns the metric result plus the module's assembly start time
 // when completion was timed.
-func (h *DataBroadcastHub) observeDDBForServiceLocked(ref dataBroadcastCarouselRef, ddb *ts.DSMCCDDB) (string, time.Time, bool) {
+func (h *Hub) observeDDBForServiceLocked(ref dataBroadcastCarouselRef, ddb *ts.DSMCCDDB) (string, time.Time, bool) {
 	serviceID, componentTag, carousel := ref.serviceID, ref.componentTag, ref.carousel
 	module, complete, result, err := carousel.ObserveDDBWithResult(ddb)
 	if err != nil {
@@ -381,7 +383,7 @@ func (h *DataBroadcastHub) observeDDBForServiceLocked(ref dataBroadcastCarouselR
 	key := dataBroadcastModuleKey{componentTag: componentTag, downloadID: module.DownloadID, moduleID: module.ModuleID, version: module.Version}
 	started, timed := h.services[serviceID].moduleStarts[key]
 	delete(h.services[serviceID].moduleStarts, key)
-	event := DataBroadcastEvent{Type: "moduleUpdated", Module: ptr(apiModule(componentTag, *module, false))}
+	event := Event{Type: "moduleUpdated", Module: ptr(apiModule(componentTag, *module, false))}
 	if h.moduleStore != nil && h.moduleStore.Put(h.moduleCacheKey(serviceID, componentTag, module.DownloadID, module.ModuleID, module.Version, module.Size), *module) {
 		if _, persistent := h.moduleStore.(PersistentModuleStore); persistent {
 			carousel.ReleaseCompletedPayload(module.ModuleID)
@@ -391,7 +393,7 @@ func (h *DataBroadcastHub) observeDDBForServiceLocked(ref dataBroadcastCarouselR
 	return "completed", started, timed
 }
 
-func (h *DataBroadcastHub) observeEIT(section ts.Section) {
+func (h *Hub) observeEIT(section ts.Section) {
 	eit, err := ts.ParseEIT(section)
 	if err != nil {
 		return
@@ -400,7 +402,7 @@ func (h *DataBroadcastHub) observeEIT(section ts.Section) {
 	for _, item := range eit.Events {
 		eventIDs = append(eventIDs, item.EventID)
 	}
-	info := &DataBroadcastProgramInfo{
+	info := &ProgramInfo{
 		ServiceID:     eit.ServiceID,
 		EventIDs:      eventIDs,
 		RawSectionHex: hex.EncodeToString(section),
@@ -408,20 +410,20 @@ func (h *DataBroadcastHub) observeEIT(section ts.Section) {
 	h.mu.Lock()
 	service := h.serviceLocked(eit.ServiceID)
 	service.programInfo = info
-	h.broadcastLocked(eit.ServiceID, DataBroadcastEvent{Type: "programInfo", ProgramInfo: cloneProgramInfo(info)})
+	h.broadcastLocked(eit.ServiceID, Event{Type: "programInfo", ProgramInfo: cloneProgramInfo(info)})
 	h.mu.Unlock()
 }
 
-func (h *DataBroadcastHub) observeTOT(section ts.Section) {
+func (h *Hub) observeTOT(section ts.Section) {
 	tot, err := ts.ParseTOT(section)
 	if err != nil {
 		return
 	}
-	current := &DataBroadcastCurrentTime{JSTTimeUnixMilli: tot.JSTTime.UnixMilli()}
+	current := &CurrentTime{JSTTimeUnixMilli: tot.JSTTime.UnixMilli()}
 	h.mu.Lock()
 	for serviceID, service := range h.services {
 		service.currentTime = current
-		h.broadcastLocked(serviceID, DataBroadcastEvent{Type: "currentTime", CurrentTime: cloneCurrentTime(current)})
+		h.broadcastLocked(serviceID, Event{Type: "currentTime", CurrentTime: cloneCurrentTime(current)})
 	}
 	h.mu.Unlock()
 }
@@ -450,7 +452,7 @@ func isAribBXMLDataComponent(id uint16) bool {
 	return id == 0x0007 || id == 0x000b || id == 0x000c || id == 0x000d
 }
 
-func componentTagExists(components []DataBroadcastComponent, tag byte) bool {
+func componentTagExists(components []Component, tag byte) bool {
 	for _, component := range components {
 		if component.ComponentTag == tag {
 			return true

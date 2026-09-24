@@ -9,7 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/21S1298001/mahiron/internal/stream/databroadcast"
+	"github.com/21S1298001/mahiron/internal/bml"
+	"github.com/21S1298001/mahiron/internal/bml/cache"
 	"github.com/21S1298001/mahiron/internal/stream/internal/streamtest"
 	"github.com/21S1298001/mahiron/internal/stream/source"
 	"github.com/21S1298001/mahiron/ts"
@@ -133,72 +134,63 @@ func TestSessionSectionUpdaterCoalescesRepeatedEITPF(t *testing.T) {
 }
 
 func TestSessionDataBroadcastDDBQueueIsBounded(t *testing.T) {
-	session := &Session{
-		channel:            "27",
-		typ:                "GR",
-		dataBroadcast:      databroadcast.NewDataBroadcastHub(),
-		dataBroadcastQueue: make(chan ts.PIDSection, 1),
-	}
+	worker := newBMLWorker("GR", "27", bml.NewHub(), nil)
+	worker.queue = make(chan ts.PIDSection, 1)
 	ddb := streamBuildDSMCCDDB(t, 1, 2, 1, 0, []byte("block"))
 	section := ts.PIDSection{PID: 0x0200, Section: ddb}
 
-	session.observePIDSection(section)
-	session.observePIDSection(section)
+	worker.observePIDSection(section)
+	worker.observePIDSection(section)
 
-	if got := len(session.dataBroadcastQueue); got != 1 {
+	if got := len(worker.queue); got != 1 {
 		t.Fatalf("DDB queue length = %d, want 1", got)
 	}
 	// Balance the wait group for the accepted item because this focused test
 	// intentionally does not start the worker.
-	<-session.dataBroadcastQueue
-	session.dataBroadcastWG.Done()
+	<-worker.queue
+	worker.wg.Done()
 }
 
 func TestSessionPrioritizesEntryDocumentDDB(t *testing.T) {
 	serviceID, pmtPID, carouselPID := uint16(101), uint16(0x0100), uint16(0x0200)
 	componentTag := byte(0x40)
-	hub := databroadcast.NewDataBroadcastHub()
+	hub := bml.NewHub()
 	hub.Observe(ts.PIDSection{PID: pmtPID, Section: streamBuildDataBroadcastPMT(serviceID, carouselPID, componentTag)})
 	moduleInfo := []byte{ts.DSMCCModuleDescriptorName, 9, 'i', 'n', 'd', 'e', 'x', '.', 'b', 'm', 'l'}
 	hub.Observe(ts.PIDSection{PID: carouselPID, Section: streamBuildDSMCCDII(t, 1, 4, 2, 4, 1, moduleInfo)})
-	session := &Session{
-		channel:                    "27",
-		typ:                        "GR",
-		dataBroadcast:              hub,
-		dataBroadcastQueue:         make(chan ts.PIDSection, 1),
-		dataBroadcastPriorityQueue: make(chan ts.PIDSection, 1),
-	}
+	worker := newBMLWorker("GR", "27", hub, nil)
+	worker.queue = make(chan ts.PIDSection, 1)
+	worker.priorityQueue = make(chan ts.PIDSection, 1)
 
-	session.observePIDSection(ts.PIDSection{PID: carouselPID, Section: streamBuildDSMCCDDB(t, 1, 2, 1, 0, []byte("bml!"))})
+	worker.observePIDSection(ts.PIDSection{PID: carouselPID, Section: streamBuildDSMCCDDB(t, 1, 2, 1, 0, []byte("bml!"))})
 
-	if got := len(session.dataBroadcastPriorityQueue); got != 1 {
+	if got := len(worker.priorityQueue); got != 1 {
 		t.Fatalf("priority DDB queue length = %d, want 1", got)
 	}
-	if got := len(session.dataBroadcastQueue); got != 0 {
+	if got := len(worker.queue); got != 0 {
 		t.Fatalf("normal DDB queue length = %d, want 0", got)
 	}
-	<-session.dataBroadcastPriorityQueue
-	session.dataBroadcastWG.Done()
+	<-worker.priorityQueue
+	worker.wg.Done()
 }
 
 func TestSessionDataBroadcastPriorityQueueDoesNotStarveNormalQueue(t *testing.T) {
-	session := &Session{
-		dataBroadcastQueue:         make(chan ts.PIDSection, 1),
-		dataBroadcastPriorityQueue: make(chan ts.PIDSection, dataBroadcastPriorityBurst+1),
-	}
+	worker := newBMLWorker("GR", "27", bml.NewHub(), nil)
+	worker.queue = make(chan ts.PIDSection, 1)
+	worker.priorityQueue = make(chan ts.PIDSection, dataBroadcastPriorityBurst+1)
 	for i := range dataBroadcastPriorityBurst + 1 {
-		session.dataBroadcastPriorityQueue <- ts.PIDSection{PID: uint16(i + 1)}
+		worker.priorityQueue <- ts.PIDSection{PID: uint16(i + 1)}
 	}
-	session.dataBroadcastQueue <- ts.PIDSection{PID: 0x0200}
+	worker.queue <- ts.PIDSection{PID: 0x0200}
 
 	burst := 0
 	for i := range dataBroadcastPriorityBurst {
-		section, ok := session.nextDataBroadcastSection(t.Context(), &burst)
+		section, ok := worker.nextSection(t.Context(), &burst)
 		if !ok || section.PID != uint16(i+1) {
 			t.Fatalf("priority section %d = PID %#x, %v", i, section.PID, ok)
 		}
 	}
-	section, ok := session.nextDataBroadcastSection(t.Context(), &burst)
+	section, ok := worker.nextSection(t.Context(), &burst)
 	if !ok || section.PID != 0x0200 {
 		t.Fatalf("section after priority burst = PID %#x, %v; want normal PID 0x0200", section.PID, ok)
 	}
@@ -208,18 +200,18 @@ func TestSessionRestoresDataBroadcastModuleAcrossSessions(t *testing.T) {
 	serviceID, pmtPID, carouselPID := uint16(101), uint16(0x0100), uint16(0x0200)
 	componentTag := byte(0x40)
 	moduleData := []byte("bml")
-	cache := databroadcast.NewModuleCache(1024)
+	moduleCache := cache.NewModuleCache(1024)
 	base := append(streamSectionPackets(ts.PIDPAT, streamBuildPAT(1, serviceID, pmtPID), 0), streamSectionPackets(pmtPID, streamBuildDataBroadcastPMT(serviceID, carouselPID, componentTag), 1)...)
 	base = append(base, streamSectionPackets(carouselPID, streamBuildDSMCCDII(t, 1, uint16(len(moduleData)), 2, uint32(len(moduleData)), 1, []byte("index.bml")), 2)...)
 	firstInput := append(append([]byte(nil), base...), streamSectionPackets(carouselPID, streamBuildDSMCCDDB(t, 1, 2, 1, 0, moduleData), 3)...)
-	first := NewSession(Config{Broadcast: source.NewBroadcast(streamtest.NewFinitePacketSource(firstInput, streamtest.ClosedStart()), nil), Channel: "27", Type: "GR", ModuleCache: cache})
-	if err := first.ObserveDataBroadcast(t.Context(), serviceID, false, func(databroadcast.DataBroadcastEvent) error { return nil }); err != nil {
+	first := NewSession(Config{Broadcast: source.NewBroadcast(streamtest.NewFinitePacketSource(firstInput, streamtest.ClosedStart()), nil), Channel: "27", Type: "GR", ModuleCache: moduleCache})
+	if err := first.ObserveDataBroadcast(t.Context(), serviceID, false, func(bml.Event) error { return nil }); err != nil {
 		t.Fatal(err)
 	}
 
-	second := NewSession(Config{Broadcast: source.NewBroadcast(streamtest.NewFinitePacketSource(base, streamtest.ClosedStart()), nil), Channel: "27", Type: "GR", ModuleCache: cache})
+	second := NewSession(Config{Broadcast: source.NewBroadcast(streamtest.NewFinitePacketSource(base, streamtest.ClosedStart()), nil), Channel: "27", Type: "GR", ModuleCache: moduleCache})
 	restored := false
-	if err := second.ObserveDataBroadcast(t.Context(), serviceID, false, func(event databroadcast.DataBroadcastEvent) error {
+	if err := second.ObserveDataBroadcast(t.Context(), serviceID, false, func(event bml.Event) error {
 		if event.Type == "moduleUpdated" && event.Module != nil && event.Module.ModuleID == 2 {
 			restored = true
 		}
@@ -303,8 +295,8 @@ func TestSessionObserveDataBroadcastEmitsSnapshotAndModule(t *testing.T) {
 		Type:      "GR",
 	})
 
-	var events []databroadcast.DataBroadcastEvent
-	err := session.ObserveDataBroadcast(t.Context(), serviceID, false, func(event databroadcast.DataBroadcastEvent) error {
+	var events []bml.Event
+	err := session.ObserveDataBroadcast(t.Context(), serviceID, false, func(event bml.Event) error {
 		events = append(events, event)
 		return nil
 	})
@@ -314,7 +306,7 @@ func TestSessionObserveDataBroadcastEmitsSnapshotAndModule(t *testing.T) {
 	if len(events) == 0 || events[0].Type != "snapshot" {
 		t.Fatalf("first event = %#v, want snapshot", events)
 	}
-	var gotModule *databroadcast.DataBroadcastModule
+	var gotModule *bml.Module
 	for i := range events {
 		if events[i].Type == "moduleUpdated" {
 			gotModule = events[i].Module

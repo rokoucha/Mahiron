@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/21S1298001/mahiron/internal/stream/databroadcast"
-	"github.com/21S1298001/mahiron/ts"
+	"github.com/21S1298001/mahiron/internal/bml"
+	"github.com/21S1298001/mahiron/internal/bml/resource"
 )
 
-func writeDataBroadcastSSE(w io.Writer, serviceItemID int64, event databroadcast.DataBroadcastEvent) error {
+func writeDataBroadcastSSE(w io.Writer, serviceItemID int64, event bml.Event) error {
 	payload := apiDataBroadcastEvent(serviceItemID, event)
 	data, err := json.Marshal(payload)
 	if err != nil {
@@ -31,7 +31,7 @@ func writeDataBroadcastSSE(w io.Writer, serviceItemID int64, event databroadcast
 	return err
 }
 
-func apiDataBroadcastEvent(serviceItemID int64, event databroadcast.DataBroadcastEvent) map[string]any {
+func apiDataBroadcastEvent(serviceItemID int64, event bml.Event) map[string]any {
 	result := map[string]any{"type": event.Type, "sequence": event.Sequence, "revision": event.Revision}
 	switch event.Type {
 	case "snapshot":
@@ -61,7 +61,7 @@ func apiDataBroadcastEvent(serviceItemID int64, event databroadcast.DataBroadcas
 // rebuilt from persisted PMT/DII sections without a tuner. storedAtUnixMilli
 // is nil for a live snapshot; a cache snapshot always carries it, and always
 // has null programInfo/currentTime/pcr (see RestoreSnapshot).
-func apiDataBroadcastSnapshot(serviceItemID int64, snapshot databroadcast.DataBroadcastSnapshot, origin string, storedAtUnixMilli *int64) map[string]any {
+func apiDataBroadcastSnapshot(serviceItemID int64, snapshot bml.Snapshot, origin string, storedAtUnixMilli *int64) map[string]any {
 	return map[string]any{
 		"serviceId":   snapshot.ServiceID,
 		"revision":    snapshot.Revision,
@@ -76,28 +76,28 @@ func apiDataBroadcastSnapshot(serviceItemID int64, snapshot databroadcast.DataBr
 	}
 }
 
-func apiDataBroadcastProgramInfo(info *databroadcast.DataBroadcastProgramInfo) any {
+func apiDataBroadcastProgramInfo(info *bml.ProgramInfo) any {
 	if info == nil {
 		return nil
 	}
 	return map[string]any{"serviceId": info.ServiceID, "eventIds": info.EventIDs, "rawSectionHex": info.RawSectionHex}
 }
 
-func apiDataBroadcastCurrentTime(current *databroadcast.DataBroadcastCurrentTime) any {
+func apiDataBroadcastCurrentTime(current *bml.CurrentTime) any {
 	if current == nil {
 		return nil
 	}
 	return map[string]any{"jstTimeUnixMilli": current.JSTTimeUnixMilli}
 }
 
-func apiDataBroadcastPCR(pcr *databroadcast.DataBroadcastPCR) any {
+func apiDataBroadcastPCR(pcr *bml.PCR) any {
 	if pcr == nil {
 		return nil
 	}
 	return map[string]any{"pcrBase": pcr.PCRBase, "pcrExtension": pcr.PCRExtension}
 }
 
-func apiDataBroadcastESEvent(event *databroadcast.DataBroadcastESEvent) any {
+func apiDataBroadcastESEvent(event *bml.ESEvent) any {
 	if event == nil {
 		return nil
 	}
@@ -126,7 +126,7 @@ func apiDataBroadcastESEvent(event *databroadcast.DataBroadcastESEvent) any {
 	return map[string]any{"componentId": event.ComponentTag, "dataEventId": event.DataEventID, "events": events}
 }
 
-func apiDataBroadcastBIT(bit *databroadcast.DataBroadcastBIT) any {
+func apiDataBroadcastBIT(bit *bml.BIT) any {
 	if bit == nil {
 		return nil
 	}
@@ -157,7 +157,7 @@ func bytesToNumbers(values []byte) []int {
 	return result
 }
 
-func apiDataBroadcastPMT(serviceItemID int64, pmt *databroadcast.DataBroadcastPMT) any {
+func apiDataBroadcastPMT(serviceItemID int64, pmt *bml.PMT) any {
 	if pmt == nil {
 		return nil
 	}
@@ -170,7 +170,7 @@ func apiDataBroadcastPMT(serviceItemID int64, pmt *databroadcast.DataBroadcastPM
 	}
 }
 
-func apiDataBroadcastComponents(serviceItemID int64, components []databroadcast.DataBroadcastComponent) []map[string]any {
+func apiDataBroadcastComponents(serviceItemID int64, components []bml.Component) []map[string]any {
 	result := make([]map[string]any, 0, len(components))
 	for _, component := range components {
 		modules := make([]map[string]any, 0, len(component.Modules))
@@ -195,7 +195,7 @@ func apiDataBroadcastComponents(serviceItemID int64, components []databroadcast.
 	return result
 }
 
-func apiAdditionalAribBXMLInfo(info *ts.AdditionalAribBXMLInfo) any {
+func apiAdditionalAribBXMLInfo(info *bml.BXMLInfo) any {
 	if info == nil {
 		return nil
 	}
@@ -219,7 +219,7 @@ func apiAdditionalAribBXMLInfo(info *ts.AdditionalAribBXMLInfo) any {
 	return result
 }
 
-func apiDataBroadcastModuleList(serviceItemID int64, list *databroadcast.DataBroadcastModuleList) any {
+func apiDataBroadcastModuleList(serviceItemID int64, list *bml.ModuleList) any {
 	if list == nil {
 		return nil
 	}
@@ -237,7 +237,7 @@ func apiDataBroadcastModuleList(serviceItemID int64, list *databroadcast.DataBro
 	}
 }
 
-func apiDataBroadcastModule(serviceItemID int64, module *databroadcast.DataBroadcastModule) map[string]any {
+func apiDataBroadcastModule(serviceItemID int64, module *bml.Module) map[string]any {
 	if module == nil {
 		return nil
 	}
@@ -255,12 +255,12 @@ func apiDataBroadcastModule(serviceItemID int64, module *databroadcast.DataBroad
 		"receivedBlocks":  module.ReceivedBlocks,
 		"totalBlocks":     module.TotalBlocks,
 		"etag":            module.ETag,
-		"url":             fmt.Sprintf("/api/services/%d/data-broadcast/components/%d/carousels/%d/modules/%d/versions/%d", serviceItemID, module.ComponentTag, module.DownloadID, module.ModuleID, module.Version),
+		"url":             fmt.Sprintf("/api/services/%d/data-broadcast/bml/components/%d/carousels/%d/modules/%d/versions/%d", serviceItemID, module.ComponentTag, module.DownloadID, module.ModuleID, module.Version),
 	}
 }
 
-func apiDataBroadcastModuleManifest(serviceItemID int64, module databroadcast.DataBroadcastModule, resources []databroadcast.ModuleResource) map[string]any {
-	base := fmt.Sprintf("/api/services/%d/data-broadcast/components/%d/carousels/%d/modules/%d/versions/%d", serviceItemID, module.ComponentTag, module.DownloadID, module.ModuleID, module.Version)
+func apiDataBroadcastModuleManifest(serviceItemID int64, module bml.Module, resources []resource.ModuleResource) map[string]any {
+	base := fmt.Sprintf("/api/services/%d/data-broadcast/bml/components/%d/carousels/%d/modules/%d/versions/%d", serviceItemID, module.ComponentTag, module.DownloadID, module.ModuleID, module.Version)
 	items := make([]map[string]any, 0, len(resources))
 	for _, resource := range resources {
 		items = append(items, map[string]any{"id": resource.ID, "contentLocation": resource.ContentLocation, "contentType": resource.ContentType, "url": base + "/resources/" + resource.ID})
@@ -268,7 +268,7 @@ func apiDataBroadcastModuleManifest(serviceItemID int64, module databroadcast.Da
 	return map[string]any{"componentTag": module.ComponentTag, "downloadId": module.DownloadID, "moduleId": module.ModuleID, "version": module.Version, "size": module.Size, "etag": module.ETag, "rawUrl": base + "/raw", "resources": items}
 }
 
-func apiDataBroadcastModuleMetadata(metadata *ts.DSMCCModuleMetadata) any {
+func apiDataBroadcastModuleMetadata(metadata *bml.ModuleMetadata) any {
 	if metadata == nil {
 		return nil
 	}

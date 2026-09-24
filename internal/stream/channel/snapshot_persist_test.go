@@ -5,7 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/21S1298001/mahiron/internal/stream/databroadcast"
+	"github.com/21S1298001/mahiron/internal/bml"
+	"github.com/21S1298001/mahiron/internal/bml/cache"
 	"github.com/21S1298001/mahiron/internal/stream/internal/streamtest"
 	"github.com/21S1298001/mahiron/internal/stream/source"
 	"github.com/21S1298001/mahiron/ts"
@@ -13,37 +14,31 @@ import (
 
 type countingSnapshotStore struct {
 	puts int
-	last databroadcast.PersistedService
+	last bml.PersistedService
 }
 
-func (s *countingSnapshotStore) PutSnapshot(_, _ string, service databroadcast.PersistedService) error {
+func (s *countingSnapshotStore) PutSnapshot(_, _ string, service bml.PersistedService) error {
 	s.puts++
 	s.last = service
 	return nil
 }
 
-func (s *countingSnapshotStore) GetSnapshot(_, _ string, _ uint16) (databroadcast.PersistedService, bool) {
-	return databroadcast.PersistedService{}, false
+func (s *countingSnapshotStore) GetSnapshot(_, _ string, _ uint16) (bml.PersistedService, bool) {
+	return bml.PersistedService{}, false
 }
 
 func TestSessionFlushDataBroadcastSnapshotsSkipsUnchangedState(t *testing.T) {
 	serviceID, pmtPID, carouselPID := uint16(101), uint16(0x0100), uint16(0x0200)
 	componentTag := byte(0x40)
-	hub := databroadcast.NewDataBroadcastHub()
+	hub := bml.NewHub()
 	hub.Observe(ts.PIDSection{PID: pmtPID, Section: streamBuildDataBroadcastPMT(serviceID, carouselPID, componentTag)})
 	hub.Observe(ts.PIDSection{PID: carouselPID, Section: streamBuildDSMCCDII(t, 1, 4, 2, 4, 1, []byte("index.bml"))})
 
 	store := &countingSnapshotStore{}
-	session := &Session{
-		channel:                "27",
-		typ:                    "GR",
-		dataBroadcast:          hub,
-		snapshotStore:          store,
-		lastPersistedSnapshots: map[uint16]databroadcast.PersistedService{},
-	}
+	worker := newBMLWorker("GR", "27", hub, store)
 
-	session.flushDataBroadcastSnapshots()
-	session.flushDataBroadcastSnapshots()
+	worker.flushSnapshots()
+	worker.flushSnapshots()
 	if store.puts != 1 {
 		t.Fatalf("PutSnapshot calls = %d, want 1 for repeated unchanged state", store.puts)
 	}
@@ -54,23 +49,18 @@ func TestSessionFlushDataBroadcastSnapshotsSkipsUnchangedState(t *testing.T) {
 	// A DII version bump changes the observed bytes, so the next flush must
 	// write again.
 	hub.Observe(ts.PIDSection{PID: carouselPID, Section: streamBuildDSMCCDII(t, 1, 4, 2, 4, 2, []byte("index.bml"))})
-	session.flushDataBroadcastSnapshots()
+	worker.flushSnapshots()
 	if store.puts != 2 {
 		t.Fatalf("PutSnapshot calls = %d, want 2 after DII changed", store.puts)
 	}
 }
 
 func TestSessionFlushDataBroadcastSnapshotsNoopWithoutStore(t *testing.T) {
-	hub := databroadcast.NewDataBroadcastHub()
+	hub := bml.NewHub()
 	hub.Observe(ts.PIDSection{PID: 0x0100, Section: streamBuildDataBroadcastPMT(101, 0x0200, 0x40)})
-	session := &Session{
-		channel:                "27",
-		typ:                    "GR",
-		dataBroadcast:          hub,
-		lastPersistedSnapshots: map[uint16]databroadcast.PersistedService{},
-	}
+	worker := newBMLWorker("GR", "27", hub, nil)
 	// Must not panic when no snapshot store is configured.
-	session.flushDataBroadcastSnapshots()
+	worker.flushSnapshots()
 }
 
 func TestSessionPersistsAndRestoresProvisionalDataBroadcastSnapshot(t *testing.T) {
@@ -79,7 +69,7 @@ func TestSessionPersistsAndRestoresProvisionalDataBroadcastSnapshot(t *testing.T
 	moduleData := []byte("bml")
 	moduleInfo := []byte{ts.DSMCCModuleDescriptorName, 9, 'i', 'n', 'd', 'e', 'x', '.', 'b', 'm', 'l'}
 
-	store, err := databroadcast.NewSQLiteModuleStore(filepath.Join(t.TempDir(), "cache.sqlite3"), 1024)
+	store, err := cache.NewSQLiteModuleStore(filepath.Join(t.TempDir(), "cache.sqlite3"), 1024)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +86,7 @@ func TestSessionPersistsAndRestoresProvisionalDataBroadcastSnapshot(t *testing.T
 		ModuleStore:   store,
 		SnapshotStore: store,
 	})
-	if err := session.ObserveDataBroadcast(t.Context(), serviceID, false, func(databroadcast.DataBroadcastEvent) error { return nil }); err != nil {
+	if err := session.ObserveDataBroadcast(t.Context(), serviceID, false, func(bml.Event) error { return nil }); err != nil {
 		t.Fatal(err)
 	}
 
@@ -107,7 +97,7 @@ func TestSessionPersistsAndRestoresProvisionalDataBroadcastSnapshot(t *testing.T
 	// instead of calling flushDataBroadcastSnapshots directly here: that
 	// method is only safe from its owning goroutine, and the auto-stop flush
 	// races with a second, test-issued call to it.
-	var persisted databroadcast.PersistedService
+	var persisted bml.PersistedService
 	var ok bool
 	if !streamtest.Eventually(time.Second, func() bool {
 		persisted, ok = store.GetSnapshot("GR", "27", serviceID)
@@ -119,7 +109,7 @@ func TestSessionPersistsAndRestoresProvisionalDataBroadcastSnapshot(t *testing.T
 		t.Fatal("persisted snapshot has no stored-at timestamp")
 	}
 
-	restored := databroadcast.RestoreSnapshot("GR", "27", persisted, store)
+	restored := bml.RestoreSnapshot("GR", "27", persisted, store)
 	if restored.ProgramInfo != nil || restored.CurrentTime != nil || restored.PCR != nil {
 		t.Fatalf("provisional snapshot carried clock state: %#v", restored)
 	}
@@ -145,25 +135,19 @@ func TestSessionSnapshotCarouselRemovedWhenComponentDropsFromPMT(t *testing.T) {
 	serviceID, pmtPID, firstPID, secondPID := uint16(101), uint16(0x0100), uint16(0x0200), uint16(0x0201)
 	firstTag, secondTag := byte(0x40), byte(0x41)
 
-	store, err := databroadcast.NewSQLiteModuleStore(filepath.Join(t.TempDir(), "cache.sqlite3"), 1024)
+	store, err := cache.NewSQLiteModuleStore(filepath.Join(t.TempDir(), "cache.sqlite3"), 1024)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
 
-	hub := databroadcast.NewDataBroadcastHub()
-	session := &Session{
-		channel:                "27",
-		typ:                    "GR",
-		dataBroadcast:          hub,
-		snapshotStore:          store,
-		lastPersistedSnapshots: map[uint16]databroadcast.PersistedService{},
-	}
+	hub := bml.NewHub()
+	worker := newBMLWorker("GR", "27", hub, store)
 
 	hub.Observe(ts.PIDSection{PID: pmtPID, Section: streamBuildTwoComponentPMT(serviceID, firstPID, firstTag, secondPID, secondTag)})
 	hub.Observe(ts.PIDSection{PID: firstPID, Section: streamBuildDSMCCDII(t, 1, 4, 2, 4, 1, []byte("index.bml"))})
 	hub.Observe(ts.PIDSection{PID: secondPID, Section: streamBuildDSMCCDII(t, 1, 4, 3, 4, 1, []byte("sub.bml"))})
-	session.flushDataBroadcastSnapshots()
+	worker.flushSnapshots()
 
 	persisted, ok := store.GetSnapshot("GR", "27", serviceID)
 	if !ok || len(persisted.Carousels) != 2 {
@@ -172,7 +156,7 @@ func TestSessionSnapshotCarouselRemovedWhenComponentDropsFromPMT(t *testing.T) {
 
 	// The PMT no longer carries the second component.
 	hub.Observe(ts.PIDSection{PID: pmtPID, Section: streamBuildDataBroadcastPMT(serviceID, firstPID, firstTag)})
-	session.flushDataBroadcastSnapshots()
+	worker.flushSnapshots()
 
 	persisted, ok = store.GetSnapshot("GR", "27", serviceID)
 	if !ok || len(persisted.Carousels) != 1 || persisted.Carousels[0].ComponentTag != firstTag {

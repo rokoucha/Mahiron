@@ -1,14 +1,10 @@
 package channel
 
 import (
-	"bytes"
 	"context"
 	"encoding/binary"
 	"log/slog"
-	"time"
 
-	"github.com/21S1298001/mahiron/internal/observability"
-	"github.com/21S1298001/mahiron/internal/stream/databroadcast"
 	"github.com/21S1298001/mahiron/ts"
 )
 
@@ -21,19 +17,6 @@ const sectionQueueSize = 64
 // because a data carousel can emit far more sections per second than
 // EIT/CDT/SDTT, and must not be allowed to starve them.
 const carouselQueueSize = 256
-
-// dataBroadcastQueueSize bounds completed DSM-CC section work without
-// blocking the TS demux loop. DII is handled synchronously so the carousel is
-// always registered before its DDB blocks enter this queue.
-const dataBroadcastQueueSize = 1024
-const dataBroadcastPriorityQueueSize = 256
-const dataBroadcastPriorityBurst = 8
-
-// dataBroadcastSnapshotFlushInterval bounds how stale a persisted provisional
-// snapshot can be. It is a periodic sweep rather than an event-driven queue:
-// PMT/DII sections rarely change once a service is stable, so most ticks scan
-// unchanged state and write nothing.
-const dataBroadcastSnapshotFlushInterval = 30 * time.Second
 
 // EITSectionUpdater persists EIT sections observed on the stream.
 type EITSectionUpdater interface {
@@ -84,147 +67,6 @@ func (s *Session) observeSection(section ts.Section) {
 		}
 		slog.Warn("TS section updater overflow", "type", s.typ, "channel", s.channel)
 	}
-}
-
-func (s *Session) observePIDSection(section ts.PIDSection) {
-	if s.dataBroadcast == nil {
-		return
-	}
-	if section.Section.TableID() != ts.TableIDDSMCCDDB {
-		s.dataBroadcast.Observe(section)
-		return
-	}
-	priority, entryDocument := s.dataBroadcast.DDBPriority(section)
-	queue := s.dataBroadcastQueue
-	operation := "ddb_queue"
-	if entryDocument || priority > 0 {
-		queue = s.dataBroadcastPriorityQueue
-		operation = "ddb_priority_queue"
-	}
-	s.dataBroadcastWG.Add(1)
-	select {
-	case queue <- section:
-	default:
-		s.dataBroadcastWG.Done()
-		observability.RecordDataBroadcastCarouselEvent(context.Background(), s.typ, s.channel, operation, "overflow")
-		slog.Warn("data broadcast DDB queue overflow", "type", s.typ, "channel", s.channel, "priority", priority, "entryDocument", entryDocument)
-	}
-}
-
-func (s *Session) runDataBroadcastUpdates(ctx context.Context, done chan struct{}) {
-	defer close(done)
-	priorityBurst := 0
-	for {
-		section, ok := s.nextDataBroadcastSection(ctx, &priorityBurst)
-		if !ok {
-			// Sections were already accepted from the demuxer. Finish the bounded
-			// backlog so a final module completion is not lost on input shutdown.
-			for {
-				select {
-				case section := <-s.dataBroadcastPriorityQueue:
-					s.observeQueuedDDB(section)
-				case section := <-s.dataBroadcastQueue:
-					s.observeQueuedDDB(section)
-				default:
-					return
-				}
-			}
-		}
-		s.observeQueuedDDB(section)
-	}
-}
-
-// nextDataBroadcastSection favors entry/high-cache-priority modules, but
-// forces one normal section after a bounded burst. Emergency broadcasts can
-// keep the priority queue continuously non-empty; without this fairness bound,
-// ordinary modules remain announced forever and their HTTP URLs return 425.
-func (s *Session) nextDataBroadcastSection(ctx context.Context, priorityBurst *int) (ts.PIDSection, bool) {
-	if *priorityBurst >= dataBroadcastPriorityBurst {
-		select {
-		case section := <-s.dataBroadcastQueue:
-			*priorityBurst = 0
-			return section, true
-		default:
-		}
-	}
-	select {
-	case section := <-s.dataBroadcastPriorityQueue:
-		*priorityBurst++
-		return section, true
-	default:
-	}
-	select {
-	case <-ctx.Done():
-		return ts.PIDSection{}, false
-	case section := <-s.dataBroadcastPriorityQueue:
-		*priorityBurst++
-		return section, true
-	case section := <-s.dataBroadcastQueue:
-		*priorityBurst = 0
-		return section, true
-	}
-}
-
-func (s *Session) observeQueuedDDB(section ts.PIDSection) {
-	s.dataBroadcast.Observe(section)
-	s.dataBroadcastWG.Done()
-}
-
-// runDataBroadcastSnapshotPersist periodically writes the current PMT/DII
-// state to the snapshot store so a future GetOrCreate for this channel can
-// serve a provisional /state response before a tuner is reacquired. It runs
-// even when no store is configured so its done channel is always closed,
-// keeping worker start/stop symmetric with the other two update workers.
-func (s *Session) runDataBroadcastSnapshotPersist(ctx context.Context, done chan struct{}) {
-	defer close(done)
-	if s.snapshotStore == nil {
-		<-ctx.Done()
-		return
-	}
-	ticker := time.NewTicker(dataBroadcastSnapshotFlushInterval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			s.flushDataBroadcastSnapshots()
-			return
-		case <-ticker.C:
-			s.flushDataBroadcastSnapshots()
-		}
-	}
-}
-
-// flushDataBroadcastSnapshots writes only services whose persisted state
-// changed since the last flush. It is called from a single goroutine
-// (runDataBroadcastSnapshotPersist), so lastPersistedSnapshots needs no lock.
-func (s *Session) flushDataBroadcastSnapshots() {
-	if s.dataBroadcast == nil || s.snapshotStore == nil {
-		return
-	}
-	for _, persisted := range s.dataBroadcast.PersistableState() {
-		if previous, ok := s.lastPersistedSnapshots[persisted.ServiceID]; ok && persistedServiceEqual(previous, persisted) {
-			continue
-		}
-		if err := s.snapshotStore.PutSnapshot(s.typ, s.channel, persisted); err != nil {
-			slog.Warn("failed to persist data broadcast snapshot", "type", s.typ, "channel", s.channel, "serviceId", persisted.ServiceID, "err", err)
-			continue
-		}
-		s.lastPersistedSnapshots[persisted.ServiceID] = persisted
-	}
-}
-
-func persistedServiceEqual(a, b databroadcast.PersistedService) bool {
-	if a.ServiceID != b.ServiceID || !bytes.Equal(a.PMTSection, b.PMTSection) || len(a.Carousels) != len(b.Carousels) {
-		return false
-	}
-	for i := range a.Carousels {
-		if a.Carousels[i].ComponentTag != b.Carousels[i].ComponentTag ||
-			a.Carousels[i].PID != b.Carousels[i].PID ||
-			!bytes.Equal(a.Carousels[i].DIISection, b.Carousels[i].DIISection) {
-			return false
-		}
-	}
-	return true
 }
 
 func (s *Session) runSectionUpdates(ctx context.Context, done chan struct{}) {

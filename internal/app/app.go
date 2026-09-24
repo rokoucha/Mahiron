@@ -16,6 +16,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/21S1298001/mahiron/internal/bml"
+	"github.com/21S1298001/mahiron/internal/bml/cache"
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/db"
 	"github.com/21S1298001/mahiron/internal/db/gen"
@@ -29,7 +31,6 @@ import (
 	"github.com/21S1298001/mahiron/internal/service"
 	"github.com/21S1298001/mahiron/internal/servicescan"
 	"github.com/21S1298001/mahiron/internal/stream"
-	"github.com/21S1298001/mahiron/internal/stream/databroadcast"
 	"github.com/21S1298001/mahiron/internal/tuner"
 	"github.com/21S1298001/mahiron/internal/web"
 )
@@ -130,7 +131,7 @@ func Run(ctx context.Context, args []string) int {
 }
 
 type applicationRuntime struct {
-	dataBroadcastStore *databroadcast.SQLiteModuleStore
+	dataBroadcastStore *cache.SQLiteModuleStore
 	database           *db.DB
 	jobs               *job.Manager
 	obs                observability.SetupResult
@@ -159,9 +160,9 @@ func buildRuntime(cfg *config.Config, database *db.DB, obs observability.SetupRe
 	programs := program.NewProgramManager(programStore, events)
 	epgUpdater := epggather.NewUpdater(programs)
 
-	var dataBroadcastStore *databroadcast.SQLiteModuleStore
-	var moduleStore databroadcast.ModuleStore
-	var snapshotStore databroadcast.SnapshotStore
+	var dataBroadcastStore *cache.SQLiteModuleStore
+	var moduleStore bml.ModuleStore
+	var snapshotStore bml.SnapshotStore
 	dataBroadcastEnabled := config.IsDataBroadcastEnabled(*cfg.System)
 	if dataBroadcastEnabled {
 		// Opening the cache migrates and prunes it, the only startup step whose
@@ -171,7 +172,7 @@ func buildRuntime(cfg *config.Config, database *db.DB, obs observability.SetupRe
 		slog.Info("opening data broadcast cache", "path", cachePath)
 		cacheOpenedAt := time.Now()
 		var err error
-		dataBroadcastStore, err = databroadcast.NewSQLiteModuleStoreWithOptions(cachePath, databroadcast.SQLiteModuleStoreOptions{
+		dataBroadcastStore, err = cache.NewSQLiteModuleStoreWithOptions(cachePath, cache.SQLiteModuleStoreOptions{
 			MaxBytes:       cfg.System.DataBroadcastCacheBytes,
 			MaxAge:         time.Duration(cfg.System.DataBroadcastCacheMaxAgeDays) * 24 * time.Hour,
 			SnapshotMaxAge: time.Duration(cfg.System.DataBroadcastSnapshotMaxAgeHours) * time.Hour,
@@ -187,6 +188,13 @@ func buildRuntime(cfg *config.Config, database *db.DB, obs observability.SetupRe
 		}
 	} else {
 		slog.Info("data broadcast API disabled")
+	}
+	if dataBroadcastEnabled && moduleStore == nil {
+		// The SQLite cache failed to open (warned above). Sessions and the
+		// BML API share this in-memory fallback so retained modules stay
+		// readable without a tuner, matching the previous stream-manager
+		// default.
+		moduleStore = cache.NewModuleCache(0)
 	}
 	streams := stream.NewStreamManager(stream.ManagerConfig{
 		Channels:       cfg.Channels,
@@ -239,6 +247,8 @@ func buildRuntime(cfg *config.Config, database *db.DB, obs observability.SetupRe
 		EventHub:              events,
 		EpgStaleAfter:         int64(cfg.System.EpgStaleAfter),
 		DataBroadcastDisabled: !dataBroadcastEnabled,
+		BMLStore:              moduleStore,
+		BMLSnapshotStore:      snapshotStore,
 		MeterProvider:         obs.MeterProvider,
 		TracerProvider:        obs.TracerProvider,
 		Pprof:                 cfg.System.Observability.Pprof.Enabled,

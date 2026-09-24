@@ -4,10 +4,10 @@ import (
 	"context"
 	"sort"
 
+	"github.com/21S1298001/mahiron/internal/bml"
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/stream/channel"
-	"github.com/21S1298001/mahiron/internal/stream/databroadcast"
 	"github.com/21S1298001/mahiron/internal/stream/source"
 	"github.com/21S1298001/mahiron/internal/tuner"
 	"github.com/21S1298001/mahiron/ts"
@@ -16,7 +16,7 @@ import (
 type SessionConfig struct {
 	Client      *Client
 	Handle      source.InputHandle
-	ModuleStore databroadcast.ModuleStore
+	ModuleStore bml.ModuleStore
 }
 
 // Session adds remote API-backed operations to the shared TS ChannelSession.

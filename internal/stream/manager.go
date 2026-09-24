@@ -11,12 +11,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/21S1298001/mahiron/internal/bml"
+	"github.com/21S1298001/mahiron/internal/bml/cache"
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/job/run"
 	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/stream/channel"
-	"github.com/21S1298001/mahiron/internal/stream/databroadcast"
 	"github.com/21S1298001/mahiron/internal/stream/remote"
 	"github.com/21S1298001/mahiron/internal/stream/source"
 	"github.com/21S1298001/mahiron/internal/tuner"
@@ -38,8 +39,8 @@ type Manager struct {
 	serviceLister         ServiceLister
 	registry              *sessionRegistry
 	sources               *source.Pool
-	dataBroadcastStore    databroadcast.ModuleStore
-	snapshotStore         databroadcast.SnapshotStore
+	dataBroadcastStore    bml.ModuleStore
+	snapshotStore         bml.SnapshotStore
 }
 
 // RemoteTunerStatus identifies a tuner that belongs to a configured remote
@@ -58,11 +59,11 @@ type ManagerConfig struct {
 	ProgramUpdater     ProgramUpdater
 	ServiceLister      ServiceLister
 	TunerManager       source.TunerManager
-	ModuleStore        databroadcast.ModuleStore
+	ModuleStore        bml.ModuleStore
 	// SnapshotStore persists raw PMT/DII sections for provisional /state
 	// responses. A nil store disables the feature entirely, independent of
 	// whether ModuleStore supports the SnapshotStore interface.
-	SnapshotStore databroadcast.SnapshotStore
+	SnapshotStore bml.SnapshotStore
 }
 
 type Session interface {
@@ -72,12 +73,22 @@ type Session interface {
 	ScanServices(context.Context) ([]ts.ServiceInfo, error)
 	CollectEIT(context.Context, func(*ts.EIT) error) error
 	ObserveLogos(context.Context, func(*ts.LogoImage) error) error
-	ObserveDataBroadcast(context.Context, uint16, bool, func(databroadcast.DataBroadcastEvent) error) error
-	DataBroadcastSnapshot(uint16) databroadcast.DataBroadcastSnapshot
-	DataBroadcastModule(uint16, byte, uint16) (databroadcast.DataBroadcastModule, bool)
-	DataBroadcastModuleVersion(uint16, byte, uint32, uint16, byte) (databroadcast.DataBroadcastModule, bool)
 	Stop(context.Context) error
 }
+
+// BMLSource is the BML (TS data-broadcast) slice of a channel session.
+// channel.Session and the remote.Session embedding it implement it.
+type BMLSource interface {
+	ObserveDataBroadcast(context.Context, uint16, bool, func(bml.Event) error) error
+	DataBroadcastSnapshot(uint16) bml.Snapshot
+	DataBroadcastModule(uint16, byte, uint16) (bml.Module, bool)
+	DataBroadcastModuleVersion(uint16, byte, uint32, uint16, byte) (bml.Module, bool)
+}
+
+var (
+	_ BMLSource = (*channel.Session)(nil)
+	_ BMLSource = (*remote.Session)(nil)
+)
 
 func NewStreamManager(cfg ManagerConfig) *Manager {
 	descramblerFactory := cfg.DescramblerFactory
@@ -118,11 +129,11 @@ func NewStreamManager(cfg ManagerConfig) *Manager {
 	}
 }
 
-func moduleStoreOrDefault(store databroadcast.ModuleStore) databroadcast.ModuleStore {
+func moduleStoreOrDefault(store bml.ModuleStore) bml.ModuleStore {
 	if store != nil {
 		return store
 	}
-	return databroadcast.NewModuleCache(0)
+	return cache.NewModuleCache(0)
 }
 
 func remoteClients(clients map[string]*remote.Client) map[string]source.RemoteClient {
@@ -373,60 +384,6 @@ func (m *Manager) GetExisting(channelType, channel string) (Session, bool) {
 		return nil, false
 	}
 	return session, true
-}
-
-// DataBroadcastCachedModule resolves a completed immutable module without
-// allocating a tuner or requiring its original channel session to still exist.
-func (m *Manager) DataBroadcastCachedModule(channelType, channelID string, serviceID uint16, componentTag byte, downloadID uint32, moduleID uint16, version byte) (databroadcast.DataBroadcastModule, bool) {
-	if m == nil || m.dataBroadcastStore == nil {
-		return databroadcast.DataBroadcastModule{}, false
-	}
-	module, ok := m.dataBroadcastStore.GetVersion(databroadcast.ModuleVersionKey{
-		ChannelType: channelType, ChannelID: channelID, ServiceID: serviceID,
-		ComponentTag: componentTag, DownloadID: downloadID, ModuleID: moduleID, Version: version,
-	})
-	if !ok {
-		return databroadcast.DataBroadcastModule{}, false
-	}
-	return databroadcast.CompletedModule(componentTag, module), true
-}
-
-// DataBroadcastProvisionalSnapshot reconstructs a data-broadcast snapshot from
-// persisted PMT/DII sections without allocating a tuner. It is used by the
-// /state endpoint when no live channel session exists, so a client can render
-// a service's last-known carousel state while a session is (re)acquired.
-// storedAt is the unix time (seconds) the underlying PMT/DII sections were
-// last observed live.
-func (m *Manager) DataBroadcastProvisionalSnapshot(channelType, channelID string, serviceID uint16) (snapshot databroadcast.DataBroadcastSnapshot, storedAt int64, found bool) {
-	if m == nil || m.snapshotStore == nil {
-		return databroadcast.DataBroadcastSnapshot{}, 0, false
-	}
-	persisted, ok := m.snapshotStore.GetSnapshot(channelType, channelID, serviceID)
-	if !ok {
-		return databroadcast.DataBroadcastSnapshot{}, 0, false
-	}
-	existence, _ := m.dataBroadcastStore.(databroadcast.ModuleExistenceStore)
-	return databroadcast.RestoreSnapshot(channelType, channelID, persisted, existence), persisted.StoredAt, true
-}
-
-// DataBroadcastModuleWasEvicted reports whether the cache previously held the
-// immutable identity but pruned it due to its configured capacity.
-func (m *Manager) DataBroadcastModuleWasEvicted(channelType, channelID string, serviceID uint16, componentTag byte, downloadID uint32, moduleID uint16, version byte) bool {
-	store, ok := m.dataBroadcastStore.(databroadcast.EvictedModuleStore)
-	if !ok {
-		return false
-	}
-	return store.WasEvicted(databroadcast.ModuleVersionKey{ChannelType: channelType, ChannelID: channelID, ServiceID: serviceID, ComponentTag: componentTag, DownloadID: downloadID, ModuleID: moduleID, Version: version})
-}
-
-// DataBroadcastCachedResources returns MIME resources retained with a completed
-// immutable module, without needing a live channel session.
-func (m *Manager) DataBroadcastCachedResources(channelType, channelID string, serviceID uint16, componentTag byte, downloadID uint32, moduleID uint16, version byte) ([]databroadcast.ModuleResource, bool) {
-	store, ok := m.dataBroadcastStore.(databroadcast.DecodedModuleStore)
-	if !ok {
-		return nil, false
-	}
-	return store.GetDecodedResources(databroadcast.ModuleVersionKey{ChannelType: channelType, ChannelID: channelID, ServiceID: serviceID, ComponentTag: componentTag, DownloadID: downloadID, ModuleID: moduleID, Version: version})
 }
 
 func (m *Manager) ActiveSessionCount() int {

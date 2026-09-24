@@ -13,10 +13,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/21S1298001/mahiron/internal/bml"
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/service"
-	"github.com/21S1298001/mahiron/internal/stream/databroadcast"
 	"github.com/21S1298001/mahiron/internal/stream/internal/streamtest"
 	"github.com/21S1298001/mahiron/internal/stream/source"
 	"github.com/21S1298001/mahiron/internal/tuner"
@@ -377,7 +377,7 @@ func TestRemoteSessionTracksDataBroadcastObserver(t *testing.T) {
 	channel := config.ChannelConfig{Type: "GR", Channel: "27"}
 	session := newTestSession(client, channel, channel, "living")
 	user := tuner.User{ID: "data-broadcast", Agent: "data broadcast client"}
-	err := session.ObserveDataBroadcast(tuner.WithUser(context.Background(), user), 101, false, func(event databroadcast.DataBroadcastEvent) error {
+	err := session.ObserveDataBroadcast(tuner.WithUser(context.Background(), user), 101, false, func(event bml.Event) error {
 		if event.Type != "snapshot" {
 			t.Fatalf("event type = %q, want snapshot", event.Type)
 		}
@@ -406,7 +406,7 @@ func TestRemoteSessionRestartsDataBroadcastStreamAfterUpstreamEnds(t *testing.T)
 	}))
 
 	for range 2 {
-		if err := session.ObserveDataBroadcast(t.Context(), 101, false, func(databroadcast.DataBroadcastEvent) error {
+		if err := session.ObserveDataBroadcast(t.Context(), 101, false, func(bml.Event) error {
 			return nil
 		}); err != nil {
 			t.Fatal(err)

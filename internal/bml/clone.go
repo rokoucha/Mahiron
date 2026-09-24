@@ -1,10 +1,6 @@
-package databroadcast
+package bml
 
-import (
-	"github.com/21S1298001/mahiron/ts"
-)
-
-func clonePMT(pmt *DataBroadcastPMT) *DataBroadcastPMT {
+func clonePMT(pmt *PMT) *PMT {
 	if pmt == nil {
 		return nil
 	}
@@ -13,8 +9,8 @@ func clonePMT(pmt *DataBroadcastPMT) *DataBroadcastPMT {
 	return &clone
 }
 
-func cloneComponents(components []DataBroadcastComponent) []DataBroadcastComponent {
-	result := make([]DataBroadcastComponent, len(components))
+func cloneComponents(components []Component) []Component {
+	result := make([]Component, len(components))
 	for i, component := range components {
 		result[i] = component
 		if component.DataComponentID != nil {
@@ -27,7 +23,7 @@ func cloneComponents(components []DataBroadcastComponent) []DataBroadcastCompone
 	return result
 }
 
-func cloneBXMLInfo(info *ts.AdditionalAribBXMLInfo) *ts.AdditionalAribBXMLInfo {
+func cloneBXMLInfo(info *BXMLInfo) *BXMLInfo {
 	if info == nil {
 		return nil
 	}
@@ -51,8 +47,8 @@ func cloneBXMLInfo(info *ts.AdditionalAribBXMLInfo) *ts.AdditionalAribBXMLInfo {
 	return &clone
 }
 
-func cloneModules(modules []DataBroadcastModule) []DataBroadcastModule {
-	result := make([]DataBroadcastModule, len(modules))
+func cloneModules(modules []Module) []Module {
+	result := make([]Module, len(modules))
 	for i, module := range modules {
 		result[i] = module
 		result[i].Info = append([]byte(nil), module.Info...)
@@ -67,7 +63,7 @@ func cloneModules(modules []DataBroadcastModule) []DataBroadcastModule {
 	return result
 }
 
-func cloneProgramInfo(info *DataBroadcastProgramInfo) *DataBroadcastProgramInfo {
+func cloneProgramInfo(info *ProgramInfo) *ProgramInfo {
 	if info == nil {
 		return nil
 	}
@@ -76,7 +72,7 @@ func cloneProgramInfo(info *DataBroadcastProgramInfo) *DataBroadcastProgramInfo 
 	return &clone
 }
 
-func cloneCurrentTime(current *DataBroadcastCurrentTime) *DataBroadcastCurrentTime {
+func cloneCurrentTime(current *CurrentTime) *CurrentTime {
 	if current == nil {
 		return nil
 	}
@@ -84,17 +80,17 @@ func cloneCurrentTime(current *DataBroadcastCurrentTime) *DataBroadcastCurrentTi
 	return &clone
 }
 
-func cloneBIT(bit *DataBroadcastBIT) *DataBroadcastBIT {
+func cloneBIT(bit *BIT) *BIT {
 	if bit == nil {
 		return nil
 	}
 	clone := *bit
-	clone.Broadcasters = make([]DataBroadcastBroadcaster, len(bit.Broadcasters))
+	clone.Broadcasters = make([]Broadcaster, len(bit.Broadcasters))
 	for i, b := range bit.Broadcasters {
 		clone.Broadcasters[i] = b
-		clone.Broadcasters[i].Services = append([]DataBroadcastService(nil), b.Services...)
+		clone.Broadcasters[i].Services = append([]Service(nil), b.Services...)
 		clone.Broadcasters[i].Affiliations = append([]byte(nil), b.Affiliations...)
-		clone.Broadcasters[i].AffiliationBroadcasters = append([]DataBroadcastAffiliatedBroadcaster(nil), b.AffiliationBroadcasters...)
+		clone.Broadcasters[i].AffiliationBroadcasters = append([]AffiliatedBroadcaster(nil), b.AffiliationBroadcasters...)
 		if b.BroadcasterName != nil {
 			clone.Broadcasters[i].BroadcasterName = ptr(*b.BroadcasterName)
 		}
@@ -105,7 +101,7 @@ func cloneBIT(bit *DataBroadcastBIT) *DataBroadcastBIT {
 	return &clone
 }
 
-func clonePCR(pcr *DataBroadcastPCR) *DataBroadcastPCR {
+func clonePCR(pcr *PCR) *PCR {
 	if pcr == nil {
 		return nil
 	}
