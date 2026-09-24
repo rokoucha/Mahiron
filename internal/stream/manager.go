@@ -17,7 +17,6 @@ import (
 	"github.com/21S1298001/mahiron/internal/job/run"
 	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/observability"
-	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/stream/channel"
 	"github.com/21S1298001/mahiron/internal/stream/remote"
 	"github.com/21S1298001/mahiron/internal/stream/source"
@@ -68,7 +67,7 @@ type ManagerConfig struct {
 
 type Session interface {
 	ChannelStream(context.Context, bool, io.Writer) error
-	ProgramStream(context.Context, *program.Program, bool, io.Writer) error
+	ProgramStream(context.Context, model.Event, bool, io.Writer) error
 	ServiceStream(context.Context, uint16, bool, io.Writer) error
 	ScanServices(context.Context) ([]model.Service, error)
 	CollectSchedule(context.Context, func(model.ScheduleUpdate) error, func(model.PresentFollowing) error) error

@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"strconv"
 
+	"github.com/21S1298001/mahiron/internal/model"
+	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/stream"
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 )
@@ -48,7 +50,7 @@ func GetProgramStream(ctx context.Context, h *Handler, params apigen.GetProgramS
 	go func() {
 		defer func() { _ = fi.Close() }()
 		slog.Info("stream request started", "type", service.ChannelType, "channel", service.ChannelId, "kind", "program", "networkId", networkID, "serviceId", serviceID, "eventId", p.EventID, "decode", decode, "userId", userID)
-		if err := session.ProgramStream(ctx, p, decode, fi); err != nil && !errors.Is(err, io.ErrClosedPipe) && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+		if err := session.ProgramStream(ctx, programEvent(p, service.TransportStreamId), decode, fi); err != nil && !errors.Is(err, io.ErrClosedPipe) && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 			slog.Error("failed to stream program", "program", p.ID, "err", err)
 		}
 		slog.Debug("stream request finished", "type", service.ChannelType, "channel", service.ChannelId, "kind", "program", "networkId", networkID, "serviceId", serviceID, "eventId", p.EventID, "decode", decode, "userId", userID)
@@ -88,4 +90,16 @@ func ProgramsIDStreamHead(ctx context.Context, h *Handler, params apigen.Program
 	return &apigen.ProgramsIDStreamHeadOK{
 		XMirakurunTunerUserID: apigen.NewOptString(userID),
 	}, nil
+}
+
+// programEvent describes the stored program to the session, which follows
+// the event on air through EIT p/f.
+func programEvent(p *program.Program, streamID uint16) model.Event {
+	startAt, duration := p.StartAt, p.Duration
+	return model.Event{
+		Key:        model.ServiceKey{NetworkID: p.NetworkID, StreamID: streamID, ServiceID: p.ServiceID},
+		EventID:    p.EventID,
+		StartAt:    &startAt,
+		DurationMS: &duration,
+	}
 }

@@ -236,7 +236,7 @@ func TestRemoteSessionStreamsChannelServiceAndProgram(t *testing.T) {
 		t.Fatal(err)
 	}
 	var programOut bytes.Buffer
-	if err := session.ProgramStream(context.Background(), &program.Program{ID: 10100009}, true, &programOut); err != nil {
+	if err := session.ProgramStream(context.Background(), model.Event{Key: model.ServiceKey{ServiceID: 101}, EventID: 9}, true, &programOut); err != nil {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(channelOut.Bytes(), packet) || serviceOut.Len() != 0 || programOut.Len() != 0 {

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/21S1298001/mahiron/internal/program"
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/stream/internal/streamtest"
 	"github.com/21S1298001/mahiron/ts"
 )
@@ -70,12 +70,12 @@ func TestSubscribeProgramSharesReceiverAndServiceSource(t *testing.T) {
 		return nil
 	}, nil)
 
-	err := d.SubscribeProgram(t.Context(), d, &program.Program{
-		NetworkID: 1,
-		ServiceID: 101,
-		EventID:   10,
-		StartAt:   time.Now().UnixMilli(),
-		Duration:  1000,
+	startAt, duration := time.Now().UnixMilli(), 1000
+	err := d.SubscribeProgram(t.Context(), d, model.Event{
+		Key:        model.ServiceKey{NetworkID: 1, ServiceID: 101},
+		EventID:    10,
+		StartAt:    &startAt,
+		DurationMS: &duration,
 	}, io.Discard)
 	if err != nil {
 		t.Fatal(err)

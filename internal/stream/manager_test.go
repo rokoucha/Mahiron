@@ -14,7 +14,6 @@ import (
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/job/run"
 	"github.com/21S1298001/mahiron/internal/model"
-	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/stream/channel"
 	"github.com/21S1298001/mahiron/internal/stream/internal/streamtest"
 	"github.com/21S1298001/mahiron/internal/stream/remote"
@@ -370,7 +369,7 @@ func TestManagerPassesBackgroundWaitToAllocator(t *testing.T) {
 type fakeDeadSession struct{ id string }
 
 func (fakeDeadSession) ChannelStream(context.Context, bool, io.Writer) error { return nil }
-func (fakeDeadSession) ProgramStream(context.Context, *program.Program, bool, io.Writer) error {
+func (fakeDeadSession) ProgramStream(context.Context, model.Event, bool, io.Writer) error {
 	return nil
 }
 func (fakeDeadSession) ServiceStream(context.Context, uint16, bool, io.Writer) error { return nil }

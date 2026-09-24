@@ -405,7 +405,7 @@ func (s fakeProgramStreamSession) ServiceStream(context.Context, uint16, bool, i
 	return errors.New("unexpected ServiceStream call")
 }
 
-func (s fakeProgramStreamSession) ProgramStream(_ context.Context, _ *program.Program, _ bool, dst io.Writer) error {
+func (s fakeProgramStreamSession) ProgramStream(_ context.Context, _ model.Event, _ bool, dst io.Writer) error {
 	if s.err != nil {
 		return s.err
 	}

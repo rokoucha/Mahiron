@@ -13,7 +13,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/bml"
 	"github.com/21S1298001/mahiron/internal/bml/cache"
 	"github.com/21S1298001/mahiron/internal/bml/resource"
-	"github.com/21S1298001/mahiron/internal/program"
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/stream"
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 	"github.com/21S1298001/mahiron/ts"
@@ -487,7 +487,7 @@ func (s fakeDataBroadcastSession) ChannelStream(context.Context, bool, io.Writer
 	return errors.New("unexpected ChannelStream call")
 }
 
-func (s fakeDataBroadcastSession) ProgramStream(context.Context, *program.Program, bool, io.Writer) error {
+func (s fakeDataBroadcastSession) ProgramStream(context.Context, model.Event, bool, io.Writer) error {
 	return errors.New("unexpected ProgramStream call")
 }
 

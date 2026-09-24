@@ -11,7 +11,6 @@ import (
 	"github.com/21S1298001/mahiron/internal/bml/cache"
 	"github.com/21S1298001/mahiron/internal/isdb"
 	"github.com/21S1298001/mahiron/internal/model"
-	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/stream/demux"
 	"github.com/21S1298001/mahiron/internal/stream/schedule"
 	"github.com/21S1298001/mahiron/internal/stream/source"
@@ -129,8 +128,10 @@ func (s *Session) ServiceStream(ctx context.Context, serviceID uint16, decode bo
 	return s.attachDemuxer(ctx, decode, serviceID, true, dst)
 }
 
-func (s *Session) ProgramStream(ctx context.Context, p *program.Program, decode bool, dst io.Writer) error {
-	return s.programStream(ctx, p, decode, dst)
+// ProgramStream streams the service while event is on air, following EIT
+// p/f; the event's start time and duration bound the wait.
+func (s *Session) ProgramStream(ctx context.Context, event model.Event, decode bool, dst io.Writer) error {
+	return s.programStream(ctx, event, decode, dst)
 }
 
 func (s *Session) ScanServices(ctx context.Context) ([]model.Service, error) {
