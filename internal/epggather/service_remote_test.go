@@ -6,13 +6,20 @@ import (
 	"testing"
 	"time"
 
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/service"
-	"github.com/21S1298001/mahiron/ts"
 )
 
-func TestCollectServiceSnapshotsSyncsStoredRemotePrograms(t *testing.T) {
+// syncRemote gathers through a channel served by a remote, which OpenSchedule
+// reports by returning its stored-program lister.
+func syncRemote(ctx context.Context, store *remoteSyncProgramStore, status *remoteSyncServiceStore, session *remoteSyncSession, keys []ServiceKey) error {
+	return gatherNetwork(ctx, store, store, status, remoteEPGStreams{session: session}, keys[0].NetworkID,
+		[]Candidate{{Type: "GR", Channel: "27"}}, keys, time.Second)
+}
+
+func TestGatherNetworkSyncsStoredRemotePrograms(t *testing.T) {
 	ctx := context.Background()
 	key := ServiceKey{NetworkID: 4, ServiceID: 101}
 	store := newRemoteSyncProgramStore()
@@ -23,11 +30,11 @@ func TestCollectServiceSnapshotsSyncsStoredRemotePrograms(t *testing.T) {
 		},
 	}
 
-	if _, err := CollectServiceSnapshots(ctx, store, status, session, []ServiceKey{key}, time.Second); err != nil {
+	if err := syncRemote(ctx, store, status, session, []ServiceKey{key}); err != nil {
 		t.Fatal(err)
 	}
-	if session.collectEITCalled {
-		t.Fatal("remote stored-program sync should not call EIT collectors")
+	if session.collectCalled {
+		t.Fatal("remote stored-program sync should not collect EIT")
 	}
 	if len(store.replaced[key]) != 1 || store.replaced[key][0].EventID != 1 {
 		t.Fatalf("replaced = %#v", store.replaced)
@@ -46,7 +53,7 @@ func TestCollectServiceSnapshotsSyncsStoredRemotePrograms(t *testing.T) {
 	}
 }
 
-func TestCollectServiceSnapshotsSyncsStoredRemoteProgramsPartialFailure(t *testing.T) {
+func TestGatherNetworkSyncsStoredRemoteProgramsPartialFailure(t *testing.T) {
 	ctx := context.Background()
 	okKey := ServiceKey{NetworkID: 4, ServiceID: 101}
 	failKey := ServiceKey{NetworkID: 4, ServiceID: 102}
@@ -60,9 +67,9 @@ func TestCollectServiceSnapshotsSyncsStoredRemoteProgramsPartialFailure(t *testi
 		errs: map[ServiceKey]error{failKey: wantErr},
 	}
 
-	_, err := CollectServiceSnapshots(ctx, store, status, session, []ServiceKey{okKey, failKey}, time.Second)
+	err := syncRemote(ctx, store, status, session, []ServiceKey{okKey, failKey})
 	if err == nil {
-		t.Fatal("CollectServiceSnapshots error = nil, want partial failure")
+		t.Fatal("gatherNetwork error = nil, want partial failure")
 	}
 	if len(store.replaced[okKey]) != 1 {
 		t.Fatalf("successful service was not replaced: %#v", store.replaced)
@@ -93,8 +100,8 @@ func newRemoteSyncProgramStore() *remoteSyncProgramStore {
 	}
 }
 
-func (s *remoteSyncProgramStore) UpsertPrograms(context.Context, []*program.Program) error {
-	return errors.New("UpsertPrograms should not be called")
+func (s *remoteSyncProgramStore) UpsertEvents(context.Context, []model.Event) error {
+	return errors.New("UpsertEvents should not be called")
 }
 
 func (s *remoteSyncProgramStore) DeleteEndedBefore(context.Context, int64) error {
@@ -142,9 +149,19 @@ func (s *remoteSyncServiceStore) SetEPGSuccess(_ context.Context, networkID, ser
 }
 
 type remoteSyncSession struct {
-	programs         map[ServiceKey][]*program.Program
-	errs             map[ServiceKey]error
-	collectEITCalled bool
+	programs      map[ServiceKey][]*program.Program
+	errs          map[ServiceKey]error
+	collectCalled bool
+}
+
+type remoteEPGStreams struct {
+	session *remoteSyncSession
+}
+
+func (remoteEPGStreams) HasSession(string, string) bool { return false }
+
+func (s remoteEPGStreams) OpenSchedule(context.Context, string, string) (CollectSchedule, ListStoredPrograms, error) {
+	return s.session.CollectSchedule, s.session.ListServicePrograms, nil
 }
 
 func (s *remoteSyncSession) ListServicePrograms(_ context.Context, networkID, serviceID uint16) ([]*program.Program, error) {
@@ -155,7 +172,7 @@ func (s *remoteSyncSession) ListServicePrograms(_ context.Context, networkID, se
 	return s.programs[key], nil
 }
 
-func (s *remoteSyncSession) CollectEIT(context.Context, func(*ts.EIT) error) error {
-	s.collectEITCalled = true
+func (s *remoteSyncSession) CollectSchedule(context.Context, func(model.ScheduleUpdate) error, func(model.PresentFollowing) error) error {
+	s.collectCalled = true
 	return nil
 }

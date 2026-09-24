@@ -30,7 +30,24 @@ func minStartAt(programs []*program.Program) int64 {
 	return min
 }
 
-func syncStoredServicePrograms(ctx context.Context, programStore ProgramStore, serviceStore ServiceStore, lister StoredProgramLister, expected []ServiceKey, retrievalTime time.Duration) (err error) {
+// syncStoredPrograms copies a remote server's stored programs of the
+// expected services, recording their EPG attempt and success.
+func syncStoredPrograms(ctx context.Context, programStore ProgramStore, serviceStore ServiceStore, listStored ListStoredPrograms, expected []ServiceKey, retrievalTime time.Duration) (*CollectResult, error) {
+	startedAt := time.Now().UnixMilli()
+	for _, key := range expected {
+		if err := serviceStore.SetEPGAttempt(ctx, key.NetworkID, key.ServiceID, startedAt, ""); err != nil {
+			observability.RecordEPGServiceUpdateError(ctx, "remote", "attempt")
+		}
+	}
+	result := &CollectResult{}
+	err := syncStoredServicePrograms(ctx, programStore, serviceStore, listStored, expected, retrievalTime)
+	if err == nil {
+		result.Observed = append(result.Observed, expected...)
+	}
+	return result, err
+}
+
+func syncStoredServicePrograms(ctx context.Context, programStore ProgramStore, serviceStore ServiceStore, listStored ListStoredPrograms, expected []ServiceKey, retrievalTime time.Duration) (err error) {
 	ctx, span := observability.StartSpan(ctx, observability.SpanEPGSyncStoredServicePrograms,
 		observability.AttrEPGServices.Int(len(expected)),
 		observability.AttrEPGRetrievalTimeMS.Int64(retrievalTime.Milliseconds()),
@@ -45,7 +62,7 @@ func syncStoredServicePrograms(ctx context.Context, programStore ProgramStore, s
 		if err := syncCtx.Err(); err != nil {
 			return errors.Join(result, err)
 		}
-		programs, err := lister.ListServicePrograms(syncCtx, key.NetworkID, key.ServiceID)
+		programs, err := listStored(syncCtx, key.NetworkID, key.ServiceID)
 		now := time.Now().UnixMilli()
 		if err != nil {
 			if attemptErr := serviceStore.SetEPGAttempt(ctx, key.NetworkID, key.ServiceID, now, err.Error()); attemptErr != nil {

@@ -6,7 +6,7 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/db"
-	"github.com/21S1298001/mahiron/internal/epggather"
+	"github.com/21S1298001/mahiron/internal/mirakurun"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/service"
 	"github.com/21S1298001/mahiron/internal/stream"
@@ -65,7 +65,7 @@ func testStreamHeadHandler(t *testing.T) (*Handler, *service.Manager) {
 	sm := service.NewManager(store, channels)
 	stm := stream.NewManager(stream.ManagerConfig{
 		Channels:     channels,
-		EITUpdater:   epggather.NewUpdater(pm),
+		EITUpdater:   mirakurun.NewProgramEventWriter(pm),
 		TunerManager: tunerManager,
 	})
 	handler := NewHandler(HandlerConfig{

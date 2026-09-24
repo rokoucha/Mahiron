@@ -3,114 +3,100 @@ package epggather
 import (
 	"testing"
 
-	"github.com/21S1298001/mahiron/internal/program"
+	"github.com/21S1298001/mahiron/internal/model"
 )
 
-func TestFillProgramsFromSharedPeersCopiesMissingDetails(t *testing.T) {
-	parent := &program.Program{
-		ID:          program.ProgramID(1, 101, 9),
-		NetworkID:   1,
-		ServiceID:   101,
+func sharedPeerEvents() (parent, child model.Event) {
+	pattern := 0
+	parent = model.Event{
+		Key:         model.ServiceKey{NetworkID: 1, ServiceID: 101},
 		EventID:     9,
-		StartAt:     1000,
-		Duration:    2000,
 		Name:        "parent title",
 		Description: "parent description",
-		Genres:      []program.Genre{{Lv1: 0, Lv2: 1, Un1: 15, Un2: 15}},
-		Video:       &program.Video{StreamContent: 1, ComponentType: 179},
-		Audios:      []program.Audio{{ComponentType: 3}},
-		Extended:    map[string]string{"出演者": "parent cast"},
-		Series:      &program.Series{ID: 7, Name: "series"},
+		Genres:      []model.Genre{{Lv1: 0, Lv2: 1, Un1: 15, Un2: 15}},
+		Videos:      []model.VideoComponent{{Codec: model.VideoCodecMPEG2, Resolution: model.VideoResolution1080i}},
+		Audios:      []model.AudioComponent{{ComponentType: 3}},
+		Extended:    []model.ExtendedBlock{{Language: "jpn", Items: []model.ExtendedItem{{Name: "出演者", Text: "parent cast"}}}},
+		Series:      &model.Series{ID: 7, Pattern: &pattern, Name: "series"},
 	}
-	child := &program.Program{
-		ID:        program.ProgramID(1, 102, 10),
-		NetworkID: 1,
-		ServiceID: 102,
-		EventID:   10,
-		StartAt:   1000,
-		Duration:  2000,
-		RelatedItems: []program.RelatedItem{
-			{Type: program.RelatedItemTypeShared, ServiceID: 101, EventID: 9},
-		},
+	child = model.Event{
+		Key:     model.ServiceKey{NetworkID: 1, ServiceID: 102},
+		EventID: 10,
+		Related: []model.RelatedEvent{{GroupType: model.EventGroupShared, ServiceID: 101, EventID: 9}},
 	}
+	return parent, child
+}
 
-	fillProgramsFromSharedPeers([]*program.Program{child, parent})
+func TestFillEventsFromSharedPeersCopiesMissingDetails(t *testing.T) {
+	parent, child := sharedPeerEvents()
+	events := []model.Event{child, parent}
 
-	if child.Name != parent.Name || child.Description != parent.Description {
-		t.Fatalf("child text = %q/%q", child.Name, child.Description)
+	fillEventsFromSharedPeers(events)
+
+	got := events[0]
+	if got.Name != parent.Name || got.Description != parent.Description {
+		t.Fatalf("child text = %q/%q", got.Name, got.Description)
 	}
-	if len(child.Genres) != 1 || child.Video == nil || len(child.Audios) != 1 || child.Extended["出演者"] != "parent cast" || child.Series == nil {
-		t.Fatalf("child details were not filled: %#v", child)
+	if len(got.Genres) != 1 || len(got.Videos) != 1 || len(got.Audios) != 1 || len(got.Extended) != 1 || got.Series == nil {
+		t.Fatalf("child details were not filled: %#v", got)
 	}
 }
 
-func TestFillProgramsFromSharedPeersKeepsExistingDetails(t *testing.T) {
-	parent := &program.Program{
-		ID:        program.ProgramID(1, 101, 9),
-		NetworkID: 1,
-		ServiceID: 101,
-		EventID:   9,
-		StartAt:   1000,
-		Duration:  2000,
-		Name:      "parent title",
-	}
-	child := &program.Program{
-		ID:        program.ProgramID(1, 102, 10),
-		NetworkID: 1,
-		ServiceID: 102,
-		EventID:   10,
-		StartAt:   1000,
-		Duration:  2000,
-		Name:      "child title",
-		RelatedItems: []program.RelatedItem{
-			{Type: program.RelatedItemTypeShared, ServiceID: 101, EventID: 9},
-		},
-	}
+func TestFillEventsFromSharedPeersAcrossServices(t *testing.T) {
+	parent, child := sharedPeerEvents()
+	children, parents := []model.Event{child}, []model.Event{parent}
 
-	fillProgramsFromSharedPeers([]*program.Program{child, parent})
+	fillEventsFromSharedPeers(children, parents)
 
-	if child.Name != "child title" {
-		t.Fatalf("child name = %q, want existing value", child.Name)
+	if children[0].Name != "parent title" {
+		t.Fatalf("child name = %q, want the name shared from another service", children[0].Name)
 	}
 }
 
-func TestFillProgramsFromSharedPeersUsesOneWaySharedGraph(t *testing.T) {
-	source := &program.Program{
-		ID:        program.ProgramID(1, 102, 10),
-		NetworkID: 1,
-		ServiceID: 102,
-		EventID:   10,
-		RelatedItems: []program.RelatedItem{
-			{Type: program.RelatedItemTypeShared, ServiceID: 101, EventID: 9},
-		},
-	}
-	destination := &program.Program{
-		ID:        program.ProgramID(1, 101, 9),
-		NetworkID: 1,
-		ServiceID: 101,
-		EventID:   9,
-		Name:      "destination title",
-	}
+func TestFillEventsFromSharedPeersKeepsExistingDetails(t *testing.T) {
+	parent, child := sharedPeerEvents()
+	child.Name = "child title"
+	events := []model.Event{child, parent}
 
-	fillProgramsFromSharedPeers([]*program.Program{destination, source})
+	fillEventsFromSharedPeers(events)
 
-	if source.Name != "destination title" {
-		t.Fatalf("source name = %q, want destination title", source.Name)
+	if events[0].Name != "child title" {
+		t.Fatalf("child name = %q, want existing value", events[0].Name)
 	}
 }
 
-func TestLowQualityProgramWarning(t *testing.T) {
-	var programs []*program.Program
-	for i := 0; i < 10; i++ {
-		programs = append(programs, &program.Program{ID: int64(i + 1)})
+func TestFillEventsFromSharedPeersUsesOneWaySharedGraph(t *testing.T) {
+	source := model.Event{
+		Key:     model.ServiceKey{NetworkID: 1, ServiceID: 102},
+		EventID: 10,
+		Related: []model.RelatedEvent{{GroupType: model.EventGroupShared, ServiceID: 101, EventID: 9}},
 	}
-	programs[0].Name = "one title"
-	if got := lowQualityProgramWarning(programs); got == "" {
+	destination := model.Event{
+		Key:     model.ServiceKey{NetworkID: 1, ServiceID: 101},
+		EventID: 9,
+		Name:    "destination title",
+	}
+	events := []model.Event{destination, source}
+
+	fillEventsFromSharedPeers(events)
+
+	if events[1].Name != "destination title" {
+		t.Fatalf("source name = %q, want destination title", events[1].Name)
+	}
+}
+
+func TestLowQualityEventWarning(t *testing.T) {
+	events := make([]model.Event, 10)
+	for i := range events {
+		events[i].EventID = uint16(i + 1)
+	}
+	events[0].Name = "one title"
+	if got := lowQualityEventWarning(events); got == "" {
 		t.Fatal("warning = empty, want low quality warning")
 	}
-	programs[1].Name = "second title"
-	programs[2].Name = "third title"
-	if got := lowQualityProgramWarning(programs); got != "" {
+	events[1].Name = "second title"
+	events[2].Name = "third title"
+	if got := lowQualityEventWarning(events); got != "" {
 		t.Fatalf("warning = %q, want empty", got)
 	}
 }

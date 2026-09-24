@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"log/slog"
 
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/ts"
 )
 
@@ -18,9 +19,10 @@ const sectionQueueSize = 64
 // EIT/CDT/SDTT, and must not be allowed to starve them.
 const carouselQueueSize = 256
 
-// EITSectionUpdater persists EIT sections observed on the stream.
-type EITSectionUpdater interface {
-	UpsertEIT(ctx context.Context, eit *ts.EIT) error
+// EventUpdater persists the present and following events observed on the
+// stream.
+type EventUpdater interface {
+	UpsertEvents(context.Context, []model.Event) error
 }
 
 // LogoUpdater persists logo images and related announcements observed on the
@@ -91,7 +93,7 @@ func (s *Session) updateSection(ctx context.Context, section ts.Section) {
 			if coalesced {
 				s.releaseEITPFSection(key, fingerprint)
 			}
-		} else if err := s.eitUpdater.UpsertEIT(ctx, eit); err != nil {
+		} else if err := s.eitUpdater.UpsertEvents(ctx, EventsFromEIT(eit)); err != nil {
 			if coalesced {
 				s.releaseEITPFSection(key, fingerprint)
 			}

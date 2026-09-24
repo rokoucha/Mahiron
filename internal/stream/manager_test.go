@@ -375,7 +375,9 @@ func (fakeDeadSession) ProgramStream(context.Context, *program.Program, bool, io
 }
 func (fakeDeadSession) ServiceStream(context.Context, uint16, bool, io.Writer) error { return nil }
 func (fakeDeadSession) ScanServices(context.Context) ([]model.Service, error)        { return nil, nil }
-func (fakeDeadSession) CollectEIT(context.Context, func(*ts.EIT) error) error        { return nil }
+func (fakeDeadSession) CollectSchedule(context.Context, func(model.ScheduleUpdate) error, func(model.PresentFollowing) error) error {
+	return nil
+}
 func (fakeDeadSession) ObserveLogos(context.Context, func(*ts.LogoImage) error) error {
 	return nil
 }

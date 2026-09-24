@@ -11,6 +11,7 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/bml"
 	"github.com/21S1298001/mahiron/internal/bml/cache"
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/stream/internal/streamtest"
 	"github.com/21S1298001/mahiron/internal/stream/source"
 	"github.com/21S1298001/mahiron/ts"
@@ -247,7 +248,7 @@ func TestSessionSectionUpdaterRetriesEITPFOnUpsertFailure(t *testing.T) {
 	}
 }
 
-func TestChannelSessionCollectEITWithClockUsesLatestTOT(t *testing.T) {
+func TestChannelSessionCollectScheduleUsesLatestTOT(t *testing.T) {
 	clock := time.Date(2026, 6, 29, 12, 34, 56, 0, time.FixedZone("JST", 9*60*60))
 	key := epgClockTestKey{networkID: 4, serviceID: 101}
 	input := append(streamSectionPackets(ts.PIDTOT, streamBuildTOT(clock), 0), streamSectionPackets(ts.PIDEIT, streamBuildEIT(ts.TableIDEITSStart, key, 10), 1)...)
@@ -257,23 +258,19 @@ func TestChannelSessionCollectEITWithClockUsesLatestTOT(t *testing.T) {
 		Type:      "GR",
 	})
 
-	var gotClock time.Time
-	var gotEventID uint16
-	err := session.CollectEITWithClock(t.Context(), func(eit *ts.EIT, observedClock time.Time) error {
-		gotClock = observedClock
-		if len(eit.Events) > 0 {
-			gotEventID = eit.Events[0].EventID
-		}
+	var got model.ScheduleUpdate
+	err := session.CollectSchedule(t.Context(), func(update model.ScheduleUpdate) error {
+		got = update
 		return nil
-	})
+	}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !gotClock.Equal(clock) {
-		t.Fatalf("clock = %s, want %s", gotClock, clock)
+	if got.ObservedAt != clock.UnixMilli() {
+		t.Fatalf("observed at = %d, want TOT clock %d", got.ObservedAt, clock.UnixMilli())
 	}
-	if gotEventID != 10 {
-		t.Fatalf("event id = %d, want 10", gotEventID)
+	if events := got.Events(); len(events) != 1 || events[0].EventID != 10 {
+		t.Fatalf("events = %+v, want event 10", events)
 	}
 }
 
@@ -346,7 +343,7 @@ type epgClockTestKey struct {
 
 type failingEITUpdater struct{}
 
-func (failingEITUpdater) UpsertEIT(context.Context, *ts.EIT) error {
+func (failingEITUpdater) UpsertEvents(context.Context, []model.Event) error {
 	return errors.New("upsert failed")
 }
 

@@ -7,10 +7,14 @@ import (
 	"time"
 
 	"github.com/21S1298001/mahiron/internal/config"
+	"github.com/21S1298001/mahiron/internal/isdb"
+	"github.com/21S1298001/mahiron/internal/mirakurun"
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/internal/program"
 	servicepkg "github.com/21S1298001/mahiron/internal/service"
-	"github.com/21S1298001/mahiron/internal/stream"
+	"github.com/21S1298001/mahiron/internal/stream/channel"
+	"github.com/21S1298001/mahiron/internal/stream/schedule"
 	"github.com/21S1298001/mahiron/ts"
 )
 
@@ -24,11 +28,11 @@ func TestCollectServiceSnapshotsRoutesEITSAndEITPF(t *testing.T) {
 		testEIT(ts.TableIDEITSStart, ServiceKey{NetworkID: 4, ServiceID: 102}, 20),
 	}}
 
-	if _, err := CollectServiceSnapshots(context.Background(), store, newRemoteSyncServiceStore(), session, []ServiceKey{key}, 20*time.Millisecond); err != nil {
+	if _, err := CollectServiceSnapshots(context.Background(), store, newRemoteSyncServiceStore(), session.CollectSchedule, []ServiceKey{key}, 20*time.Millisecond); err != nil {
 		t.Fatal(err)
 	}
 	if session.collectCalls != 1 {
-		t.Fatalf("CollectEIT calls = %d, want 1", session.collectCalls)
+		t.Fatalf("CollectSchedule calls = %d, want 1", session.collectCalls)
 	}
 	if got, want := store.eventIDs(), []uint16{1, 10, 20}; !equalEventIDs(got, want) {
 		t.Fatalf("upserted event IDs = %v, want %v", got, want)
@@ -48,7 +52,7 @@ func TestCollectServiceSnapshotsContinuesEITSAfterEITPFFailure(t *testing.T) {
 		testEIT(ts.TableIDEITSStart, key, 10),
 	}}
 
-	if _, err := CollectServiceSnapshots(context.Background(), store, newRemoteSyncServiceStore(), session, []ServiceKey{key}, 20*time.Millisecond); err != nil {
+	if _, err := CollectServiceSnapshots(context.Background(), store, newRemoteSyncServiceStore(), session.CollectSchedule, []ServiceKey{key}, 20*time.Millisecond); err != nil {
 		t.Fatal(err)
 	}
 	if got, want := store.eventIDs(), []uint16{1, 10}; !equalEventIDs(got, want) {
@@ -64,7 +68,7 @@ func TestCollectServiceSnapshotsWaitsForBasicBeforeUpsertingExtended(t *testing.
 		testEIT(ts.TableIDEITSStart, key, 10),
 	}}
 
-	if _, err := CollectServiceSnapshots(context.Background(), store, newRemoteSyncServiceStore(), session, []ServiceKey{key}, 20*time.Millisecond); err != nil {
+	if _, err := CollectServiceSnapshots(context.Background(), store, newRemoteSyncServiceStore(), session.CollectSchedule, []ServiceKey{key}, 20*time.Millisecond); err != nil {
 		t.Fatal(err)
 	}
 	if got, want := store.eventIDs(), []uint16{10}; !equalEventIDs(got, want) {
@@ -82,7 +86,7 @@ func TestCollectServiceSnapshotsFlushesPartialEITSDuringCollection(t *testing.T)
 	store := &collectProgramStore{}
 	session := &collectEITSession{sections: []*ts.EIT{testEIT(ts.TableIDEITSStart, key, 10)}}
 
-	if _, err := CollectServiceSnapshots(context.Background(), store, newRemoteSyncServiceStore(), session, []ServiceKey{key, missing}, 30*time.Millisecond); err != nil {
+	if _, err := CollectServiceSnapshots(context.Background(), store, newRemoteSyncServiceStore(), session.CollectSchedule, []ServiceKey{key, missing}, 30*time.Millisecond); err != nil {
 		t.Fatal(err)
 	}
 	if got, want := store.eventIDs(), []uint16{10, 10}; !equalEventIDs(got, want) {
@@ -100,7 +104,7 @@ func TestCollectServiceSnapshotsKeepsSameNetworkServicesOutsideExpected(t *testi
 		testEIT(ts.TableIDEITSStart, extra, 20),
 	}}
 
-	result, err := CollectServiceSnapshots(context.Background(), store, status, session, []ServiceKey{expected}, 20*time.Millisecond)
+	result, err := CollectServiceSnapshots(context.Background(), store, status, session.CollectSchedule, []ServiceKey{expected}, 20*time.Millisecond)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +131,7 @@ func TestCollectServiceSnapshotsStoresWarningForObservedServiceOutsideExpected(t
 		testSparseEIT(ts.TableIDEITSStart, extra, 10),
 	}}
 
-	if _, err := CollectServiceSnapshots(context.Background(), &collectProgramStore{}, status, session, []ServiceKey{expected}, 20*time.Millisecond); err != nil {
+	if _, err := CollectServiceSnapshots(context.Background(), &collectProgramStore{}, status, session.CollectSchedule, []ServiceKey{expected}, 20*time.Millisecond); err != nil {
 		t.Fatal(err)
 	}
 	statusKey := ServiceKey{NetworkID: extra.NetworkID, ServiceID: extra.ServiceID}
@@ -146,7 +150,7 @@ func TestCollectServiceSnapshotsDoesNotTreatExtendedOnlyAsObserved(t *testing.T)
 		testEIT(ts.TableIDEITSStart+8, key, 10),
 	}}
 
-	_, err := CollectServiceSnapshots(context.Background(), &collectProgramStore{}, status, session, []ServiceKey{key}, 20*time.Millisecond)
+	_, err := CollectServiceSnapshots(context.Background(), &collectProgramStore{}, status, session.CollectSchedule, []ServiceKey{key}, 20*time.Millisecond)
 	if err == nil {
 		t.Fatal("CollectServiceSnapshots error = nil, want incomplete service error")
 	}
@@ -166,7 +170,7 @@ func TestCollectServiceSnapshotsRequiresMatchingTransportStreamID(t *testing.T) 
 		testEIT(ts.TableIDEITSStart, wrongTS, 10),
 	}}
 
-	result, err := CollectServiceSnapshots(context.Background(), &collectProgramStore{}, status, session, []ServiceKey{key}, 20*time.Millisecond)
+	result, err := CollectServiceSnapshots(context.Background(), &collectProgramStore{}, status, session.CollectSchedule, []ServiceKey{key}, 20*time.Millisecond)
 	if err == nil {
 		t.Fatal("CollectServiceSnapshots error = nil, want incomplete service error")
 	}
@@ -188,7 +192,7 @@ func TestCollectServiceSnapshotsToleratesLateConcurrentObserve(t *testing.T) {
 	key := ServiceKey{NetworkID: 4, ServiceID: 101}
 	session := &lateObserveEITSession{section: testEIT(ts.TableIDEITSStart, key, 10), done: make(chan struct{})}
 
-	if _, err := CollectServiceSnapshots(context.Background(), &collectProgramStore{}, newRemoteSyncServiceStore(), session, []ServiceKey{key}, 20*time.Millisecond); err != nil {
+	if _, err := CollectServiceSnapshots(context.Background(), &collectProgramStore{}, newRemoteSyncServiceStore(), session.CollectSchedule, []ServiceKey{key}, 20*time.Millisecond); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -204,7 +208,7 @@ func TestCollectServiceSnapshotsDoesNotDrainCollectorAfterParentCancel(t *testin
 	session := &stuckEITSession{started: make(chan struct{}), release: make(chan struct{})}
 	done := make(chan error, 1)
 	go func() {
-		_, err := CollectServiceSnapshots(ctx, &collectProgramStore{}, newRemoteSyncServiceStore(), session, []ServiceKey{key}, time.Second)
+		_, err := CollectServiceSnapshots(ctx, &collectProgramStore{}, newRemoteSyncServiceStore(), session.CollectSchedule, []ServiceKey{key}, time.Second)
 		done <- err
 	}()
 	<-session.started
@@ -231,6 +235,7 @@ func TestGatherNetworkTimesOutWhileWaitingForSession(t *testing.T) {
 	err := gatherNetwork(
 		context.Background(),
 		&collectProgramStore{},
+		&collectProgramStore{},
 		newRemoteSyncServiceStore(),
 		streams,
 		key.NetworkID,
@@ -255,6 +260,7 @@ func TestGatherNetworkMergesAfterCollectionTimeout(t *testing.T) {
 
 	err := gatherNetwork(
 		context.Background(),
+		store,
 		store,
 		newRemoteSyncServiceStore(),
 		streams,
@@ -281,13 +287,14 @@ func TestGatherNetworkCarriesUnobservedServicesToNextCandidate(t *testing.T) {
 		testEIT(ts.TableIDEITSStart, tsB, 20),
 	}}
 	status := newRemoteSyncServiceStore()
-	streams := keyedEPGStreams{sessions: map[Candidate]stream.Session{
+	streams := keyedEPGStreams{sessions: map[Candidate]scheduleSession{
 		{Type: "BS", Channel: "BS01_0"}: sessionA,
 		{Type: "BS", Channel: "BS01_1"}: sessionB,
 	}}
 
 	err := gatherNetwork(
 		context.Background(),
+		&collectProgramStore{},
 		&collectProgramStore{},
 		status,
 		streams,
@@ -300,7 +307,7 @@ func TestGatherNetworkCarriesUnobservedServicesToNextCandidate(t *testing.T) {
 		t.Fatal(err)
 	}
 	if sessionA.collectCalls != 1 || sessionB.collectCalls != 1 {
-		t.Fatalf("CollectEIT calls = %d/%d, want 1/1", sessionA.collectCalls, sessionB.collectCalls)
+		t.Fatalf("CollectSchedule calls = %d/%d, want 1/1", sessionA.collectCalls, sessionB.collectCalls)
 	}
 	for _, key := range []ServiceKey{tsA, tsB} {
 		statusKey := ServiceKey{NetworkID: key.NetworkID, ServiceID: key.ServiceID}
@@ -448,7 +455,7 @@ func TestCollectServiceSnapshotsDoesNotFailWhenSomeServicesUnobserved(t *testing
 		testEIT(ts.TableIDEITSStart, observed, 10),
 	}}
 
-	result, err := CollectServiceSnapshots(context.Background(), store, status, session, []ServiceKey{observed, missing}, 20*time.Millisecond)
+	result, err := CollectServiceSnapshots(context.Background(), store, status, session.CollectSchedule, []ServiceKey{observed, missing}, 20*time.Millisecond)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -474,7 +481,7 @@ func TestCollectServiceSnapshotsFailsWhenNoServicesObserved(t *testing.T) {
 	status := newRemoteSyncServiceStore()
 	session := &collectEITSession{}
 
-	_, err := CollectServiceSnapshots(context.Background(), &collectProgramStore{}, status, session, []ServiceKey{key}, 20*time.Millisecond)
+	_, err := CollectServiceSnapshots(context.Background(), &collectProgramStore{}, status, session.CollectSchedule, []ServiceKey{key}, 20*time.Millisecond)
 	if err == nil {
 		t.Fatal("CollectServiceSnapshots error = nil, want incomplete service error")
 	}
@@ -493,7 +500,7 @@ func TestCollectServiceSnapshotsAbortsEarlyOnDeadStream(t *testing.T) {
 	session := &collectEITSession{}
 
 	started := time.Now()
-	_, err := CollectServiceSnapshots(context.Background(), &collectProgramStore{}, status, session, []ServiceKey{key}, time.Minute)
+	_, err := CollectServiceSnapshots(context.Background(), &collectProgramStore{}, status, session.CollectSchedule, []ServiceKey{key}, time.Minute)
 	elapsed := time.Since(started)
 
 	if err == nil {
@@ -515,7 +522,7 @@ func TestCollectServiceSnapshotsStoresLowQualityWarningWithoutFailing(t *testing
 		testSparseEIT(ts.TableIDEITSStart, key, 10),
 	}}
 
-	_, err := CollectServiceSnapshots(context.Background(), store, status, session, []ServiceKey{key}, 20*time.Millisecond)
+	_, err := CollectServiceSnapshots(context.Background(), store, status, session.CollectSchedule, []ServiceKey{key}, 20*time.Millisecond)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -543,20 +550,20 @@ func TestCollectServiceSnapshotsUsesBroadcastClockForSuccessTimestamp(t *testing
 		clock: clock,
 	}}}
 
-	if _, err := CollectServiceSnapshots(context.Background(), store, status, session, []ServiceKey{key}, 20*time.Millisecond); err != nil {
+	if _, err := CollectServiceSnapshots(context.Background(), store, status, session.CollectSchedule, []ServiceKey{key}, 20*time.Millisecond); err != nil {
 		t.Fatal(err)
 	}
 	if got, want := status.successes[key], clock.UnixMilli(); got != want {
 		t.Fatalf("success timestamp = %d, want TOT clock %d", got, want)
 	}
 	if session.collectCalls != 1 {
-		t.Fatalf("CollectEITWithClock calls = %d, want 1", session.collectCalls)
+		t.Fatalf("CollectSchedule calls = %d, want 1", session.collectCalls)
 	}
 }
 
 func TestServiceCleanupUsesCleanupMetricSource(t *testing.T) {
 	store := &collectProgramStore{}
-	service := NewGatherer(store, newRemoteSyncServiceStore(), nil, nil, 1, time.Second)
+	service := NewGatherer(store, store, newRemoteSyncServiceStore(), nil, nil, 1, time.Second)
 
 	if err := service.Cleanup(context.Background(), time.Now()); err != nil {
 		t.Fatal(err)
@@ -566,55 +573,71 @@ func TestServiceCleanupUsesCleanupMetricSource(t *testing.T) {
 	}
 }
 
+type scheduleSession interface {
+	CollectSchedule(context.Context, func(model.ScheduleUpdate) error, func(model.PresentFollowing) error) error
+}
+
 type blockingEPGStreams struct{}
 
 func (blockingEPGStreams) HasSession(string, string) bool { return false }
 
-func (blockingEPGStreams) GetOrCreateWait(ctx context.Context, _, _ string) (stream.Session, error) {
+func (blockingEPGStreams) OpenSchedule(ctx context.Context, _, _ string) (CollectSchedule, ListStoredPrograms, error) {
 	<-ctx.Done()
-	return nil, ctx.Err()
+	return nil, nil, ctx.Err()
 }
 
 type staticEPGStreams struct {
-	session stream.Session
+	session scheduleSession
 }
 
 func (staticEPGStreams) HasSession(string, string) bool { return false }
 
-func (s staticEPGStreams) GetOrCreateWait(ctx context.Context, _, _ string) (stream.Session, error) {
+func (s staticEPGStreams) OpenSchedule(ctx context.Context, _, _ string) (CollectSchedule, ListStoredPrograms, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return s.session, nil
+	return s.session.CollectSchedule, nil, nil
 }
 
 type keyedEPGStreams struct {
-	sessions map[Candidate]stream.Session
+	sessions map[Candidate]scheduleSession
 }
 
 func (keyedEPGStreams) HasSession(string, string) bool { return false }
 
-func (s keyedEPGStreams) GetOrCreateWait(ctx context.Context, typ, ch string) (stream.Session, error) {
+func (s keyedEPGStreams) OpenSchedule(ctx context.Context, typ, ch string) (CollectSchedule, ListStoredPrograms, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	session := s.sessions[Candidate{Type: typ, Channel: ch}]
 	if session == nil {
-		return nil, errors.New("missing test session")
+		return nil, nil, errors.New("missing test session")
 	}
-	return session, nil
+	return session.CollectSchedule, nil, nil
+}
+
+// eitFeeder passes TS EIT sections through the session-side schedule
+// collector, as channel.Session.CollectSchedule does.
+func eitFeeder(onSchedule func(model.ScheduleUpdate) error, onPresentFollowing func(model.PresentFollowing) error) func(*ts.EIT, time.Time) error {
+	collector := schedule.NewCollector(isdb.ScheduleTS)
+	return func(eit *ts.EIT, clock time.Time) error {
+		if clock.IsZero() {
+			clock = time.Now()
+		}
+		return collector.Observe(channel.ScheduleSection(eit), clock, onSchedule, onPresentFollowing)
+	}
 }
 
 type collectEITSession struct {
-	stream.Session
 	sections     []*ts.EIT
 	collectCalls int
 }
 
-func (s *collectEITSession) CollectEIT(ctx context.Context, observe func(*ts.EIT) error) error {
+func (s *collectEITSession) CollectSchedule(ctx context.Context, onSchedule func(model.ScheduleUpdate) error, onPresentFollowing func(model.PresentFollowing) error) error {
 	s.collectCalls++
+	observe := eitFeeder(onSchedule, onPresentFollowing)
 	for _, section := range s.sections {
-		if err := observe(section); err != nil {
+		if err := observe(section, time.Time{}); err != nil {
 			return err
 		}
 	}
@@ -627,14 +650,17 @@ type lateObserveEITSession struct {
 	done    chan struct{}
 }
 
-func (s *lateObserveEITSession) CollectEIT(ctx context.Context, observe func(*ts.EIT) error) error {
-	if err := observe(s.section); err != nil {
+func (s *lateObserveEITSession) CollectSchedule(_ context.Context, onSchedule func(model.ScheduleUpdate) error, onPresentFollowing func(model.PresentFollowing) error) error {
+	observe := eitFeeder(onSchedule, onPresentFollowing)
+	if err := observe(s.section, time.Time{}); err != nil {
 		return err
 	}
 	go func() {
 		defer close(s.done)
 		time.Sleep(time.Millisecond)
-		_ = observe(s.section)
+		late := *s.section
+		late.VersionNumber++
+		_ = observe(&late, time.Time{})
 	}()
 	return nil
 }
@@ -644,7 +670,7 @@ type stuckEITSession struct {
 	release chan struct{}
 }
 
-func (s *stuckEITSession) CollectEIT(context.Context, func(*ts.EIT) error) error {
+func (s *stuckEITSession) CollectSchedule(context.Context, func(model.ScheduleUpdate) error, func(model.PresentFollowing) error) error {
 	close(s.started)
 	<-s.release
 	return context.Canceled
@@ -660,18 +686,9 @@ type collectEITClockSession struct {
 	collectCalls int
 }
 
-func (s *collectEITClockSession) CollectEIT(ctx context.Context, observe func(*ts.EIT) error) error {
-	for _, section := range s.sections {
-		if err := observe(section.eit); err != nil {
-			return err
-		}
-	}
-	<-ctx.Done()
-	return ctx.Err()
-}
-
-func (s *collectEITClockSession) CollectEITWithClock(ctx context.Context, observe func(*ts.EIT, time.Time) error) error {
+func (s *collectEITClockSession) CollectSchedule(ctx context.Context, onSchedule func(model.ScheduleUpdate) error, onPresentFollowing func(model.PresentFollowing) error) error {
 	s.collectCalls++
+	observe := eitFeeder(onSchedule, onPresentFollowing)
 	for _, section := range s.sections {
 		if err := observe(section.eit, section.clock); err != nil {
 			return err
@@ -703,6 +720,14 @@ func (s *staticEPGServiceStore) SetEPGAttempt(context.Context, uint16, uint16, i
 
 func (s *staticEPGServiceStore) SetEPGSuccess(context.Context, uint16, uint16, int64) error {
 	return nil
+}
+
+func (s *collectProgramStore) UpsertEvents(ctx context.Context, events []model.Event) error {
+	programs := make([]*program.Program, len(events))
+	for i := range events {
+		programs[i] = mirakurun.ProgramFromEvent(events[i])
+	}
+	return s.UpsertPrograms(ctx, programs)
 }
 
 func (s *collectProgramStore) UpsertPrograms(ctx context.Context, programs []*program.Program) error {
@@ -737,7 +762,7 @@ type contextCheckingProgramStore struct {
 	calls int
 }
 
-func (s *contextCheckingProgramStore) UpsertPrograms(ctx context.Context, programs []*program.Program) error {
+func (s *contextCheckingProgramStore) UpsertEvents(ctx context.Context, _ []model.Event) error {
 	s.calls++
 	return ctx.Err()
 }

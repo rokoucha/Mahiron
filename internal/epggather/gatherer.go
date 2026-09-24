@@ -11,8 +11,13 @@ import (
 	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/service"
-	"github.com/21S1298001/mahiron/internal/stream"
 )
+
+type ServiceKey struct {
+	NetworkID         uint16
+	ServiceID         uint16
+	TransportStreamID uint16
+}
 
 type ServiceStore interface {
 	GetServices(context.Context) ([]*service.Service, error)
@@ -20,17 +25,23 @@ type ServiceStore interface {
 	SetEPGSuccess(context.Context, uint16, uint16, int64) error
 }
 
-type StreamManager interface {
-	HasSession(string, string) bool
-	GetOrCreateWait(context.Context, string, string) (stream.Session, error)
-}
+// ListStoredPrograms lists a remote server's stored programs of a service.
+type ListStoredPrograms = func(ctx context.Context, networkID, serviceID uint16) ([]*program.Program, error)
 
-type StoredProgramLister interface {
-	ListServicePrograms(context.Context, uint16, uint16) ([]*program.Program, error)
+// StreamManager gives EPG gathering access to channel sessions. It uses only
+// model and standard types (the aliases above), so that gathering does not
+// depend on the stream package; stream.EPGGatherAdapter implements it.
+type StreamManager interface {
+	HasSession(channelType, channelID string) bool
+	// OpenSchedule acquires the channel. A channel served by a remote
+	// Mahiron or Mirakurun returns listStored, whose stored programs are
+	// copied; any other channel returns collect.
+	OpenSchedule(ctx context.Context, channelType, channelID string) (collect CollectSchedule, listStored ListStoredPrograms, err error)
 }
 
 type Gatherer struct {
 	channels      config.ChannelsConfig
+	events        EventWriter
 	programStore  ProgramStore
 	retentionDays int
 	retrievalTime time.Duration
@@ -38,9 +49,10 @@ type Gatherer struct {
 	streams       StreamManager
 }
 
-func NewGatherer(programStore ProgramStore, serviceStore ServiceStore, streams StreamManager, channels config.ChannelsConfig, retentionDays int, retrievalTime time.Duration) *Gatherer {
+func NewGatherer(events EventWriter, programStore ProgramStore, serviceStore ServiceStore, streams StreamManager, channels config.ChannelsConfig, retentionDays int, retrievalTime time.Duration) *Gatherer {
 	return &Gatherer{
 		channels:      channels,
+		events:        events,
 		programStore:  programStore,
 		retentionDays: retentionDays,
 		retrievalTime: retrievalTime,
@@ -65,7 +77,7 @@ func (s *Gatherer) BuildNetworkInputs(ctx context.Context, networkID uint16) ([]
 }
 
 func (s *Gatherer) GatherNetwork(ctx context.Context, networkID uint16, candidates []Candidate, serviceKeys []ServiceKey) error {
-	return gatherNetwork(ctx, s.programStore, s.serviceStore, s.streams, networkID, candidates, serviceKeys, s.retrievalTime)
+	return gatherNetwork(ctx, s.events, s.programStore, s.serviceStore, s.streams, networkID, candidates, serviceKeys, s.retrievalTime)
 }
 
 func (s *Gatherer) Cleanup(ctx context.Context, now time.Time) error {

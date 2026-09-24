@@ -27,7 +27,7 @@ import (
 )
 
 type Manager struct {
-	eitUpdater            channel.EITSectionUpdater
+	eitUpdater            channel.EventUpdater
 	logoUpdater           channel.LogoUpdater
 	programUpdater        ProgramUpdater
 	remoteEventSyncCancel context.CancelFunc
@@ -54,7 +54,7 @@ type RemoteTunerStatus struct {
 type ManagerConfig struct {
 	Channels           config.ChannelsConfig
 	DescramblerFactory source.DescramblerFactory
-	EITUpdater         channel.EITSectionUpdater
+	EITUpdater         channel.EventUpdater
 	Remotes            config.RemotesConfig
 	LogoUpdater        channel.LogoUpdater
 	ProgramUpdater     ProgramUpdater
@@ -72,7 +72,7 @@ type Session interface {
 	ProgramStream(context.Context, *program.Program, bool, io.Writer) error
 	ServiceStream(context.Context, uint16, bool, io.Writer) error
 	ScanServices(context.Context) ([]model.Service, error)
-	CollectEIT(context.Context, func(*ts.EIT) error) error
+	CollectSchedule(context.Context, func(model.ScheduleUpdate) error, func(model.PresentFollowing) error) error
 	ObserveLogos(context.Context, func(*ts.LogoImage) error) error
 	Stop(context.Context) error
 }

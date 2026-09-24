@@ -15,7 +15,8 @@ import (
 	"github.com/21S1298001/mahiron/internal/bml"
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/db"
-	"github.com/21S1298001/mahiron/internal/epggather"
+	"github.com/21S1298001/mahiron/internal/mirakurun"
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/service"
 	"github.com/21S1298001/mahiron/internal/stream"
@@ -32,22 +33,11 @@ func testProgramHandler(t *testing.T) *Handler {
 	}
 	t.Cleanup(func() { _ = database.Close() })
 	pm := program.NewManager(program.NewSQLiteStore(database))
-	updater := epggather.NewUpdater(pm)
-	if err := updater.UpsertEITSection(ctx, &epggather.EITSection{
-		OriginalNetworkID: 1,
-		ServiceID:         101,
-		Events: []epggather.EITEvent{
-			{EventID: 10, StartTime: 2000, Duration: 30000, Scrambled: false,
-				Descriptors: []epggather.EITDescriptor{
-					{Type: "ShortEvent", EventName: "second"},
-				},
-			},
-			{EventID: 9, StartTime: 1000, Duration: 30000, Scrambled: false,
-				Descriptors: []epggather.EITDescriptor{
-					{Type: "ShortEvent", EventName: "first"},
-				},
-			},
-		},
+	start10, start9, duration := int64(2000), int64(1000), 30000
+	key := model.ServiceKey{NetworkID: 1, ServiceID: 101}
+	if err := mirakurun.NewProgramEventWriter(pm).UpsertEvents(ctx, []model.Event{
+		{Key: key, EventID: 10, StartAt: &start10, DurationMS: &duration, Name: "second"},
+		{Key: key, EventID: 9, StartAt: &start9, DurationMS: &duration, Name: "first"},
 	}); err != nil {
 		t.Fatal(err)
 	}

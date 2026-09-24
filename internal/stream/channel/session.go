@@ -9,9 +9,11 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/bml"
 	"github.com/21S1298001/mahiron/internal/bml/cache"
+	"github.com/21S1298001/mahiron/internal/isdb"
 	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/stream/demux"
+	"github.com/21S1298001/mahiron/internal/stream/schedule"
 	"github.com/21S1298001/mahiron/internal/stream/source"
 	"github.com/21S1298001/mahiron/internal/tuner"
 	"github.com/21S1298001/mahiron/internal/util"
@@ -28,7 +30,7 @@ type Session struct {
 	typ               string
 	rawDemuxer        *demux.Demuxer
 	decodedDemuxer    *demux.Demuxer
-	eitUpdater        EITSectionUpdater
+	eitUpdater        EventUpdater
 	logoUpdater       LogoUpdater
 	logoCarousel      *ts.DSMCCLogoCarousel
 	bml               *bmlWorker
@@ -49,7 +51,7 @@ type Config struct {
 	Broadcast   *source.Broadcast
 	Handle      source.InputHandle
 	Descrambler source.Descrambler
-	EITUpdater  EITSectionUpdater
+	EITUpdater  EventUpdater
 	LogoUpdater LogoUpdater
 	OnStop      func()
 	Type        string
@@ -155,14 +157,19 @@ func (s *Session) ScanServices(ctx context.Context) ([]model.Service, error) {
 	return scan.Services(), err
 }
 
-func (s *Session) CollectEIT(ctx context.Context, observe func(*ts.EIT) error) error {
-	return s.CollectEITWithClock(ctx, func(eit *ts.EIT, _ time.Time) error {
-		return observe(eit)
+// CollectSchedule reports EIT schedule and present/following progress until
+// ctx ends. The schedule's reception state lives in this call, and the
+// broadcast clock from TOT decides which of today's segments have elapsed.
+func (s *Session) CollectSchedule(ctx context.Context, onSchedule func(model.ScheduleUpdate) error, onPresentFollowing func(model.PresentFollowing) error) error {
+	collector := schedule.NewCollector(isdb.ScheduleTS)
+	return s.input.WithUser(ctx, func(ctx context.Context) error {
+		return s.observeEIT(ctx, func(eit *ts.EIT, clock time.Time) error {
+			if clock.IsZero() {
+				clock = time.Now()
+			}
+			return collector.Observe(ScheduleSection(eit), clock, onSchedule, onPresentFollowing)
+		})
 	})
-}
-
-func (s *Session) CollectEITWithClock(ctx context.Context, observe func(*ts.EIT, time.Time) error) error {
-	return s.input.WithUser(ctx, func(ctx context.Context) error { return s.observeEIT(ctx, observe) })
 }
 
 func (s *Session) ObserveLogos(ctx context.Context, observe func(*ts.LogoImage) error) error {

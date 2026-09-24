@@ -6,38 +6,38 @@ import (
 	"log/slog"
 	"sync"
 
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/observability"
-	"github.com/21S1298001/mahiron/internal/program"
 )
 
 var ErrEITPFQueueOverflow = errors.New("eitpf upsert queue overflow")
 
 type partialEITSFlusher struct {
 	ctx       context.Context
-	program   ProgramStore
-	requests  chan []*program.Program
+	events    EventWriter
+	requests  chan []model.Event
 	done      chan struct{}
 	closeOnce sync.Once
 }
 
-func newPartialEITSFlusher(ctx context.Context, programStore ProgramStore) *partialEITSFlusher {
+func newPartialEITSFlusher(ctx context.Context, events EventWriter) *partialEITSFlusher {
 	f := &partialEITSFlusher{
 		ctx:      observability.ContextWithEPGMetricSource(ctx, "eits"),
-		program:  programStore,
-		requests: make(chan []*program.Program, 1),
+		events:   events,
+		requests: make(chan []model.Event, 1),
 		done:     make(chan struct{}),
 	}
 	go f.run()
 	return f
 }
 
-func (f *partialEITSFlusher) flush(snapshot *Snapshot, dirty map[ServiceKey]struct{}) bool {
-	if snapshot == nil || len(dirty) == 0 {
+func (f *partialEITSFlusher) flush(schedule *collectionSchedule, dirty map[ServiceKey]struct{}) bool {
+	if schedule == nil || len(dirty) == 0 {
 		return true
 	}
-	var programs []*program.Program
+	var programs []model.Event
 	for key := range dirty {
-		programs = append(programs, snapshot.Programs(key)...)
+		programs = append(programs, schedule.events(key)...)
 	}
 	if len(programs) == 0 {
 		return true
@@ -64,7 +64,7 @@ func (f *partialEITSFlusher) wait() {
 func (f *partialEITSFlusher) run() {
 	defer close(f.done)
 	for programs := range f.requests {
-		if err := f.program.UpsertPrograms(f.ctx, programs); err != nil {
+		if err := f.events.UpsertEvents(f.ctx, programs); err != nil {
 			slog.Debug("partial EITS upsert finished with error", "err", err)
 		}
 	}
@@ -72,8 +72,8 @@ func (f *partialEITSFlusher) run() {
 
 type eitPFUpserter struct {
 	ctx       context.Context
-	program   ProgramStore
-	requests  chan []*program.Program
+	events    EventWriter
+	requests  chan []model.Event
 	done      chan struct{}
 	closeOnce sync.Once
 
@@ -82,18 +82,18 @@ type eitPFUpserter struct {
 	pending int
 }
 
-func newEITPFUpserter(ctx context.Context, programStore ProgramStore) *eitPFUpserter {
+func newEITPFUpserter(ctx context.Context, events EventWriter) *eitPFUpserter {
 	u := &eitPFUpserter{
 		ctx:      observability.ContextWithEPGMetricSource(ctx, "eitpf"),
-		program:  programStore,
-		requests: make(chan []*program.Program, eitsCollectionBuffer),
+		events:   events,
+		requests: make(chan []model.Event, eitsCollectionBuffer),
 		done:     make(chan struct{}),
 	}
 	go u.run()
 	return u
 }
 
-func (u *eitPFUpserter) enqueue(programs []*program.Program) {
+func (u *eitPFUpserter) enqueue(programs []model.Event) {
 	if len(programs) == 0 {
 		return
 	}
@@ -144,7 +144,7 @@ func (u *eitPFUpserter) setErr(err error) {
 func (u *eitPFUpserter) run() {
 	defer close(u.done)
 	for programs := range u.requests {
-		if err := u.program.UpsertPrograms(u.ctx, programs); err != nil {
+		if err := u.events.UpsertEvents(u.ctx, programs); err != nil {
 			u.setErr(err)
 			slog.Debug("EITPF upsert finished with error", "err", err)
 		}

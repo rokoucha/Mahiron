@@ -12,7 +12,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 )
 
-func gatherNetwork(ctx context.Context, programStore ProgramStore, serviceStore ServiceStore, streams StreamManager, networkID uint16, candidates []Candidate, serviceKeys []ServiceKey, retrievalTime time.Duration) (err error) {
+func gatherNetwork(ctx context.Context, events EventWriter, programStore ProgramStore, serviceStore ServiceStore, streams StreamManager, networkID uint16, candidates []Candidate, serviceKeys []ServiceKey, retrievalTime time.Duration) (err error) {
 	ctx, span := observability.StartSpan(ctx, observability.SpanEPGGatherNetwork,
 		observability.AttrEPGNetworkID.Int(int(networkID)),
 		observability.AttrEPGCandidates.Int(len(candidates)),
@@ -58,11 +58,15 @@ func gatherNetwork(ctx context.Context, programStore ProgramStore, serviceStore 
 		)
 		var candidateErr error
 		sessionCtx, cancel := context.WithTimeout(candidateCtx, retrievalTime)
-		session, candidateErr := streams.GetOrCreateWait(sessionCtx, candidate.Type, candidate.Channel)
+		collect, listStored, candidateErr := streams.OpenSchedule(sessionCtx, candidate.Type, candidate.Channel)
 		cancel()
 		var collectResult *CollectResult
 		if candidateErr == nil {
-			collectResult, candidateErr = CollectServiceSnapshots(candidateCtx, programStore, serviceStore, session, remaining, retrievalTime)
+			if listStored != nil {
+				collectResult, candidateErr = syncStoredPrograms(candidateCtx, programStore, serviceStore, listStored, remaining, retrievalTime)
+			} else {
+				collectResult, candidateErr = CollectServiceSnapshots(candidateCtx, events, serviceStore, collect, remaining, retrievalTime)
+			}
 		}
 		observability.EndSpan(candidateSpan, candidateErr)
 		observedInRemaining := 0

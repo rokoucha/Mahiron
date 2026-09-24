@@ -66,7 +66,9 @@ func (s *Session) ListServicePrograms(ctx context.Context, networkID, serviceID 
 	return s.client.ListServicePrograms(ctx, networkID, serviceID)
 }
 
-func (s *Session) CollectEIT(context.Context, func(*ts.EIT) error) error {
+// CollectSchedule is not supported: EPG gathering copies the remote's stored
+// programs through ListServicePrograms instead.
+func (s *Session) CollectSchedule(context.Context, func(model.ScheduleUpdate) error, func(model.PresentFollowing) error) error {
 	return ErrEITObservationUnsupported
 }
 

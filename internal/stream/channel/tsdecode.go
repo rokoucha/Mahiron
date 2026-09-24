@@ -4,9 +4,29 @@ import (
 	"sort"
 	"time"
 
+	"github.com/21S1298001/mahiron/internal/isdb"
 	"github.com/21S1298001/mahiron/internal/model"
+	"github.com/21S1298001/mahiron/internal/stream/schedule"
 	"github.com/21S1298001/mahiron/ts"
 )
+
+// ScheduleSection converts one TS EIT section for schedule.Collector.
+func ScheduleSection(eit *ts.EIT) schedule.Section {
+	return schedule.Section{
+		TableID: eit.TableID,
+		Header: isdb.SectionHeader{
+			TableIDExtension:   eit.ServiceID,
+			Version:            eit.VersionNumber,
+			SectionNumber:      eit.SectionNumber,
+			LastSectionNumber:  eit.LastSectionNumber,
+			CurrentNext:        true,
+			LastTableID:        eit.LastTableID,
+			SegmentLastSection: eit.SegmentLastSectionNumber,
+		},
+		Service: model.ServiceKey{NetworkID: eit.OriginalNetworkID, StreamID: eit.TransportStreamID, ServiceID: eit.ServiceID},
+		Events:  EventsFromEIT(eit),
+	}
+}
 
 // EventsFromEIT converts one TS EIT section to model events. Descriptors
 // are decoded directly into meaning values; the intermediate string-keyed

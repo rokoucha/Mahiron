@@ -5,12 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"sync"
 	"time"
 
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/observability"
-	"github.com/21S1298001/mahiron/internal/program"
-	"github.com/21S1298001/mahiron/ts"
 )
 
 type CollectResult struct {
@@ -19,17 +17,13 @@ type CollectResult struct {
 	ProgramCount int
 }
 
-type eitClockCollector interface {
-	CollectEITWithClock(context.Context, func(*ts.EIT, time.Time) error) error
-}
-
 const eitsCollectionBuffer = 4096
 
 var partialEITSFlushInterval = 5 * time.Second
 var eitsStableStopDuration = 3 * time.Second
 
 // eitsDeadStreamTimeout bounds how long a collection run will wait for the
-// very first EIT/TOT section before giving up on the assumption the tuner
+// very first EIT section before giving up on the assumption the tuner
 // connected but the stream is dead (e.g. an upstream lock failure that never
 // closes the connection). Without this, a dead stream is only noticed after
 // the full retrievalTime deadline, which can hold a tuner for minutes.
@@ -60,12 +54,12 @@ func newExpectedServiceIndex(expected []ServiceKey) *expectedServiceIndex {
 	return idx
 }
 
-func (idx *expectedServiceIndex) matchesExpected(section *EITSection) bool {
-	byTSID, ok := idx.byNID[section.OriginalNetworkID]
+func (idx *expectedServiceIndex) matchesExpected(key model.ServiceKey) bool {
+	byTSID, ok := idx.byNID[key.NetworkID]
 	if !ok {
 		return false
 	}
-	ids, ok := byTSID[section.TransportStreamID]
+	ids, ok := byTSID[key.StreamID]
 	if !ok {
 		// A zero TSID is only used by older tests and in-memory fakes. Real
 		// scanned services always carry the ARIB transport_stream_id.
@@ -74,48 +68,79 @@ func (idx *expectedServiceIndex) matchesExpected(section *EITSection) bool {
 	if !ok {
 		return false
 	}
-	_, ok = ids[section.ServiceID]
+	_, ok = ids[key.ServiceID]
 	return ok
 }
 
-func (idx *expectedServiceIndex) matchesCollectionNetwork(section *EITSection) bool {
-	_, ok := idx.networks[section.OriginalNetworkID]
+func (idx *expectedServiceIndex) matchesCollectionNetwork(key model.ServiceKey) bool {
+	_, ok := idx.networks[key.NetworkID]
 	return ok
 }
 
-// collectClock tracks the most recent broadcast clock observed on the stream,
-// falling back to wall-clock time until one is seen. It is safe for concurrent
-// use by the collector goroutine and the collection loop.
-type collectClock struct {
-	mu     sync.Mutex
-	latest time.Time
+func serviceKeyFromModel(key model.ServiceKey) ServiceKey {
+	return ServiceKey{NetworkID: key.NetworkID, ServiceID: key.ServiceID, TransportStreamID: key.StreamID}
 }
 
-func (c *collectClock) set(clock time.Time) {
-	if clock.IsZero() {
-		return
+// collectionSchedule holds the latest schedule update of each service a
+// collection run heard about. The session keeps the reception state; this
+// only remembers what it last reported.
+type collectionSchedule struct {
+	updates map[ServiceKey]model.ScheduleUpdate
+	// lastProgress is when the session last reported progress.
+	lastProgress time.Time
+	// clock is the latest broadcast clock the session reported.
+	clock int64
+}
+
+func newCollectionSchedule() *collectionSchedule {
+	return &collectionSchedule{updates: make(map[ServiceKey]model.ScheduleUpdate)}
+}
+
+func (c *collectionSchedule) observe(update model.ScheduleUpdate) ServiceKey {
+	key := serviceKeyFromModel(update.Service)
+	c.updates[key] = update
+	c.lastProgress = time.Now()
+	c.clock = max(c.clock, update.ObservedAt)
+	return key
+}
+
+func (c *collectionSchedule) nowMillis() int64 {
+	if c.clock != 0 {
+		return c.clock
 	}
-	c.mu.Lock()
-	c.latest = clock
-	c.mu.Unlock()
+	return time.Now().UnixMilli()
 }
 
-func (c *collectClock) now() time.Time {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if !c.latest.IsZero() {
-		return c.latest
+func (c *collectionSchedule) stableFor(duration time.Duration) bool {
+	return !c.lastProgress.IsZero() && time.Since(c.lastProgress) >= duration
+}
+
+// observed reports whether the service's basic tables arrived.
+func (c *collectionSchedule) observed(key ServiceKey) bool {
+	return c.updates[key].BasicObserved
+}
+
+func (c *collectionSchedule) events(key ServiceKey) []model.Event {
+	update, ok := c.updates[key]
+	if !ok || update.Events == nil {
+		return nil
 	}
-	return time.Now()
+	return update.Events()
 }
 
-func (c *collectClock) nowMillis() int64 {
-	return c.now().UnixMilli()
+func (c *collectionSchedule) diagnosis(key ServiceKey) string {
+	update, ok := c.updates[key]
+	if !ok || update.Diagnosis == nil {
+		return ""
+	}
+	return update.Diagnosis()
 }
 
-func CollectServiceSnapshots(ctx context.Context, programStore ProgramStore, serviceStore ServiceStore, session interface {
-	CollectEIT(context.Context, func(*ts.EIT) error) error
-}, expected []ServiceKey, retrievalTime time.Duration) (result *CollectResult, err error) {
+// CollectSchedule collects the EIT of one channel until the expected
+// services are complete, the stream turns out dead or retrievalTime passes.
+type CollectSchedule = func(context.Context, func(model.ScheduleUpdate) error, func(model.PresentFollowing) error) error
+
+func CollectServiceSnapshots(ctx context.Context, events EventWriter, serviceStore ServiceStore, collect CollectSchedule, expected []ServiceKey, retrievalTime time.Duration) (result *CollectResult, err error) {
 	ctx, span := observability.StartSpan(ctx, observability.SpanEPGCollectServiceSnapshots,
 		observability.AttrEPGServices.Int(len(expected)),
 		observability.AttrEPGRetrievalTimeMS.Int64(retrievalTime.Milliseconds()),
@@ -127,25 +152,12 @@ func CollectServiceSnapshots(ctx context.Context, programStore ProgramStore, ser
 	}
 	result = &CollectResult{}
 	index := newExpectedServiceIndex(expected)
-	clock := &collectClock{}
 
-	startedAt := clock.nowMillis()
-	source := "eits"
-	lister, hasStoredPrograms := session.(StoredProgramLister)
-	if hasStoredPrograms {
-		source = "remote"
-	}
+	startedAt := time.Now().UnixMilli()
 	for _, key := range expected {
 		if err := serviceStore.SetEPGAttempt(ctx, key.NetworkID, key.ServiceID, startedAt, ""); err != nil {
-			observability.RecordEPGServiceUpdateError(ctx, source, "attempt")
+			observability.RecordEPGServiceUpdateError(ctx, "eits", "attempt")
 		}
-	}
-	if hasStoredPrograms {
-		err := syncStoredServicePrograms(ctx, programStore, serviceStore, lister, expected, retrievalTime)
-		if err == nil {
-			result.Observed = append(result.Observed, expected...)
-		}
-		return result, err
 	}
 	collectCtx, cancel := context.WithTimeout(ctx, retrievalTime)
 	defer cancel()
@@ -155,37 +167,39 @@ func CollectServiceSnapshots(ctx context.Context, programStore ProgramStore, ser
 	}
 	collectDone := make(chan collectionResult, 1)
 
-	sectionCh := make(chan *EITSection, eitsCollectionBuffer)
+	updateCh := make(chan model.ScheduleUpdate, eitsCollectionBuffer)
+	pfCh := make(chan model.PresentFollowing, eitsCollectionBuffer)
 	go func() {
-		observeEIT := func(eit *ts.EIT, sectionClock time.Time) error {
-			clock.set(sectionClock)
-			section := EITSectionFromTS(eit)
-			if section == nil || !index.matchesCollectionNetwork(section) {
+		onSchedule := func(update model.ScheduleUpdate) error {
+			if !index.matchesCollectionNetwork(update.Service) {
 				return nil
 			}
 			select {
-			case sectionCh <- section:
+			case updateCh <- update:
 			case <-collectCtx.Done():
 				return collectCtx.Err()
 			}
 			return nil
 		}
-		var collectErr error
-		if collector, ok := session.(eitClockCollector); ok {
-			collectErr = collector.CollectEITWithClock(collectCtx, observeEIT)
-		} else {
-			collectErr = session.CollectEIT(collectCtx, func(eit *ts.EIT) error {
-				return observeEIT(eit, time.Time{})
-			})
+		onPresentFollowing := func(pf model.PresentFollowing) error {
+			if !index.matchesExpected(pf.Service) {
+				return nil
+			}
+			select {
+			case pfCh <- pf:
+			case <-collectCtx.Done():
+				return collectCtx.Err()
+			}
+			return nil
 		}
-		collectDone <- collectionResult{collectErr: collectErr}
+		collectDone <- collectionResult{collectErr: collect(collectCtx, onSchedule, onPresentFollowing)}
 	}()
 
-	snapshot := NewSnapshot()
-	pfUpserts := newEITPFUpserter(collectCtx, programStore)
+	schedule := newCollectionSchedule()
+	pfUpserts := newEITPFUpserter(collectCtx, events)
 	defer pfUpserts.wait()
 	defer pfUpserts.stop()
-	partialFlushes := newPartialEITSFlusher(collectCtx, programStore)
+	partialFlushes := newPartialEITSFlusher(collectCtx, events)
 	defer partialFlushes.wait()
 	defer partialFlushes.stop()
 	flushTicker := time.NewTicker(partialEITSFlushInterval)
@@ -194,51 +208,47 @@ func CollectServiceSnapshots(ctx context.Context, programStore ProgramStore, ser
 	defer deadStreamTimer.Stop()
 	dirtyServices := make(map[ServiceKey]struct{})
 	observedServices := make(map[ServiceKey]struct{})
-	var eitpfSections int
-	var eitsSections int
-	var ignoredSections int
-	var sectionsReceived int
-	handleSection := func(section *EITSection) {
-		if section == nil || !index.matchesCollectionNetwork(section) {
-			ignoredSections++
-			return
-		}
-		if ts.IsEITPF(section.TableID) {
-			if !index.matchesExpected(section) {
-				ignoredSections++
-				return
-			}
-			eitpfSections++
-			pfUpserts.enqueue(section.Programs())
-			return
-		}
-		eitsSections++
-		snapshot.Observe(section, clock.now())
-		key := ServiceKey{NetworkID: section.OriginalNetworkID, ServiceID: section.ServiceID, TransportStreamID: section.TransportStreamID}
+	var pfUpdates, scheduleUpdates, received int
+	handleUpdate := func(update model.ScheduleUpdate) {
+		scheduleUpdates++
+		key := schedule.observe(update)
 		dirtyServices[key] = struct{}{}
 		observedServices[key] = struct{}{}
+	}
+	handlePresentFollowing := func(pf model.PresentFollowing) {
+		pfUpdates++
+		var current []model.Event
+		for _, event := range []*model.Event{pf.Present, pf.Following} {
+			if event != nil {
+				current = append(current, *event)
+			}
+		}
+		pfUpserts.enqueue(current)
 	}
 	finished := false
 	var collectorResult collectionResult
 	collectorDone := false
 	for !finished {
 		select {
-		case section := <-sectionCh:
-			sectionsReceived++
-			handleSection(section)
-			if shouldStopEITSCollection(snapshot, expected) && snapshot.StableFor(clock.now(), eitsStableStopDuration) {
+		case update := <-updateCh:
+			received++
+			handleUpdate(update)
+			if shouldStopEITSCollection(schedule, expected) && schedule.stableFor(eitsStableStopDuration) {
 				cancel()
 			}
+		case pf := <-pfCh:
+			received++
+			handlePresentFollowing(pf)
 		case <-flushTicker.C:
-			if partialFlushes.flush(snapshot, dirtyServices) {
+			if partialFlushes.flush(schedule, dirtyServices) {
 				dirtyServices = make(map[ServiceKey]struct{})
 			}
-			if shouldStopEITSCollection(snapshot, expected) && snapshot.StableFor(clock.now(), eitsStableStopDuration) {
+			if shouldStopEITSCollection(schedule, expected) && schedule.stableFor(eitsStableStopDuration) {
 				cancel()
 			}
 		case <-deadStreamTimer.C:
-			if sectionsReceived == 0 {
-				slog.Warn("aborting EPG collection: no EIT/TOT sections received, tuner may be connected to a dead stream",
+			if received == 0 {
+				slog.Warn("aborting EPG collection: no EIT sections received, tuner may be connected to a dead stream",
 					"expectedServices", len(expected),
 					"waited", eitsDeadStreamTimeout)
 				cancel()
@@ -252,13 +262,15 @@ func CollectServiceSnapshots(ctx context.Context, programStore ProgramStore, ser
 		}
 	}
 	cancel()
-	// The collector may have buffered sections in sectionCh that the loop never
-	// got to before collectDone or the deadline won the select. Drain them so
-	// already-observed sections are not dropped from the snapshot.
+	// The collector may have buffered updates that the loop never got to
+	// before collectDone or the deadline won the select. Drain them so
+	// already-reported progress is not dropped.
 	for drained := false; !drained; {
 		select {
-		case section := <-sectionCh:
-			handleSection(section)
+		case update := <-updateCh:
+			handleUpdate(update)
+		case pf := <-pfCh:
+			handlePresentFollowing(pf)
 		default:
 			drained = true
 		}
@@ -286,27 +298,25 @@ func CollectServiceSnapshots(ctx context.Context, programStore ProgramStore, ser
 			slog.Debug("EITPF upsert finished with error", "err", pfErr)
 		}
 	}
-	slog.Debug("EPG collection sections observed",
-		"eitpfSections", eitpfSections,
-		"eitsSections", eitsSections,
-		"ignoredSections", ignoredSections,
+	slog.Debug("EPG collection updates observed",
+		"eitpfUpdates", pfUpdates,
+		"eitsUpdates", scheduleUpdates,
 		"observedServices", len(observedServices),
 		"expectedServices", len(expected))
 
-	collectErr := persistObservedSnapshots(ctx, programStore, serviceStore, snapshot, expected, observedServices, clock.nowMillis(), result)
+	collectErr := persistObservedSnapshots(ctx, events, serviceStore, schedule, expected, observedServices, schedule.nowMillis(), result)
 	return result, collectErr
 }
 
-// persistObservedSnapshots merges the observed snapshot into the program store,
-// records per-service EPG attempt/success state, and populates result.Observed /
-// result.Unobserved. It returns the joined error of the merge/persist stage.
-func persistObservedSnapshots(ctx context.Context, programStore ProgramStore, serviceStore ServiceStore, snapshot *Snapshot, expected []ServiceKey, observedServices map[ServiceKey]struct{}, updatedAt int64, result *CollectResult) error {
+// persistObservedSnapshots stores the observed schedules, records
+// per-service EPG attempt/success state, and populates result.Observed /
+// result.Unobserved. It returns the joined error of the persist stage.
+func persistObservedSnapshots(ctx context.Context, writer EventWriter, serviceStore ServiceStore, schedule *collectionSchedule, expected []ServiceKey, observedServices map[ServiceKey]struct{}, updatedAt int64, result *CollectResult) error {
 	var collectErr error
 	observed := 0
 	expectedObserved := 0
 	var unobserved error
-	observedPrograms := make(map[ServiceKey][]*program.Program)
-	var allObservedPrograms []*program.Program
+	observedEvents := make(map[ServiceKey][]model.Event)
 	mergeKeys := append([]ServiceKey(nil), expected...)
 	expectedSeen := make(map[ServiceKey]struct{}, len(expected))
 	type serviceIdentity struct {
@@ -319,7 +329,7 @@ func persistObservedSnapshots(ctx context.Context, programStore ProgramStore, se
 		expectedTransportStreams[serviceIdentity{networkID: key.NetworkID, serviceID: key.ServiceID}] = key.TransportStreamID
 	}
 	for key := range observedServices {
-		if _, ok := expectedSeen[key]; ok || !snapshot.Observed(key) {
+		if _, ok := expectedSeen[key]; ok || !schedule.observed(key) {
 			continue
 		}
 		if expectedTSID, ok := expectedTransportStreams[serviceIdentity{networkID: key.NetworkID, serviceID: key.ServiceID}]; ok && expectedTSID != 0 && key.TransportStreamID != expectedTSID {
@@ -327,51 +337,50 @@ func persistObservedSnapshots(ctx context.Context, programStore ProgramStore, se
 		}
 		mergeKeys = append(mergeKeys, key)
 	}
+	var shared [][]model.Event
 	for _, key := range mergeKeys {
-		if !snapshot.Observed(key) {
+		if !schedule.observed(key) {
 			continue
 		}
-		programs := snapshot.Programs(key)
-		observedPrograms[key] = programs
-		allObservedPrograms = append(allObservedPrograms, programs...)
+		observedEvents[key] = schedule.events(key)
+		shared = append(shared, observedEvents[key])
 	}
-	fillProgramsFromSharedPeers(allObservedPrograms)
+	fillEventsFromSharedPeers(shared...)
 	for _, key := range mergeKeys {
 		_, isExpected := expectedSeen[key]
-		if snapshot.Observed(key) {
+		if schedule.observed(key) {
 			result.Observed = append(result.Observed, key)
 			if isExpected {
 				expectedObserved++
 			}
 			observed++
-			programs := observedPrograms[key]
-			result.ProgramCount += len(programs)
-			report := snapshot.CompletionReport(key)
-			basicComplete := snapshot.ServiceReady(key)
-			observedExtendedComplete := snapshot.ObservedExtendedReady([]ServiceKey{key})
-			missingTitles, titleTotal := programTitleCounts(programs)
-			if !basicComplete {
+			events := observedEvents[key]
+			result.ProgramCount += len(events)
+			update := schedule.updates[key]
+			diagnosis := schedule.diagnosis(key)
+			missingTitles, titleTotal := eventTitleCounts(events)
+			if !update.BasicComplete {
 				slog.Warn("flushing incomplete EITS collection",
 					"networkId", key.NetworkID,
 					"serviceId", key.ServiceID,
-					"report", report)
+					"report", diagnosis)
 			}
 			slog.Info("finished EITS collection",
 				"networkId", key.NetworkID,
 				"serviceId", key.ServiceID,
-				"programs", len(programs),
+				"programs", len(events),
 				"missingTitles", missingTitles,
 				"titleTotal", titleTotal,
-				"basicComplete", basicComplete,
-				"observedExtendedComplete", observedExtendedComplete,
-				"report", report)
+				"basicComplete", update.BasicComplete,
+				"observedExtendedComplete", update.ExtendedComplete,
+				"report", diagnosis)
 			mergeCtx, mergeSpan := observability.StartSpan(ctx, observability.SpanEPGMergeServicePrograms,
 				observability.AttrEPGNetworkID.Int(int(key.NetworkID)),
 				observability.AttrEPGServiceID.Int(int(key.ServiceID)),
-				observability.AttrProgramCount.Int(len(programs)),
+				observability.AttrProgramCount.Int(len(events)),
 			)
 			mergeCtx = observability.ContextWithEPGMetricSource(mergeCtx, "eits")
-			err := programStore.UpsertPrograms(mergeCtx, programs)
+			err := writer.UpsertEvents(mergeCtx, events)
 			observability.EndSpan(mergeSpan, err)
 			if err != nil {
 				if attemptErr := serviceStore.SetEPGAttempt(ctx, key.NetworkID, key.ServiceID, updatedAt, err.Error()); attemptErr != nil {
@@ -384,7 +393,7 @@ func persistObservedSnapshots(ctx context.Context, programStore ProgramStore, se
 				observability.RecordEPGServiceUpdateError(ctx, "eits", "success")
 				collectErr = errors.Join(collectErr, err)
 			}
-			if warning := lowQualityProgramWarning(programs); warning != "" {
+			if warning := lowQualityEventWarning(events); warning != "" {
 				slog.Warn("EITS collection quality is low", "networkId", key.NetworkID, "serviceId", key.ServiceID, "warning", warning)
 				if attemptErr := serviceStore.SetEPGAttempt(ctx, key.NetworkID, key.ServiceID, updatedAt, warning); attemptErr != nil {
 					observability.RecordEPGServiceUpdateError(ctx, "eits", "attempt")
@@ -395,7 +404,7 @@ func persistObservedSnapshots(ctx context.Context, programStore ProgramStore, se
 			slog.Warn("EITS snapshot incomplete",
 				"networkId", key.NetworkID,
 				"serviceId", key.ServiceID,
-				"report", snapshot.CompletionReport(key))
+				"report", schedule.diagnosis(key))
 			err := fmt.Errorf("service %d EITS incomplete", key.ServiceID)
 			if attemptErr := serviceStore.SetEPGAttempt(ctx, key.NetworkID, key.ServiceID, updatedAt, err.Error()); attemptErr != nil {
 				observability.RecordEPGServiceUpdateError(ctx, "eits", "attempt")
@@ -409,17 +418,25 @@ func persistObservedSnapshots(ctx context.Context, programStore ProgramStore, se
 	return collectErr
 }
 
-func shouldStopEITSCollection(snapshot *Snapshot, expected []ServiceKey) bool {
-	if snapshot == nil || !snapshot.AllReady(expected) {
+// shouldStopEITSCollection reports whether every expected service's basic
+// and extended tables are complete and the collected events are good enough.
+// A service without extended tables counts as extended-complete.
+func shouldStopEITSCollection(schedule *collectionSchedule, expected []ServiceKey) bool {
+	if len(expected) == 0 {
 		return false
 	}
-	if !snapshot.ObservedExtendedReady(expected) {
-		return false
-	}
-	var programs []*program.Program
+	var events [][]model.Event
 	for _, key := range expected {
-		programs = append(programs, snapshot.Programs(key)...)
+		update, ok := schedule.updates[key]
+		if !ok || !update.BasicComplete || !update.ExtendedComplete {
+			return false
+		}
+		events = append(events, schedule.events(key))
 	}
-	fillProgramsFromSharedPeers(programs)
-	return lowQualityProgramWarning(programs) == ""
+	fillEventsFromSharedPeers(events...)
+	var all []model.Event
+	for _, group := range events {
+		all = append(all, group...)
+	}
+	return lowQualityEventWarning(all) == ""
 }

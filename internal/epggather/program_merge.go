@@ -3,7 +3,7 @@ package epggather
 import (
 	"fmt"
 
-	"github.com/21S1298001/mahiron/internal/program"
+	"github.com/21S1298001/mahiron/internal/model"
 )
 
 const (
@@ -11,17 +11,20 @@ const (
 	lowQualityMissingTitlePercent = 80
 )
 
-type programPeerKey struct {
+type eventPeerKey struct {
 	NetworkID uint16
 	ServiceID uint16
 	EventID   uint16
 }
 
-func fillProgramsFromSharedPeers(programs []*program.Program) {
-	parent := make(map[programPeerKey]programPeerKey)
+// fillEventsFromSharedPeers fills what an event lacks from the events it
+// shares with through event group type 1 (event sharing), across all the
+// given groups. The events are modified in place.
+func fillEventsFromSharedPeers(groups ...[]model.Event) {
+	parent := make(map[eventPeerKey]eventPeerKey)
 
-	var find func(programPeerKey) programPeerKey
-	find = func(key programPeerKey) programPeerKey {
+	var find func(eventPeerKey) eventPeerKey
+	find = func(key eventPeerKey) eventPeerKey {
 		current, ok := parent[key]
 		if !ok {
 			parent[key] = key
@@ -35,7 +38,7 @@ func fillProgramsFromSharedPeers(programs []*program.Program) {
 		return root
 	}
 
-	union := func(a, b programPeerKey) {
+	union := func(a, b eventPeerKey) {
 		rootA := find(a)
 		rootB := find(b)
 		if rootA == rootB {
@@ -44,59 +47,55 @@ func fillProgramsFromSharedPeers(programs []*program.Program) {
 		parent[rootB] = rootA
 	}
 
-	for _, item := range programs {
-		if item == nil {
-			continue
-		}
-		source := programKey(item)
-		find(source)
-		for _, related := range item.RelatedItems {
-			if related.Type != program.RelatedItemTypeShared || related.ServiceID == 0 || related.EventID == 0 {
-				continue
+	for _, events := range groups {
+		for i := range events {
+			item := &events[i]
+			source := eventKey(item)
+			find(source)
+			for _, related := range item.Related {
+				if related.GroupType != model.EventGroupShared || related.ServiceID == 0 || related.EventID == 0 {
+					continue
+				}
+				networkID := item.Key.NetworkID
+				if related.NetworkID != 0 {
+					networkID = related.NetworkID
+				}
+				union(source, eventPeerKey{
+					NetworkID: networkID,
+					ServiceID: related.ServiceID,
+					EventID:   related.EventID,
+				})
 			}
-			networkID := item.NetworkID
-			if related.NetworkID != nil {
-				networkID = *related.NetworkID
-			}
-			union(source, programPeerKey{
-				NetworkID: networkID,
-				ServiceID: related.ServiceID,
-				EventID:   related.EventID,
-			})
 		}
 	}
 
-	peers := make(map[programPeerKey][]*program.Program)
-	for _, item := range programs {
-		if item == nil {
-			continue
+	peers := make(map[eventPeerKey][]*model.Event)
+	for _, events := range groups {
+		for i := range events {
+			item := &events[i]
+			root := find(eventKey(item))
+			peers[root] = append(peers[root], item)
 		}
-		key := programKey(item)
-		root := find(key)
-		peers[root] = append(peers[root], item)
 	}
 
 	for _, group := range peers {
 		for _, item := range group {
-			fillProgramFromPeers(item, group)
+			fillEventFromPeers(item, group)
 		}
 	}
 }
 
-func programKey(item *program.Program) programPeerKey {
-	return programPeerKey{
-		NetworkID: item.NetworkID,
-		ServiceID: item.ServiceID,
+func eventKey(item *model.Event) eventPeerKey {
+	return eventPeerKey{
+		NetworkID: item.Key.NetworkID,
+		ServiceID: item.Key.ServiceID,
 		EventID:   item.EventID,
 	}
 }
 
-func fillProgramFromPeers(item *program.Program, peers []*program.Program) {
-	if item == nil {
-		return
-	}
+func fillEventFromPeers(item *model.Event, peers []*model.Event) {
 	for _, peer := range peers {
-		if peer == nil || peer == item {
+		if peer == item {
 			continue
 		}
 		if item.Name == "" && peer.Name != "" {
@@ -106,55 +105,37 @@ func fillProgramFromPeers(item *program.Program, peers []*program.Program) {
 			item.Description = peer.Description
 		}
 		if len(item.Genres) == 0 && len(peer.Genres) > 0 {
-			item.Genres = append([]program.Genre(nil), peer.Genres...)
+			item.Genres = peer.Genres
 		}
-		if item.Video == nil && peer.Video != nil {
-			video := *peer.Video
-			item.Video = &video
+		if len(item.Videos) == 0 && len(peer.Videos) > 0 {
+			item.Videos = peer.Videos
 		}
 		if len(item.Audios) == 0 && len(peer.Audios) > 0 {
-			item.Audios = append([]program.Audio(nil), peer.Audios...)
+			item.Audios = peer.Audios
 		}
 		if len(item.Extended) == 0 && len(peer.Extended) > 0 {
-			item.Extended = cloneStringMap(peer.Extended)
+			item.Extended = peer.Extended
 		}
 		if item.Series == nil && peer.Series != nil {
-			series := *peer.Series
-			item.Series = &series
+			item.Series = peer.Series
 		}
 	}
 }
 
-func cloneStringMap(src map[string]string) map[string]string {
-	if len(src) == 0 {
-		return nil
-	}
-	dst := make(map[string]string, len(src))
-	for key, value := range src {
-		dst[key] = value
-	}
-	return dst
-}
-
-func lowQualityProgramWarning(programs []*program.Program) string {
-	missingTitle, total := programTitleCounts(programs)
+func lowQualityEventWarning(events []model.Event) string {
+	missingTitle, total := eventTitleCounts(events)
 	if total < lowQualityMinimumPrograms || missingTitle*100 < total*lowQualityMissingTitlePercent {
 		return ""
 	}
 	return fmt.Sprintf("low quality EITS: %d/%d programs missing titles", missingTitle, total)
 }
 
-func programTitleCounts(programs []*program.Program) (int, int) {
+func eventTitleCounts(events []model.Event) (int, int) {
 	missingTitle := 0
-	total := 0
-	for _, item := range programs {
-		if item == nil {
-			continue
-		}
-		total++
+	for _, item := range events {
 		if item.Name == "" {
 			missingTitle++
 		}
 	}
-	return missingTitle, total
+	return missingTitle, len(events)
 }

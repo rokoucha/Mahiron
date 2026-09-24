@@ -236,15 +236,28 @@ type Event struct {
 	Series        *Series
 }
 
-// ScheduleUpdate is one CollectSchedule callback payload: the full set of
-// currently known events for a service, whether the basic and extended
-// tables are complete, and a log-only diagnosis of what is still missing.
+// ScheduleUpdate reports that a service's EIT schedule reception made
+// progress. Sessions track sections, versions and segments themselves; the
+// receiver only sees whether the schedule is complete and the events.
+//
+// Events and Diagnosis are evaluated on demand and may be called from any
+// goroutine, also after the collection ended: assembling the events after
+// every section would make a collection quadratic in the number of sections.
+// Events returns copies whose slices must not be modified in place.
 type ScheduleUpdate struct {
-	Service          ServiceKey
-	Events           []Event
+	Service ServiceKey
+	// BasicObserved reports whether a basic table (event names, genres,
+	// components) arrived. Extended tables alone do not make a service
+	// observed.
+	BasicObserved    bool
 	BasicComplete    bool
 	ExtendedComplete bool
-	Diagnosis        string
+	// ObservedAt is the broadcast clock (TOT) of the update in Unix
+	// milliseconds, or the wall clock until the first TOT arrives.
+	ObservedAt int64
+	Events     func() []Event
+	// Diagnosis describes what is still missing, for logs only.
+	Diagnosis func() string
 }
 
 // PresentFollowing is one service's current and next events from EIT p/f.
