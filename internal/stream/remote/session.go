@@ -82,11 +82,11 @@ func (s *Session) ObserveLogos(ctx context.Context, observe func(model.Logo) err
 	for i := range services {
 		// The scan conversion holds the only logo heuristic: a logo counts
 		// only when the remote reports both an ID and actual logo data.
-		scan := mirakurun.ScanServiceFromAPI(&services[i])
-		if scan.LogoId < 0 || scan.LogoVersion == nil || scan.LogoDownloadDataId == nil {
+		scan := mirakurun.ScanServiceModelFromAPI(&services[i])
+		if scan.Logo == nil || scan.Logo.Version == nil || scan.Logo.DownloadDataID == nil {
 			continue
 		}
-		data, err := s.client.GetLogoImage(ctx, int64(scan.Nid)*100000+int64(scan.Sid))
+		data, err := s.client.GetLogoImage(ctx, scan.Key.MirakurunID())
 		if err != nil {
 			return err
 		}
@@ -94,7 +94,7 @@ func (s *Session) ObserveLogos(ctx context.Context, observe func(model.Logo) err
 		if err != nil {
 			return err
 		}
-		logo := model.Logo{NetworkID: scan.Nid, LogoID: uint16(scan.LogoId), Version: *scan.LogoVersion, DownloadDataID: *scan.LogoDownloadDataId, LogoType: 5, Data: data}
+		logo := model.Logo{NetworkID: scan.Key.NetworkID, LogoID: scan.Logo.LogoID, Version: *scan.Logo.Version, DownloadDataID: *scan.Logo.DownloadDataID, LogoType: 5, Data: data}
 		if err := observe(logo); err != nil {
 			return err
 		}

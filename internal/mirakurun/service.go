@@ -7,7 +7,6 @@ import (
 	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/service"
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
-	"github.com/21S1298001/mahiron/ts"
 )
 
 // MarshalService encodes a service with the generated encoding and returns
@@ -156,32 +155,3 @@ func ScanServiceModelFromAPI(svc *apigen.Service) model.Service {
 	}
 	return out
 }
-
-// ScanServiceFromAPI converts a service received from a remote
-// Mirakurun-compatible server to a scan result, adapting the model
-// conversion above back to the legacy TS shape.
-func ScanServiceFromAPI(svc *apigen.Service) ts.ServiceInfo {
-	m := ScanServiceModelFromAPI(svc)
-	info := ts.ServiceInfo{
-		Nid:                 m.Key.NetworkID,
-		Tsid:                m.Key.StreamID,
-		Sid:                 m.Key.ServiceID,
-		Name:                m.Name,
-		Type:                m.Type,
-		EITScheduleFlag:     m.EITSchedule,
-		EITPresentFollowing: m.EITPresentFollow,
-		LogoId:              -1,
-		RemoteControlKeyId:  uint8Ptr(0),
-	}
-	if m.RemoteControlKey != nil {
-		info.RemoteControlKeyId = m.RemoteControlKey
-	}
-	if m.Logo != nil {
-		info.LogoId = int64(m.Logo.LogoID)
-		info.LogoVersion = m.Logo.Version
-		info.LogoDownloadDataId = m.Logo.DownloadDataID
-	}
-	return info
-}
-
-func uint8Ptr(v uint8) *uint8 { return &v }

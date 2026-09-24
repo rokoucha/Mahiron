@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/21S1298001/mahiron/internal/config"
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/service"
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
@@ -156,7 +157,7 @@ func TestServiceToAPI(t *testing.T) {
 	}
 }
 
-func TestScanServiceFromAPI(t *testing.T) {
+func TestScanServiceModelFromAPI(t *testing.T) {
 	logoID := 12
 	api := ServiceToAPI(&service.Service{
 		ServiceId: 1024, NetworkId: 32736, TransportStreamId: 32736,
@@ -165,16 +166,16 @@ func TestScanServiceFromAPI(t *testing.T) {
 		LogoId:      func() *int64 { v := int64(logoID); return &v }(),
 		HasLogoData: true, RemoteControlKeyId: 5,
 	}, nil, false)
-	got := ScanServiceFromAPI(&api)
-	if got.Nid != 32736 || got.Sid != 1024 || got.Tsid != 32736 || got.Name != "remote service" {
+	got := ScanServiceModelFromAPI(&api)
+	if got.Key != (model.ServiceKey{NetworkID: 32736, StreamID: 32736, ServiceID: 1024}) || got.Name != "remote service" {
 		t.Fatalf("scan = %#v", got)
 	}
-	if got.LogoId != 12 || got.LogoVersion == nil || *got.LogoVersion != 0 ||
-		got.LogoDownloadDataId == nil || *got.LogoDownloadDataId != 1024 {
-		t.Fatalf("logo = %#v", got)
+	if got.Logo == nil || got.Logo.LogoID != 12 || got.Logo.Version == nil || *got.Logo.Version != 0 ||
+		got.Logo.DownloadDataID == nil || *got.Logo.DownloadDataID != 1024 {
+		t.Fatalf("logo = %#v", got.Logo)
 	}
-	if got.RemoteControlKeyId == nil || *got.RemoteControlKeyId != 5 {
-		t.Fatalf("remoteControlKeyId = %#v", got.RemoteControlKeyId)
+	if got.RemoteControlKey == nil || *got.RemoteControlKey != 5 {
+		t.Fatalf("remoteControlKey = %#v", got.RemoteControlKey)
 	}
 
 	// A logo ID without logo data does not count, and absent EIT flags
@@ -182,11 +183,11 @@ func TestScanServiceFromAPI(t *testing.T) {
 	bare := apigen.Service{ServiceId: 101, NetworkId: 4, Name: "bare", Type: 1}
 	bare.LogoId = apigen.NewOptInt(13)
 	bare.HasLogoData = apigen.NewOptBool(false)
-	got = ScanServiceFromAPI(&bare)
-	if got.LogoId != -1 || got.LogoVersion != nil || got.LogoDownloadDataId != nil {
-		t.Fatalf("logo = %#v", got)
+	got = ScanServiceModelFromAPI(&bare)
+	if got.Logo != nil {
+		t.Fatalf("logo = %#v", got.Logo)
 	}
-	if !got.EITScheduleFlag || !got.EITPresentFollowing {
-		t.Fatalf("EIT flags = %v/%v, want true/true", got.EITScheduleFlag, got.EITPresentFollowing)
+	if !got.EITSchedule || !got.EITPresentFollow {
+		t.Fatalf("EIT flags = %v/%v, want true/true", got.EITSchedule, got.EITPresentFollow)
 	}
 }
