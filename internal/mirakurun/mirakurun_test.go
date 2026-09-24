@@ -1,7 +1,6 @@
 package mirakurun
 
 import (
-	"bytes"
 	"encoding/json"
 	"reflect"
 	"strings"
@@ -9,52 +8,47 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/model"
-	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/service"
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 )
 
-func fullProgram() *program.Program {
-	componentTag := 16
-	isMain := true
-	samplingRate := 48000
+func fullEvent() model.Event {
+	startAt, duration := int64(1788609060000), 1800000
 	expiresAt := int64(1788609060000)
-	return &program.Program{
-		ID:          program.ProgramID(1, 101, 7),
+	pattern := 1
+	return model.Event{
+		Key:         model.ServiceKey{NetworkID: 1, ServiceID: 101},
 		EventID:     7,
-		ServiceID:   101,
-		NetworkID:   1,
-		StartAt:     1788609060000,
-		Duration:    1800000,
-		IsFree:      true,
+		StartAt:     &startAt,
+		DurationMS:  &duration,
 		Name:        "大河ドラマ",
 		Description: "解説文",
-		Genres:      []program.Genre{{Lv1: 3, Lv2: 2, Un1: 15, Un2: 15}, {Lv1: 0, Lv2: 1, Un1: 15, Un2: 15}},
-		Video:       &program.Video{StreamContent: 0x5, ComponentType: 0xB3},
-		Audios: []program.Audio{
-			{ComponentType: 3, ComponentTag: &componentTag, IsMain: &isMain, SamplingRate: &samplingRate, Langs: []string{"jpn", "eng"}},
-			{ComponentType: 2},
+		Genres:      []model.Genre{{Lv1: 3, Lv2: 2, Un1: 15, Un2: 15}, {Lv1: 0, Lv2: 1, Un1: 15, Un2: 15}},
+		Videos:      []model.VideoComponent{{Codec: model.VideoCodecH264, Resolution: model.VideoResolution1080i, Aspect: model.VideoAspect16x9NoPanVector}},
+		Audios: []model.AudioComponent{
+			{ComponentType: 3, Tag: 16, Main: true, SamplingHz: 48000, Languages: []string{"jpn", "eng"}},
+			{ComponentType: 2, Languages: []string{}},
 		},
-		Extended: map[string]string{
-			"番組内容": "本文",
-			"出演者":  "Foo",
-		},
-		RelatedItems: []program.RelatedItem{
-			{Type: program.RelatedItemTypeShared, ServiceID: 101, EventID: 9},
-		},
-		Series: &program.Series{ID: 5, Repeat: 0, Pattern: 1, ExpiresAt: &expiresAt, Episode: 1, LastEpisode: 12, Name: "series"},
+		Extended: []model.ExtendedBlock{{Items: []model.ExtendedItem{
+			{Name: "番組内容", Text: "本文"},
+			{Name: "出演者", Text: "Foo"},
+		}}},
+		Related: []model.RelatedEvent{{GroupType: model.EventGroupShared, ServiceID: 101, EventID: 9}},
+		Series:  &model.Series{ID: 5, Repeat: 0, Pattern: &pattern, ExpiresAt: &expiresAt, Episode: 1, LastEpisode: 12, Name: "series"},
 	}
 }
 
+// TestProgramRoundTrip checks that a remote Mahiron's program comes back as
+// the event it was built from, for the values the Mirakurun shape carries.
 func TestProgramRoundTrip(t *testing.T) {
-	bareSeries := fullProgram()
-	bareSeries.Series = &program.Series{ID: 5, Pattern: -1}
-	for _, p := range []*program.Program{
-		{ID: 1, EventID: 8, ServiceID: 101, NetworkID: 1},
-		fullProgram(),
+	bareSeries := fullEvent()
+	bareSeries.Series = &model.Series{ID: 5}
+	for _, e := range []model.Event{
+		{Key: model.ServiceKey{NetworkID: 1, ServiceID: 101}, EventID: 8},
+		fullEvent(),
 		bareSeries,
 	} {
-		api := ProgramToAPI(p)
+		api := ProgramToAPI(&e)
 		raw, err := api.MarshalJSON()
 		if err != nil {
 			t.Fatal(err)
@@ -63,42 +57,34 @@ func TestProgramRoundTrip(t *testing.T) {
 		if err := json.Unmarshal(raw, &decoded); err != nil {
 			t.Fatal(err)
 		}
-		// Empty collections travel as [] on the wire and come back nil,
-		// matching how remote programs decode today.
-		want := *p
-		if len(want.Audios) == 0 {
-			want.Audios = nil
-		}
-		if len(want.RelatedItems) == 0 {
-			want.RelatedItems = nil
-		}
-		if got := ProgramFromAPI(&decoded); !reflect.DeepEqual(got, &want) {
-			t.Fatalf("round trip = %#v, want %#v", got, &want)
+		if got := EventFromAPI(&decoded); !reflect.DeepEqual(got, e) {
+			t.Fatalf("round trip = %#v, want %#v", got, e)
 		}
 	}
 }
 
-func TestEncodeProgramSortsExtendedKeys(t *testing.T) {
-	api := ProgramToAPI(fullProgram())
-	first := MarshalProgram(&api)
-	for i := 0; i < 50; i++ {
-		if got := MarshalProgram(&api); !bytes.Equal(got, first) {
-			t.Fatalf("unstable encoding:\n%s\n%s", first, got)
+// TestProgramToAPIKeepsExtendedOrder pins that extended items come out in
+// broadcast order, in every encoding, and that a heading repeated in another
+// language keeps its first text.
+func TestProgramToAPIKeepsExtendedOrder(t *testing.T) {
+	e := fullEvent()
+	e.Extended = append(e.Extended, model.ExtendedBlock{Language: "eng", Items: []model.ExtendedItem{
+		{Name: "番組内容", Text: "english"},
+		{Name: "あらすじ", Text: "later"},
+	}})
+	api := ProgramToAPI(&e)
+	want := `"extended":{"番組内容":"本文","出演者":"Foo","あらすじ":"later"}`
+	for i := 0; i < 20; i++ {
+		raw, err := api.MarshalJSON()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(raw), want) {
+			t.Fatalf("encoded = %s, want %s", raw, want)
 		}
 	}
-	// Extended keys must appear in sorted order in the encoded bytes.
-	encoded := string(first)
-	previous := -1
-	for _, key := range []string{"出演者", "番組内容"} {
-		keyJSON, _ := json.Marshal(key)
-		pos := strings.Index(encoded, string(keyJSON)+":")
-		if pos < 0 {
-			t.Fatalf("key %q not found in %s", key, encoded)
-		}
-		if pos < previous {
-			t.Fatalf("extended keys out of order in %s", encoded)
-		}
-		previous = pos
+	if got := string(MarshalProgram(&api)); !strings.Contains(got, want) {
+		t.Fatalf("MarshalProgram = %s, want %s", got, want)
 	}
 }
 

@@ -25,8 +25,8 @@ func TestGatherNetworkSyncsStoredRemotePrograms(t *testing.T) {
 	store := newRemoteSyncProgramStore()
 	status := newRemoteSyncServiceStore()
 	session := &remoteSyncSession{
-		programs: map[model.ServiceKey][]*program.Program{
-			key: {{ID: program.ProgramID(4, 101, 1), NetworkID: 4, ServiceID: 101, EventID: 1}},
+		programs: map[model.ServiceKey][]model.Event{
+			key: {{Key: model.ServiceKey{NetworkID: 4, ServiceID: 101}, EventID: 1}},
 		},
 	}
 
@@ -61,8 +61,8 @@ func TestGatherNetworkSyncsStoredRemoteProgramsPartialFailure(t *testing.T) {
 	store := newRemoteSyncProgramStore()
 	status := newRemoteSyncServiceStore()
 	session := &remoteSyncSession{
-		programs: map[model.ServiceKey][]*program.Program{
-			okKey: {{ID: program.ProgramID(4, 101, 1), NetworkID: 4, ServiceID: 101, EventID: 1}},
+		programs: map[model.ServiceKey][]model.Event{
+			okKey: {{Key: model.ServiceKey{NetworkID: 4, ServiceID: 101}, EventID: 1}},
 		},
 		errs: map[model.ServiceKey]error{failKey: wantErr},
 	}
@@ -149,7 +149,7 @@ func (s *remoteSyncServiceStore) SetEPGSuccess(_ context.Context, networkID, ser
 }
 
 type remoteSyncSession struct {
-	programs      map[model.ServiceKey][]*program.Program
+	programs      map[model.ServiceKey][]model.Event
 	errs          map[model.ServiceKey]error
 	collectCalled bool
 }
@@ -166,7 +166,7 @@ func (s remoteEPGStreams) OpenSchedule(context.Context, string, string) (Collect
 	return s.session.CollectSchedule, s.session.ListServicePrograms, nil
 }
 
-func (s *remoteSyncSession) ListServicePrograms(_ context.Context, networkID, serviceID uint16) ([]*program.Program, error) {
+func (s *remoteSyncSession) ListServicePrograms(_ context.Context, networkID, serviceID uint16) ([]model.Event, error) {
 	key := model.ServiceKey{NetworkID: networkID, ServiceID: serviceID}
 	if err := s.errs[key]; err != nil {
 		return nil, err

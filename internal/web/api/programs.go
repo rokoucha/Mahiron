@@ -14,7 +14,7 @@ func GetPrograms(ctx context.Context, h *Handler, params apigen.GetProgramsParam
 	if err != nil {
 		return nil, err
 	}
-	res := apigen.GetProgramsOKApplicationJSON(mirakurun.ProgramsToAPI(programs))
+	res := apigen.GetProgramsOKApplicationJSON(apiPrograms(programs))
 	return &res, nil
 }
 
@@ -26,7 +26,7 @@ func GetProgram(ctx context.Context, h *Handler, params apigen.GetProgramParams)
 	if !ok {
 		return notFound("program not found"), nil
 	}
-	api := mirakurun.ProgramToAPI(p)
+	api := mirakurun.ProgramToAPI(&p.Event)
 	return &api, nil
 }
 
@@ -47,7 +47,7 @@ func GetServicePrograms(ctx context.Context, h *Handler, params apigen.GetServic
 	if err != nil {
 		return nil, err
 	}
-	res := apigen.GetServiceProgramsOKApplicationJSON(mirakurun.ProgramsToAPI(programs))
+	res := apigen.GetServiceProgramsOKApplicationJSON(apiPrograms(programs))
 	return &res, nil
 }
 
@@ -75,3 +75,11 @@ func programQuery(params apigen.GetProgramsParams) program.Query {
 }
 
 // Program conversions live in internal/mirakurun.
+
+func apiPrograms(programs []*program.Program) []apigen.Program {
+	result := make([]apigen.Program, len(programs))
+	for i, p := range programs {
+		result[i] = mirakurun.ProgramToAPI(&p.Event)
+	}
+	return result
+}

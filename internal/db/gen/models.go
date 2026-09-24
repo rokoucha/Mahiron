@@ -29,21 +29,17 @@ type Metadata struct {
 }
 
 type Program struct {
-	ID           int64   `json:"id"`
-	EventID      int64   `json:"event_id"`
-	ServiceID    int64   `json:"service_id"`
-	NetworkID    int64   `json:"network_id"`
-	StartAt      int64   `json:"start_at"`
-	Duration     int64   `json:"duration"`
-	IsFree       int64   `json:"is_free"`
-	Name         *string `json:"name"`
-	Description  *string `json:"description"`
-	Genres       *string `json:"genres"`
-	Video        *string `json:"video"`
-	Audios       *string `json:"audios"`
-	Extended     *string `json:"extended"`
-	RelatedItems *string `json:"related_items"`
-	Series       *string `json:"series"`
+	ID          int64   `json:"id"`
+	EventID     int64   `json:"event_id"`
+	ServiceID   int64   `json:"service_id"`
+	NetworkID   int64   `json:"network_id"`
+	StartAt     int64   `json:"start_at"`
+	Duration    int64   `json:"duration"`
+	IsFree      int64   `json:"is_free"`
+	Name        *string `json:"name"`
+	Description *string `json:"description"`
+	StreamID    int64   `json:"stream_id"`
+	Event       *string `json:"event"`
 }
 
 type Service struct {

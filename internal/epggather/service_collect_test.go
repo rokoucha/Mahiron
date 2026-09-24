@@ -8,7 +8,6 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/isdb"
-	"github.com/21S1298001/mahiron/internal/mirakurun"
 	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/internal/program"
@@ -731,7 +730,7 @@ func (s *staticEPGServiceStore) SetEPGSuccess(context.Context, uint16, uint16, i
 func (s *collectProgramStore) UpsertEvents(ctx context.Context, events []model.Event) error {
 	programs := make([]*program.Program, len(events))
 	for i := range events {
-		programs[i] = mirakurun.ProgramFromEvent(events[i])
+		programs[i] = program.FromEvent(events[i])
 	}
 	return s.UpsertPrograms(ctx, programs)
 }

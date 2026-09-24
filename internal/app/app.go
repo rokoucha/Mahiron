@@ -159,9 +159,6 @@ func buildRuntime(cfg *config.Config, database *db.DB, obs observability.SetupRe
 	services := service.NewManager(serviceStore, cfg.Channels, mirakurun.NewEventPublisher(events))
 
 	programs := program.NewManager(programStore, mirakurun.NewEventPublisher(events))
-	// Sessions and EPG gathering hand over decoded events; the program store
-	// keeps program.Program until it embeds model.Event (phase 3-6).
-	eventWriter := mirakurun.NewProgramEventWriter(programs)
 
 	var dataBroadcastStore *cache.SQLiteModuleStore
 	var moduleStore bml.ModuleStore
@@ -202,7 +199,7 @@ func buildRuntime(cfg *config.Config, database *db.DB, obs observability.SetupRe
 	streams := stream.NewManager(stream.ManagerConfig{
 		Channels:       cfg.Channels,
 		Remotes:        cfg.Remotes,
-		EITUpdater:     eventWriter,
+		EITUpdater:     programs,
 		SnapshotStore:  snapshotStore,
 		LogoUpdater:    services,
 		ProgramUpdater: epggather.NewKnownServiceProgramUpdater(programs, services),
@@ -212,7 +209,7 @@ func buildRuntime(cfg *config.Config, database *db.DB, obs observability.SetupRe
 	scanAdapter := stream.NewServiceScanAdapter(streams)
 	logoAdapter := stream.NewLogoGatherAdapter(streams)
 	serviceScanner := servicescan.NewScanner(services, scanAdapter, cfg.Channels, time.Duration(cfg.System.ServiceScanTimeout)*time.Millisecond)
-	epgGatherer := epggather.NewGatherer(eventWriter, programs, services, stream.NewEPGGatherAdapter(streams), cfg.Channels, cfg.System.EpgRetentionDays, time.Duration(cfg.System.EpgRetrievalTime)*time.Millisecond)
+	epgGatherer := epggather.NewGatherer(programs, programs, services, stream.NewEPGGatherAdapter(streams), cfg.Channels, cfg.System.EpgRetentionDays, time.Duration(cfg.System.EpgRetrievalTime)*time.Millisecond)
 
 	jobs, err := job.NewManager(job.Config{MaxHistory: 100, MaxConcurrentJobs: cfg.System.MaxConcurrentJobs}, events)
 	if err != nil {

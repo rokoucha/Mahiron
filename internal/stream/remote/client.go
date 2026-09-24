@@ -17,7 +17,6 @@ import (
 	"github.com/21S1298001/mahiron/internal/mirakurun"
 	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/observability"
-	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/tuner"
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 )
@@ -55,7 +54,7 @@ type Client struct {
 }
 
 type ProgramUpdater interface {
-	UpsertPrograms(context.Context, []*program.Program) error
+	UpsertEvents(context.Context, []model.Event) error
 }
 
 // ClientOption customizes a Client created by NewClient.
@@ -276,7 +275,7 @@ func (c *Client) channelServiceItemID(ctx context.Context, channelType, channel 
 	return 0, ErrChannelNotFound
 }
 
-func (c *Client) ListServicePrograms(ctx context.Context, networkID, serviceID uint16) (programs []*program.Program, err error) {
+func (c *Client) ListServicePrograms(ctx context.Context, networkID, serviceID uint16) (programs []model.Event, err error) {
 	start := time.Now()
 	defer func() {
 		observability.RecordRemoteOperation(ctx, remoteOperationListServicePrograms, remoteOperationResult(err), time.Since(start).Milliseconds())
@@ -302,9 +301,9 @@ func (c *Client) ListServicePrograms(ctx context.Context, networkID, serviceID u
 	if err := c.doJSON(req, &apiPrograms); err != nil {
 		return nil, err
 	}
-	programs = make([]*program.Program, len(apiPrograms))
+	programs = make([]model.Event, len(apiPrograms))
 	for i := range apiPrograms {
-		programs[i] = mirakurun.ProgramFromAPI(&apiPrograms[i])
+		programs[i] = mirakurun.EventFromAPI(&apiPrograms[i])
 	}
 	return programs, nil
 }

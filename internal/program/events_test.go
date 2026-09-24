@@ -5,11 +5,12 @@ import (
 	"testing"
 
 	"github.com/21S1298001/mahiron/internal/db"
+	"github.com/21S1298001/mahiron/internal/model"
 )
 
 type publishedProgramEvent struct {
 	typ      string
-	program  *Program
+	program  *model.Event
 	removeID int64
 	isRemove bool
 }
@@ -18,8 +19,8 @@ type fakeProgramEventPublisher struct {
 	events []publishedProgramEvent
 }
 
-func (p *fakeProgramEventPublisher) PublishProgramEvent(typ string, program *Program) {
-	p.events = append(p.events, publishedProgramEvent{typ: typ, program: program})
+func (p *fakeProgramEventPublisher) PublishProgramEvent(typ string, event *model.Event) {
+	p.events = append(p.events, publishedProgramEvent{typ: typ, program: event})
 }
 
 func (p *fakeProgramEventPublisher) PublishProgramRemove(typ string, id int64) {
@@ -36,7 +37,7 @@ func TestProgramManagerPublishesCreateUpdateAndRemoveEvents(t *testing.T) {
 	publisher := &fakeProgramEventPublisher{}
 	manager := NewManager(NewSQLiteStore(database), publisher)
 
-	p := &Program{ID: ProgramID(1, 101, 1), NetworkID: 1, ServiceID: 101, EventID: 1, Name: "first"}
+	p := &Program{ID: ProgramID(1, 101, 1), Event: model.Event{Key: model.ServiceKey{NetworkID: 1, ServiceID: 101}, EventID: 1, Name: "first", FreeCA: true}}
 	if err := manager.UpsertPrograms(ctx, []*Program{p}); err != nil {
 		t.Fatal(err)
 	}
@@ -76,29 +77,16 @@ func TestProgramManagerPublishesMergedSparseUpdateEvent(t *testing.T) {
 	manager := NewManager(NewSQLiteStore(database), publisher)
 
 	id := ProgramID(1, 101, 1)
-	if err := manager.UpsertPrograms(ctx, []*Program{{
-		ID:          id,
-		NetworkID:   1,
-		ServiceID:   101,
-		EventID:     1,
-		StartAt:     1000,
-		Duration:    1000,
-		Name:        "existing title",
-		Description: "existing description",
-		Genres:      []Genre{{Lv1: 0, Lv2: 1}},
-	}}); err != nil {
+	if err := manager.UpsertPrograms(ctx, []*Program{
+		{ID: id, Event: model.Event{Key: model.ServiceKey{NetworkID: 1, ServiceID: 101}, EventID: 1, StartAt: testPtr[int64](1000), DurationMS: testPtr[int](1000), Name: "existing title", Description: "existing description", Genres: []model.Genre{{Lv1: 0, Lv2: 1}}, FreeCA: true}},
+	}); err != nil {
 		t.Fatal(err)
 	}
 	manager.flushEvents()
 
-	if err := manager.UpsertPrograms(ctx, []*Program{{
-		ID:        id,
-		NetworkID: 1,
-		ServiceID: 101,
-		EventID:   1,
-		StartAt:   2000,
-		Duration:  2000,
-	}}); err != nil {
+	if err := manager.UpsertPrograms(ctx, []*Program{
+		{ID: id, Event: model.Event{Key: model.ServiceKey{NetworkID: 1, ServiceID: 101}, EventID: 1, StartAt: testPtr[int64](2000), DurationMS: testPtr[int](2000), FreeCA: true}},
+	}); err != nil {
 		t.Fatal(err)
 	}
 	manager.flushEvents()
@@ -117,7 +105,7 @@ func TestProgramManagerPublishesMergedSparseUpdateEvent(t *testing.T) {
 	if got, want := update.program.Name, "existing title"; got != want {
 		t.Fatalf("update payload name = %v, want %q", got, want)
 	}
-	if got, want := update.program.StartAt, int64(2000); got != want {
+	if got, want := *update.program.StartAt, int64(2000); got != want {
 		t.Fatalf("update payload startAt = %v, want %d", got, want)
 	}
 }

@@ -8,7 +8,6 @@ import (
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/mirakurun"
 	"github.com/21S1298001/mahiron/internal/model"
-	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/stream/channel"
 	"github.com/21S1298001/mahiron/internal/stream/source"
 	"github.com/21S1298001/mahiron/internal/tuner"
@@ -62,7 +61,7 @@ func (s *Session) ScanServices(ctx context.Context) ([]model.Service, error) {
 	return s.client.ScanServices(ctx, s.routeChannel.Type, s.routeChannel.Channel)
 }
 
-func (s *Session) ListServicePrograms(ctx context.Context, networkID, serviceID uint16) ([]*program.Program, error) {
+func (s *Session) ListServicePrograms(ctx context.Context, networkID, serviceID uint16) ([]model.Event, error) {
 	return s.client.ListServicePrograms(ctx, networkID, serviceID)
 }
 

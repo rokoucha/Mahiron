@@ -6,7 +6,7 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/db"
-	"github.com/21S1298001/mahiron/internal/mirakurun"
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/service"
 	"github.com/21S1298001/mahiron/internal/stream"
@@ -43,16 +43,7 @@ func testStreamHeadHandler(t *testing.T) (*Handler, *service.Manager) {
 		t.Fatal(err)
 	}
 	if err := pm.ReplaceServicePrograms(context.Background(), 1, 1, 0, []*program.Program{
-		{
-			ID:        program.ProgramID(1, 1, 10),
-			EventID:   10,
-			ServiceID: 1,
-			NetworkID: 1,
-			StartAt:   1000,
-			Duration:  1000,
-			IsFree:    true,
-			Name:      "Test Program",
-		},
+		{ID: program.ProgramID(1, 1, 10), Event: model.Event{Key: model.ServiceKey{ServiceID: 1, NetworkID: 1}, EventID: 10, StartAt: testPtr[int64](1000), DurationMS: testPtr[int](1000), Name: "Test Program"}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +56,7 @@ func testStreamHeadHandler(t *testing.T) (*Handler, *service.Manager) {
 	sm := service.NewManager(store, channels)
 	stm := stream.NewManager(stream.ManagerConfig{
 		Channels:     channels,
-		EITUpdater:   mirakurun.NewProgramEventWriter(pm),
+		EITUpdater:   pm,
 		TunerManager: tunerManager,
 	})
 	handler := NewHandler(HandlerConfig{

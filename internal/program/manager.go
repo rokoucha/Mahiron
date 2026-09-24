@@ -2,10 +2,10 @@ package program
 
 import (
 	"context"
-	"reflect"
 	"sync"
 	"time"
 
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/observability"
 )
 
@@ -18,7 +18,7 @@ const (
 )
 
 type eventPublisher interface {
-	PublishProgramEvent(typ string, p *Program)
+	PublishProgramEvent(typ string, event *model.Event)
 	PublishProgramRemove(typ string, id int64)
 }
 
@@ -42,6 +42,19 @@ func NewManager(store Store, events ...eventPublisher) *Manager {
 		m.events = events[0]
 	}
 	return m
+}
+
+// UpsertEvents stores broadcast events, merging each with the stored program
+// of the same ID.
+func (m *Manager) UpsertEvents(ctx context.Context, events []model.Event) error {
+	if len(events) == 0 {
+		return nil
+	}
+	programs := make([]*Program, len(events))
+	for i := range events {
+		programs[i] = FromEvent(events[i])
+	}
+	return m.UpsertPrograms(ctx, programs)
 }
 
 func (m *Manager) UpsertPrograms(ctx context.Context, programs []*Program) error {
@@ -77,10 +90,10 @@ func (m *Manager) UpsertPrograms(ctx context.Context, programs []*Program) error
 		p := pending[id]
 		existing, ok := before[id]
 		after := mergeUpsertProgram(existing, p)
-		if ok && reflect.DeepEqual(existing, after) {
+		if ok && sameProgram(existing, after) {
 			continue
 		}
-		toWrite = append(toWrite, p)
+		toWrite = append(toWrite, after)
 		if !ok {
 			events = append(events, pendingEvent{typ: eventTypeCreate, after: after})
 		} else {
@@ -167,7 +180,7 @@ func (m *Manager) ReplaceServicePrograms(ctx context.Context, networkID, service
 		case !ok:
 			changed++
 			m.enqueueProgramEvent(eventTypeCreate, p)
-		case !reflect.DeepEqual(existing, p):
+		case !sameProgram(existing, p):
 			changed++
 			m.enqueueProgramEvent(eventTypeUpdate, p)
 		}
@@ -192,7 +205,7 @@ func identicalServicePrograms(before map[int64]*Program, incoming []*Program) bo
 		}
 		count++
 		existing, ok := before[p.ID]
-		if !ok || !reflect.DeepEqual(existing, p) {
+		if !ok || !sameProgram(existing, p) {
 			return false
 		}
 	}
@@ -209,13 +222,16 @@ func nonNilProgramCount(programs []*Program) int {
 	return count
 }
 
+// mergeUpsertProgram fills what incoming lacks from the stored program: a
+// basic EIT table carries names and components, an extended table only the
+// extended description, and p/f and schedule updates arrive separately.
 func mergeUpsertProgram(existing, incoming *Program) *Program {
 	if incoming == nil {
 		return nil
 	}
-	merged := cloneProgram(incoming)
+	merged := *incoming
 	if existing == nil {
-		return merged
+		return &merged
 	}
 	if merged.Name == "" {
 		merged.Name = existing.Name
@@ -223,126 +239,31 @@ func mergeUpsertProgram(existing, incoming *Program) *Program {
 	if merged.Description == "" {
 		merged.Description = existing.Description
 	}
-	if len(merged.Genres) == 0 {
-		merged.Genres = cloneGenres(existing.Genres)
+	if merged.Language == "" {
+		merged.Language = existing.Language
 	}
-	if merged.Video == nil {
-		merged.Video = cloneVideo(existing.Video)
+	if len(merged.Genres) == 0 {
+		merged.Genres = existing.Genres
+	}
+	if len(merged.Videos) == 0 {
+		merged.Videos = existing.Videos
 	}
 	if len(merged.Audios) == 0 {
-		merged.Audios = cloneAudios(existing.Audios)
+		merged.Audios = existing.Audios
 	}
 	if len(merged.Extended) == 0 {
-		merged.Extended = cloneStringMap(existing.Extended)
+		merged.Extended = existing.Extended
 	}
-	if len(merged.RelatedItems) == 0 {
-		merged.RelatedItems = cloneRelatedItems(existing.RelatedItems)
+	if len(merged.Related) == 0 {
+		merged.Related = existing.Related
+	}
+	if len(merged.Parental) == 0 {
+		merged.Parental = existing.Parental
 	}
 	if merged.Series == nil {
-		merged.Series = cloneSeries(existing.Series)
+		merged.Series = existing.Series
 	}
-	return merged
-}
-
-func cloneProgram(p *Program) *Program {
-	if p == nil {
-		return nil
-	}
-	clone := *p
-	clone.Genres = cloneGenres(p.Genres)
-	clone.Video = cloneVideo(p.Video)
-	clone.Audios = cloneAudios(p.Audios)
-	clone.Extended = cloneStringMap(p.Extended)
-	clone.RelatedItems = cloneRelatedItems(p.RelatedItems)
-	clone.Series = cloneSeries(p.Series)
-	return &clone
-}
-
-func cloneGenres(items []Genre) []Genre {
-	return append([]Genre(nil), items...)
-}
-
-func cloneVideo(video *Video) *Video {
-	if video == nil {
-		return nil
-	}
-	clone := *video
-	return &clone
-}
-
-func cloneAudios(items []Audio) []Audio {
-	if len(items) == 0 {
-		return nil
-	}
-	clones := make([]Audio, len(items))
-	for i := range items {
-		clones[i] = items[i]
-		clones[i].ComponentTag = cloneInt(items[i].ComponentTag)
-		clones[i].IsMain = cloneBool(items[i].IsMain)
-		clones[i].SamplingRate = cloneInt(items[i].SamplingRate)
-		clones[i].Langs = append([]string(nil), items[i].Langs...)
-	}
-	return clones
-}
-
-func cloneInt(v *int) *int {
-	if v == nil {
-		return nil
-	}
-	clone := *v
-	return &clone
-}
-
-func cloneBool(v *bool) *bool {
-	if v == nil {
-		return nil
-	}
-	clone := *v
-	return &clone
-}
-
-func cloneStringMap(items map[string]string) map[string]string {
-	if len(items) == 0 {
-		return nil
-	}
-	clone := make(map[string]string, len(items))
-	for k, v := range items {
-		clone[k] = v
-	}
-	return clone
-}
-
-func cloneRelatedItems(items []RelatedItem) []RelatedItem {
-	if len(items) == 0 {
-		return nil
-	}
-	clones := make([]RelatedItem, len(items))
-	for i := range items {
-		clones[i] = items[i]
-		clones[i].NetworkID = cloneUint16(items[i].NetworkID)
-		clones[i].TransportStreamID = cloneUint16(items[i].TransportStreamID)
-	}
-	return clones
-}
-
-func cloneUint16(v *uint16) *uint16 {
-	if v == nil {
-		return nil
-	}
-	clone := *v
-	return &clone
-}
-
-func cloneSeries(series *Series) *Series {
-	if series == nil {
-		return nil
-	}
-	clone := *series
-	if series.ExpiresAt != nil {
-		expiresAt := *series.ExpiresAt
-		clone.ExpiresAt = &expiresAt
-	}
-	return &clone
+	return &merged
 }
 
 func (m *Manager) enqueueProgramEvent(typ string, p *Program) {
@@ -381,7 +302,7 @@ func (m *Manager) flushEvents() {
 		if event.typ == eventTypeRemove {
 			m.events.PublishProgramRemove(event.typ, event.removeID)
 		} else {
-			m.events.PublishProgramEvent(event.typ, event.program)
+			m.events.PublishProgramEvent(event.typ, &event.program.Event)
 		}
 		time.Sleep(10 * time.Millisecond)
 	}

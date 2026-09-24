@@ -5,7 +5,7 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/isdb"
 	"github.com/21S1298001/mahiron/internal/model"
-	"github.com/21S1298001/mahiron/internal/program"
+	"github.com/21S1298001/mahiron/internal/stream/remote"
 )
 
 type LogoGatherAdapter struct {
@@ -74,15 +74,16 @@ func (a *EPGGatherAdapter) NetworkWideEIT(networkID uint16) bool {
 	return isdb.IsSatelliteOriginalNetworkID(networkID)
 }
 
-func (a *EPGGatherAdapter) OpenSchedule(ctx context.Context, channelType, channelID string) (func(context.Context, func(model.ScheduleUpdate) error, func(model.PresentFollowing) error) error, func(context.Context, uint16, uint16) ([]*program.Program, error), error) {
+func (a *EPGGatherAdapter) OpenSchedule(ctx context.Context, channelType, channelID string) (func(context.Context, func(model.ScheduleUpdate) error, func(model.PresentFollowing) error) error, func(context.Context, uint16, uint16) ([]model.Event, error), error) {
 	session, err := a.manager.GetOrCreateWait(ctx, channelType, channelID)
 	if err != nil {
 		return nil, nil, err
 	}
-	if remote, ok := session.(interface {
-		ListServicePrograms(context.Context, uint16, uint16) ([]*program.Program, error)
-	}); ok {
-		return nil, remote.ListServicePrograms, nil
+	// A remote session is the one kind that lists stored programs; checking
+	// the type keeps a signature change from silently turning it into EIT
+	// collection.
+	if remoteSession, ok := session.(*remote.Session); ok {
+		return nil, remoteSession.ListServicePrograms, nil
 	}
 	return session.CollectSchedule, nil, nil
 }

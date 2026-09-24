@@ -1,5 +1,7 @@
 package isdb
 
+import "strings"
+
 // This file holds the ARIB STD-B10 component tables that ISDB-T/S EIT
 // carries and that the Mirakurun-compatible API exposes as raw values
 // (streamContent, componentType). Meanings are plain strings so that the
@@ -14,6 +16,9 @@ package isdb
 type ComponentVideo struct {
 	Resolution string
 	Aspect     string
+	// Progressive reports a progressive resolution (480p, 720p, 1080p,
+	// 2160p, 4320p) rather than an interlaced one.
+	Progressive bool
 }
 
 const (
@@ -60,7 +65,8 @@ func ParseVideoComponentType(componentType byte) (ComponentVideo, bool) {
 	default:
 		return ComponentVideo{}, false
 	}
-	return ComponentVideo{Resolution: resolution, Aspect: aspect}, true
+	progressive := strings.HasSuffix(resolution, "p")
+	return ComponentVideo{Resolution: resolution, Aspect: aspect, Progressive: progressive}, true
 }
 
 // VideoComponentTypeToRaw recomposes a component_type from meaning values.

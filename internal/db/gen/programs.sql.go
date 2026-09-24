@@ -47,7 +47,7 @@ func (q *Queries) DeleteProgramsByServiceFrom(ctx context.Context, arg DeletePro
 
 const getProgram = `-- name: GetProgram :one
 SELECT id, event_id, service_id, network_id, start_at, duration, is_free,
-       name, description, genres, video, audios, extended, related_items, series
+       name, description, stream_id, event
 FROM programs WHERE id = ?
 `
 
@@ -64,12 +64,8 @@ func (q *Queries) GetProgram(ctx context.Context, id int64) (Program, error) {
 		&i.IsFree,
 		&i.Name,
 		&i.Description,
-		&i.Genres,
-		&i.Video,
-		&i.Audios,
-		&i.Extended,
-		&i.RelatedItems,
-		&i.Series,
+		&i.StreamID,
+		&i.Event,
 	)
 	return i, err
 }
@@ -103,7 +99,7 @@ func (q *Queries) ListEndedProgramIDsBefore(ctx context.Context, startAt int64) 
 
 const listProgramsByIDs = `-- name: ListProgramsByIDs :many
 SELECT id, event_id, service_id, network_id, start_at, duration, is_free,
-       name, description, genres, video, audios, extended, related_items, series
+       name, description, stream_id, event
 FROM programs
 WHERE id IN (/*SLICE:ids*/?)
 ORDER BY start_at, id
@@ -138,12 +134,8 @@ func (q *Queries) ListProgramsByIDs(ctx context.Context, ids []int64) ([]Program
 			&i.IsFree,
 			&i.Name,
 			&i.Description,
-			&i.Genres,
-			&i.Video,
-			&i.Audios,
-			&i.Extended,
-			&i.RelatedItems,
-			&i.Series,
+			&i.StreamID,
+			&i.Event,
 		); err != nil {
 			return nil, err
 		}
@@ -160,7 +152,7 @@ func (q *Queries) ListProgramsByIDs(ctx context.Context, ids []int64) ([]Program
 
 const listProgramsByServiceFrom = `-- name: ListProgramsByServiceFrom :many
 SELECT id, event_id, service_id, network_id, start_at, duration, is_free,
-       name, description, genres, video, audios, extended, related_items, series
+       name, description, stream_id, event
 FROM programs
 WHERE network_id = ? AND service_id = ? AND start_at >= ?
 ORDER BY start_at, id
@@ -191,12 +183,8 @@ func (q *Queries) ListProgramsByServiceFrom(ctx context.Context, arg ListProgram
 			&i.IsFree,
 			&i.Name,
 			&i.Description,
-			&i.Genres,
-			&i.Video,
-			&i.Audios,
-			&i.Extended,
-			&i.RelatedItems,
-			&i.Series,
+			&i.StreamID,
+			&i.Event,
 		); err != nil {
 			return nil, err
 		}
@@ -212,42 +200,34 @@ func (q *Queries) ListProgramsByServiceFrom(ctx context.Context, arg ListProgram
 }
 
 const upsertProgram = `-- name: UpsertProgram :exec
-INSERT INTO programs (id, event_id, service_id, network_id, start_at, duration, is_free,
-                      name, description, genres, video, audios, extended, related_items, series)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO programs (id, event_id, service_id, network_id, stream_id, start_at, duration, is_free,
+                      name, description, event)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
   event_id=excluded.event_id,
   service_id=excluded.service_id,
   network_id=excluded.network_id,
+  stream_id=excluded.stream_id,
   start_at=excluded.start_at,
   duration=excluded.duration,
   is_free=excluded.is_free,
-  name=COALESCE(excluded.name, programs.name),
-  description=COALESCE(excluded.description, programs.description),
-  genres=COALESCE(excluded.genres, programs.genres),
-  video=COALESCE(excluded.video, programs.video),
-  audios=COALESCE(excluded.audios, programs.audios),
-  extended=COALESCE(excluded.extended, programs.extended),
-  related_items=COALESCE(excluded.related_items, programs.related_items),
-  series=COALESCE(excluded.series, programs.series)
+  name=excluded.name,
+  description=excluded.description,
+  event=excluded.event
 `
 
 type UpsertProgramParams struct {
-	ID           int64   `json:"id"`
-	EventID      int64   `json:"event_id"`
-	ServiceID    int64   `json:"service_id"`
-	NetworkID    int64   `json:"network_id"`
-	StartAt      int64   `json:"start_at"`
-	Duration     int64   `json:"duration"`
-	IsFree       int64   `json:"is_free"`
-	Name         *string `json:"name"`
-	Description  *string `json:"description"`
-	Genres       *string `json:"genres"`
-	Video        *string `json:"video"`
-	Audios       *string `json:"audios"`
-	Extended     *string `json:"extended"`
-	RelatedItems *string `json:"related_items"`
-	Series       *string `json:"series"`
+	ID          int64   `json:"id"`
+	EventID     int64   `json:"event_id"`
+	ServiceID   int64   `json:"service_id"`
+	NetworkID   int64   `json:"network_id"`
+	StreamID    int64   `json:"stream_id"`
+	StartAt     int64   `json:"start_at"`
+	Duration    int64   `json:"duration"`
+	IsFree      int64   `json:"is_free"`
+	Name        *string `json:"name"`
+	Description *string `json:"description"`
+	Event       *string `json:"event"`
 }
 
 func (q *Queries) UpsertProgram(ctx context.Context, arg UpsertProgramParams) error {
@@ -256,17 +236,13 @@ func (q *Queries) UpsertProgram(ctx context.Context, arg UpsertProgramParams) er
 		arg.EventID,
 		arg.ServiceID,
 		arg.NetworkID,
+		arg.StreamID,
 		arg.StartAt,
 		arg.Duration,
 		arg.IsFree,
 		arg.Name,
 		arg.Description,
-		arg.Genres,
-		arg.Video,
-		arg.Audios,
-		arg.Extended,
-		arg.RelatedItems,
-		arg.Series,
+		arg.Event,
 	)
 	return err
 }

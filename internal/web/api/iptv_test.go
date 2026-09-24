@@ -11,6 +11,7 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/db"
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/server/middleware"
 	"github.com/21S1298001/mahiron/internal/service"
@@ -61,18 +62,7 @@ func testIPTVHandler(t *testing.T) *Handler {
 
 	programManager := program.NewManager(program.NewSQLiteStore(database))
 	if err := programManager.UpsertPrograms(ctx, []*program.Program{
-		{
-			ID:          program.ProgramID(1, 101, 501),
-			EventID:     501,
-			ServiceID:   101,
-			NetworkID:   1,
-			StartAt:     time.Date(2026, 6, 21, 12, 30, 0, 0, time.Local).UnixMilli(),
-			Duration:    int((30 * time.Minute).Milliseconds()),
-			IsFree:      true,
-			Name:        `Morning "News" & Weather`,
-			Description: "Headlines <and> forecast",
-			Genres:      []program.Genre{{Lv1: 0, Lv2: 1}},
-		},
+		{ID: program.ProgramID(1, 101, 501), Event: model.Event{Key: model.ServiceKey{ServiceID: 101, NetworkID: 1}, EventID: 501, StartAt: testPtr[int64](time.Date(2026, 6, 21, 12, 30, 0, 0, time.Local).UnixMilli()), DurationMS: testPtr[int](int((30 * time.Minute).Milliseconds())), Name: `Morning "News" & Weather`, Description: "Headlines <and> forecast", Genres: []model.Genre{{Lv1: 0, Lv2: 1}}}},
 	}); err != nil {
 		t.Fatal(err)
 	}

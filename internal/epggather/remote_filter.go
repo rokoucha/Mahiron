@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/21S1298001/mahiron/internal/program"
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/service"
 )
 
@@ -14,13 +14,8 @@ type ServiceLister interface {
 	GetServices(context.Context) ([]*service.Service, error)
 }
 
-// ProgramWriter stores programs, such as the ones a remote server pushes.
-type ProgramWriter interface {
-	UpsertPrograms(context.Context, []*program.Program) error
-}
-
 type knownServiceProgramUpdater struct {
-	inner  ProgramWriter
+	inner  EventWriter
 	loader ServiceLister
 
 	mu     sync.Mutex
@@ -37,11 +32,11 @@ type serviceKey struct {
 // services. A remote server pushes the programs of all its services, which
 // would otherwise add services this server never scanned. An unknown
 // service reloads the service list once, so that a fresh scan is picked up.
-func NewKnownServiceProgramUpdater(inner ProgramWriter, loader ServiceLister) ProgramWriter {
+func NewKnownServiceProgramUpdater(inner EventWriter, loader ServiceLister) EventWriter {
 	return &knownServiceProgramUpdater{inner: inner, loader: loader}
 }
 
-func (u *knownServiceProgramUpdater) UpsertPrograms(ctx context.Context, programs []*program.Program) error {
+func (u *knownServiceProgramUpdater) UpsertEvents(ctx context.Context, programs []model.Event) error {
 	if len(programs) == 0 {
 		return nil
 	}
@@ -58,7 +53,7 @@ func (u *knownServiceProgramUpdater) UpsertPrograms(ctx context.Context, program
 	if len(filtered) == 0 {
 		return nil
 	}
-	return u.inner.UpsertPrograms(ctx, filtered)
+	return u.inner.UpsertEvents(ctx, filtered)
 }
 
 func (u *knownServiceProgramUpdater) ensureLoaded(ctx context.Context) error {
@@ -90,24 +85,21 @@ func (u *knownServiceProgramUpdater) refresh(ctx context.Context) error {
 	return nil
 }
 
-func (u *knownServiceProgramUpdater) filter(programs []*program.Program) ([]*program.Program, bool) {
+func (u *knownServiceProgramUpdater) filter(programs []model.Event) ([]model.Event, bool) {
 	u.mu.Lock()
 	known := u.known
 	u.mu.Unlock()
 
-	filtered := make([]*program.Program, 0, len(programs))
+	filtered := make([]model.Event, 0, len(programs))
 	unknown := false
 	for _, item := range programs {
-		if item == nil {
-			continue
-		}
-		key := serviceKey{networkID: item.NetworkID, serviceID: item.ServiceID}
+		key := serviceKey{networkID: item.Key.NetworkID, serviceID: item.Key.ServiceID}
 		if _, ok := known[key]; ok {
 			filtered = append(filtered, item)
 			continue
 		}
 		unknown = true
-		slog.Debug("ignoring remote program event for unknown service", "networkId", item.NetworkID, "serviceId", item.ServiceID, "programId", item.ID)
+		slog.Debug("ignoring remote program event for unknown service", "networkId", item.Key.NetworkID, "serviceId", item.Key.ServiceID, "eventId", item.EventID)
 	}
 	return filtered, unknown
 }

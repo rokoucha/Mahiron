@@ -20,11 +20,8 @@ func minStartAt(programs []*program.Program) int64 {
 	var min int64
 	first := true
 	for _, p := range programs {
-		if p == nil {
-			continue
-		}
-		if first || p.StartAt < min {
-			min = p.StartAt
+		if first || p.StartAtOrZero() < min {
+			min = p.StartAtOrZero()
 			first = false
 		}
 	}
@@ -63,7 +60,7 @@ func syncStoredServicePrograms(ctx context.Context, programStore ProgramStore, s
 		if err := syncCtx.Err(); err != nil {
 			return errors.Join(result, err)
 		}
-		programs, err := listStored(syncCtx, key.NetworkID, key.ServiceID)
+		events, err := listStored(syncCtx, key.NetworkID, key.ServiceID)
 		now := time.Now().UnixMilli()
 		if err != nil {
 			if attemptErr := serviceStore.SetEPGAttempt(ctx, key.NetworkID, key.ServiceID, now, err.Error()); attemptErr != nil {
@@ -71,6 +68,10 @@ func syncStoredServicePrograms(ctx context.Context, programStore ProgramStore, s
 			}
 			result = errors.Join(result, fmt.Errorf("service %d: list remote programs: %w", key.ServiceID, err))
 			continue
+		}
+		programs := make([]*program.Program, len(events))
+		for i := range events {
+			programs[i] = program.FromEvent(events[i])
 		}
 		slog.Info("syncing stored remote EPG", "networkId", key.NetworkID, "serviceId", key.ServiceID, "programs", len(programs))
 		replaceCtx, replaceSpan := observability.StartSpan(ctx, observability.SpanEPGReplaceRemoteServicePrograms,

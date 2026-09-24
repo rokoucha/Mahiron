@@ -13,6 +13,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/event"
 	"github.com/21S1298001/mahiron/internal/job"
 	"github.com/21S1298001/mahiron/internal/mirakurun"
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/service"
@@ -91,9 +92,10 @@ func TestHTTPContractRoundTripsThroughGeneratedClientAndSQLite(t *testing.T) {
 	// /api/programs is served outside the generated server so the whole EPG
 	// is never held in memory at once, which only works if the bytes it
 	// streams still satisfy the contract the generated client decodes.
-	if err := programs.UpsertPrograms(t.Context(), []*program.Program{{
-		ID: program.ProgramID(1, 101, 9), EventID: 9, ServiceID: 101, NetworkID: 1,
-		StartAt: 1000, Duration: 30000, Name: "first",
+	startAt, duration := int64(1000), 30000
+	if err := programs.UpsertEvents(t.Context(), []model.Event{{
+		Key: model.ServiceKey{NetworkID: 1, ServiceID: 101}, EventID: 9,
+		StartAt: &startAt, DurationMS: &duration, Name: "first", FreeCA: true,
 	}}); err != nil {
 		t.Fatal(err)
 	}

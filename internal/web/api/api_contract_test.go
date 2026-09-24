@@ -14,7 +14,9 @@ import (
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/db"
 	"github.com/21S1298001/mahiron/internal/event"
+	"github.com/21S1298001/mahiron/internal/isdb"
 	"github.com/21S1298001/mahiron/internal/mirakurun"
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/service"
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
@@ -118,55 +120,64 @@ func TestOpenAPIPathItemsAlwaysDeclareParameters(t *testing.T) {
 // contractAPIProgram converts a program through the shared Mirakurun
 // conversion so the contract tests pin its output, not a local copy.
 func contractAPIProgram(p *program.Program) *apigen.Program {
-	api := mirakurun.ProgramToAPI(p)
+	api := mirakurun.ProgramToAPI(&p.Event)
 	return &api
+}
+
+// rawVideo is a video as the STD-B10 values Mirakurun and EIT carry.
+type rawVideo struct {
+	StreamContent int
+	ComponentType int
+}
+
+// rawVideoProgram decodes a raw video the way a remote program is decoded.
+func rawVideoProgram(v *rawVideo) *program.Program {
+	event := mirakurun.EventFromAPI(&apigen.Program{Video: apigen.NewOptProgramVideo(apigen.ProgramVideo{
+		StreamContent: apigen.NewOptInt(v.StreamContent),
+		ComponentType: apigen.NewOptInt(v.ComponentType),
+	})})
+	return &program.Program{Event: event}
+}
+
+// wantRawVideo is what the API writes back: values outside the STD-B10
+// tables are not kept and come out as 0.
+func wantRawVideo(v *rawVideo) rawVideo {
+	var out rawVideo
+	if _, ok := isdb.VideoCodecForTSStreamContent(byte(v.StreamContent)); ok {
+		out.StreamContent = v.StreamContent
+	}
+	if _, ok := isdb.ParseVideoComponentType(byte(v.ComponentType)); ok {
+		out.ComponentType = v.ComponentType
+	}
+	return out
 }
 
 // contractFullProgram exercises every optional program field.
 func contractFullProgram() *program.Program {
-	componentTag := 16
-	isMain := true
-	samplingRate := 48000
 	expiresAt := int64(1788609060000)
-	return &program.Program{
-		ID:          program.ProgramID(1, 101, 7),
-		EventID:     7,
-		ServiceID:   101,
-		NetworkID:   1,
-		StartAt:     1788609060000,
-		Duration:    1800000,
-		IsFree:      true,
-		Name:        "大河ドラマ",
-		Description: "解説文",
-		Genres:      []program.Genre{{Lv1: 3, Lv2: 2, Un1: 15, Un2: 15}, {Lv1: 0, Lv2: 1, Un1: 15, Un2: 15}},
-		Video:       &program.Video{StreamContent: 0x5, ComponentType: 0xB3},
-		Audios: []program.Audio{
-			{ComponentType: 3, ComponentTag: &componentTag, IsMain: &isMain, SamplingRate: &samplingRate, Langs: []string{"jpn", "eng"}},
-			{ComponentType: 2},
+	return &program.Program{ID: program.ProgramID(1, 101, 7), Event: model.Event{
+		Key: model.ServiceKey{NetworkID: 1, ServiceID: 101}, EventID: 7,
+		StartAt: testPtr[int64](1788609060000), DurationMS: testPtr[int](1800000),
+		Name: "大河ドラマ", Description: "解説文",
+		Genres: []model.Genre{{Lv1: 3, Lv2: 2, Un1: 15, Un2: 15}, {Lv1: 0, Lv2: 1, Un1: 15, Un2: 15}},
+		Videos: []model.VideoComponent{{Codec: model.VideoCodecH264, Resolution: model.VideoResolution1080i, Aspect: model.VideoAspect16x9NoPanVector}},
+		Audios: []model.AudioComponent{
+			{ComponentType: 3, Tag: 16, Main: true, SamplingHz: 48000, Languages: []string{"jpn", "eng"}},
+			{ComponentType: 2, Languages: []string{}},
 		},
-		Extended: map[string]string{
-			"番組内容":  "本文",
-			"出演者":   "Foo",
-			"原作・脚本": "　【作】八津弘幸",
-		},
-		RelatedItems: []program.RelatedItem{
-			{Type: program.RelatedItemTypeShared, ServiceID: 101, EventID: 9},
-		},
-		Series: &program.Series{ID: 5, Repeat: 0, Pattern: 1, ExpiresAt: &expiresAt, Episode: 1, LastEpisode: 12, Name: "series"},
-	}
+		Extended: []model.ExtendedBlock{{Items: []model.ExtendedItem{
+			{Name: "番組内容", Text: "本文"},
+			{Name: "出演者", Text: "Foo"},
+			{Name: "原作・脚本", Text: "　【作】八津弘幸"},
+		}}},
+		Related: []model.RelatedEvent{{GroupType: model.EventGroupShared, ServiceID: 101, EventID: 9}},
+		Series:  &model.Series{ID: 5, Repeat: 0, Pattern: testPtr(1), ExpiresAt: &expiresAt, Episode: 1, LastEpisode: 12, Name: "series"},
+	}}
 }
 
 // contractMinimalProgram carries no optional information at all.
 func contractMinimalProgram() *program.Program {
-	return &program.Program{
-		ID:        program.ProgramID(1, 101, 8),
-		EventID:   8,
-		ServiceID: 101,
-		NetworkID: 1,
-		StartAt:   1788609060000,
-		Duration:  1800000,
-		IsFree:    false,
-	}
+	return &program.Program{ID: program.ProgramID(1, 101, 8), Event: model.Event{Key: model.ServiceKey{ServiceID: 101, NetworkID: 1}, EventID: 8, StartAt: testPtr[int64](1788609060000), DurationMS: testPtr[int](1800000), FreeCA: true}}
 }
 
 func contractJSONKeys(t *testing.T, raw []byte) map[string]json.RawMessage {
@@ -236,8 +247,10 @@ func TestProgramContractOmitsEmptyKeys(t *testing.T) {
 	requireKeys(t, full.Audios[0],
 		[]string{"componentType", "componentTag", "isMain", "samplingRate", "langs"}, nil)
 	// langs stays as an empty array even when the audio has no language codes.
-	requireKeys(t, full.Audios[1], []string{"componentType", "langs"},
-		[]string{"componentTag", "isMain", "samplingRate"})
+	// componentTag and isMain are always written: every EIT audio component
+	// carries them. An unknown sampling rate stays absent.
+	requireKeys(t, full.Audios[1], []string{"componentType", "componentTag", "isMain", "langs"},
+		[]string{"samplingRate"})
 	if string(full.Audios[1]["langs"]) != "[]" {
 		t.Errorf("langs = %s, want []", full.Audios[1]["langs"])
 	}
@@ -245,7 +258,7 @@ func TestProgramContractOmitsEmptyKeys(t *testing.T) {
 		[]string{"id", "repeat", "pattern", "expiresAt", "episode", "lastEpisode", "name"}, nil)
 
 	bare := *contractFullProgram()
-	bare.Series = &program.Series{ID: 5}
+	bare.Series = &model.Series{ID: 5}
 	raw, err = contractAPIProgram(&bare).MarshalJSON()
 	if err != nil {
 		t.Fatal(err)
@@ -263,19 +276,19 @@ func TestProgramContractOmitsEmptyKeys(t *testing.T) {
 func TestProgramContractVideoTypeAndResolution(t *testing.T) {
 	for _, tt := range []struct {
 		name       string
-		video      *program.Video
+		video      *rawVideo
 		wantType   string
 		wantRes    string
 		wantAbsent []string
 	}{
-		{name: "h264 1080i", video: &program.Video{StreamContent: 0x5, ComponentType: 0xB3}, wantType: "h.264", wantRes: "1080i"},
-		{name: "mpeg2 480i", video: &program.Video{StreamContent: 0x1, ComponentType: 0x01}, wantType: "mpeg2", wantRes: "480i"},
-		{name: "h265 2160p", video: &program.Video{StreamContent: 0x9, ComponentType: 0x91}, wantType: "h.265", wantRes: "2160p"},
-		{name: "unknown keeps raw fields only", video: &program.Video{StreamContent: 0xF, ComponentType: 0xF1}, wantAbsent: []string{"type", "resolution"}},
-		{name: "known type with unknown resolution", video: &program.Video{StreamContent: 0x5, ComponentType: 0xF1}, wantType: "h.264", wantAbsent: []string{"resolution"}},
+		{name: "h264 1080i", video: &rawVideo{StreamContent: 0x5, ComponentType: 0xB3}, wantType: "h.264", wantRes: "1080i"},
+		{name: "mpeg2 480i", video: &rawVideo{StreamContent: 0x1, ComponentType: 0x01}, wantType: "mpeg2", wantRes: "480i"},
+		{name: "h265 2160p", video: &rawVideo{StreamContent: 0x9, ComponentType: 0x91}, wantType: "h.265", wantRes: "2160p"},
+		{name: "unknown values become 0", video: &rawVideo{StreamContent: 0xF, ComponentType: 0xF1}, wantAbsent: []string{"type", "resolution"}},
+		{name: "known type with unknown resolution", video: &rawVideo{StreamContent: 0x5, ComponentType: 0xF1}, wantType: "h.264", wantAbsent: []string{"resolution"}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			raw, err := contractAPIProgram(&program.Program{Video: tt.video}).MarshalJSON()
+			raw, err := contractAPIProgram(rawVideoProgram(tt.video)).MarshalJSON()
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -295,9 +308,9 @@ func TestProgramContractVideoTypeAndResolution(t *testing.T) {
 			if err := json.Unmarshal(decoded.Video["componentType"], &componentType); err != nil {
 				t.Fatal(err)
 			}
-			if streamContent != tt.video.StreamContent || componentType != tt.video.ComponentType {
+			if want := wantRawVideo(tt.video); streamContent != want.StreamContent || componentType != want.ComponentType {
 				t.Errorf("raw video = %d/%d, want %d/%d",
-					streamContent, componentType, tt.video.StreamContent, tt.video.ComponentType)
+					streamContent, componentType, want.StreamContent, want.ComponentType)
 			}
 			if tt.wantType != "" {
 				var videoType string
@@ -369,19 +382,18 @@ func TestProgramContractExtendedKeepsEveryItem(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := decodeExtended(t, raw); !reflect.DeepEqual(got, full.Extended) {
-		t.Fatalf("encoded extended = %#v, want %#v", got, full.Extended)
+	want := contractExtendedMap(full)
+	if got := decodeExtended(t, raw); !reflect.DeepEqual(got, want) {
+		t.Fatalf("encoded extended = %#v, want %#v", got, want)
 	}
-	// The streaming /api/programs path and /api/events encode through
-	// mirakurun.MarshalProgram; the item set must be identical there too,
-	// with keys in sorted order.
+	// Every encoding keeps the broadcast order of the items: the generated
+	// one, and mirakurun.MarshalProgram used by /api/programs and /api/events.
+	extendedJSON := `"extended":{` + `"番組内容":"本文","出演者":"Foo","原作・脚本":"　【作】八津弘幸"}`
 	streamed := mirakurun.MarshalProgram(contractAPIProgram(stored))
-	if got := decodeExtended(t, streamed); !reflect.DeepEqual(got, full.Extended) {
-		t.Fatalf("streamed extended = %#v, want %#v", got, full.Extended)
-	}
-	extendedJSON := `"extended":{` + `"出演者":"Foo","原作・脚本":"　【作】八津弘幸","番組内容":"本文"}`
-	if !strings.Contains(string(streamed), extendedJSON) {
-		t.Errorf("streamed extended keys not sorted: %s", streamed)
+	for _, encoded := range [][]byte{raw, streamed} {
+		if !strings.Contains(string(encoded), extendedJSON) {
+			t.Errorf("extended not in broadcast order: %s", encoded)
+		}
 	}
 }
 
@@ -391,7 +403,7 @@ func TestProgramContractExtendedKeepsEveryItem(t *testing.T) {
 func TestProgramEventsShareAPIEncoding(t *testing.T) {
 	for _, p := range []*program.Program{contractMinimalProgram(), contractFullProgram()} {
 		hub := event.New()
-		mirakurun.NewEventPublisher(hub).PublishProgramEvent(event.TypeCreate, p)
+		mirakurun.NewEventPublisher(hub).PublishProgramEvent(event.TypeCreate, &p.Event)
 		events := hub.Log()
 		if len(events) != 1 {
 			t.Fatalf("events length = %d, want 1", len(events))
@@ -545,14 +557,13 @@ func TestMirakurunOutputsShareOneFixture(t *testing.T) {
 	programStore := program.NewSQLiteStore(database)
 	pm := program.NewManager(programStore)
 	full, minimal := contractFullProgram(), contractMinimalProgram()
-	orphan := &program.Program{ID: program.ProgramID(9, 109, 1), EventID: 1, ServiceID: 109, NetworkID: 9,
-		StartAt: 1788609060000, Duration: 1800000, IsFree: true}
+	orphan := &program.Program{ID: program.ProgramID(9, 109, 1), Event: model.Event{Key: model.ServiceKey{ServiceID: 109, NetworkID: 9}, EventID: 1, StartAt: testPtr[int64](1788609060000), DurationMS: testPtr[int](1800000)}}
 	if err := pm.UpsertPrograms(ctx, []*program.Program{full, minimal, orphan}); err != nil {
 		t.Fatal(err)
 	}
 
 	hub := event.New()
-	mirakurun.NewEventPublisher(hub).PublishProgramEvent(event.TypeCreate, full)
+	mirakurun.NewEventPublisher(hub).PublishProgramEvent(event.TypeCreate, &full.Event)
 	mirakurun.NewEventPublisher(hub).PublishServiceEvent(event.TypeUpdate, services[0], nil)
 	handler := NewHandler(HandlerConfig{
 		ProgramManager: pm,
@@ -620,8 +631,8 @@ func TestMirakurunOutputsShareOneFixture(t *testing.T) {
 		if err := json.Unmarshal(fullKeys["extended"], &extended); err != nil {
 			t.Fatal(err)
 		}
-		if !reflect.DeepEqual(extended, full.Extended) {
-			t.Errorf("extended = %#v, want %#v", extended, full.Extended)
+		if want := contractExtendedMap(full); !reflect.DeepEqual(extended, want) {
+			t.Errorf("extended = %#v, want %#v", extended, want)
 		}
 		requireKeys(t, byID[minimal.ID],
 			[]string{"id", "audios", "relatedItems"},
@@ -716,4 +727,16 @@ func TestMirakurunOutputsShareOneFixture(t *testing.T) {
 				strings.Count(body, "<category>"))
 		}
 	})
+}
+
+// contractExtendedMap lists a program's extended items as the object the API
+// writes.
+func contractExtendedMap(p *program.Program) map[string]string {
+	items := map[string]string{}
+	for _, block := range p.Extended {
+		for _, item := range block.Items {
+			items[item.Name] = item.Text
+		}
+	}
+	return items
 }

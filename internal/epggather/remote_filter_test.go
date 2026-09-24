@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/21S1298001/mahiron/internal/program"
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/service"
 )
 
@@ -15,9 +15,9 @@ func TestKnownServiceProgramUpdaterFiltersUnknownServicesAfterRefresh(t *testing
 	}
 	updater := NewKnownServiceProgramUpdater(inner, lister)
 
-	err := updater.UpsertPrograms(context.Background(), []*program.Program{
-		{ID: 401010001, NetworkID: 4, ServiceID: 101, EventID: 1},
-		{ID: 401020001, NetworkID: 4, ServiceID: 102, EventID: 1},
+	err := updater.UpsertEvents(context.Background(), []model.Event{
+		{Key: model.ServiceKey{NetworkID: 4, ServiceID: 101}, EventID: 1},
+		{Key: model.ServiceKey{NetworkID: 4, ServiceID: 102}, EventID: 1},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -25,7 +25,7 @@ func TestKnownServiceProgramUpdaterFiltersUnknownServicesAfterRefresh(t *testing
 	if got, want := len(inner.programs), 1; got != want {
 		t.Fatalf("upserted programs = %d, want %d", got, want)
 	}
-	if inner.programs[0].ServiceID != 101 {
+	if inner.programs[0].Key.ServiceID != 101 {
 		t.Fatalf("program = %#v, want known service", inner.programs[0])
 	}
 	if got, want := lister.calls, 2; got != want {
@@ -44,8 +44,8 @@ func TestKnownServiceProgramUpdaterRefreshesUnknownOnce(t *testing.T) {
 	}
 	updater := NewKnownServiceProgramUpdater(inner, lister)
 
-	err := updater.UpsertPrograms(context.Background(), []*program.Program{
-		{ID: 401020001, NetworkID: 4, ServiceID: 102, EventID: 1},
+	err := updater.UpsertEvents(context.Background(), []model.Event{
+		{Key: model.ServiceKey{NetworkID: 4, ServiceID: 102}, EventID: 1},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -53,7 +53,7 @@ func TestKnownServiceProgramUpdaterRefreshesUnknownOnce(t *testing.T) {
 	if got, want := len(inner.programs), 1; got != want {
 		t.Fatalf("upserted programs = %d, want %d", got, want)
 	}
-	if inner.programs[0].ServiceID != 102 {
+	if inner.programs[0].Key.ServiceID != 102 {
 		t.Fatalf("program = %#v, want refreshed service", inner.programs[0])
 	}
 	if got, want := lister.calls, 2; got != want {
@@ -62,10 +62,10 @@ func TestKnownServiceProgramUpdaterRefreshesUnknownOnce(t *testing.T) {
 }
 
 type recordingProgramUpdater struct {
-	programs []*program.Program
+	programs []model.Event
 }
 
-func (u *recordingProgramUpdater) UpsertPrograms(_ context.Context, programs []*program.Program) error {
+func (u *recordingProgramUpdater) UpsertEvents(_ context.Context, programs []model.Event) error {
 	u.programs = append(u.programs, programs...)
 	return nil
 }

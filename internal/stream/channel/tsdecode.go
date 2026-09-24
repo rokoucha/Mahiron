@@ -278,12 +278,7 @@ func parseComponentDescriptor(desc ts.Descriptor) (model.VideoComponent, bool) {
 	if parsed, ok := isdb.ParseVideoComponentType(data[1]); ok {
 		video.Resolution = model.VideoResolution(parsed.Resolution)
 		video.Aspect = model.VideoAspect(parsed.Aspect)
-		switch video.Resolution {
-		case model.VideoResolution480p, model.VideoResolution720p,
-			model.VideoResolution1080p, model.VideoResolution2160p,
-			model.VideoResolution4320p:
-			video.Progressive = true
-		}
+		video.Progressive = parsed.Progressive
 	}
 	return video, true
 }

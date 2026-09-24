@@ -1,8 +1,7 @@
 package mirakurun
 
 import (
-	"sort"
-
+	"github.com/21S1298001/mahiron/internal/model"
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 	"github.com/go-faster/jx"
 )
@@ -14,44 +13,47 @@ func MarshalProgram(p *apigen.Program) []byte {
 	return e.Bytes()
 }
 
-// extendedToAPI encodes the extended description as a JSON object in key
-// order. The API schema leaves extended untyped so that the generated code
-// writes these bytes as they are instead of ranging over a map.
-func extendedToAPI(extended map[string]string) jx.Raw {
-	if len(extended) == 0 {
-		return nil
-	}
-	keys := make([]string, 0, len(extended))
-	for key := range extended {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
+// extendedToAPI encodes the extended descriptions as one JSON object whose
+// keys come in broadcast order. The API schema leaves extended untyped so
+// that the generated code writes these bytes as they are instead of ranging
+// over a map. A heading repeated in another language keeps its first text.
+func extendedToAPI(blocks []model.ExtendedBlock) jx.Raw {
+	seen := map[string]struct{}{}
 	e := &jx.Encoder{}
 	e.ObjStart()
-	for _, key := range keys {
-		e.FieldStart(key)
-		e.Str(extended[key])
+	for _, block := range blocks {
+		for _, item := range block.Items {
+			if _, ok := seen[item.Name]; ok {
+				continue
+			}
+			seen[item.Name] = struct{}{}
+			e.FieldStart(item.Name)
+			e.Str(item.Text)
+		}
 	}
 	e.ObjEnd()
+	if len(seen) == 0 {
+		return nil
+	}
 	return jx.Raw(e.Bytes())
 }
 
-// extendedFromAPI decodes an extended description. Anything but an object of
-// strings counts as absent.
-func extendedFromAPI(raw jx.Raw) map[string]string {
+// extendedFromAPI decodes an extended description into one block, keeping
+// the item order. Anything but an object of strings counts as absent.
+func extendedFromAPI(raw jx.Raw) []model.ExtendedBlock {
 	if len(raw) == 0 {
 		return nil
 	}
-	extended := map[string]string{}
+	var items []model.ExtendedItem
 	if err := jx.DecodeBytes(raw).Obj(func(d *jx.Decoder, key string) error {
 		value, err := d.Str()
 		if err != nil {
 			return err
 		}
-		extended[key] = value
+		items = append(items, model.ExtendedItem{Name: key, Text: value})
 		return nil
-	}); err != nil || len(extended) == 0 {
+	}); err != nil || len(items) == 0 {
 		return nil
 	}
-	return extended
+	return []model.ExtendedBlock{{Items: items}}
 }

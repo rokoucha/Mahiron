@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/21S1298001/mahiron/internal/mirakurun"
-	"github.com/21S1298001/mahiron/internal/program"
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/tuner"
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 )
@@ -85,7 +85,7 @@ func readRemoteProgramEvents(ctx context.Context, src io.Reader, updater Program
 			slog.Debug("failed to decode remote program event data", "err", err)
 			continue
 		}
-		if err := updater.UpsertPrograms(ctx, []*program.Program{remote}); err != nil {
+		if err := updater.UpsertEvents(ctx, []model.Event{remote}); err != nil {
 			return err
 		}
 	}
@@ -126,19 +126,19 @@ func readRemoteEventsBatched(ctx context.Context, src io.Reader, updater Program
 
 	ticker := time.NewTicker(flushInterval)
 	defer ticker.Stop()
-	pending := make(map[int64]*program.Program, maxBatchSize)
+	pending := make(map[int64]model.Event, maxBatchSize)
 	order := make([]int64, 0, maxBatchSize)
 	flush := func() error {
 		if len(pending) == 0 || updater == nil {
 			return nil
 		}
-		programs := make([]*program.Program, 0, len(pending))
+		events := make([]model.Event, 0, len(pending))
 		for _, id := range order {
 			if item, ok := pending[id]; ok {
-				programs = append(programs, item)
+				events = append(events, item)
 			}
 		}
-		if err := updater.UpsertPrograms(ctx, programs); err != nil {
+		if err := updater.UpsertEvents(ctx, events); err != nil {
 			return err
 		}
 		clear(pending)
@@ -173,15 +173,15 @@ func readRemoteEventsBatched(ctx context.Context, src io.Reader, updater Program
 				if updater == nil || event.Type != "update" && event.Type != "create" {
 					continue
 				}
-				item, err := decodeRemoteProgram(event.Data)
+				program, err := decodeRemoteProgram(event.Data)
 				if err != nil {
 					continue
 				}
-				program := item
-				if _, exists := pending[program.ID]; !exists {
-					order = append(order, program.ID)
+				id := model.ProgramID(program.Key, program.EventID)
+				if _, exists := pending[id]; !exists {
+					order = append(order, id)
 				}
-				pending[program.ID] = program
+				pending[id] = program
 				if len(pending) >= maxBatchSize {
 					if err := flush(); err != nil {
 						return err
@@ -227,10 +227,10 @@ func scanRemoteEvents(ctx context.Context, src io.Reader, dst chan<- scannedRemo
 // decodeRemoteProgram decodes a Mirakurun-compatible program with the ogen
 // types and converts it through the shared conversion, the same one the API
 // serves. Payloads missing required fields are rejected.
-func decodeRemoteProgram(data json.RawMessage) (*program.Program, error) {
+func decodeRemoteProgram(data json.RawMessage) (model.Event, error) {
 	var api apigen.Program
 	if err := json.Unmarshal(data, &api); err != nil {
-		return nil, err
+		return model.Event{}, err
 	}
-	return mirakurun.ProgramFromAPI(&api), nil
+	return mirakurun.EventFromAPI(&api), nil
 }

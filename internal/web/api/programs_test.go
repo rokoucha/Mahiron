@@ -15,7 +15,6 @@ import (
 	"github.com/21S1298001/mahiron/internal/bml"
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/db"
-	"github.com/21S1298001/mahiron/internal/mirakurun"
 	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/service"
@@ -35,7 +34,7 @@ func testProgramHandler(t *testing.T) *Handler {
 	pm := program.NewManager(program.NewSQLiteStore(database))
 	start10, start9, duration := int64(2000), int64(1000), 30000
 	key := model.ServiceKey{NetworkID: 1, ServiceID: 101}
-	if err := mirakurun.NewProgramEventWriter(pm).UpsertEvents(ctx, []model.Event{
+	if err := pm.UpsertEvents(ctx, []model.Event{
 		{Key: key, EventID: 10, StartAt: &start10, DurationMS: &duration, Name: "second"},
 		{Key: key, EventID: 9, StartAt: &start9, DurationMS: &duration, Name: "first"},
 	}); err != nil {
@@ -182,7 +181,7 @@ func TestGetProgramStreamMissingProgramAndService(t *testing.T) {
 	t.Cleanup(func() { _ = database.Close() })
 	pm := program.NewManager(program.NewSQLiteStore(database))
 	if err := pm.ReplaceServicePrograms(ctx, 1, 101, 0, []*program.Program{
-		{ID: program.ProgramID(1, 101, 9), NetworkID: 1, ServiceID: 101, EventID: 9, StartAt: 1000, Duration: 1000},
+		{ID: program.ProgramID(1, 101, 9), Event: model.Event{Key: model.ServiceKey{NetworkID: 1, ServiceID: 101}, EventID: 9, StartAt: testPtr[int64](1000), DurationMS: testPtr[int](1000), FreeCA: true}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -223,7 +222,7 @@ func TestProgramsIDStreamHeadOnlyRequiresProgram(t *testing.T) {
 	pm := program.NewManager(program.NewSQLiteStore(database))
 	id := program.ProgramID(1, 101, 9)
 	if err := pm.ReplaceServicePrograms(ctx, 1, 101, 0, []*program.Program{
-		{ID: id, NetworkID: 1, ServiceID: 101, EventID: 9, StartAt: 1000, Duration: 1000},
+		{ID: id, Event: model.Event{Key: model.ServiceKey{NetworkID: 1, ServiceID: 101}, EventID: 9, StartAt: testPtr[int64](1000), DurationMS: testPtr[int](1000), FreeCA: true}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -257,19 +256,13 @@ func TestApiProgramExposesExtendedRelatedAndSeries(t *testing.T) {
 	nid := uint16(1)
 	tsid := uint16(10)
 	if err := pm.ReplaceServicePrograms(ctx, 1, 101, 0, []*program.Program{
-		{
-			ID:        id,
-			NetworkID: 1,
-			ServiceID: 101,
-			EventID:   7,
-			StartAt:   1000,
-			Duration:  1000,
-			Extended:  map[string]string{"出演者": "Foo"},
-			RelatedItems: []program.RelatedItem{
-				{Type: program.RelatedItemTypeShared, NetworkID: &nid, TransportStreamID: &tsid, ServiceID: 101, EventID: 9},
-			},
-			Series: &program.Series{ID: 5, Pattern: 1, Episode: 1, LastEpisode: 12, Name: "series"},
-		},
+		{ID: id, Event: model.Event{
+			Key: model.ServiceKey{NetworkID: 1, ServiceID: 101}, EventID: 7,
+			StartAt: testPtr[int64](1000), DurationMS: testPtr[int](1000), FreeCA: true,
+			Extended: []model.ExtendedBlock{{Items: []model.ExtendedItem{{Name: "出演者", Text: "Foo"}}}},
+			Related:  []model.RelatedEvent{{GroupType: model.EventGroupShared, NetworkID: nid, StreamID: tsid, ServiceID: 101, EventID: 9}},
+			Series:   &model.Series{ID: 5, Pattern: testPtr(1), Episode: 1, LastEpisode: 12, Name: "series"},
+		}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -308,7 +301,7 @@ func TestApiProgramExposesExtendedRelatedAndSeries(t *testing.T) {
 func TestApiProgramVideoTypeAndResolution(t *testing.T) {
 	tests := []struct {
 		name           string
-		video          *program.Video
+		video          *rawVideo
 		wantType       apigen.ProgramVideoType
 		wantTypeSet    bool
 		wantResolution apigen.ProgramVideoResolution
@@ -316,7 +309,7 @@ func TestApiProgramVideoTypeAndResolution(t *testing.T) {
 	}{
 		{
 			name:           "mpeg2 1080i",
-			video:          &program.Video{StreamContent: 0x1, ComponentType: 0xB3},
+			video:          &rawVideo{StreamContent: 0x1, ComponentType: 0xB3},
 			wantType:       apigen.ProgramVideoTypeMpeg2,
 			wantTypeSet:    true,
 			wantResolution: apigen.ProgramVideoResolution1080i,
@@ -324,7 +317,7 @@ func TestApiProgramVideoTypeAndResolution(t *testing.T) {
 		},
 		{
 			name:           "h264 720p",
-			video:          &program.Video{StreamContent: 0x5, ComponentType: 0xC3},
+			video:          &rawVideo{StreamContent: 0x5, ComponentType: 0xC3},
 			wantType:       apigen.ProgramVideoTypeH264,
 			wantTypeSet:    true,
 			wantResolution: apigen.ProgramVideoResolution720p,
@@ -332,15 +325,15 @@ func TestApiProgramVideoTypeAndResolution(t *testing.T) {
 		},
 		{
 			name:           "h265 4320p",
-			video:          &program.Video{StreamContent: 0x9, ComponentType: 0x83},
+			video:          &rawVideo{StreamContent: 0x9, ComponentType: 0x83},
 			wantType:       apigen.ProgramVideoTypeH265,
 			wantTypeSet:    true,
 			wantResolution: apigen.ProgramVideoResolution4320p,
 			wantResSet:     true,
 		},
 		{
-			name:        "unknown values keep raw fields only",
-			video:       &program.Video{StreamContent: 0xF, ComponentType: 0xF1},
+			name:        "unknown values become 0",
+			video:       &rawVideo{StreamContent: 0xF, ComponentType: 0xF1},
 			wantTypeSet: false,
 			wantResSet:  false,
 		},
@@ -348,16 +341,17 @@ func TestApiProgramVideoTypeAndResolution(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p := contractAPIProgram(&program.Program{Video: tt.video})
+			p := contractAPIProgram(rawVideoProgram(tt.video))
+			want := wantRawVideo(tt.video)
 			video, ok := p.Video.Get()
 			if !ok {
 				t.Fatal("Video not set")
 			}
-			if got, ok := video.StreamContent.Get(); !ok || got != tt.video.StreamContent {
-				t.Fatalf("StreamContent = %d, %v; want %d, true", got, ok, tt.video.StreamContent)
+			if got, ok := video.StreamContent.Get(); !ok || got != want.StreamContent {
+				t.Fatalf("StreamContent = %d, %v; want %d, true", got, ok, want.StreamContent)
 			}
-			if got, ok := video.ComponentType.Get(); !ok || got != tt.video.ComponentType {
-				t.Fatalf("ComponentType = %d, %v; want %d, true", got, ok, tt.video.ComponentType)
+			if got, ok := video.ComponentType.Get(); !ok || got != want.ComponentType {
+				t.Fatalf("ComponentType = %d, %v; want %d, true", got, ok, want.ComponentType)
 			}
 			gotType, gotTypeSet := video.Type.Get()
 			if gotTypeSet != tt.wantTypeSet || gotType != tt.wantType {
@@ -458,7 +452,7 @@ func TestApiProgramGenres(t *testing.T) {
 	})
 
 	t.Run("kept when present", func(t *testing.T) {
-		p := contractAPIProgram(&program.Program{Genres: []program.Genre{{Lv1: 0, Lv2: 1, Un1: 15, Un2: 15}}})
+		p := contractAPIProgram(&program.Program{Event: model.Event{Genres: []model.Genre{{Lv1: 0, Lv2: 1, Un1: 15, Un2: 15}}, FreeCA: true}})
 		if len(p.Genres) != 1 {
 			t.Fatalf("Genres length = %d, want 1", len(p.Genres))
 		}

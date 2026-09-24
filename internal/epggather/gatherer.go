@@ -10,7 +10,6 @@ import (
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/observability"
-	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/service"
 )
 
@@ -21,7 +20,7 @@ type ServiceStore interface {
 }
 
 // ListStoredPrograms lists a remote server's stored programs of a service.
-type ListStoredPrograms = func(ctx context.Context, networkID, serviceID uint16) ([]*program.Program, error)
+type ListStoredPrograms = func(ctx context.Context, networkID, serviceID uint16) ([]model.Event, error)
 
 // StreamManager gives EPG gathering access to channel sessions. It uses only
 // model and standard types (the aliases above), so that gathering does not

@@ -1,68 +1,17 @@
 package program
 
+import "github.com/21S1298001/mahiron/internal/model"
+
+// Program is a stored program: the broadcast event and the ID Mahiron
+// assigns it.
 type Program struct {
-	ID        int64
-	EventID   uint16
-	ServiceID uint16
-	NetworkID uint16
-	StartAt   int64
-	Duration  int
-	IsFree    bool
-
-	Name         string
-	Description  string
-	Genres       []Genre
-	Video        *Video
-	Audios       []Audio
-	Extended     map[string]string
-	RelatedItems []RelatedItem
-	Series       *Series
+	ID int64
+	model.Event
 }
 
-type Genre struct {
-	Lv1 int
-	Lv2 int
-	Un1 int
-	Un2 int
-}
-
-type Video struct {
-	StreamContent int
-	ComponentType int
-}
-
-type Audio struct {
-	ComponentType int
-	ComponentTag  *int
-	IsMain        *bool
-	SamplingRate  *int
-	Langs         []string
-}
-
-type RelatedItem struct {
-	Type              RelatedItemType
-	NetworkID         *uint16
-	TransportStreamID *uint16
-	ServiceID         uint16
-	EventID           uint16
-}
-
-type RelatedItemType string
-
-const (
-	RelatedItemTypeShared   RelatedItemType = "shared"
-	RelatedItemTypeRelay    RelatedItemType = "relay"
-	RelatedItemTypeMovement RelatedItemType = "movement"
-)
-
-type Series struct {
-	ID          int
-	Repeat      int
-	Pattern     int
-	ExpiresAt   *int64
-	Episode     int
-	LastEpisode int
-	Name        string
+// FromEvent builds the program for an event.
+func FromEvent(event model.Event) *Program {
+	return &Program{ID: model.ProgramID(event.Key, event.EventID), Event: event}
 }
 
 type Query struct {
@@ -75,7 +24,23 @@ type Query struct {
 }
 
 func ProgramID(networkID, serviceID, eventID uint16) int64 {
-	return int64(networkID)*10000000000 + int64(serviceID)*100000 + int64(eventID)
+	return model.ProgramID(model.ServiceKey{NetworkID: networkID, ServiceID: serviceID}, eventID)
 }
 
-// Event payloads and API shapes are built in internal/mirakurun from Programs.
+// StartAtOrZero returns the start time in Unix milliseconds, or 0 when it is
+// undecided.
+func (p *Program) StartAtOrZero() int64 {
+	if p.StartAt == nil {
+		return 0
+	}
+	return *p.StartAt
+}
+
+// DurationOrZero returns the duration in milliseconds, or 0 when it is
+// undecided.
+func (p *Program) DurationOrZero() int {
+	if p.DurationMS == nil {
+		return 0
+	}
+	return *p.DurationMS
+}

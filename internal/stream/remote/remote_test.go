@@ -632,25 +632,25 @@ func TestRemoteClientListServicePrograms(t *testing.T) {
 		t.Fatalf("len(programs) = %d", len(programs))
 	}
 	p := programs[0]
-	if p.ID != 101001 || p.EventID != 1 || p.ServiceID != 101 || p.NetworkID != 4 || p.Name != "news" || !p.IsFree {
+	if p.EventID != 1 || p.Key.ServiceID != 101 || p.Key.NetworkID != 4 || p.Name != "news" || p.FreeCA {
 		t.Fatalf("program = %#v", p)
 	}
 	if len(p.Genres) != 1 || p.Genres[0].Lv1 != 0 || p.Genres[0].Lv2 != 1 || p.Genres[0].Un1 != 15 {
 		t.Fatalf("genres = %#v", p.Genres)
 	}
-	if p.Video == nil || p.Video.StreamContent != 1 || p.Video.ComponentType != 179 {
-		t.Fatalf("video = %#v", p.Video)
+	if len(p.Videos) != 1 || p.Videos[0].Codec != model.VideoCodecMPEG2 || p.Videos[0].Resolution != model.VideoResolution1080i {
+		t.Fatalf("video = %#v", p.Videos)
 	}
-	if len(p.Audios) != 1 || p.Audios[0].SamplingRate == nil || *p.Audios[0].SamplingRate != 48000 || len(p.Audios[0].Langs) != 1 || p.Audios[0].Langs[0] != "jpn" {
+	if len(p.Audios) != 1 || p.Audios[0].SamplingHz != 48000 || len(p.Audios[0].Languages) != 1 || p.Audios[0].Languages[0] != "jpn" {
 		t.Fatalf("audios = %#v", p.Audios)
 	}
-	if p.Extended["key"] != "value" {
+	if len(p.Extended) != 1 || p.Extended[0].Items[0] != (model.ExtendedItem{Name: "key", Text: "value"}) {
 		t.Fatalf("extended = %#v", p.Extended)
 	}
-	if len(p.RelatedItems) != 1 || p.RelatedItems[0].Type != "shared" || p.RelatedItems[0].NetworkID == nil || *p.RelatedItems[0].NetworkID != 4 {
-		t.Fatalf("related = %#v", p.RelatedItems)
+	if len(p.Related) != 1 || p.Related[0].GroupType != model.EventGroupShared || p.Related[0].NetworkID != 4 {
+		t.Fatalf("related = %#v", p.Related)
 	}
-	if p.Series == nil || p.Series.ID != 7 || p.Series.Pattern != 2 || p.Series.ExpiresAt == nil || *p.Series.ExpiresAt != 3000 {
+	if p.Series == nil || p.Series.ID != 7 || p.Series.Pattern == nil || *p.Series.Pattern != 2 || p.Series.ExpiresAt == nil || *p.Series.ExpiresAt != 3000 {
 		t.Fatalf("series = %#v", p.Series)
 	}
 }
@@ -699,7 +699,7 @@ func TestReadRemoteEventsDispatchesProgramsAndTuners(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(updater.programs) != 1 || updater.programs[0].ID != 401010001 {
+	if len(updater.programs) != 1 || updater.programs[0].ID != program.ProgramID(4, 101, 1) {
 		t.Fatalf("programs = %#v", updater.programs)
 	}
 	if eventType != "update" || status.Index != 2 || status.Name != "remote" {
@@ -725,10 +725,10 @@ func TestReadRemoteEventsBatchesProgramsAndKeepsLatestUpdate(t *testing.T) {
 	if got, want := len(updater.calls[0]), 2; got != want {
 		t.Fatalf("first batch size = %d, want %d", got, want)
 	}
-	if updater.calls[0][0].ID != 401010001 || updater.calls[0][0].Name != "new" {
+	if updater.calls[0][0].ID != program.ProgramID(4, 101, 1) || updater.calls[0][0].Name != "new" {
 		t.Fatalf("deduplicated program = %#v, want latest update", updater.calls[0][0])
 	}
-	if got, want := len(updater.calls[1]), 1; got != want || updater.calls[1][0].ID != 401010003 {
+	if got, want := len(updater.calls[1]), 1; got != want || updater.calls[1][0].ID != program.ProgramID(4, 101, 3) {
 		t.Fatalf("EOF batch = %#v, want final program", updater.calls[1])
 	}
 }
@@ -757,7 +757,7 @@ func TestReadRemoteEventsFlushesProgramsOnInterval(t *testing.T) {
 	}
 	select {
 	case programs := <-updater.calls:
-		if len(programs) != 1 || programs[0].ID != 1 {
+		if len(programs) != 1 || programs[0].ID != program.ProgramID(1, 1, 1) {
 			t.Fatalf("interval batch = %#v", programs)
 		}
 	case <-time.After(time.Second):
@@ -785,7 +785,7 @@ func TestReadRemoteProgramEventsUpsertsProgramUpdates(t *testing.T) {
 	if got, want := len(updater.programs), 2; got != want {
 		t.Fatalf("upserted programs = %d, want %d", got, want)
 	}
-	if updater.programs[0].ID != 401010001 || updater.programs[0].Name != "updated" || updater.programs[1].EventID != 2 {
+	if updater.programs[0].ID != program.ProgramID(4, 101, 1) || updater.programs[0].Name != "updated" || updater.programs[1].EventID != 2 {
 		t.Fatalf("programs = %#v", updater.programs)
 	}
 }
@@ -806,7 +806,7 @@ not-json
 	if got, want := len(updater.programs), 1; got != want {
 		t.Fatalf("upserted programs = %d, want %d", got, want)
 	}
-	if updater.programs[0].ID != 401010002 || updater.programs[0].Name != "kept" {
+	if updater.programs[0].ID != program.ProgramID(4, 101, 2) || updater.programs[0].Name != "kept" {
 		t.Fatalf("program = %#v", updater.programs[0])
 	}
 }
@@ -833,8 +833,8 @@ type recordingProgramUpdater struct {
 	programs []*program.Program
 }
 
-func (u *recordingProgramUpdater) UpsertPrograms(_ context.Context, programs []*program.Program) error {
-	u.programs = append(u.programs, programs...)
+func (u *recordingProgramUpdater) UpsertEvents(_ context.Context, events []model.Event) error {
+	u.programs = append(u.programs, programsOf(events)...)
 	return nil
 }
 
@@ -847,13 +847,23 @@ type notifyingProgramUpdater struct {
 	calls chan []*program.Program
 }
 
-func (u *notifyingProgramUpdater) UpsertPrograms(_ context.Context, programs []*program.Program) error {
-	u.calls <- append([]*program.Program(nil), programs...)
+func (u *notifyingProgramUpdater) UpsertEvents(_ context.Context, events []model.Event) error {
+	u.calls <- programsOf(events)
 	return nil
 }
 
-func (u *batchRecordingProgramUpdater) UpsertPrograms(_ context.Context, programs []*program.Program) error {
-	batch := append([]*program.Program(nil), programs...)
+func (u *batchRecordingProgramUpdater) UpsertEvents(_ context.Context, events []model.Event) error {
+	batch := programsOf(events)
 	u.calls = append(u.calls, batch)
 	return u.err
+}
+
+// programsOf gives the recorded events their program IDs, which come from
+// the service key and event ID.
+func programsOf(events []model.Event) []*program.Program {
+	programs := make([]*program.Program, len(events))
+	for i := range events {
+		programs[i] = program.FromEvent(events[i])
+	}
+	return programs
 }

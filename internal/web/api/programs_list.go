@@ -45,7 +45,7 @@ func (h *Handler) WriteProgramsJSON(w http.ResponseWriter, r *http.Request) {
 	encoder.ResetWriter(w)
 	encoder.ArrStart()
 	err = h.programManager.ListFunc(ctx, query, func(p *program.Program) error {
-		api := mirakurun.ProgramToAPI(p)
+		api := mirakurun.ProgramToAPI(&p.Event)
 		api.Encode(encoder)
 		return nil
 	})

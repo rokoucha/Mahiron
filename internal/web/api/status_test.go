@@ -10,6 +10,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/db"
 	"github.com/21S1298001/mahiron/internal/job"
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/service"
 	"github.com/21S1298001/mahiron/internal/stream"
@@ -51,7 +52,7 @@ func TestGetStatusExposesEPGSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := pm.ReplaceServicePrograms(ctx, 1, 101, 0, []*program.Program{
-		{ID: program.ProgramID(1, 101, 9), NetworkID: 1, ServiceID: 101, EventID: 9, StartAt: 1000, Duration: 1000},
+		{ID: program.ProgramID(1, 101, 9), Event: model.Event{Key: model.ServiceKey{NetworkID: 1, ServiceID: 101}, EventID: 9, StartAt: testPtr[int64](1000), DurationMS: testPtr[int](1000), FreeCA: true}},
 	}); err != nil {
 		t.Fatal(err)
 	}

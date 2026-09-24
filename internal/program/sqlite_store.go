@@ -6,11 +6,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
 	"github.com/21S1298001/mahiron/internal/db"
 	"github.com/21S1298001/mahiron/internal/db/gen"
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/observability"
 )
 
@@ -21,24 +23,20 @@ type sqliteStore struct {
 	rq    *gen.Queries
 }
 
-const upsertProgramSQL = `INSERT INTO programs (id, event_id, service_id, network_id, start_at, duration, is_free,
-                      name, description, genres, video, audios, extended, related_items, series)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+const upsertProgramSQL = `INSERT INTO programs (id, event_id, service_id, network_id, stream_id, start_at, duration, is_free,
+                      name, description, event)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
   event_id=excluded.event_id,
   service_id=excluded.service_id,
   network_id=excluded.network_id,
+  stream_id=excluded.stream_id,
   start_at=excluded.start_at,
   duration=excluded.duration,
   is_free=excluded.is_free,
-  name=COALESCE(excluded.name, programs.name),
-  description=COALESCE(excluded.description, programs.description),
-  genres=COALESCE(excluded.genres, programs.genres),
-  video=COALESCE(excluded.video, programs.video),
-  audios=COALESCE(excluded.audios, programs.audios),
-  extended=COALESCE(excluded.extended, programs.extended),
-  related_items=COALESCE(excluded.related_items, programs.related_items),
-  series=COALESCE(excluded.series, programs.series)`
+  name=excluded.name,
+  description=excluded.description,
+  event=excluded.event`
 
 // listProgramsSelectSQL is written out here rather than declared in
 // queries/programs.sql because sqlc only generates row-returning queries that
@@ -46,7 +44,7 @@ ON CONFLICT(id) DO UPDATE SET
 // tens of thousands of programs — so the rows are scanned and handed on one at
 // a time instead.
 const listProgramsSelectSQL = `SELECT id, event_id, service_id, network_id, start_at, duration, is_free,
-       name, description, genres, video, audios, extended, related_items, series
+       name, description, stream_id, event
 FROM programs`
 
 // buildListProgramsSQL only emits WHERE clauses for the filters that are
@@ -172,12 +170,8 @@ func (s *sqliteStore) ListFunc(ctx context.Context, query Query, yield func(*Pro
 			&row.IsFree,
 			&row.Name,
 			&row.Description,
-			&row.Genres,
-			&row.Video,
-			&row.Audios,
-			&row.Extended,
-			&row.RelatedItems,
-			&row.Series,
+			&row.StreamID,
+			&row.Event,
 		); err != nil {
 			return err
 		}
@@ -297,17 +291,13 @@ func execUpsertProgram(ctx context.Context, stmt *sql.Stmt, arg gen.UpsertProgra
 		arg.EventID,
 		arg.ServiceID,
 		arg.NetworkID,
+		arg.StreamID,
 		arg.StartAt,
 		arg.Duration,
 		arg.IsFree,
 		arg.Name,
 		arg.Description,
-		arg.Genres,
-		arg.Video,
-		arg.Audios,
-		arg.Extended,
-		arg.RelatedItems,
-		arg.Series,
+		arg.Event,
 	)
 	return err
 }
@@ -332,25 +322,9 @@ func fromGenPrograms(rows []gen.Program) ([]*Program, error) {
 	return result, nil
 }
 
-func encodeJSON(v any) (*string, error) {
-	data, err := json.Marshal(v)
-	if err != nil {
-		return nil, err
-	}
-	if len(data) == 0 || string(data) == "null" || string(data) == "[]" || string(data) == "{}" {
-		return nil, nil
-	}
-	s := string(data)
-	return &s, nil
-}
-
-func decodeJSON(s *string, dest any) error {
-	if s == nil {
-		return nil
-	}
-	return json.Unmarshal([]byte(*s), dest)
-}
-
+// toUpsertProgramParams stores an undecided start time or duration as 0,
+// which no broadcast uses: the columns stay NOT NULL for the time-range
+// queries.
 func toUpsertProgramParams(p *Program) (gen.UpsertProgramParams, error) {
 	var name, desc *string
 	if p.Name != "" {
@@ -361,65 +335,50 @@ func toUpsertProgramParams(p *Program) (gen.UpsertProgramParams, error) {
 		v := p.Description
 		desc = &v
 	}
-
-	genres, err := encodeJSON(p.Genres)
-	if err != nil {
-		return gen.UpsertProgramParams{}, fmt.Errorf("marshal program %d genres: %w", p.ID, err)
+	var event *string
+	if stored := toStoredEvent(&p.Event); !reflect.ValueOf(stored).IsZero() {
+		data, err := json.Marshal(stored)
+		if err != nil {
+			return gen.UpsertProgramParams{}, fmt.Errorf("marshal program %d event: %w", p.ID, err)
+		}
+		v := string(data)
+		event = &v
 	}
-	video, err := encodeJSON(p.Video)
-	if err != nil {
-		return gen.UpsertProgramParams{}, fmt.Errorf("marshal program %d video: %w", p.ID, err)
+	isFree := int64(1)
+	if p.FreeCA {
+		isFree = 0
 	}
-	audios, err := encodeJSON(p.Audios)
-	if err != nil {
-		return gen.UpsertProgramParams{}, fmt.Errorf("marshal program %d audios: %w", p.ID, err)
-	}
-	extended, err := encodeJSON(p.Extended)
-	if err != nil {
-		return gen.UpsertProgramParams{}, fmt.Errorf("marshal program %d extended: %w", p.ID, err)
-	}
-	related, err := encodeJSON(p.RelatedItems)
-	if err != nil {
-		return gen.UpsertProgramParams{}, fmt.Errorf("marshal program %d related_items: %w", p.ID, err)
-	}
-	series, err := encodeJSON(p.Series)
-	if err != nil {
-		return gen.UpsertProgramParams{}, fmt.Errorf("marshal program %d series: %w", p.ID, err)
-	}
-
-	isFree := int64(0)
-	if p.IsFree {
-		isFree = 1
-	}
-
 	return gen.UpsertProgramParams{
-		ID:           p.ID,
-		EventID:      int64(p.EventID),
-		ServiceID:    int64(p.ServiceID),
-		NetworkID:    int64(p.NetworkID),
-		StartAt:      p.StartAt,
-		Duration:     int64(p.Duration),
-		IsFree:       isFree,
-		Name:         name,
-		Description:  desc,
-		Genres:       genres,
-		Video:        video,
-		Audios:       audios,
-		Extended:     extended,
-		RelatedItems: related,
-		Series:       series,
+		ID:          p.ID,
+		EventID:     int64(p.EventID),
+		ServiceID:   int64(p.Key.ServiceID),
+		NetworkID:   int64(p.Key.NetworkID),
+		StreamID:    int64(p.Key.StreamID),
+		StartAt:     p.StartAtOrZero(),
+		Duration:    int64(p.DurationOrZero()),
+		IsFree:      isFree,
+		Name:        name,
+		Description: desc,
+		Event:       event,
 	}, nil
 }
 
 func fromGenProgram(p gen.Program) (*Program, error) {
 	prog := &Program{
-		ID:        p.ID,
-		EventID:   uint16(p.EventID),
-		ServiceID: uint16(p.ServiceID),
-		NetworkID: uint16(p.NetworkID),
-		StartAt:   p.StartAt,
-		Duration:  int(p.Duration),
-		IsFree:    p.IsFree != 0,
+		ID: p.ID,
+		Event: model.Event{
+			Key:     model.ServiceKey{NetworkID: uint16(p.NetworkID), StreamID: uint16(p.StreamID), ServiceID: uint16(p.ServiceID)},
+			EventID: uint16(p.EventID),
+			FreeCA:  p.IsFree == 0,
+		},
+	}
+	if p.StartAt != 0 {
+		v := p.StartAt
+		prog.StartAt = &v
+	}
+	if p.Duration != 0 {
+		v := int(p.Duration)
+		prog.DurationMS = &v
 	}
 	if p.Name != nil {
 		prog.Name = *p.Name
@@ -427,23 +386,24 @@ func fromGenProgram(p gen.Program) (*Program, error) {
 	if p.Description != nil {
 		prog.Description = *p.Description
 	}
-	if err := decodeJSON(p.Genres, &prog.Genres); err != nil {
-		return nil, fmt.Errorf("decode program %d genres: %w", p.ID, err)
-	}
-	if err := decodeJSON(p.Video, &prog.Video); err != nil {
-		return nil, fmt.Errorf("decode program %d video: %w", p.ID, err)
-	}
-	if err := decodeJSON(p.Audios, &prog.Audios); err != nil {
-		return nil, fmt.Errorf("decode program %d audios: %w", p.ID, err)
-	}
-	if err := decodeJSON(p.Extended, &prog.Extended); err != nil {
-		return nil, fmt.Errorf("decode program %d extended: %w", p.ID, err)
-	}
-	if err := decodeJSON(p.RelatedItems, &prog.RelatedItems); err != nil {
-		return nil, fmt.Errorf("decode program %d related_items: %w", p.ID, err)
-	}
-	if err := decodeJSON(p.Series, &prog.Series); err != nil {
-		return nil, fmt.Errorf("decode program %d series: %w", p.ID, err)
+	if p.Event != nil {
+		var stored storedEvent
+		if err := json.Unmarshal([]byte(*p.Event), &stored); err != nil {
+			return nil, fmt.Errorf("decode program %d event: %w", p.ID, err)
+		}
+		stored.applyTo(&prog.Event)
 	}
 	return prog, nil
+}
+
+// sameProgram reports whether two programs store the same row, comparing
+// what the store writes rather than the Go values, whose nil and empty
+// slices differ between decoded rows and incoming events.
+func sameProgram(a, b *Program) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	pa, errA := toUpsertProgramParams(a)
+	pb, errB := toUpsertProgramParams(b)
+	return errA == nil && errB == nil && reflect.DeepEqual(pa, pb)
 }

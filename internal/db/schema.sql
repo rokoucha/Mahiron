@@ -57,12 +57,8 @@ CREATE TABLE IF NOT EXISTS programs (
     is_free INTEGER NOT NULL,
     name TEXT,
     description TEXT,
-    genres TEXT,
-    video TEXT,
-    audios TEXT,
-    extended TEXT,
-    related_items TEXT,
-    series TEXT
+    stream_id INTEGER NOT NULL DEFAULT 0,
+    event TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_programs_service ON programs(network_id, service_id);

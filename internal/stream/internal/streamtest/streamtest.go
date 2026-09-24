@@ -11,28 +11,28 @@ import (
 	"sync"
 	"time"
 
-	"github.com/21S1298001/mahiron/internal/program"
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/ts"
 )
 
-// RecordingProgramUpdater collects every program passed to UpsertPrograms.
+// RecordingProgramUpdater collects every event passed to UpsertEvents.
 type RecordingProgramUpdater struct {
-	mu       sync.Mutex
-	programs []*program.Program
+	mu     sync.Mutex
+	events []model.Event
 }
 
-func (u *RecordingProgramUpdater) UpsertPrograms(_ context.Context, programs []*program.Program) error {
+func (u *RecordingProgramUpdater) UpsertEvents(_ context.Context, events []model.Event) error {
 	u.mu.Lock()
 	defer u.mu.Unlock()
-	u.programs = append(u.programs, programs...)
+	u.events = append(u.events, events...)
 	return nil
 }
 
-// Programs returns a snapshot of the collected programs.
-func (u *RecordingProgramUpdater) Programs() []*program.Program {
+// Events returns a snapshot of the collected events.
+func (u *RecordingProgramUpdater) Events() []model.Event {
 	u.mu.Lock()
 	defer u.mu.Unlock()
-	return append([]*program.Program(nil), u.programs...)
+	return append([]model.Event(nil), u.events...)
 }
 
 // RoundTripFunc adapts a function into an http.RoundTripper for stubbing

@@ -4,8 +4,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/21S1298001/mahiron/internal/program"
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/stream/channel"
+	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 	"github.com/21S1298001/mahiron/ts"
 )
 
@@ -16,11 +17,11 @@ func tsDescriptor(tag byte, data ...byte) ts.Descriptor {
 // aribText encodes ASCII text as an ARIB string in the alphanumeric set.
 func aribText(s string) []byte { return append([]byte{0x0e}, s...) }
 
-// TestProgramFromEventRoundTripsTSDescriptors decodes TS EIT descriptors into
-// the meaning-level model and converts them back into the STD-B10 values the
-// program store keeps. The decoded model must lose nothing the program
-// needs.
-func TestProgramFromEventRoundTripsTSDescriptors(t *testing.T) {
+// TestProgramToAPIRoundTripsTSDescriptors decodes TS EIT descriptors into
+// the meaning-level model and converts it into the Mirakurun program, whose
+// video carries the STD-B10 values again. The decoded model must lose
+// nothing the API needs.
+func TestProgramToAPIRoundTripsTSDescriptors(t *testing.T) {
 	name := aribText("Name")
 	short := append([]byte("jpn"), byte(len(name)))
 	short = append(append(short, name...), 0)
@@ -46,32 +47,36 @@ func TestProgramFromEventRoundTripsTSDescriptors(t *testing.T) {
 		}},
 	}
 
-	p := ProgramFromEvent(channel.EventsFromEIT(eit)[0])
+	p := ProgramToAPI(&channel.EventsFromEIT(eit)[0])
 
 	start := time.Date(2026, 9, 24, 21, 0, 0, 0, jst).UnixMilli()
-	if p.ID != program.ProgramID(4, 101, 9) || p.StartAt != start || p.Duration != 30*60*1000 || p.IsFree || p.Name != "Ｎａｍｅ" {
+	if p.ID != apigen.ProgramId(model.ProgramID(model.ServiceKey{NetworkID: 4, ServiceID: 101}, 9)) ||
+		int64(p.StartAt) != start || p.Duration != 30*60*1000 || p.IsFree || p.Name.Value != "Ｎａｍｅ" {
 		t.Fatalf("program = %+v", p)
 	}
-	if p.Video == nil || p.Video.StreamContent != 0x05 || p.Video.ComponentType != 0xB3 {
-		t.Fatalf("video = %+v, want stream_content 0x05 and component_type 0xB3", p.Video)
+	video := p.Video.Value
+	if video.StreamContent.Value != 0x05 || video.ComponentType.Value != 0xB3 ||
+		video.Type.Value != "h.264" || video.Resolution.Value != "1080i" {
+		t.Fatalf("video = %+v, want stream_content 0x05 and component_type 0xB3", video)
 	}
-	if len(p.Genres) != 1 || p.Genres[0] != (program.Genre{Lv1: 1, Lv2: 2, Un1: 3, Un2: 4}) {
+	if len(p.Genres) != 1 || p.Genres[0].Lv1.Value != 1 || p.Genres[0].Un2.Value != 4 {
 		t.Fatalf("genres = %+v", p.Genres)
 	}
 	if len(p.Audios) != 1 {
 		t.Fatalf("audios = %+v", p.Audios)
 	}
 	audio := p.Audios[0]
-	if audio.ComponentType != 3 || *audio.ComponentTag != 0x10 || !*audio.IsMain || *audio.SamplingRate != 48000 ||
-		len(audio.Langs) != 2 || audio.Langs[1] != "eng" {
+	if audio.ComponentType.Value != 3 || audio.ComponentTag.Value != 0x10 || !audio.IsMain.Value ||
+		audio.SamplingRate.Value != 48000 || len(audio.Langs) != 2 || audio.Langs[1] != "eng" {
 		t.Fatalf("audio = %+v", audio)
 	}
-	if p.Series == nil || p.Series.ID != 0x1234 || p.Series.Repeat != 2 || p.Series.Pattern != 5 ||
-		p.Series.Episode != 12 || p.Series.LastEpisode != 13 || p.Series.ExpiresAt == nil {
-		t.Fatalf("series = %+v", p.Series)
+	seriesAPI := p.Series.Value
+	if seriesAPI.ID.Value != 0x1234 || seriesAPI.Repeat.Value != 2 || seriesAPI.Pattern.Value != 5 ||
+		seriesAPI.Episode.Value != 12 || seriesAPI.LastEpisode.Value != 13 || !seriesAPI.ExpiresAt.Set {
+		t.Fatalf("series = %+v", seriesAPI)
 	}
-	if len(p.RelatedItems) != 2 || p.RelatedItems[0].NetworkID != nil ||
-		p.RelatedItems[1].NetworkID == nil || *p.RelatedItems[1].NetworkID != 4 || *p.RelatedItems[1].TransportStreamID != 0x4010 {
+	if len(p.RelatedItems) != 2 || p.RelatedItems[0].NetworkId.Set ||
+		p.RelatedItems[1].NetworkId.Value != 4 || p.RelatedItems[1].TransportStreamId.Value != 0x4010 {
 		t.Fatalf("related items = %+v", p.RelatedItems)
 	}
 }

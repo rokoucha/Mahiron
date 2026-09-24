@@ -6,7 +6,7 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/event"
-	"github.com/21S1298001/mahiron/internal/program"
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/service"
 )
 
@@ -37,11 +37,11 @@ func (p *EventPublisher) PublishServiceEvent(typ string, svc *service.Service, c
 	p.raw.PublishEventRaw(event.ResourceService, typ, MarshalService(&api))
 }
 
-func (p *EventPublisher) PublishProgramEvent(typ string, prog *program.Program) {
-	if prog == nil {
+func (p *EventPublisher) PublishProgramEvent(typ string, program *model.Event) {
+	if program == nil {
 		return
 	}
-	api := ProgramToAPI(prog)
+	api := ProgramToAPI(program)
 	p.raw.PublishEventRaw(event.ResourceProgram, typ, MarshalProgram(&api))
 }
 

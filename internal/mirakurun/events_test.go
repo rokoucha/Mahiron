@@ -7,7 +7,7 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/event"
-	"github.com/21S1298001/mahiron/internal/program"
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/service"
 )
 
@@ -55,48 +55,24 @@ func TestServiceEventCarriesMirakurunPayload(t *testing.T) {
 }
 
 func TestProgramEventCarriesMirakurunPayload(t *testing.T) {
-	componentTag := 1
-	isMain := true
-	samplingRate := 48000
-	networkID := uint16(1)
+	startAt, duration := int64(1000), 1800
 	expiresAt := int64(3000)
+	pattern := 3
 	hub := event.New()
 	publisher := NewEventPublisher(hub)
-	p := &program.Program{
-		ID:          program.ProgramID(1, 101, 9),
-		NetworkID:   1,
-		ServiceID:   101,
+	p := &model.Event{
+		Key:         model.ServiceKey{NetworkID: 1, ServiceID: 101},
 		EventID:     9,
-		StartAt:     1000,
-		Duration:    1800,
-		IsFree:      true,
+		StartAt:     &startAt,
+		DurationMS:  &duration,
 		Name:        "program",
 		Description: "description",
-		Genres:      []program.Genre{{Lv1: 1, Lv2: 2, Un1: 3, Un2: 4}},
-		Video:       &program.Video{StreamContent: 1, ComponentType: 179},
-		Audios: []program.Audio{{
-			ComponentType: 3,
-			ComponentTag:  &componentTag,
-			IsMain:        &isMain,
-			SamplingRate:  &samplingRate,
-			Langs:         []string{"jpn"},
-		}},
-		Extended: map[string]string{"key": "value"},
-		RelatedItems: []program.RelatedItem{{
-			Type:      program.RelatedItemTypeShared,
-			NetworkID: &networkID,
-			ServiceID: 101,
-			EventID:   10,
-		}},
-		Series: &program.Series{
-			ID:          1,
-			Repeat:      2,
-			Pattern:     3,
-			ExpiresAt:   &expiresAt,
-			Episode:     4,
-			LastEpisode: 5,
-			Name:        "series",
-		},
+		Genres:      []model.Genre{{Lv1: 1, Lv2: 2, Un1: 3, Un2: 4}},
+		Videos:      []model.VideoComponent{{Codec: model.VideoCodecMPEG2, Resolution: model.VideoResolution1080i, Aspect: model.VideoAspect16x9NoPanVector}},
+		Audios:      []model.AudioComponent{{ComponentType: 3, Tag: 1, Main: true, SamplingHz: 48000, Languages: []string{"jpn"}}},
+		Extended:    []model.ExtendedBlock{{Items: []model.ExtendedItem{{Name: "key", Text: "value"}}}},
+		Related:     []model.RelatedEvent{{GroupType: model.EventGroupShared, NetworkID: 1, ServiceID: 101, EventID: 10}},
+		Series:      &model.Series{ID: 1, Repeat: 2, Pattern: &pattern, ExpiresAt: &expiresAt, Episode: 4, LastEpisode: 5, Name: "series"},
 	}
 	publisher.PublishProgramEvent(event.TypeCreate, p)
 
@@ -114,7 +90,7 @@ func TestProgramEventCarriesMirakurunPayload(t *testing.T) {
 	if err := json.Unmarshal(events[0].Data, &decoded); err != nil {
 		t.Fatal(err)
 	}
-	if decoded["id"] != float64(program.ProgramID(1, 101, 9)) || decoded["name"] != "program" {
+	if decoded["id"] != float64(model.ProgramID(p.Key, 9)) || decoded["name"] != "program" {
 		t.Fatalf("program event data = %s", events[0].Data)
 	}
 	if decoded["audios"].([]any)[0].(map[string]any)["langs"].([]any)[0] != "jpn" {
@@ -131,11 +107,9 @@ func TestProgramEventCarriesMirakurunPayload(t *testing.T) {
 		t.Fatalf("program video data = %s", events[0].Data)
 	}
 	// Empty collections stay present as arrays while genres stays omitted.
-	publisher.PublishProgramEvent(event.TypeCreate, &program.Program{
-		ID:        program.ProgramID(1, 101, 9),
-		NetworkID: 1,
-		ServiceID: 101,
-		EventID:   9,
+	publisher.PublishProgramEvent(event.TypeCreate, &model.Event{
+		Key:     model.ServiceKey{NetworkID: 1, ServiceID: 101},
+		EventID: 9,
 	})
 	events = hub.Log()
 	var minimal map[string]any
