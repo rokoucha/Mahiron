@@ -212,11 +212,12 @@ func writeSnapshot(t *testing.T, dir string, outputs map[string][]byte) {
 	}
 }
 
-// normalizeSnapshot re-encodes JSON with sorted keys and indentation, so that
-// differences show up line by line, and drops the wall-clock publication time
-// of events. Keys are sorted because the current output takes the order of Go
-// maps in places (extended descriptions, event payloads), which changes from
-// run to run.
+// normalizeSnapshot re-encodes JSON with indentation, so that differences
+// show up line by line, and drops the wall-clock publication time of events.
+// Object key order is preserved, not sorted: the outputs are
+// deterministically ordered (extended items sorted by key, event payloads in
+// field order), so the snapshot also pins the order. Decoding through the
+// token stream keeps the document order that decoding into any would lose.
 func normalizeSnapshot(t *testing.T, name string, raw []byte) []byte {
 	t.Helper()
 	if filepath.Ext(name) != ".json" {
@@ -224,18 +225,207 @@ func normalizeSnapshot(t *testing.T, name string, raw []byte) []byte {
 	}
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.UseNumber()
-	var value any
-	if err := decoder.Decode(&value); err != nil {
+	var buf bytes.Buffer
+	if err := writeCanonicalJSON(&buf, decoder, 0, strings.HasPrefix(name, "events-")); err != nil {
 		t.Fatalf("%s: %v", name, err)
 	}
-	if events, ok := value.([]any); ok && strings.HasPrefix(name, "events-") {
-		for _, e := range events {
-			delete(e.(map[string]any), "time")
+	if decoder.More() {
+		t.Fatalf("%s: trailing data after JSON document", name)
+	}
+	return append(buf.Bytes(), '\n')
+}
+
+// writeCanonicalJSON copies one JSON value from decoder to buf with two-space
+// indentation, preserving object key order. At depth 1 of an events file
+// (the event objects), the "time" entry is dropped.
+func writeCanonicalJSON(buf *bytes.Buffer, decoder *json.Decoder, depth int, dropTime bool) error {
+	token, err := decoder.Token()
+	if err != nil {
+		return err
+	}
+	if delim, ok := token.(json.Delim); ok {
+		switch delim {
+		case '{':
+			return writeCanonicalObject(buf, decoder, depth, dropTime && depth == 1)
+		case '[':
+			return writeCanonicalArray(buf, decoder, depth, dropTime)
 		}
 	}
-	out, err := json.MarshalIndent(value, "", "  ")
-	if err != nil {
-		t.Fatal(err)
+	return writeCanonicalScalar(buf, token)
+}
+
+func writeCanonicalObject(buf *bytes.Buffer, decoder *json.Decoder, depth int, dropTime bool) error {
+	if !decoder.More() {
+		if _, err := decoder.Token(); err != nil {
+			return err
+		}
+		buf.WriteString("{}")
+		return nil
 	}
-	return append(out, '\n')
+	buf.WriteString("{\n")
+	first := true
+	for decoder.More() {
+		keyToken, err := decoder.Token()
+		if err != nil {
+			return err
+		}
+		key, ok := keyToken.(string)
+		if !ok {
+			return io.ErrUnexpectedEOF
+		}
+		if dropTime && key == "time" {
+			if err := skipCanonicalValue(decoder); err != nil {
+				return err
+			}
+			continue
+		}
+		if !first {
+			buf.WriteString(",\n")
+		}
+		first = false
+		writeCanonicalIndent(buf, depth+1)
+		keyJSON, err := json.Marshal(key)
+		if err != nil {
+			return err
+		}
+		buf.Write(keyJSON)
+		buf.WriteString(": ")
+		if err := writeCanonicalJSON(buf, decoder, depth+1, false); err != nil {
+			return err
+		}
+	}
+	if _, err := decoder.Token(); err != nil {
+		return err
+	}
+	buf.WriteString("\n")
+	writeCanonicalIndent(buf, depth)
+	buf.WriteString("}")
+	return nil
+}
+
+func writeCanonicalArray(buf *bytes.Buffer, decoder *json.Decoder, depth int, dropTime bool) error {
+	if !decoder.More() {
+		if _, err := decoder.Token(); err != nil {
+			return err
+		}
+		buf.WriteString("[]")
+		return nil
+	}
+	buf.WriteString("[\n")
+	first := true
+	for decoder.More() {
+		if !first {
+			buf.WriteString(",\n")
+		}
+		first = false
+		writeCanonicalIndent(buf, depth+1)
+		if err := writeCanonicalJSON(buf, decoder, depth+1, dropTime); err != nil {
+			return err
+		}
+	}
+	if _, err := decoder.Token(); err != nil {
+		return err
+	}
+	buf.WriteString("\n")
+	writeCanonicalIndent(buf, depth)
+	buf.WriteString("]")
+	return nil
+}
+
+func writeCanonicalScalar(buf *bytes.Buffer, token any) error {
+	switch value := token.(type) {
+	case nil:
+		buf.WriteString("null")
+	case bool:
+		if value {
+			buf.WriteString("true")
+		} else {
+			buf.WriteString("false")
+		}
+	case string:
+		keyJSON, err := json.Marshal(value)
+		if err != nil {
+			return err
+		}
+		buf.Write(keyJSON)
+	case json.Number:
+		buf.WriteString(value.String())
+	default:
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+
+// skipCanonicalValue consumes one JSON value without writing it.
+func skipCanonicalValue(decoder *json.Decoder) error {
+	token, err := decoder.Token()
+	if err != nil {
+		return err
+	}
+	if delim, ok := token.(json.Delim); ok {
+		switch delim {
+		case '{':
+			for decoder.More() {
+				if _, err := decoder.Token(); err != nil {
+					return err
+				}
+				if err := skipCanonicalValue(decoder); err != nil {
+					return err
+				}
+			}
+		case '[':
+			for decoder.More() {
+				if err := skipCanonicalValue(decoder); err != nil {
+					return err
+				}
+			}
+		}
+		if _, err := decoder.Token(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func writeCanonicalIndent(buf *bytes.Buffer, depth int) {
+	for i := 0; i < depth; i++ {
+		buf.WriteString("  ")
+	}
+}
+
+func TestNormalizeSnapshotPreservesKeyOrder(t *testing.T) {
+	raw := `{"b":2,"a":{"d":[3,{"f":false,"e":null}],"c":"x"},"empty":{},"list":[]}`
+	got := string(normalizeSnapshot(t, "programs.json", []byte(raw)))
+	want := `{
+  "b": 2,
+  "a": {
+    "d": [
+      3,
+      {
+        "f": false,
+        "e": null
+      }
+    ],
+    "c": "x"
+  },
+  "empty": {},
+  "list": []
+}
+`
+	if got != want {
+		t.Fatalf("normalized = %q, want %q", got, want)
+	}
+
+	events := `[{"resource":"program","type":"create","data":{"id":1},"time":123}]`
+	got = string(normalizeSnapshot(t, "events-programs.json", []byte(events)))
+	if strings.Contains(got, `"time"`) {
+		t.Fatalf("time not dropped: %q", got)
+	}
+	if !strings.Contains(got, `"data": {`) {
+		t.Fatalf("order not preserved: %q", got)
+	}
+
+	if got := normalizeSnapshot(t, "iptv-playlist.m3u", []byte("#EXTM3U\n")); string(got) != "#EXTM3U\n" {
+		t.Fatalf("non-JSON changed: %q", got)
+	}
 }
