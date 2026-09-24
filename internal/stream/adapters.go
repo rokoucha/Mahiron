@@ -5,7 +5,6 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/program"
-	"github.com/21S1298001/mahiron/ts"
 )
 
 type LogoCollectorAdapter struct {
@@ -16,7 +15,7 @@ func NewLogoCollectorAdapter(manager *Manager) *LogoCollectorAdapter {
 	return &LogoCollectorAdapter{manager: manager}
 }
 
-func (a *LogoCollectorAdapter) ObserveLogos(ctx context.Context, channelType, channelID string, observe func(*ts.LogoImage) error) error {
+func (a *LogoCollectorAdapter) ObserveLogos(ctx context.Context, channelType, channelID string, observe func(model.Logo) error) error {
 	session, err := a.manager.GetOrCreateWait(ctx, channelType, channelID)
 	if err != nil {
 		return err

@@ -3,6 +3,7 @@ package defs
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 
@@ -17,7 +18,6 @@ import (
 	"github.com/21S1298001/mahiron/internal/servicescan"
 	"github.com/21S1298001/mahiron/internal/stream"
 	"github.com/21S1298001/mahiron/internal/tuner"
-	"github.com/21S1298001/mahiron/ts"
 )
 
 type noTunerManager struct{}
@@ -258,8 +258,8 @@ func TestLogoGathererDispatchesOnlyMissingChannelsAndCompletesWhenSatisfied(t *t
 		NetworkId: 4, ServiceId: 101, ChannelType: "BS", ChannelId: "BS01",
 		LogoId: 12, LogoVersion: 3, LogoDownloadDataId: 7,
 	}
-	collector := &fakeLogoObserver{image: &ts.LogoImage{
-		OriginalNetworkID: 4, LogoID: 12, LogoVersion: 3, DownloadDataID: 7,
+	collector := &fakeLogoObserver{image: model.Logo{
+		NetworkID: 4, LogoID: 12, Version: 3, DownloadDataID: 7,
 	}}
 	store := &fakeLogoTargetStore{targets: []service.LogoTarget{target}}
 	RegisterLogoGatherer(mgr, collector, store, 20*time.Minute)
@@ -281,7 +281,7 @@ func TestLogoGathererDispatchesOnlyMissingChannelsAndCompletesWhenSatisfied(t *t
 	if collector.calls != 1 {
 		t.Fatalf("ObserveLogos calls = %d, want 1", collector.calls)
 	}
-	if len(store.images) != 1 || store.images[0] != collector.image {
+	if len(store.images) != 1 || !reflect.DeepEqual(store.images[0], collector.image) {
 		t.Fatalf("persisted images = %#v, want observed image", store.images)
 	}
 }
@@ -418,25 +418,25 @@ func (fakeEPGGatherer) Cleanup(context.Context, time.Time) error {
 
 type fakeLogoTargetStore struct {
 	targets []service.LogoTarget
-	images  []*ts.LogoImage
+	images  []model.Logo
 }
 
 func (s fakeLogoTargetStore) MissingLogoTargets(context.Context) ([]service.LogoTarget, error) {
 	return append([]service.LogoTarget(nil), s.targets...), nil
 }
 
-func (s *fakeLogoTargetStore) UpsertLogoImage(_ context.Context, image *ts.LogoImage) error {
+func (s *fakeLogoTargetStore) UpsertLogoImage(_ context.Context, image model.Logo) error {
 	s.images = append(s.images, image)
 	return nil
 }
 
 type fakeLogoObserver struct {
 	calls          int
-	image          *ts.LogoImage
+	image          model.Logo
 	waitForContext bool
 }
 
-func (f *fakeLogoObserver) ObserveLogos(ctx context.Context, _, _ string, observe func(*ts.LogoImage) error) error {
+func (f *fakeLogoObserver) ObserveLogos(ctx context.Context, _, _ string, observe func(model.Logo) error) error {
 	f.calls++
 	if f.waitForContext {
 		<-ctx.Done()

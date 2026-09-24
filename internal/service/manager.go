@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/21S1298001/mahiron/internal/config"
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/ts"
 )
 
@@ -380,32 +381,27 @@ func (s *Manager) DeleteLogo(ctx context.Context, networkID, transportStreamID, 
 	return nil
 }
 
-func (s *Manager) UpsertLogoImage(ctx context.Context, image *ts.LogoImage) error {
+// UpsertLogoImage stores a broadcast logo for every service that references
+// it. Sessions already completed the PNG.
+func (s *Manager) UpsertLogoImage(ctx context.Context, image model.Logo) error {
 	targets, err := s.store.KnownLogoTargets(ctx)
 	if err != nil {
 		return err
 	}
-	var data []byte
 	now := time.Now().UnixMilli()
 	for _, target := range targets {
-		if target.NetworkId != image.OriginalNetworkID ||
+		if target.NetworkId != image.NetworkID ||
 			target.LogoId != int64(image.LogoID) ||
-			target.LogoVersion != int64(image.LogoVersion) ||
+			target.LogoVersion != int64(image.Version) ||
 			target.LogoDownloadDataId != int64(image.DownloadDataID) {
 			continue
 		}
-		if image.IsDeleted {
-			if err := s.DeleteLogo(ctx, target.NetworkId, target.TransportStreamId, target.ServiceId, target.LogoId, int64(image.LogoType), int64(image.LogoVersion), int64(image.DownloadDataID)); err != nil {
+		if image.Deleted {
+			if err := s.DeleteLogo(ctx, target.NetworkId, target.TransportStreamId, target.ServiceId, target.LogoId, int64(image.LogoType), int64(image.Version), int64(image.DownloadDataID)); err != nil {
 				return err
 			}
 		} else {
-			if data == nil {
-				data, err = ts.NormalizeARIBLogoPNG(image.Data)
-				if err != nil {
-					return err
-				}
-			}
-			if err := s.UpsertLogo(ctx, target.NetworkId, target.TransportStreamId, target.ServiceId, target.LogoId, int64(image.LogoType), int64(image.LogoVersion), int64(image.DownloadDataID), data, now); err != nil {
+			if err := s.UpsertLogo(ctx, target.NetworkId, target.TransportStreamId, target.ServiceId, target.LogoId, int64(image.LogoType), int64(image.Version), int64(image.DownloadDataID), image.Data, now); err != nil {
 				return err
 			}
 		}

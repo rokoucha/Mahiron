@@ -28,7 +28,7 @@ type EventUpdater interface {
 // LogoUpdater persists logo images and related announcements observed on the
 // stream.
 type LogoUpdater interface {
-	UpsertLogoImage(context.Context, *ts.LogoImage) error
+	UpsertLogoImage(context.Context, model.Logo) error
 	UpsertCommonLogoImage(context.Context, ts.CommonLogoImage) error
 	UpsertCommonDataAnnouncement(context.Context, ts.CommonDataAnnouncement, string, string) error
 }
@@ -103,7 +103,11 @@ func (s *Session) updateSection(ctx context.Context, section ts.Section) {
 	if section.TableID() == ts.TableIDCDT && s.logoUpdater != nil {
 		if cdt, err := ts.ParseCDT(section); err == nil {
 			if image, err := ts.ParseCDTLogoImage(cdt); err == nil {
-				if err := s.logoUpdater.UpsertLogoImage(ctx, image); err != nil {
+				logo, err := LogoFromImage(image)
+				if err == nil {
+					err = s.logoUpdater.UpsertLogoImage(ctx, logo)
+				}
+				if err != nil {
 					slog.Error("failed to update logo", "type", s.typ, "channel", s.channel, "err", err)
 				}
 			}

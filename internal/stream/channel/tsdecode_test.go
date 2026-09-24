@@ -1,6 +1,9 @@
 package channel
 
 import (
+	"bytes"
+	"encoding/binary"
+	"hash/crc32"
 	"testing"
 	"time"
 
@@ -249,4 +252,37 @@ func TestLogoFromImageDeleted(t *testing.T) {
 	if _, err := LogoFromImage(&ts.LogoImage{Data: []byte("bogus")}); err == nil {
 		t.Fatal("bogus PNG data should fail normalization")
 	}
+}
+
+// TestLogoFromImageCompletesPalette checks that a 2K logo, which relies on
+// the receiver's common fixed palette, gets its PLTE and tRNS.
+func TestLogoFromImageCompletesPalette(t *testing.T) {
+	raw := paletteOnlyPNG()
+	logo, err := LogoFromImage(&ts.LogoImage{OriginalNetworkID: 4, LogoID: 12, LogoType: 5, Data: raw})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if logo.NetworkID != 4 || logo.LogoID != 12 || logo.LogoType != 5 {
+		t.Fatalf("logo = %+v", logo)
+	}
+	for _, chunk := range []string{"PLTE", "tRNS"} {
+		if !bytes.Contains(logo.Data, []byte(chunk)) {
+			t.Fatalf("logo data lacks %s", chunk)
+		}
+	}
+}
+
+// paletteOnlyPNG builds a 1x1 palette-index PNG without PLTE.
+func paletteOnlyPNG() []byte {
+	chunk := func(dst []byte, typ string, data []byte) []byte {
+		dst = binary.BigEndian.AppendUint32(dst, uint32(len(data)))
+		dst = append(dst, typ...)
+		dst = append(dst, data...)
+		return binary.BigEndian.AppendUint32(dst, crc32.ChecksumIEEE(append([]byte(typ), data...)))
+	}
+	out := []byte{0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a}
+	ihdr := binary.BigEndian.AppendUint32(binary.BigEndian.AppendUint32(nil, 1), 1)
+	out = chunk(out, "IHDR", append(ihdr, 8, 3, 0, 0, 0))
+	out = chunk(out, "IDAT", []byte{0x78, 0x9c, 0x63, 0x60, 0x00, 0x00, 0x00, 0x02, 0x00, 0x01})
+	return chunk(out, "IEND", nil)
 }

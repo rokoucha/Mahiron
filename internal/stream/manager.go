@@ -22,7 +22,6 @@ import (
 	"github.com/21S1298001/mahiron/internal/stream/remote"
 	"github.com/21S1298001/mahiron/internal/stream/source"
 	"github.com/21S1298001/mahiron/internal/tuner"
-	"github.com/21S1298001/mahiron/ts"
 	"github.com/google/uuid"
 )
 
@@ -73,7 +72,7 @@ type Session interface {
 	ServiceStream(context.Context, uint16, bool, io.Writer) error
 	ScanServices(context.Context) ([]model.Service, error)
 	CollectSchedule(context.Context, func(model.ScheduleUpdate) error, func(model.PresentFollowing) error) error
-	ObserveLogos(context.Context, func(*ts.LogoImage) error) error
+	ObserveLogos(context.Context, func(model.Logo) error) error
 	Stop(context.Context) error
 }
 

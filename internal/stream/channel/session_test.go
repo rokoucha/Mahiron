@@ -349,7 +349,7 @@ func (failingEITUpdater) UpsertEvents(context.Context, []model.Event) error {
 
 type noopLogoUpdater struct{}
 
-func (noopLogoUpdater) UpsertLogoImage(context.Context, *ts.LogoImage) error { return nil }
+func (noopLogoUpdater) UpsertLogoImage(context.Context, model.Logo) error { return nil }
 func (noopLogoUpdater) UpsertCommonLogoImage(context.Context, ts.CommonLogoImage) error {
 	return nil
 }

@@ -5,6 +5,9 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"image"
+	"image/color"
+	"image/png"
 	"io"
 	"net/http"
 	"strings"
@@ -21,7 +24,6 @@ import (
 	"github.com/21S1298001/mahiron/internal/stream/internal/streamtest"
 	"github.com/21S1298001/mahiron/internal/stream/source"
 	"github.com/21S1298001/mahiron/internal/tuner"
-	"github.com/21S1298001/mahiron/ts"
 )
 
 func TestRemoteClientCheckAvailableForRouteAndBasicAuth(t *testing.T) {
@@ -522,6 +524,7 @@ func TestRemoteClientScanServicesReturnsStatusError(t *testing.T) {
 }
 
 func TestRemoteSessionObserveLogosUsesRemoteAPI(t *testing.T) {
+	logoPNG := testLogoPNG(t)
 	var paths []string
 	client := NewClient(config.RemoteConfig{URL: "http://remote.local/api"})
 	client.httpClient = &http.Client{Transport: streamtest.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
@@ -551,7 +554,7 @@ func TestRemoteSessionObserveLogosUsesRemoteAPI(t *testing.T) {
 				"hasLogoData": false
 			}]`), nil
 		case "/api/services/400101/logo":
-			return streamtest.StringResponse(http.StatusOK, "png"), nil
+			return streamtest.StringResponse(http.StatusOK, string(logoPNG)), nil
 		default:
 			return streamtest.StringResponse(http.StatusNotFound, ""), nil
 		}
@@ -560,9 +563,9 @@ func TestRemoteSessionObserveLogosUsesRemoteAPI(t *testing.T) {
 	session := newTestSession(client, channel, channel, "")
 
 	var observed int
-	err := session.ObserveLogos(context.Background(), func(image *ts.LogoImage) error {
+	err := session.ObserveLogos(context.Background(), func(image model.Logo) error {
 		observed++
-		if image.OriginalNetworkID != 4 || image.LogoID != 12 || image.LogoVersion != 0 || image.DownloadDataID != 101 || string(image.Data) != "png" {
+		if image.NetworkID != 4 || image.LogoID != 12 || image.Version != 0 || image.DownloadDataID != 101 || !bytes.Equal(image.Data, logoPNG) {
 			t.Fatalf("image = %#v", image)
 		}
 		return nil
@@ -576,6 +579,18 @@ func TestRemoteSessionObserveLogosUsesRemoteAPI(t *testing.T) {
 	if len(paths) != 2 || paths[0] != "/api/services" || paths[1] != "/api/services/400101/logo" {
 		t.Fatalf("paths = %#v", paths)
 	}
+}
+
+// testLogoPNG encodes a 1x1 paletted PNG, which already carries its PLTE
+// and passes the ARIB palette completion unchanged.
+func testLogoPNG(t *testing.T) []byte {
+	t.Helper()
+	img := image.NewPaletted(image.Rect(0, 0, 1, 1), color.Palette{color.Black})
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
 }
 
 func TestRemoteClientListServicePrograms(t *testing.T) {

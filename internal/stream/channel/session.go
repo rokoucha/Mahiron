@@ -172,7 +172,9 @@ func (s *Session) CollectSchedule(ctx context.Context, onSchedule func(model.Sch
 	})
 }
 
-func (s *Session) ObserveLogos(ctx context.Context, observe func(*ts.LogoImage) error) error {
+// ObserveLogos reports the CDT logos, with 2K logos completed with the
+// common fixed palette.
+func (s *Session) ObserveLogos(ctx context.Context, observe func(model.Logo) error) error {
 	return s.input.WithUser(ctx, func(ctx context.Context) error {
 		return s.rawDemuxer.ObserveSections(ctx, func(section ts.Section) bool {
 			return section.TableID() == ts.TableIDCDT
@@ -185,7 +187,11 @@ func (s *Session) ObserveLogos(ctx context.Context, observe func(*ts.LogoImage) 
 			if err != nil {
 				return nil
 			}
-			return observe(image)
+			logo, err := LogoFromImage(image)
+			if err != nil {
+				return err
+			}
+			return observe(logo)
 		})
 	})
 }

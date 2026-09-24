@@ -10,6 +10,7 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/db"
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/ts"
 )
 
@@ -267,7 +268,9 @@ func TestServiceManagerEPGSummary(t *testing.T) {
 	}
 }
 
-func TestServiceManagerUpsertLogoImageNormalizesARIBPNG(t *testing.T) {
+// TestServiceManagerUpsertLogoImageStoresSessionData stores the PNG as the
+// session delivered it: sessions complete the ARIB palette.
+func TestServiceManagerUpsertLogoImageStoresSessionData(t *testing.T) {
 	ctx := context.Background()
 	database, err := db.OpenInMemory()
 	if err != nil {
@@ -287,14 +290,14 @@ func TestServiceManagerUpsertLogoImageNormalizesARIBPNG(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	raw := buildServiceTestPalettePNG(false)
-	if err := manager.UpsertLogoImage(ctx, &ts.LogoImage{
-		OriginalNetworkID: 1,
-		LogoID:            uint16(logoID),
-		LogoVersion:       uint16(logoVersion),
-		DownloadDataID:    uint16(downloadDataID),
-		LogoType:          5,
-		Data:              raw,
+	raw := buildServiceTestPalettePNG(true)
+	if err := manager.UpsertLogoImage(ctx, model.Logo{
+		NetworkID:      1,
+		LogoID:         uint16(logoID),
+		Version:        uint16(logoVersion),
+		DownloadDataID: uint16(downloadDataID),
+		LogoType:       5,
+		Data:           raw,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -303,14 +306,8 @@ func TestServiceManagerUpsertLogoImageNormalizesARIBPNG(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bytes.Equal(stored, raw) {
-		t.Fatal("stored logo data was not normalized")
-	}
-	if !serviceTestPNGHasChunk(stored, "PLTE") {
-		t.Fatal("stored logo data does not include PLTE")
-	}
-	if !serviceTestPNGHasChunk(stored, "tRNS") {
-		t.Fatal("stored logo data does not include tRNS")
+	if !bytes.Equal(stored, raw) {
+		t.Fatal("stored logo data differs from the delivered PNG")
 	}
 }
 
@@ -387,13 +384,13 @@ func TestServiceManagerUpsertLogoImageRequiresSDTConsistency(t *testing.T) {
 	}
 
 	data := buildServiceTestPalettePNG(true)
-	if err := manager.UpsertLogoImage(ctx, &ts.LogoImage{
-		OriginalNetworkID: 1,
-		LogoID:            42,
-		LogoVersion:       4,
-		DownloadDataID:    0x1234,
-		LogoType:          5,
-		Data:              data,
+	if err := manager.UpsertLogoImage(ctx, model.Logo{
+		NetworkID:      1,
+		LogoID:         42,
+		Version:        4,
+		DownloadDataID: 0x1234,
+		LogoType:       5,
+		Data:           data,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -405,13 +402,13 @@ func TestServiceManagerUpsertLogoImageRequiresSDTConsistency(t *testing.T) {
 		t.Fatal("HasLogoData = true for mismatched logo version")
 	}
 
-	if err := manager.UpsertLogoImage(ctx, &ts.LogoImage{
-		OriginalNetworkID: 1,
-		LogoID:            42,
-		LogoVersion:       3,
-		DownloadDataID:    0x1234,
-		LogoType:          5,
-		Data:              data,
+	if err := manager.UpsertLogoImage(ctx, model.Logo{
+		NetworkID:      1,
+		LogoID:         42,
+		Version:        3,
+		DownloadDataID: 0x1234,
+		LogoType:       5,
+		Data:           data,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -422,13 +419,13 @@ func TestServiceManagerUpsertLogoImageRequiresSDTConsistency(t *testing.T) {
 	if !svc.HasLogoData {
 		t.Fatal("HasLogoData = false for consistent logo metadata")
 	}
-	if err := manager.UpsertLogoImage(ctx, &ts.LogoImage{
-		OriginalNetworkID: 1,
-		LogoID:            42,
-		LogoVersion:       3,
-		DownloadDataID:    0x1234,
-		LogoType:          5,
-		IsDeleted:         true,
+	if err := manager.UpsertLogoImage(ctx, model.Logo{
+		NetworkID:      1,
+		LogoID:         42,
+		Version:        3,
+		DownloadDataID: 0x1234,
+		LogoType:       5,
+		Deleted:        true,
 	}); err != nil {
 		t.Fatal(err)
 	}

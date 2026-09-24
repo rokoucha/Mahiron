@@ -9,9 +9,9 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/epggather"
 	"github.com/21S1298001/mahiron/internal/job"
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/service"
 	"github.com/21S1298001/mahiron/internal/servicescan"
-	"github.com/21S1298001/mahiron/ts"
 )
 
 type Registry interface {
@@ -25,12 +25,12 @@ type ServiceScanner interface {
 }
 
 type LogoCollector interface {
-	ObserveLogos(context.Context, string, string, func(*ts.LogoImage) error) error
+	ObserveLogos(context.Context, string, string, func(model.Logo) error) error
 }
 
 type LogoStore interface {
 	MissingLogoTargets(context.Context) ([]service.LogoTarget, error)
-	UpsertLogoImage(context.Context, *ts.LogoImage) error
+	UpsertLogoImage(context.Context, model.Logo) error
 }
 
 type LogoGatherTargetStore interface {

@@ -378,7 +378,7 @@ func (fakeDeadSession) ScanServices(context.Context) ([]model.Service, error)   
 func (fakeDeadSession) CollectSchedule(context.Context, func(model.ScheduleUpdate) error, func(model.PresentFollowing) error) error {
 	return nil
 }
-func (fakeDeadSession) ObserveLogos(context.Context, func(*ts.LogoImage) error) error {
+func (fakeDeadSession) ObserveLogos(context.Context, func(model.Logo) error) error {
 	return nil
 }
 func (fakeDeadSession) ObserveDataBroadcast(context.Context, uint16, bool, func(bml.Event) error) error {

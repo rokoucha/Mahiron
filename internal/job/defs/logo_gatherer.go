@@ -9,8 +9,8 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/job"
 	"github.com/21S1298001/mahiron/internal/job/run"
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/service"
-	"github.com/21S1298001/mahiron/ts"
 )
 
 const (
@@ -83,18 +83,18 @@ func enqueueLogoGatherTargets(ctx context.Context, registry Registry, collector 
 				}
 				count := 0
 				hasRemainingTargets := len(remaining) > 0
-				err := collector.ObserveLogos(gatherCtx, channelType, channelID, func(image *ts.LogoImage) error {
+				err := collector.ObserveLogos(gatherCtx, channelType, channelID, func(image model.Logo) error {
 					// Local sessions persist CDT logos as they are decoded. Remote
 					// sessions obtain the same images through the API, so persist here
 					// as well to keep both acquisition paths equivalent.
 					if err := store.UpsertLogoImage(gatherCtx, image); err != nil {
 						return err
 					}
-					if image.IsDeleted {
+					if image.Deleted {
 						return nil
 					}
 					count++
-					delete(remaining, logoTargetKey{int64(image.OriginalNetworkID), int64(image.LogoID), int64(image.LogoVersion), int64(image.DownloadDataID)})
+					delete(remaining, logoTargetKey{int64(image.NetworkID), int64(image.LogoID), int64(image.Version), int64(image.DownloadDataID)})
 					if hasRemainingTargets && len(remaining) == 0 {
 						return errLogoTargetsComplete
 					}

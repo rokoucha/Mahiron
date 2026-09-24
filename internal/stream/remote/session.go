@@ -72,7 +72,9 @@ func (s *Session) CollectSchedule(context.Context, func(model.ScheduleUpdate) er
 	return ErrEITObservationUnsupported
 }
 
-func (s *Session) ObserveLogos(ctx context.Context, observe func(*ts.LogoImage) error) error {
+// ObserveLogos reports the logos of the remote's services, completed with
+// the common fixed palette like the logos a local session decodes.
+func (s *Session) ObserveLogos(ctx context.Context, observe func(model.Logo) error) error {
 	services, err := s.client.ListChannelServices(ctx, s.routeChannel.Type, s.routeChannel.Channel)
 	if err != nil {
 		return err
@@ -88,8 +90,12 @@ func (s *Session) ObserveLogos(ctx context.Context, observe func(*ts.LogoImage) 
 		if err != nil {
 			return err
 		}
-		image := &ts.LogoImage{OriginalNetworkID: scan.Nid, LogoID: uint16(scan.LogoId), LogoVersion: *scan.LogoVersion, DownloadDataID: *scan.LogoDownloadDataId, LogoType: 5, Data: data}
-		if err := observe(image); err != nil {
+		data, err = ts.NormalizeARIBLogoPNG(data)
+		if err != nil {
+			return err
+		}
+		logo := model.Logo{NetworkID: scan.Nid, LogoID: uint16(scan.LogoId), Version: *scan.LogoVersion, DownloadDataID: *scan.LogoDownloadDataId, LogoType: 5, Data: data}
+		if err := observe(logo); err != nil {
 			return err
 		}
 	}
