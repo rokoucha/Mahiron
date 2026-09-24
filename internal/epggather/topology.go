@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/21S1298001/mahiron/internal/config"
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/service"
 )
 
@@ -15,7 +16,7 @@ type Candidate struct {
 
 type Network struct {
 	Candidates []Candidate
-	Services   []ServiceKey
+	Services   []model.ServiceKey
 }
 
 // groupServicesByNetwork lists each network's services and the channels to
@@ -63,12 +64,12 @@ func groupServicesByNetwork(services []*service.Service, channels config.Channel
 			groups[nid].Candidates = append(groups[nid].Candidates, Candidate{Type: configured.Type, Channel: configured.Channel})
 		}
 	}
-	serviceSeen := make(map[ServiceKey]bool)
+	serviceSeen := make(map[model.ServiceKey]bool)
 	for _, svc := range services {
 		if !svc.EITScheduleFlag {
 			continue
 		}
-		key := ServiceKey{NetworkID: svc.NetworkId, ServiceID: svc.ServiceId, TransportStreamID: svc.TransportStreamId}
+		key := model.ServiceKey{NetworkID: svc.NetworkId, ServiceID: svc.ServiceId, StreamID: svc.TransportStreamId}
 		if groups[svc.NetworkId] != nil && !serviceSeen[key] {
 			groups[svc.NetworkId].Services = append(groups[svc.NetworkId].Services, key)
 			serviceSeen[key] = true
@@ -77,7 +78,7 @@ func groupServicesByNetwork(services []*service.Service, channels config.Channel
 	return groups
 }
 
-func buildNetworkInputs(ctx context.Context, serviceStore ServiceStore, channels config.ChannelsConfig, networkID uint16, networkWideEIT func(uint16) bool) ([]Candidate, []ServiceKey, error) {
+func buildNetworkInputs(ctx context.Context, serviceStore ServiceStore, channels config.ChannelsConfig, networkID uint16, networkWideEIT func(uint16) bool) ([]Candidate, []model.ServiceKey, error) {
 	storedServices, err := serviceStore.GetServices(ctx)
 	if err != nil {
 		return nil, nil, fmt.Errorf("get services: %w", err)
@@ -107,8 +108,8 @@ func buildNetworkInputs(ctx context.Context, serviceStore ServiceStore, channels
 			candidates = append(candidates, Candidate{Type: configured.Type, Channel: configured.Channel})
 		}
 	}
-	serviceSeen := make(map[ServiceKey]bool)
-	var networkServices []ServiceKey
+	serviceSeen := make(map[model.ServiceKey]bool)
+	var networkServices []model.ServiceKey
 	for _, svc := range storedServices {
 		if svc.NetworkId != networkID {
 			continue
@@ -116,7 +117,7 @@ func buildNetworkInputs(ctx context.Context, serviceStore ServiceStore, channels
 		if !svc.EITScheduleFlag {
 			continue
 		}
-		key := ServiceKey{NetworkID: svc.NetworkId, ServiceID: svc.ServiceId, TransportStreamID: svc.TransportStreamId}
+		key := model.ServiceKey{NetworkID: svc.NetworkId, ServiceID: svc.ServiceId, StreamID: svc.TransportStreamId}
 		if !serviceSeen[key] {
 			serviceSeen[key] = true
 			networkServices = append(networkServices, key)

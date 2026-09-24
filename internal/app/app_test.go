@@ -12,6 +12,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/epggather"
 	"github.com/21S1298001/mahiron/internal/job"
 	"github.com/21S1298001/mahiron/internal/job/defs"
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/internal/service"
 	"github.com/21S1298001/mahiron/internal/servicescan"
@@ -301,11 +302,11 @@ func (startupEPGGatherer) Groups(context.Context) (map[uint16]*epggather.Network
 	return nil, nil
 }
 
-func (startupEPGGatherer) BuildNetworkInputs(context.Context, uint16) ([]epggather.Candidate, []epggather.ServiceKey, error) {
+func (startupEPGGatherer) BuildNetworkInputs(context.Context, uint16) ([]epggather.Candidate, []model.ServiceKey, error) {
 	return nil, nil, nil
 }
 
-func (startupEPGGatherer) GatherNetwork(context.Context, uint16, []epggather.Candidate, []epggather.ServiceKey) error {
+func (startupEPGGatherer) GatherNetwork(context.Context, uint16, []epggather.Candidate, []model.ServiceKey) error {
 	return nil
 }
 

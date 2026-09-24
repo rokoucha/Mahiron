@@ -19,16 +19,16 @@ import (
 )
 
 func TestCollectServiceSnapshotsRoutesEITSAndEITPF(t *testing.T) {
-	key := ServiceKey{NetworkID: 4, ServiceID: 101}
+	key := model.ServiceKey{NetworkID: 4, ServiceID: 101}
 	store := &collectProgramStore{}
 	session := &collectEITSession{sections: []*ts.EIT{
 		testEIT(ts.TableIDEITPF0, key, 1),
-		testEIT(ts.TableIDEITPF0, ServiceKey{NetworkID: 4, ServiceID: 102}, 2),
+		testEIT(ts.TableIDEITPF0, model.ServiceKey{NetworkID: 4, ServiceID: 102}, 2),
 		testEIT(ts.TableIDEITSStart, key, 10),
-		testEIT(ts.TableIDEITSStart, ServiceKey{NetworkID: 4, ServiceID: 102}, 20),
+		testEIT(ts.TableIDEITSStart, model.ServiceKey{NetworkID: 4, ServiceID: 102}, 20),
 	}}
 
-	if _, err := CollectServiceSnapshots(context.Background(), store, newRemoteSyncServiceStore(), session.CollectSchedule, []ServiceKey{key}, 20*time.Millisecond); err != nil {
+	if _, err := CollectServiceSnapshots(context.Background(), store, newRemoteSyncServiceStore(), session.CollectSchedule, []model.ServiceKey{key}, 20*time.Millisecond); err != nil {
 		t.Fatal(err)
 	}
 	if session.collectCalls != 1 {
@@ -43,7 +43,7 @@ func TestCollectServiceSnapshotsRoutesEITSAndEITPF(t *testing.T) {
 }
 
 func TestCollectServiceSnapshotsContinuesEITSAfterEITPFFailure(t *testing.T) {
-	key := ServiceKey{NetworkID: 4, ServiceID: 101}
+	key := model.ServiceKey{NetworkID: 4, ServiceID: 101}
 	pfErr := errors.New("p/f upsert failed")
 	store := &collectProgramStore{failEventID: 1, failErr: pfErr}
 	session := &collectEITSession{sections: []*ts.EIT{
@@ -52,7 +52,7 @@ func TestCollectServiceSnapshotsContinuesEITSAfterEITPFFailure(t *testing.T) {
 		testEIT(ts.TableIDEITSStart, key, 10),
 	}}
 
-	if _, err := CollectServiceSnapshots(context.Background(), store, newRemoteSyncServiceStore(), session.CollectSchedule, []ServiceKey{key}, 20*time.Millisecond); err != nil {
+	if _, err := CollectServiceSnapshots(context.Background(), store, newRemoteSyncServiceStore(), session.CollectSchedule, []model.ServiceKey{key}, 20*time.Millisecond); err != nil {
 		t.Fatal(err)
 	}
 	if got, want := store.eventIDs(), []uint16{1, 10}; !equalEventIDs(got, want) {
@@ -61,14 +61,14 @@ func TestCollectServiceSnapshotsContinuesEITSAfterEITPFFailure(t *testing.T) {
 }
 
 func TestCollectServiceSnapshotsWaitsForBasicBeforeUpsertingExtended(t *testing.T) {
-	key := ServiceKey{NetworkID: 4, ServiceID: 101}
+	key := model.ServiceKey{NetworkID: 4, ServiceID: 101}
 	store := &collectProgramStore{}
 	session := &collectEITSession{sections: []*ts.EIT{
 		testEIT(ts.TableIDEITSStart+8, key, 10),
 		testEIT(ts.TableIDEITSStart, key, 10),
 	}}
 
-	if _, err := CollectServiceSnapshots(context.Background(), store, newRemoteSyncServiceStore(), session.CollectSchedule, []ServiceKey{key}, 20*time.Millisecond); err != nil {
+	if _, err := CollectServiceSnapshots(context.Background(), store, newRemoteSyncServiceStore(), session.CollectSchedule, []model.ServiceKey{key}, 20*time.Millisecond); err != nil {
 		t.Fatal(err)
 	}
 	if got, want := store.eventIDs(), []uint16{10}; !equalEventIDs(got, want) {
@@ -81,12 +81,12 @@ func TestCollectServiceSnapshotsFlushesPartialEITSDuringCollection(t *testing.T)
 	partialEITSFlushInterval = 5 * time.Millisecond
 	t.Cleanup(func() { partialEITSFlushInterval = previous })
 
-	key := ServiceKey{NetworkID: 4, ServiceID: 101}
-	missing := ServiceKey{NetworkID: 4, ServiceID: 102}
+	key := model.ServiceKey{NetworkID: 4, ServiceID: 101}
+	missing := model.ServiceKey{NetworkID: 4, ServiceID: 102}
 	store := &collectProgramStore{}
 	session := &collectEITSession{sections: []*ts.EIT{testEIT(ts.TableIDEITSStart, key, 10)}}
 
-	if _, err := CollectServiceSnapshots(context.Background(), store, newRemoteSyncServiceStore(), session.CollectSchedule, []ServiceKey{key, missing}, 30*time.Millisecond); err != nil {
+	if _, err := CollectServiceSnapshots(context.Background(), store, newRemoteSyncServiceStore(), session.CollectSchedule, []model.ServiceKey{key, missing}, 30*time.Millisecond); err != nil {
 		t.Fatal(err)
 	}
 	if got, want := store.eventIDs(), []uint16{10, 10}; !equalEventIDs(got, want) {
@@ -95,8 +95,8 @@ func TestCollectServiceSnapshotsFlushesPartialEITSDuringCollection(t *testing.T)
 }
 
 func TestCollectServiceSnapshotsKeepsSameNetworkServicesOutsideExpected(t *testing.T) {
-	expected := ServiceKey{NetworkID: 4, ServiceID: 151, TransportStreamID: 100}
-	extra := ServiceKey{NetworkID: 4, ServiceID: 161, TransportStreamID: 101}
+	expected := model.ServiceKey{NetworkID: 4, ServiceID: 151, StreamID: 100}
+	extra := model.ServiceKey{NetworkID: 4, ServiceID: 161, StreamID: 101}
 	store := &collectProgramStore{}
 	status := newRemoteSyncServiceStore()
 	session := &collectEITSession{sections: []*ts.EIT{
@@ -104,18 +104,18 @@ func TestCollectServiceSnapshotsKeepsSameNetworkServicesOutsideExpected(t *testi
 		testEIT(ts.TableIDEITSStart, extra, 20),
 	}}
 
-	result, err := CollectServiceSnapshots(context.Background(), store, status, session.CollectSchedule, []ServiceKey{expected}, 20*time.Millisecond)
+	result, err := CollectServiceSnapshots(context.Background(), store, status, session.CollectSchedule, []model.ServiceKey{expected}, 20*time.Millisecond)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := []ServiceKey{expected, extra}; !equalServiceKeys(result.Observed, want) {
+	if want := []model.ServiceKey{expected, extra}; !equalServiceKeys(result.Observed, want) {
 		t.Fatalf("observed services = %v, want %v", result.Observed, want)
 	}
 	if got := store.eventIDs(); !containsEventIDs(got, []uint16{10, 20}) {
 		t.Fatalf("upserted event IDs = %v, want expected and same-network extra events", got)
 	}
-	for _, key := range []ServiceKey{expected, extra} {
-		statusKey := ServiceKey{NetworkID: key.NetworkID, ServiceID: key.ServiceID}
+	for _, key := range []model.ServiceKey{expected, extra} {
+		statusKey := model.ServiceKey{NetworkID: key.NetworkID, ServiceID: key.ServiceID}
 		if status.successes[statusKey] == 0 {
 			t.Fatalf("service %d did not record success", key.ServiceID)
 		}
@@ -123,18 +123,18 @@ func TestCollectServiceSnapshotsKeepsSameNetworkServicesOutsideExpected(t *testi
 }
 
 func TestCollectServiceSnapshotsStoresWarningForObservedServiceOutsideExpected(t *testing.T) {
-	expected := ServiceKey{NetworkID: 4, ServiceID: 151, TransportStreamID: 100}
-	extra := ServiceKey{NetworkID: 4, ServiceID: 161, TransportStreamID: 101}
+	expected := model.ServiceKey{NetworkID: 4, ServiceID: 151, StreamID: 100}
+	extra := model.ServiceKey{NetworkID: 4, ServiceID: 161, StreamID: 101}
 	status := newRemoteSyncServiceStore()
 	session := &collectEITSession{sections: []*ts.EIT{
 		testEIT(ts.TableIDEITSStart, expected, 10),
 		testSparseEIT(ts.TableIDEITSStart, extra, 10),
 	}}
 
-	if _, err := CollectServiceSnapshots(context.Background(), &collectProgramStore{}, status, session.CollectSchedule, []ServiceKey{expected}, 20*time.Millisecond); err != nil {
+	if _, err := CollectServiceSnapshots(context.Background(), &collectProgramStore{}, status, session.CollectSchedule, []model.ServiceKey{expected}, 20*time.Millisecond); err != nil {
 		t.Fatal(err)
 	}
-	statusKey := ServiceKey{NetworkID: extra.NetworkID, ServiceID: extra.ServiceID}
+	statusKey := model.ServiceKey{NetworkID: extra.NetworkID, ServiceID: extra.ServiceID}
 	if status.successes[statusKey] == 0 {
 		t.Fatal("extra service did not record success")
 	}
@@ -144,13 +144,13 @@ func TestCollectServiceSnapshotsStoresWarningForObservedServiceOutsideExpected(t
 }
 
 func TestCollectServiceSnapshotsDoesNotTreatExtendedOnlyAsObserved(t *testing.T) {
-	key := ServiceKey{NetworkID: 4, ServiceID: 101}
+	key := model.ServiceKey{NetworkID: 4, ServiceID: 101}
 	status := newRemoteSyncServiceStore()
 	session := &collectEITSession{sections: []*ts.EIT{
 		testEIT(ts.TableIDEITSStart+8, key, 10),
 	}}
 
-	_, err := CollectServiceSnapshots(context.Background(), &collectProgramStore{}, status, session.CollectSchedule, []ServiceKey{key}, 20*time.Millisecond)
+	_, err := CollectServiceSnapshots(context.Background(), &collectProgramStore{}, status, session.CollectSchedule, []model.ServiceKey{key}, 20*time.Millisecond)
 	if err == nil {
 		t.Fatal("CollectServiceSnapshots error = nil, want incomplete service error")
 	}
@@ -163,14 +163,14 @@ func TestCollectServiceSnapshotsDoesNotTreatExtendedOnlyAsObserved(t *testing.T)
 }
 
 func TestCollectServiceSnapshotsRequiresMatchingTransportStreamID(t *testing.T) {
-	key := ServiceKey{NetworkID: 4, ServiceID: 101, TransportStreamID: 100}
-	wrongTS := ServiceKey{NetworkID: key.NetworkID, ServiceID: key.ServiceID, TransportStreamID: 200}
+	key := model.ServiceKey{NetworkID: 4, ServiceID: 101, StreamID: 100}
+	wrongTS := model.ServiceKey{NetworkID: key.NetworkID, ServiceID: key.ServiceID, StreamID: 200}
 	status := newRemoteSyncServiceStore()
 	session := &collectEITSession{sections: []*ts.EIT{
 		testEIT(ts.TableIDEITSStart, wrongTS, 10),
 	}}
 
-	result, err := CollectServiceSnapshots(context.Background(), &collectProgramStore{}, status, session.CollectSchedule, []ServiceKey{key}, 20*time.Millisecond)
+	result, err := CollectServiceSnapshots(context.Background(), &collectProgramStore{}, status, session.CollectSchedule, []model.ServiceKey{key}, 20*time.Millisecond)
 	if err == nil {
 		t.Fatal("CollectServiceSnapshots error = nil, want incomplete service error")
 	}
@@ -180,19 +180,19 @@ func TestCollectServiceSnapshotsRequiresMatchingTransportStreamID(t *testing.T) 
 	if len(result.Observed) != 0 {
 		t.Fatalf("observed services = %v, want none", result.Observed)
 	}
-	if !equalServiceKeys(result.Unobserved, []ServiceKey{key}) {
+	if !equalServiceKeys(result.Unobserved, []model.ServiceKey{key}) {
 		t.Fatalf("unobserved services = %v, want [%v]", result.Unobserved, key)
 	}
-	if status.successes[ServiceKey{NetworkID: key.NetworkID, ServiceID: key.ServiceID}] != 0 {
+	if status.successes[model.ServiceKey{NetworkID: key.NetworkID, ServiceID: key.ServiceID}] != 0 {
 		t.Fatal("TSID-mismatched service recorded success")
 	}
 }
 
 func TestCollectServiceSnapshotsToleratesLateConcurrentObserve(t *testing.T) {
-	key := ServiceKey{NetworkID: 4, ServiceID: 101}
+	key := model.ServiceKey{NetworkID: 4, ServiceID: 101}
 	session := &lateObserveEITSession{section: testEIT(ts.TableIDEITSStart, key, 10), done: make(chan struct{})}
 
-	if _, err := CollectServiceSnapshots(context.Background(), &collectProgramStore{}, newRemoteSyncServiceStore(), session.CollectSchedule, []ServiceKey{key}, 20*time.Millisecond); err != nil {
+	if _, err := CollectServiceSnapshots(context.Background(), &collectProgramStore{}, newRemoteSyncServiceStore(), session.CollectSchedule, []model.ServiceKey{key}, 20*time.Millisecond); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -203,12 +203,12 @@ func TestCollectServiceSnapshotsToleratesLateConcurrentObserve(t *testing.T) {
 }
 
 func TestCollectServiceSnapshotsDoesNotDrainCollectorAfterParentCancel(t *testing.T) {
-	key := ServiceKey{NetworkID: 4, ServiceID: 101}
+	key := model.ServiceKey{NetworkID: 4, ServiceID: 101}
 	ctx, cancel := context.WithCancel(context.Background())
 	session := &stuckEITSession{started: make(chan struct{}), release: make(chan struct{})}
 	done := make(chan error, 1)
 	go func() {
-		_, err := CollectServiceSnapshots(ctx, &collectProgramStore{}, newRemoteSyncServiceStore(), session.CollectSchedule, []ServiceKey{key}, time.Second)
+		_, err := CollectServiceSnapshots(ctx, &collectProgramStore{}, newRemoteSyncServiceStore(), session.CollectSchedule, []model.ServiceKey{key}, time.Second)
 		done <- err
 	}()
 	<-session.started
@@ -230,7 +230,7 @@ func TestCollectServiceSnapshotsDoesNotDrainCollectorAfterParentCancel(t *testin
 
 func TestGatherNetworkTimesOutWhileWaitingForSession(t *testing.T) {
 	streams := blockingEPGStreams{}
-	key := ServiceKey{NetworkID: 4, ServiceID: 101}
+	key := model.ServiceKey{NetworkID: 4, ServiceID: 101}
 	started := time.Now()
 	err := gatherNetwork(
 		context.Background(),
@@ -240,7 +240,7 @@ func TestGatherNetworkTimesOutWhileWaitingForSession(t *testing.T) {
 		streams,
 		key.NetworkID,
 		[]Candidate{{Type: "GR", Channel: "27"}},
-		[]ServiceKey{key},
+		[]model.ServiceKey{key},
 		20*time.Millisecond,
 	)
 	if !errors.Is(err, context.DeadlineExceeded) {
@@ -252,7 +252,7 @@ func TestGatherNetworkTimesOutWhileWaitingForSession(t *testing.T) {
 }
 
 func TestGatherNetworkMergesAfterCollectionTimeout(t *testing.T) {
-	key := ServiceKey{NetworkID: 4, ServiceID: 101}
+	key := model.ServiceKey{NetworkID: 4, ServiceID: 101}
 	store := &contextCheckingProgramStore{}
 	streams := staticEPGStreams{session: &collectEITSession{sections: []*ts.EIT{
 		testEIT(ts.TableIDEITSStart, key, 10),
@@ -266,7 +266,7 @@ func TestGatherNetworkMergesAfterCollectionTimeout(t *testing.T) {
 		streams,
 		key.NetworkID,
 		[]Candidate{{Type: "GR", Channel: "27"}},
-		[]ServiceKey{key},
+		[]model.ServiceKey{key},
 		20*time.Millisecond,
 	)
 	if err != nil {
@@ -278,8 +278,8 @@ func TestGatherNetworkMergesAfterCollectionTimeout(t *testing.T) {
 }
 
 func TestGatherNetworkCarriesUnobservedServicesToNextCandidate(t *testing.T) {
-	tsA := ServiceKey{NetworkID: 4, ServiceID: 101, TransportStreamID: 100}
-	tsB := ServiceKey{NetworkID: 4, ServiceID: 161, TransportStreamID: 101}
+	tsA := model.ServiceKey{NetworkID: 4, ServiceID: 101, StreamID: 100}
+	tsB := model.ServiceKey{NetworkID: 4, ServiceID: 161, StreamID: 101}
 	sessionA := &collectEITSession{sections: []*ts.EIT{
 		testEIT(ts.TableIDEITSStart, tsA, 10),
 	}}
@@ -300,7 +300,7 @@ func TestGatherNetworkCarriesUnobservedServicesToNextCandidate(t *testing.T) {
 		streams,
 		tsA.NetworkID,
 		[]Candidate{{Type: "BS", Channel: "BS01_0"}, {Type: "BS", Channel: "BS01_1"}},
-		[]ServiceKey{tsA, tsB},
+		[]model.ServiceKey{tsA, tsB},
 		20*time.Millisecond,
 	)
 	if err != nil {
@@ -309,8 +309,8 @@ func TestGatherNetworkCarriesUnobservedServicesToNextCandidate(t *testing.T) {
 	if sessionA.collectCalls != 1 || sessionB.collectCalls != 1 {
 		t.Fatalf("CollectSchedule calls = %d/%d, want 1/1", sessionA.collectCalls, sessionB.collectCalls)
 	}
-	for _, key := range []ServiceKey{tsA, tsB} {
-		statusKey := ServiceKey{NetworkID: key.NetworkID, ServiceID: key.ServiceID}
+	for _, key := range []model.ServiceKey{tsA, tsB} {
+		statusKey := model.ServiceKey{NetworkID: key.NetworkID, ServiceID: key.ServiceID}
 		if status.successes[statusKey] == 0 {
 			t.Fatalf("service %d did not record success", key.ServiceID)
 		}
@@ -332,7 +332,7 @@ func TestBuildNetworkInputsFiltersServicesWithoutEITSchedule(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []ServiceKey{{NetworkID: 4, ServiceID: 101}}
+	want := []model.ServiceKey{{NetworkID: 4, ServiceID: 101}}
 	if len(services) != len(want) || services[0] != want[0] {
 		t.Fatalf("network services = %v, want %v", services, want)
 	}
@@ -447,22 +447,22 @@ func TestGroupServicesByNetworkUsesBroadCandidatesOnlyForSatelliteNetwork(t *tes
 }
 
 func TestCollectServiceSnapshotsDoesNotFailWhenSomeServicesUnobserved(t *testing.T) {
-	observed := ServiceKey{NetworkID: 4, ServiceID: 101}
-	missing := ServiceKey{NetworkID: 4, ServiceID: 102}
+	observed := model.ServiceKey{NetworkID: 4, ServiceID: 101}
+	missing := model.ServiceKey{NetworkID: 4, ServiceID: 102}
 	store := &collectProgramStore{}
 	status := newRemoteSyncServiceStore()
 	session := &collectEITSession{sections: []*ts.EIT{
 		testEIT(ts.TableIDEITSStart, observed, 10),
 	}}
 
-	result, err := CollectServiceSnapshots(context.Background(), store, status, session.CollectSchedule, []ServiceKey{observed, missing}, 20*time.Millisecond)
+	result, err := CollectServiceSnapshots(context.Background(), store, status, session.CollectSchedule, []model.ServiceKey{observed, missing}, 20*time.Millisecond)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !equalServiceKeys(result.Observed, []ServiceKey{observed}) {
+	if !equalServiceKeys(result.Observed, []model.ServiceKey{observed}) {
 		t.Fatalf("observed services = %v, want [%v]", result.Observed, observed)
 	}
-	if !equalServiceKeys(result.Unobserved, []ServiceKey{missing}) {
+	if !equalServiceKeys(result.Unobserved, []model.ServiceKey{missing}) {
 		t.Fatalf("unobserved services = %v, want [%v]", result.Unobserved, missing)
 	}
 	if status.successes[observed] == 0 {
@@ -477,11 +477,11 @@ func TestCollectServiceSnapshotsDoesNotFailWhenSomeServicesUnobserved(t *testing
 }
 
 func TestCollectServiceSnapshotsFailsWhenNoServicesObserved(t *testing.T) {
-	key := ServiceKey{NetworkID: 4, ServiceID: 101}
+	key := model.ServiceKey{NetworkID: 4, ServiceID: 101}
 	status := newRemoteSyncServiceStore()
 	session := &collectEITSession{}
 
-	_, err := CollectServiceSnapshots(context.Background(), &collectProgramStore{}, status, session.CollectSchedule, []ServiceKey{key}, 20*time.Millisecond)
+	_, err := CollectServiceSnapshots(context.Background(), &collectProgramStore{}, status, session.CollectSchedule, []model.ServiceKey{key}, 20*time.Millisecond)
 	if err == nil {
 		t.Fatal("CollectServiceSnapshots error = nil, want incomplete service error")
 	}
@@ -495,12 +495,12 @@ func TestCollectServiceSnapshotsAbortsEarlyOnDeadStream(t *testing.T) {
 	eitsDeadStreamTimeout = 10 * time.Millisecond
 	t.Cleanup(func() { eitsDeadStreamTimeout = previous })
 
-	key := ServiceKey{NetworkID: 4, ServiceID: 101}
+	key := model.ServiceKey{NetworkID: 4, ServiceID: 101}
 	status := newRemoteSyncServiceStore()
 	session := &collectEITSession{}
 
 	started := time.Now()
-	_, err := CollectServiceSnapshots(context.Background(), &collectProgramStore{}, status, session.CollectSchedule, []ServiceKey{key}, time.Minute)
+	_, err := CollectServiceSnapshots(context.Background(), &collectProgramStore{}, status, session.CollectSchedule, []model.ServiceKey{key}, time.Minute)
 	elapsed := time.Since(started)
 
 	if err == nil {
@@ -515,14 +515,14 @@ func TestCollectServiceSnapshotsAbortsEarlyOnDeadStream(t *testing.T) {
 }
 
 func TestCollectServiceSnapshotsStoresLowQualityWarningWithoutFailing(t *testing.T) {
-	key := ServiceKey{NetworkID: 4, ServiceID: 101}
+	key := model.ServiceKey{NetworkID: 4, ServiceID: 101}
 	store := &collectProgramStore{}
 	status := newRemoteSyncServiceStore()
 	session := &collectEITSession{sections: []*ts.EIT{
 		testSparseEIT(ts.TableIDEITSStart, key, 10),
 	}}
 
-	_, err := CollectServiceSnapshots(context.Background(), store, status, session.CollectSchedule, []ServiceKey{key}, 20*time.Millisecond)
+	_, err := CollectServiceSnapshots(context.Background(), store, status, session.CollectSchedule, []model.ServiceKey{key}, 20*time.Millisecond)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -541,7 +541,7 @@ func TestCollectServiceSnapshotsStoresLowQualityWarningWithoutFailing(t *testing
 }
 
 func TestCollectServiceSnapshotsUsesBroadcastClockForSuccessTimestamp(t *testing.T) {
-	key := ServiceKey{NetworkID: 4, ServiceID: 101}
+	key := model.ServiceKey{NetworkID: 4, ServiceID: 101}
 	clock := time.Date(2026, 6, 29, 12, 34, 56, 0, time.FixedZone("JST", 9*60*60))
 	store := &collectProgramStore{}
 	status := newRemoteSyncServiceStore()
@@ -550,7 +550,7 @@ func TestCollectServiceSnapshotsUsesBroadcastClockForSuccessTimestamp(t *testing
 		clock: clock,
 	}}}
 
-	if _, err := CollectServiceSnapshots(context.Background(), store, status, session.CollectSchedule, []ServiceKey{key}, 20*time.Millisecond); err != nil {
+	if _, err := CollectServiceSnapshots(context.Background(), store, status, session.CollectSchedule, []model.ServiceKey{key}, 20*time.Millisecond); err != nil {
 		t.Fatal(err)
 	}
 	if got, want := status.successes[key], clock.UnixMilli(); got != want {
@@ -781,10 +781,10 @@ func (s *contextCheckingProgramStore) ReplaceServicePrograms(context.Context, ui
 	return nil
 }
 
-func testEIT(tableID byte, key ServiceKey, eventID uint16) *ts.EIT {
+func testEIT(tableID byte, key model.ServiceKey, eventID uint16) *ts.EIT {
 	return &ts.EIT{
 		OriginalNetworkID:        key.NetworkID,
-		TransportStreamID:        key.TransportStreamID,
+		TransportStreamID:        key.StreamID,
 		ServiceID:                key.ServiceID,
 		TableID:                  tableID,
 		SectionNumber:            0,
@@ -798,10 +798,10 @@ func testEIT(tableID byte, key ServiceKey, eventID uint16) *ts.EIT {
 	}
 }
 
-func testSparseEIT(tableID byte, key ServiceKey, count int) *ts.EIT {
+func testSparseEIT(tableID byte, key model.ServiceKey, count int) *ts.EIT {
 	eit := &ts.EIT{
 		OriginalNetworkID:        key.NetworkID,
-		TransportStreamID:        key.TransportStreamID,
+		TransportStreamID:        key.StreamID,
 		ServiceID:                key.ServiceID,
 		TableID:                  tableID,
 		SectionNumber:            0,
@@ -868,7 +868,7 @@ func equalCandidates(a, b []Candidate) bool {
 	return true
 }
 
-func equalServiceKeys(a, b []ServiceKey) bool {
+func equalServiceKeys(a, b []model.ServiceKey) bool {
 	if len(a) != len(b) {
 		return false
 	}

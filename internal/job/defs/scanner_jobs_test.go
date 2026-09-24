@@ -404,11 +404,11 @@ func (fakeEPGGatherer) Groups(context.Context) (map[uint16]*epggather.Network, e
 	return nil, nil
 }
 
-func (fakeEPGGatherer) BuildNetworkInputs(context.Context, uint16) ([]epggather.Candidate, []epggather.ServiceKey, error) {
-	return nil, []epggather.ServiceKey{{NetworkID: 4, ServiceID: 101}}, nil
+func (fakeEPGGatherer) BuildNetworkInputs(context.Context, uint16) ([]epggather.Candidate, []model.ServiceKey, error) {
+	return nil, []model.ServiceKey{{NetworkID: 4, ServiceID: 101}}, nil
 }
 
-func (fakeEPGGatherer) GatherNetwork(context.Context, uint16, []epggather.Candidate, []epggather.ServiceKey) error {
+func (fakeEPGGatherer) GatherNetwork(context.Context, uint16, []epggather.Candidate, []model.ServiceKey) error {
 	return nil
 }
 

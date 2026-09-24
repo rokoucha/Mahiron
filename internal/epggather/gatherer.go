@@ -8,16 +8,11 @@ import (
 	"time"
 
 	"github.com/21S1298001/mahiron/internal/config"
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/service"
 )
-
-type ServiceKey struct {
-	NetworkID         uint16
-	ServiceID         uint16
-	TransportStreamID uint16
-}
 
 type ServiceStore interface {
 	GetServices(context.Context) ([]*service.Service, error)
@@ -75,11 +70,11 @@ func (s *Gatherer) Groups(ctx context.Context) (map[uint16]*Network, error) {
 	return groupServicesByNetwork(storedServices, s.channels, s.streams.NetworkWideEIT), nil
 }
 
-func (s *Gatherer) BuildNetworkInputs(ctx context.Context, networkID uint16) ([]Candidate, []ServiceKey, error) {
+func (s *Gatherer) BuildNetworkInputs(ctx context.Context, networkID uint16) ([]Candidate, []model.ServiceKey, error) {
 	return buildNetworkInputs(ctx, s.serviceStore, s.channels, networkID, s.streams.NetworkWideEIT)
 }
 
-func (s *Gatherer) GatherNetwork(ctx context.Context, networkID uint16, candidates []Candidate, serviceKeys []ServiceKey) error {
+func (s *Gatherer) GatherNetwork(ctx context.Context, networkID uint16, candidates []Candidate, serviceKeys []model.ServiceKey) error {
 	return gatherNetwork(ctx, s.events, s.programStore, s.serviceStore, s.streams, networkID, candidates, serviceKeys, s.retrievalTime)
 }
 

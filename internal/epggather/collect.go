@@ -12,8 +12,8 @@ import (
 )
 
 type CollectResult struct {
-	Observed     []ServiceKey
-	Unobserved   []ServiceKey
+	Observed     []model.ServiceKey
+	Unobserved   []model.ServiceKey
 	ProgramCount int
 }
 
@@ -36,7 +36,7 @@ type expectedServiceIndex struct {
 	networks map[uint16]struct{}
 }
 
-func newExpectedServiceIndex(expected []ServiceKey) *expectedServiceIndex {
+func newExpectedServiceIndex(expected []model.ServiceKey) *expectedServiceIndex {
 	idx := &expectedServiceIndex{
 		byNID:    make(map[uint16]map[uint16]map[uint16]struct{}, len(expected)),
 		networks: make(map[uint16]struct{}, len(expected)),
@@ -46,10 +46,10 @@ func newExpectedServiceIndex(expected []ServiceKey) *expectedServiceIndex {
 		if idx.byNID[key.NetworkID] == nil {
 			idx.byNID[key.NetworkID] = make(map[uint16]map[uint16]struct{})
 		}
-		if idx.byNID[key.NetworkID][key.TransportStreamID] == nil {
-			idx.byNID[key.NetworkID][key.TransportStreamID] = make(map[uint16]struct{})
+		if idx.byNID[key.NetworkID][key.StreamID] == nil {
+			idx.byNID[key.NetworkID][key.StreamID] = make(map[uint16]struct{})
 		}
-		idx.byNID[key.NetworkID][key.TransportStreamID][key.ServiceID] = struct{}{}
+		idx.byNID[key.NetworkID][key.StreamID][key.ServiceID] = struct{}{}
 	}
 	return idx
 }
@@ -77,15 +77,11 @@ func (idx *expectedServiceIndex) matchesCollectionNetwork(key model.ServiceKey) 
 	return ok
 }
 
-func serviceKeyFromModel(key model.ServiceKey) ServiceKey {
-	return ServiceKey{NetworkID: key.NetworkID, ServiceID: key.ServiceID, TransportStreamID: key.StreamID}
-}
-
 // collectionSchedule holds the latest schedule update of each service a
 // collection run heard about. The session keeps the reception state; this
 // only remembers what it last reported.
 type collectionSchedule struct {
-	updates map[ServiceKey]model.ScheduleUpdate
+	updates map[model.ServiceKey]model.ScheduleUpdate
 	// lastProgress is when the session last reported progress.
 	lastProgress time.Time
 	// clock is the latest broadcast clock the session reported.
@@ -93,11 +89,11 @@ type collectionSchedule struct {
 }
 
 func newCollectionSchedule() *collectionSchedule {
-	return &collectionSchedule{updates: make(map[ServiceKey]model.ScheduleUpdate)}
+	return &collectionSchedule{updates: make(map[model.ServiceKey]model.ScheduleUpdate)}
 }
 
-func (c *collectionSchedule) observe(update model.ScheduleUpdate) ServiceKey {
-	key := serviceKeyFromModel(update.Service)
+func (c *collectionSchedule) observe(update model.ScheduleUpdate) model.ServiceKey {
+	key := update.Service
 	c.updates[key] = update
 	c.lastProgress = time.Now()
 	c.clock = max(c.clock, update.ObservedAt)
@@ -116,11 +112,11 @@ func (c *collectionSchedule) stableFor(duration time.Duration) bool {
 }
 
 // observed reports whether the service's basic tables arrived.
-func (c *collectionSchedule) observed(key ServiceKey) bool {
+func (c *collectionSchedule) observed(key model.ServiceKey) bool {
 	return c.updates[key].BasicObserved
 }
 
-func (c *collectionSchedule) events(key ServiceKey) []model.Event {
+func (c *collectionSchedule) events(key model.ServiceKey) []model.Event {
 	update, ok := c.updates[key]
 	if !ok || update.Events == nil {
 		return nil
@@ -128,7 +124,7 @@ func (c *collectionSchedule) events(key ServiceKey) []model.Event {
 	return update.Events()
 }
 
-func (c *collectionSchedule) diagnosis(key ServiceKey) string {
+func (c *collectionSchedule) diagnosis(key model.ServiceKey) string {
 	update, ok := c.updates[key]
 	if !ok || update.Diagnosis == nil {
 		return ""
@@ -140,7 +136,7 @@ func (c *collectionSchedule) diagnosis(key ServiceKey) string {
 // services are complete, the stream turns out dead or retrievalTime passes.
 type CollectSchedule = func(context.Context, func(model.ScheduleUpdate) error, func(model.PresentFollowing) error) error
 
-func CollectServiceSnapshots(ctx context.Context, events EventWriter, serviceStore ServiceStore, collect CollectSchedule, expected []ServiceKey, retrievalTime time.Duration) (result *CollectResult, err error) {
+func CollectServiceSnapshots(ctx context.Context, events EventWriter, serviceStore ServiceStore, collect CollectSchedule, expected []model.ServiceKey, retrievalTime time.Duration) (result *CollectResult, err error) {
 	ctx, span := observability.StartSpan(ctx, observability.SpanEPGCollectServiceSnapshots,
 		observability.AttrEPGServices.Int(len(expected)),
 		observability.AttrEPGRetrievalTimeMS.Int64(retrievalTime.Milliseconds()),
@@ -206,8 +202,8 @@ func CollectServiceSnapshots(ctx context.Context, events EventWriter, serviceSto
 	defer flushTicker.Stop()
 	deadStreamTimer := time.NewTimer(eitsDeadStreamTimeout)
 	defer deadStreamTimer.Stop()
-	dirtyServices := make(map[ServiceKey]struct{})
-	observedServices := make(map[ServiceKey]struct{})
+	dirtyServices := make(map[model.ServiceKey]struct{})
+	observedServices := make(map[model.ServiceKey]struct{})
 	var pfUpdates, scheduleUpdates, received int
 	handleUpdate := func(update model.ScheduleUpdate) {
 		scheduleUpdates++
@@ -241,7 +237,7 @@ func CollectServiceSnapshots(ctx context.Context, events EventWriter, serviceSto
 			handlePresentFollowing(pf)
 		case <-flushTicker.C:
 			if partialFlushes.flush(schedule, dirtyServices) {
-				dirtyServices = make(map[ServiceKey]struct{})
+				dirtyServices = make(map[model.ServiceKey]struct{})
 			}
 			if shouldStopEITSCollection(schedule, expected) && schedule.stableFor(eitsStableStopDuration) {
 				cancel()
@@ -311,14 +307,14 @@ func CollectServiceSnapshots(ctx context.Context, events EventWriter, serviceSto
 // persistObservedSnapshots stores the observed schedules, records
 // per-service EPG attempt/success state, and populates result.Observed /
 // result.Unobserved. It returns the joined error of the persist stage.
-func persistObservedSnapshots(ctx context.Context, writer EventWriter, serviceStore ServiceStore, schedule *collectionSchedule, expected []ServiceKey, observedServices map[ServiceKey]struct{}, updatedAt int64, result *CollectResult) error {
+func persistObservedSnapshots(ctx context.Context, writer EventWriter, serviceStore ServiceStore, schedule *collectionSchedule, expected []model.ServiceKey, observedServices map[model.ServiceKey]struct{}, updatedAt int64, result *CollectResult) error {
 	var collectErr error
 	observed := 0
 	expectedObserved := 0
 	var unobserved error
-	observedEvents := make(map[ServiceKey][]model.Event)
-	mergeKeys := append([]ServiceKey(nil), expected...)
-	expectedSeen := make(map[ServiceKey]struct{}, len(expected))
+	observedEvents := make(map[model.ServiceKey][]model.Event)
+	mergeKeys := append([]model.ServiceKey(nil), expected...)
+	expectedSeen := make(map[model.ServiceKey]struct{}, len(expected))
 	type serviceIdentity struct {
 		networkID uint16
 		serviceID uint16
@@ -326,13 +322,13 @@ func persistObservedSnapshots(ctx context.Context, writer EventWriter, serviceSt
 	expectedTransportStreams := make(map[serviceIdentity]uint16, len(expected))
 	for _, key := range expected {
 		expectedSeen[key] = struct{}{}
-		expectedTransportStreams[serviceIdentity{networkID: key.NetworkID, serviceID: key.ServiceID}] = key.TransportStreamID
+		expectedTransportStreams[serviceIdentity{networkID: key.NetworkID, serviceID: key.ServiceID}] = key.StreamID
 	}
 	for key := range observedServices {
 		if _, ok := expectedSeen[key]; ok || !schedule.observed(key) {
 			continue
 		}
-		if expectedTSID, ok := expectedTransportStreams[serviceIdentity{networkID: key.NetworkID, serviceID: key.ServiceID}]; ok && expectedTSID != 0 && key.TransportStreamID != expectedTSID {
+		if expectedTSID, ok := expectedTransportStreams[serviceIdentity{networkID: key.NetworkID, serviceID: key.ServiceID}]; ok && expectedTSID != 0 && key.StreamID != expectedTSID {
 			continue
 		}
 		mergeKeys = append(mergeKeys, key)
@@ -421,7 +417,7 @@ func persistObservedSnapshots(ctx context.Context, writer EventWriter, serviceSt
 // shouldStopEITSCollection reports whether every expected service's basic
 // and extended tables are complete and the collected events are good enough.
 // A service without extended tables counts as extended-complete.
-func shouldStopEITSCollection(schedule *collectionSchedule, expected []ServiceKey) bool {
+func shouldStopEITSCollection(schedule *collectionSchedule, expected []model.ServiceKey) bool {
 	if len(expected) == 0 {
 		return false
 	}

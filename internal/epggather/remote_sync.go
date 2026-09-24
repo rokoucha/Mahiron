@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/internal/program"
 )
@@ -32,7 +33,7 @@ func minStartAt(programs []*program.Program) int64 {
 
 // syncStoredPrograms copies a remote server's stored programs of the
 // expected services, recording their EPG attempt and success.
-func syncStoredPrograms(ctx context.Context, programStore ProgramStore, serviceStore ServiceStore, listStored ListStoredPrograms, expected []ServiceKey, retrievalTime time.Duration) (*CollectResult, error) {
+func syncStoredPrograms(ctx context.Context, programStore ProgramStore, serviceStore ServiceStore, listStored ListStoredPrograms, expected []model.ServiceKey, retrievalTime time.Duration) (*CollectResult, error) {
 	startedAt := time.Now().UnixMilli()
 	for _, key := range expected {
 		if err := serviceStore.SetEPGAttempt(ctx, key.NetworkID, key.ServiceID, startedAt, ""); err != nil {
@@ -47,7 +48,7 @@ func syncStoredPrograms(ctx context.Context, programStore ProgramStore, serviceS
 	return result, err
 }
 
-func syncStoredServicePrograms(ctx context.Context, programStore ProgramStore, serviceStore ServiceStore, listStored ListStoredPrograms, expected []ServiceKey, retrievalTime time.Duration) (err error) {
+func syncStoredServicePrograms(ctx context.Context, programStore ProgramStore, serviceStore ServiceStore, listStored ListStoredPrograms, expected []model.ServiceKey, retrievalTime time.Duration) (err error) {
 	ctx, span := observability.StartSpan(ctx, observability.SpanEPGSyncStoredServicePrograms,
 		observability.AttrEPGServices.Int(len(expected)),
 		observability.AttrEPGRetrievalTimeMS.Int64(retrievalTime.Milliseconds()),

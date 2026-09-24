@@ -39,7 +39,7 @@ type LogoGatherTargetStore interface {
 
 type EPGGatherer interface {
 	Groups(context.Context) (map[uint16]*epggather.Network, error)
-	BuildNetworkInputs(context.Context, uint16) ([]epggather.Candidate, []epggather.ServiceKey, error)
-	GatherNetwork(context.Context, uint16, []epggather.Candidate, []epggather.ServiceKey) error
+	BuildNetworkInputs(context.Context, uint16) ([]epggather.Candidate, []model.ServiceKey, error)
+	GatherNetwork(context.Context, uint16, []epggather.Candidate, []model.ServiceKey) error
 	Cleanup(context.Context, time.Time) error
 }

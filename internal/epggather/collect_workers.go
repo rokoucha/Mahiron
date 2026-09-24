@@ -31,7 +31,7 @@ func newPartialEITSFlusher(ctx context.Context, events EventWriter) *partialEITS
 	return f
 }
 
-func (f *partialEITSFlusher) flush(schedule *collectionSchedule, dirty map[ServiceKey]struct{}) bool {
+func (f *partialEITSFlusher) flush(schedule *collectionSchedule, dirty map[model.ServiceKey]struct{}) bool {
 	if schedule == nil || len(dirty) == 0 {
 		return true
 	}

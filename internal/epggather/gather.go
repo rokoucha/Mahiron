@@ -8,11 +8,12 @@ import (
 	"time"
 
 	"github.com/21S1298001/mahiron/internal/job/run"
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/observability"
 	"go.opentelemetry.io/otel/attribute"
 )
 
-func gatherNetwork(ctx context.Context, events EventWriter, programStore ProgramStore, serviceStore ServiceStore, streams StreamManager, networkID uint16, candidates []Candidate, serviceKeys []ServiceKey, retrievalTime time.Duration) (err error) {
+func gatherNetwork(ctx context.Context, events EventWriter, programStore ProgramStore, serviceStore ServiceStore, streams StreamManager, networkID uint16, candidates []Candidate, serviceKeys []model.ServiceKey, retrievalTime time.Duration) (err error) {
 	ctx, span := observability.StartSpan(ctx, observability.SpanEPGGatherNetwork,
 		observability.AttrEPGNetworkID.Int(int(networkID)),
 		observability.AttrEPGCandidates.Int(len(candidates)),
@@ -36,7 +37,7 @@ func gatherNetwork(ctx context.Context, events EventWriter, programStore Program
 			ordered = append(ordered, candidate)
 		}
 	}
-	remaining := append([]ServiceKey(nil), serviceKeys...)
+	remaining := append([]model.ServiceKey(nil), serviceKeys...)
 	var result error
 	items := make([]run.Item, 0, len(ordered)+len(serviceKeys))
 	warnings := []string{}
@@ -131,7 +132,7 @@ func gatherNetwork(ctx context.Context, events EventWriter, programStore Program
 				Summary: fmt.Sprintf("service %d", key.ServiceID),
 				Data: map[string]any{
 					"networkId":         key.NetworkID,
-					"transportStreamId": key.TransportStreamID,
+					"transportStreamId": key.StreamID,
 					"serviceId":         key.ServiceID,
 					"result":            "unobserved",
 				},
@@ -174,8 +175,8 @@ func epgGatherAttributes(result run.Result) []attribute.KeyValue {
 	}
 }
 
-func serviceKeyDifference(keys, remove []ServiceKey) []ServiceKey {
-	seen := make(map[ServiceKey]struct{}, len(remove))
+func serviceKeyDifference(keys, remove []model.ServiceKey) []model.ServiceKey {
+	seen := make(map[model.ServiceKey]struct{}, len(remove))
 	for _, key := range remove {
 		seen[key] = struct{}{}
 	}

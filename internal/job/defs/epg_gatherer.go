@@ -10,6 +10,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/epggather"
 	"github.com/21S1298001/mahiron/internal/job"
 	"github.com/21S1298001/mahiron/internal/job/run"
+	"github.com/21S1298001/mahiron/internal/model"
 )
 
 const (
@@ -77,7 +78,7 @@ func epgGathererHandler(registry Registry, service EPGGatherer) func(context.Con
 // want to trigger gathering for a freshly discovered network without waiting
 // for the next cron tick. Returns true when a job was actually enqueued (not
 // already running and not skipped for having no services).
-func enqueueEPGGatherForNetwork(ctx context.Context, registry Registry, service EPGGatherer, networkID uint16, presetCandidates []epggather.Candidate, presetServices []epggather.ServiceKey) (bool, error) {
+func enqueueEPGGatherForNetwork(ctx context.Context, registry Registry, service EPGGatherer, networkID uint16, presetCandidates []epggather.Candidate, presetServices []model.ServiceKey) (bool, error) {
 	candidates := presetCandidates
 	serviceKeys := presetServices
 	if len(candidates) == 0 && len(serviceKeys) == 0 {
@@ -93,7 +94,7 @@ func enqueueEPGGatherForNetwork(ctx context.Context, registry Registry, service 
 	}
 	nid := networkID
 	networkCandidates := append([]epggather.Candidate(nil), candidates...)
-	networkServices := append([]epggather.ServiceKey(nil), serviceKeys...)
+	networkServices := append([]model.ServiceKey(nil), serviceKeys...)
 	definition := job.JobDefinition{
 		Key: fmt.Sprintf("epg-gather:nid:%d", nid), Name: fmt.Sprintf("EPG Gather NID %d", nid), IsRerunnable: true,
 		ExclusiveKeys: []string{"epg-service-topology"},
