@@ -9,13 +9,17 @@
 package isdb
 
 // SectionHeader carries the long-format section header values both TS and
-// MMT sections share.
+// MMT sections share, plus the table bookkeeping values EIT schedule
+// tracking needs (the last table ID of the sub-table and the last section
+// number of the current segment).
 type SectionHeader struct {
-	TableIDExtension  uint16
-	Version           uint8
-	SectionNumber     uint8
-	LastSectionNumber uint8
-	CurrentNext       bool
+	TableIDExtension   uint16
+	Version            uint8
+	SectionNumber      uint8
+	LastSectionNumber  uint8
+	CurrentNext        bool
+	LastTableID        uint8
+	SegmentLastSection uint8
 }
 
 // TableTracker collects every section of one table version. A table is

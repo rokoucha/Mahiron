@@ -191,7 +191,9 @@ type RelatedEvent struct {
 	EventID   uint16
 }
 
-// ParentalRating is one country/age pair from a parental rating descriptor.
+// ParentalRating is one country/rating pair from a parental rating
+// descriptor. Age keeps the raw rating byte (minimum age is rating+3,
+// 0x00 means undefined); interpretation is left to the converters.
 type ParentalRating struct {
 	Country string
 	Age     uint8
