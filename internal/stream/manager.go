@@ -35,7 +35,6 @@ type Manager struct {
 	remoteTunerTypes      map[string]map[string]struct{}
 	remoteTunersMu        sync.RWMutex
 	remoteTuners          map[string]map[int]tuner.Status
-	serviceLister         ServiceLister
 	registry              *sessionRegistry
 	sources               *source.Pool
 	dataBroadcastStore    bml.ModuleStore
@@ -56,7 +55,6 @@ type ManagerConfig struct {
 	Remotes            config.RemotesConfig
 	LogoUpdater        channel.LogoUpdater
 	ProgramUpdater     ProgramUpdater
-	ServiceLister      ServiceLister
 	TunerManager       source.TunerManager
 	ModuleStore        bml.ModuleStore
 	// SnapshotStore persists raw PMT/DII sections for provisional /state
@@ -120,7 +118,6 @@ func NewManager(cfg ManagerConfig) *Manager {
 		remotes:            remotes,
 		remoteTunerTypes:   remoteTunerTypes,
 		remoteTuners:       make(map[string]map[int]tuner.Status, len(remotes)),
-		serviceLister:      cfg.ServiceLister,
 		registry:           newSessionRegistry(),
 		sources:            source.NewPool(cfg.Channels, cfg.TunerManager, descramblerFactory, remoteClients(remotes)),
 		dataBroadcastStore: moduleStoreOrDefault(cfg.ModuleStore),
@@ -150,10 +147,7 @@ func (m *Manager) StartRemoteProgramEventSync(ctx context.Context) {
 	m.remoteEventSyncOnce.Do(func() {
 		syncCtx, cancel := context.WithCancel(ctx)
 		m.remoteEventSyncCancel = cancel
-		var updater ProgramUpdater
-		if m.programUpdater != nil {
-			updater = m.remoteProgramUpdater()
-		}
+		updater := m.programUpdater
 		for name, client := range m.remotes {
 			name, client := name, client
 			m.remoteEventSyncWG.Add(1)
@@ -244,13 +238,6 @@ func (m *Manager) applyRemoteTunerEvent(name, typ string, status tuner.Status) {
 		return
 	}
 	m.remoteTuners[name][status.Index] = status
-}
-
-func (m *Manager) remoteProgramUpdater() ProgramUpdater {
-	if m.serviceLister == nil {
-		return m.programUpdater
-	}
-	return remote.NewKnownServiceProgramUpdater(m.programUpdater, m.serviceLister)
 }
 
 func (m *Manager) GetOrCreate(ctx context.Context, channelType, channel string) (Session, error) {
@@ -519,7 +506,5 @@ var (
 var newRemoteClient = func(cfg config.RemoteConfig) *remote.Client {
 	return remote.NewClient(cfg)
 }
-
-type ServiceLister = remote.ServiceLister
 
 type ProgramUpdater = remote.ProgramUpdater

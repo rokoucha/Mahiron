@@ -1,4 +1,4 @@
-package remote
+package epggather
 
 import (
 	"context"
@@ -14,8 +14,13 @@ type ServiceLister interface {
 	GetServices(context.Context) ([]*service.Service, error)
 }
 
+// ProgramWriter stores programs, such as the ones a remote server pushes.
+type ProgramWriter interface {
+	UpsertPrograms(context.Context, []*program.Program) error
+}
+
 type knownServiceProgramUpdater struct {
-	inner  ProgramUpdater
+	inner  ProgramWriter
 	loader ServiceLister
 
 	mu     sync.Mutex
@@ -28,7 +33,11 @@ type serviceKey struct {
 	serviceID uint16
 }
 
-func NewKnownServiceProgramUpdater(inner ProgramUpdater, loader ServiceLister) ProgramUpdater {
+// NewKnownServiceProgramUpdater stores only the programs of scanned
+// services. A remote server pushes the programs of all its services, which
+// would otherwise add services this server never scanned. An unknown
+// service reloads the service list once, so that a fresh scan is picked up.
+func NewKnownServiceProgramUpdater(inner ProgramWriter, loader ServiceLister) ProgramWriter {
 	return &knownServiceProgramUpdater{inner: inner, loader: loader}
 }
 

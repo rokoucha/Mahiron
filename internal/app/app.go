@@ -205,8 +205,7 @@ func buildRuntime(cfg *config.Config, database *db.DB, obs observability.SetupRe
 		EITUpdater:     eventWriter,
 		SnapshotStore:  snapshotStore,
 		LogoUpdater:    services,
-		ProgramUpdater: programs,
-		ServiceLister:  services,
+		ProgramUpdater: epggather.NewKnownServiceProgramUpdater(programs, services),
 		TunerManager:   tuners,
 		ModuleStore:    moduleStore,
 	})
