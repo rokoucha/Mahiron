@@ -14,6 +14,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/db"
 	"github.com/21S1298001/mahiron/internal/event"
+	"github.com/21S1298001/mahiron/internal/mirakurun"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/service"
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
@@ -115,6 +116,13 @@ func TestOpenAPIPathItemsAlwaysDeclareParameters(t *testing.T) {
 // (ISDB-S3 phase 3): later steps must keep these outputs byte-for-byte, except
 // for deliberately changed fields such as the stream ID or unset start times.
 
+// contractAPIProgram converts a program through the shared Mirakurun
+// conversion so the contract tests pin its output, not a local copy.
+func contractAPIProgram(p *program.Program) *apigen.Program {
+	api := mirakurun.ProgramToAPI(p)
+	return &api
+}
+
 // contractFullProgram exercises every optional program field.
 func contractFullProgram() *program.Program {
 	componentTag := 16
@@ -186,7 +194,7 @@ func requireKeys(t *testing.T, decoded map[string]json.RawMessage, wantPresent, 
 }
 
 func TestProgramContractOmitsEmptyKeys(t *testing.T) {
-	raw, err := apiProgram(contractMinimalProgram()).MarshalJSON()
+	raw, err := contractAPIProgram(contractMinimalProgram()).MarshalJSON()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +215,7 @@ func TestProgramContractOmitsEmptyKeys(t *testing.T) {
 		t.Errorf("audios/relatedItems = %#v/%#v, want non-nil empty arrays", minimal.Audios, minimal.RelatedItems)
 	}
 
-	raw, err = apiProgram(contractFullProgram()).MarshalJSON()
+	raw, err = contractAPIProgram(contractFullProgram()).MarshalJSON()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,7 +247,7 @@ func TestProgramContractOmitsEmptyKeys(t *testing.T) {
 
 	bare := *contractFullProgram()
 	bare.Series = &program.Series{ID: 5}
-	raw, err = apiProgram(&bare).MarshalJSON()
+	raw, err = contractAPIProgram(&bare).MarshalJSON()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -268,7 +276,7 @@ func TestProgramContractVideoTypeAndResolution(t *testing.T) {
 		{name: "known type with unknown resolution", video: &program.Video{StreamContent: 0x5, ComponentType: 0xF1}, wantType: "h.264", wantAbsent: []string{"resolution"}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			raw, err := apiProgram(&program.Program{Video: tt.video}).MarshalJSON()
+			raw, err := contractAPIProgram(&program.Program{Video: tt.video}).MarshalJSON()
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -360,7 +368,7 @@ func TestProgramContractExtendedKeepsEveryItem(t *testing.T) {
 		}
 		return decoded.Extended
 	}
-	raw, err := apiProgram(stored).MarshalJSON()
+	raw, err := contractAPIProgram(stored).MarshalJSON()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -370,7 +378,7 @@ func TestProgramContractExtendedKeepsEveryItem(t *testing.T) {
 	// The streaming /api/programs path encodes with jx instead of
 	// encoding/json; the item set must be identical there too.
 	encoder := &jx.Encoder{}
-	apiProgram(stored).Encode(encoder)
+	contractAPIProgram(stored).Encode(encoder)
 	if got := decodeExtended(t, encoder.Bytes()); !reflect.DeepEqual(got, full.Extended) {
 		t.Fatalf("streamed extended = %#v, want %#v", got, full.Extended)
 	}
@@ -390,7 +398,7 @@ func TestProgramEventDataMatchesAPIContract(t *testing.T) {
 			t.Fatal(err)
 		}
 		eventData := contractJSONKeys(t, raw)
-		apiRaw, err := apiProgram(p).MarshalJSON()
+		apiRaw, err := contractAPIProgram(p).MarshalJSON()
 		if err != nil {
 			t.Fatal(err)
 		}

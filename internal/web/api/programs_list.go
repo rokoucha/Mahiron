@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/21S1298001/mahiron/internal/mirakurun"
 	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/internal/program"
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
@@ -25,7 +26,8 @@ const programsJSONBuffer = 64 << 10
 // EPG that peaks at around 330 MB, well past what the process is given. This
 // handler is registered directly on the mux instead and encodes one program at
 // a time. The bytes are the same: the same apigen.Program values written by
-// the same generated Encode method.
+// mirakurun.EncodeProgram, which follows the generated field order but sorts
+// extended keys so the output is stable.
 func (h *Handler) WriteProgramsJSON(w http.ResponseWriter, r *http.Request) {
 	query, err := programListQuery(r.URL.Query())
 	if err != nil {
@@ -44,7 +46,8 @@ func (h *Handler) WriteProgramsJSON(w http.ResponseWriter, r *http.Request) {
 	encoder.ResetWriter(w)
 	encoder.ArrStart()
 	err = h.programManager.ListFunc(ctx, query, func(p *program.Program) error {
-		apiProgram(p).Encode(encoder)
+		api := mirakurun.ProgramToAPI(p)
+		mirakurun.EncodeProgram(encoder, &api)
 		return nil
 	})
 	if err != nil {

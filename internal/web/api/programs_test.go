@@ -358,7 +358,7 @@ func TestApiProgramVideoTypeAndResolution(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p := apiProgram(&program.Program{Video: tt.video})
+			p := contractAPIProgram(&program.Program{Video: tt.video})
 			video, ok := p.Video.Get()
 			if !ok {
 				t.Fatal("Video not set")
@@ -454,7 +454,7 @@ func TestApiProgramRelatedItemsEmptyWhenNone(t *testing.T) {
 
 func TestApiProgramGenres(t *testing.T) {
 	t.Run("omitted when empty", func(t *testing.T) {
-		p := apiProgram(&program.Program{})
+		p := contractAPIProgram(&program.Program{})
 		if p.Genres != nil {
 			t.Errorf("Genres = %#v, want nil", p.Genres)
 		}
@@ -468,7 +468,7 @@ func TestApiProgramGenres(t *testing.T) {
 	})
 
 	t.Run("kept when present", func(t *testing.T) {
-		p := apiProgram(&program.Program{Genres: []program.Genre{{Lv1: 0, Lv2: 1, Un1: 15, Un2: 15}}})
+		p := contractAPIProgram(&program.Program{Genres: []program.Genre{{Lv1: 0, Lv2: 1, Un1: 15, Un2: 15}}})
 		if len(p.Genres) != 1 {
 			t.Fatalf("Genres length = %d, want 1", len(p.Genres))
 		}

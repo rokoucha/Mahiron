@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	"github.com/21S1298001/mahiron/internal/config"
+	"github.com/21S1298001/mahiron/internal/mirakurun"
 	"github.com/21S1298001/mahiron/internal/service"
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 )
@@ -192,90 +193,25 @@ func apiChannelWithServices(ctx context.Context, h *Handler, channel config.Chan
 }
 
 func apiChannelWithoutServices(h *Handler, channel config.ChannelConfig) *apigen.Channel {
-	result := &apigen.Channel{
-		Type:    channel.Type,
-		Channel: channel.Channel,
-		Name:    apigen.NewOptString(channel.Name),
-		Routes:  apiChannelRoutes(channel.RoutesOrDefault()),
-	}
-	if channel.TsmfRelTs != nil {
-		result.TsmfRelTs = apigen.NewOptInt(int(*channel.TsmfRelTs))
-	}
-	return result
+	result := mirakurun.ChannelToAPI(channel)
+	return &result
 }
 
-func apiChannelRoutes(routes []config.ChannelRouteConfig) []apigen.ChannelRoute {
-	result := make([]apigen.ChannelRoute, len(routes))
-	for i, route := range routes {
-		result[i] = apigen.ChannelRoute{
-			ID:      route.Id,
-			Type:    route.Type,
-			Channel: route.Channel,
-		}
-		if route.Remote != "" {
-			result[i].Remote = apigen.NewOptString(route.Remote)
-		}
-		if route.Priority != nil {
-			result[i].Priority = apigen.NewOptInt(*route.Priority)
-		}
-		if route.IsDisabled != nil {
-			result[i].IsDisabled = apigen.NewOptBool(*route.IsDisabled)
-		}
-	}
-	return result
+// resolveServiceChannel returns the channel a service belongs to, or nil when
+// the channel is no longer configured.
+func resolveServiceChannel(h *Handler, svc *service.Service) *config.ChannelConfig {
+	return h.serviceManager.GetChannel(svc.ChannelType, svc.ChannelId)
 }
 
 func apiServices(h *Handler, services []*service.Service, includeChannel bool) []apigen.Service {
-	result := make([]apigen.Service, len(services))
-	for i, service := range services {
-		result[i] = *apiService(h, service, includeChannel)
-	}
-	return result
+	return mirakurun.ServicesToAPI(services, func(svc *service.Service) *config.ChannelConfig {
+		return resolveServiceChannel(h, svc)
+	}, includeChannel)
 }
 
 func apiService(h *Handler, service *service.Service, includeChannel bool) *apigen.Service {
-	result := &apigen.Service{
-		ID:                  apigen.ServiceItemId(service.ItemId()),
-		ServiceId:           apigen.ServiceId(service.ServiceId),
-		NetworkId:           apigen.NetworkId(service.NetworkId),
-		TransportStreamId:   apigen.NewOptTransportStreamId(apigen.TransportStreamId(service.TransportStreamId)),
-		Name:                service.Name,
-		Type:                int(service.Type),
-		EitScheduleFlag:     apigen.NewOptBool(service.EITScheduleFlag),
-		EitPresentFollowing: apigen.NewOptBool(service.EITPresentFollowing),
-		RemoteControlKeyId: apigen.NewOptInt(
-			int(service.RemoteControlKeyId),
-		),
-	}
-	applyEPGStatus(result, &service.EPG)
-	if includeChannel {
-		if channel := h.serviceManager.GetChannel(service.ChannelType, service.ChannelId); channel != nil {
-			result.Channel = apigen.NewOptChannel(*apiChannelWithoutServices(h, *channel))
-		}
-	}
-	if service.LogoId != nil {
-		result.LogoId = apigen.NewOptInt(int(*service.LogoId))
-	}
-	result.HasLogoData = apigen.NewOptBool(service.HasLogoData)
-	return result
-}
-
-func applyEPGStatus(result *apigen.Service, status *service.EPGStatus) {
-	if status == nil {
-		return
-	}
-	if status.LastSuccessAt != nil {
-		result.EpgReady = apigen.NewOptBool(true)
-		result.EpgUpdatedAt = apigen.NewOptUnixtimeMS(apigen.UnixtimeMS(*status.LastSuccessAt))
-	} else {
-		result.EpgReady = apigen.NewOptBool(false)
-	}
-	if status.LastAttemptAt != nil {
-		result.EpgLastAttemptAt = apigen.NewOptUnixtimeMS(apigen.UnixtimeMS(*status.LastAttemptAt))
-	}
-	if status.LastError != "" {
-		result.EpgLastError = apigen.NewOptString(status.LastError)
-	}
+	result := mirakurun.ServiceToAPI(service, resolveServiceChannel(h, service), includeChannel)
+	return &result
 }
 
 func notFound(reason string) *apigen.ErrorStatusCode {
