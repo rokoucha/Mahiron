@@ -160,6 +160,8 @@ type remoteEPGStreams struct {
 
 func (remoteEPGStreams) HasSession(string, string) bool { return false }
 
+func (remoteEPGStreams) NetworkWideEIT(uint16) bool { return false }
+
 func (s remoteEPGStreams) OpenSchedule(context.Context, string, string) (CollectSchedule, ListStoredPrograms, error) {
 	return s.session.CollectSchedule, s.session.ListServicePrograms, nil
 }

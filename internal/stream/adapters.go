@@ -3,6 +3,7 @@ package stream
 import (
 	"context"
 
+	"github.com/21S1298001/mahiron/internal/isdb"
 	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/program"
 )
@@ -63,6 +64,14 @@ func NewEPGGatherAdapter(manager *Manager) *EPGGatherAdapter {
 
 func (a *EPGGatherAdapter) HasSession(channelType, channelID string) bool {
 	return a.manager.HasSession(channelType, channelID)
+}
+
+// NetworkWideEIT reports whether every stream of the network carries the
+// whole network's EIT schedule. TS satellite streams carry the other
+// streams' schedules in the actual-other tables; terrestrial streams and
+// ISDB-S3 (MH-EIT covers only its own TLV stream) do not.
+func (a *EPGGatherAdapter) NetworkWideEIT(networkID uint16) bool {
+	return isdb.IsSatelliteOriginalNetworkID(networkID)
 }
 
 func (a *EPGGatherAdapter) OpenSchedule(ctx context.Context, channelType, channelID string) (func(context.Context, func(model.ScheduleUpdate) error, func(model.PresentFollowing) error) error, func(context.Context, uint16, uint16) ([]*program.Program, error), error) {

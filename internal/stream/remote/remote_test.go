@@ -857,4 +857,3 @@ func (u *batchRecordingProgramUpdater) UpsertPrograms(_ context.Context, program
 	u.calls = append(u.calls, batch)
 	return u.err
 }
-

@@ -6,7 +6,6 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/service"
-	"github.com/21S1298001/mahiron/ts"
 )
 
 type Candidate struct {
@@ -19,7 +18,11 @@ type Network struct {
 	Services   []ServiceKey
 }
 
-func groupServicesByNetwork(services []*service.Service, channels config.ChannelsConfig) map[uint16]*Network {
+// groupServicesByNetwork lists each network's services and the channels to
+// gather them from. networkWideEIT reports whether every stream of a network
+// carries the whole network's EIT, in which case any channel of the type
+// serves the network.
+func groupServicesByNetwork(services []*service.Service, channels config.ChannelsConfig, networkWideEIT func(uint16) bool) map[uint16]*Network {
 	byChannel := make(map[string][]uint16)
 	networkTypes := make(map[uint16]map[string]bool)
 	typeNetworks := make(map[string]map[uint16]bool)
@@ -43,7 +46,7 @@ func groupServicesByNetwork(services []*service.Service, channels config.Channel
 		}
 		key := epgChannelKey(configured.Type, configured.Channel)
 		candidateNetworks := byChannel[key]
-		if broadNetwork, ok := broadEPGCandidateNetwork(configured.Type, typeNetworks); ok {
+		if broadNetwork, ok := broadEPGCandidateNetwork(configured.Type, typeNetworks, networkWideEIT); ok {
 			candidateNetworks = []uint16{broadNetwork}
 		}
 		for _, nid := range candidateNetworks {
@@ -74,7 +77,7 @@ func groupServicesByNetwork(services []*service.Service, channels config.Channel
 	return groups
 }
 
-func buildNetworkInputs(ctx context.Context, serviceStore ServiceStore, channels config.ChannelsConfig, networkID uint16) ([]Candidate, []ServiceKey, error) {
+func buildNetworkInputs(ctx context.Context, serviceStore ServiceStore, channels config.ChannelsConfig, networkID uint16, networkWideEIT func(uint16) bool) ([]Candidate, []ServiceKey, error) {
 	storedServices, err := serviceStore.GetServices(ctx)
 	if err != nil {
 		return nil, nil, fmt.Errorf("get services: %w", err)
@@ -100,7 +103,7 @@ func buildNetworkInputs(ctx context.Context, serviceStore ServiceStore, channels
 			continue
 		}
 		key := epgChannelKey(configured.Type, configured.Channel)
-		if byChannel[key] || broadEPGCandidateForNetwork(configured.Type, typeNetworks, networkID) && networkTypes[configured.Type] {
+		if byChannel[key] || broadEPGCandidateForNetwork(configured.Type, typeNetworks, networkID, networkWideEIT) && networkTypes[configured.Type] {
 			candidates = append(candidates, Candidate{Type: configured.Type, Channel: configured.Channel})
 		}
 	}
@@ -122,16 +125,16 @@ func buildNetworkInputs(ctx context.Context, serviceStore ServiceStore, channels
 	return candidates, networkServices, nil
 }
 
-func broadEPGCandidateForNetwork(channelType string, typeNetworks map[string]map[uint16]bool, networkID uint16) bool {
-	return ts.IsSatelliteOriginalNetworkID(networkID) && len(typeNetworks[channelType]) == 1 && typeNetworks[channelType][networkID]
+func broadEPGCandidateForNetwork(channelType string, typeNetworks map[string]map[uint16]bool, networkID uint16, networkWideEIT func(uint16) bool) bool {
+	return networkWideEIT(networkID) && len(typeNetworks[channelType]) == 1 && typeNetworks[channelType][networkID]
 }
 
-func broadEPGCandidateNetwork(channelType string, typeNetworks map[string]map[uint16]bool) (uint16, bool) {
+func broadEPGCandidateNetwork(channelType string, typeNetworks map[string]map[uint16]bool, networkWideEIT func(uint16) bool) (uint16, bool) {
 	if len(typeNetworks[channelType]) != 1 {
 		return 0, false
 	}
 	for networkID := range typeNetworks[channelType] {
-		return networkID, ts.IsSatelliteOriginalNetworkID(networkID)
+		return networkID, networkWideEIT(networkID)
 	}
 	return 0, false
 }

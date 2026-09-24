@@ -33,6 +33,9 @@ type ListStoredPrograms = func(ctx context.Context, networkID, serviceID uint16)
 // depend on the stream package; stream.EPGGatherAdapter implements it.
 type StreamManager interface {
 	HasSession(channelType, channelID string) bool
+	// NetworkWideEIT reports whether every stream of the network carries
+	// the whole network's EIT schedule, as TS satellite streams do.
+	NetworkWideEIT(networkID uint16) bool
 	// OpenSchedule acquires the channel. A channel served by a remote
 	// Mahiron or Mirakurun returns listStored, whose stored programs are
 	// copied; any other channel returns collect.
@@ -69,11 +72,11 @@ func (s *Gatherer) Groups(ctx context.Context) (map[uint16]*Network, error) {
 	if len(storedServices) == 0 {
 		return nil, errors.New("EPG gathering requires scanned services")
 	}
-	return groupServicesByNetwork(storedServices, s.channels), nil
+	return groupServicesByNetwork(storedServices, s.channels, s.streams.NetworkWideEIT), nil
 }
 
 func (s *Gatherer) BuildNetworkInputs(ctx context.Context, networkID uint16) ([]Candidate, []ServiceKey, error) {
-	return buildNetworkInputs(ctx, s.serviceStore, s.channels, networkID)
+	return buildNetworkInputs(ctx, s.serviceStore, s.channels, networkID, s.streams.NetworkWideEIT)
 }
 
 func (s *Gatherer) GatherNetwork(ctx context.Context, networkID uint16, candidates []Candidate, serviceKeys []ServiceKey) error {

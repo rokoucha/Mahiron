@@ -328,7 +328,7 @@ func TestBuildNetworkInputsFiltersServicesWithoutEITSchedule(t *testing.T) {
 	}}
 	channels := []config.ChannelConfig{{Type: "GR", Channel: "27"}}
 
-	_, services, err := buildNetworkInputs(context.Background(), store, channels, 4)
+	_, services, err := buildNetworkInputs(context.Background(), store, channels, 4, isdb.IsSatelliteOriginalNetworkID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -348,7 +348,7 @@ func TestBuildNetworkInputsUsesAllConfiguredChannelsForNetworkType(t *testing.T)
 		{Type: "GR", Channel: "27"},
 	}
 
-	candidates, _, err := buildNetworkInputs(context.Background(), store, channels, 4)
+	candidates, _, err := buildNetworkInputs(context.Background(), store, channels, 4, isdb.IsSatelliteOriginalNetworkID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -371,7 +371,7 @@ func TestBuildNetworkInputsLimitsBroadTypeWhenMultipleNetworksExist(t *testing.T
 		{Type: "USER_DEFINED", Channel: "CS8"},
 	}
 
-	candidates, _, err := buildNetworkInputs(context.Background(), store, channels, 7)
+	candidates, _, err := buildNetworkInputs(context.Background(), store, channels, 7, isdb.IsSatelliteOriginalNetworkID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -390,7 +390,7 @@ func TestBuildNetworkInputsDoesNotUseBroadCandidatesForTerrestrialNetwork(t *tes
 		{Type: "USER_DEFINED", Channel: "28"},
 	}
 
-	candidates, _, err := buildNetworkInputs(context.Background(), store, channels, 32736)
+	candidates, _, err := buildNetworkInputs(context.Background(), store, channels, 32736, isdb.IsSatelliteOriginalNetworkID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -413,7 +413,7 @@ func TestGroupServicesByNetworkLimitsBroadTypeWhenMultipleNetworksExist(t *testi
 		{Type: "USER_DEFINED", Channel: "CS8"},
 	}
 
-	groups := groupServicesByNetwork(services, channels)
+	groups := groupServicesByNetwork(services, channels, isdb.IsSatelliteOriginalNetworkID)
 	if !equalCandidates(groups[6].Candidates, []Candidate{{Type: "USER_DEFINED", Channel: "CS2"}}) {
 		t.Fatalf("NID 6 candidates = %v", groups[6].Candidates)
 	}
@@ -435,7 +435,7 @@ func TestGroupServicesByNetworkUsesBroadCandidatesOnlyForSatelliteNetwork(t *tes
 		{Type: "LOCAL", Channel: "28"},
 	}
 
-	groups := groupServicesByNetwork(services, channels)
+	groups := groupServicesByNetwork(services, channels, isdb.IsSatelliteOriginalNetworkID)
 	wantSatellite := []Candidate{{Type: "USER_DEFINED", Channel: "BS01"}, {Type: "USER_DEFINED", Channel: "BS03"}}
 	if !equalCandidates(groups[4].Candidates, wantSatellite) {
 		t.Fatalf("NID 4 candidates = %v, want %v", groups[4].Candidates, wantSatellite)
@@ -581,6 +581,8 @@ type blockingEPGStreams struct{}
 
 func (blockingEPGStreams) HasSession(string, string) bool { return false }
 
+func (blockingEPGStreams) NetworkWideEIT(uint16) bool { return false }
+
 func (blockingEPGStreams) OpenSchedule(ctx context.Context, _, _ string) (CollectSchedule, ListStoredPrograms, error) {
 	<-ctx.Done()
 	return nil, nil, ctx.Err()
@@ -591,6 +593,8 @@ type staticEPGStreams struct {
 }
 
 func (staticEPGStreams) HasSession(string, string) bool { return false }
+
+func (staticEPGStreams) NetworkWideEIT(uint16) bool { return false }
 
 func (s staticEPGStreams) OpenSchedule(ctx context.Context, _, _ string) (CollectSchedule, ListStoredPrograms, error) {
 	if err := ctx.Err(); err != nil {
@@ -604,6 +608,8 @@ type keyedEPGStreams struct {
 }
 
 func (keyedEPGStreams) HasSession(string, string) bool { return false }
+
+func (keyedEPGStreams) NetworkWideEIT(uint16) bool { return false }
 
 func (s keyedEPGStreams) OpenSchedule(ctx context.Context, typ, ch string) (CollectSchedule, ListStoredPrograms, error) {
 	if err := ctx.Err(); err != nil {
