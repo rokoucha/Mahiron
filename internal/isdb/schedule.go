@@ -78,11 +78,13 @@ type scheduleReadyGroup struct {
 	flags       [8]scheduleReadyFlag
 }
 
+// scheduleReadyFlag covers one table: 32 segments of 3 hours (8 days), each
+// a byte of 8 section bits.
 type scheduleReadyFlag struct {
 	observed bool
 	version  uint8
-	flag     [8]byte
-	ignore   [8]byte
+	flag     [32]byte
+	ignore   [32]byte
 }
 
 // NewScheduleTracker creates an empty tracker for one service.
@@ -122,7 +124,7 @@ func (t *ScheduleTracker[P]) Observe(tableID uint8, header SectionHeader, payloa
 	table.version = header.Version
 	table.hasVersion = true
 	table.lastSection = header.LastSectionNumber
-	table.segmentLast[header.SectionNumber/8] = header.LastSectionNumber
+	table.segmentLast[header.SectionNumber/8] = header.SegmentLastSection
 	readyChanged := t.observeReady(tableID, base, header, now)
 
 	if changed || readyChanged {
@@ -272,15 +274,23 @@ func (t *ScheduleTracker[P]) StableFor(now time.Time, duration time.Duration) bo
 	return !t.latest.IsZero() && now.Sub(t.latest) >= duration
 }
 
-// Payloads returns the current per-section payloads in table/section order.
-func (t *ScheduleTracker[P]) Payloads() []P {
+// ScheduleSection is one received section's payload and whether it came from
+// a basic (short event, content, component) or an extended table.
+type ScheduleSection[P any] struct {
+	Basic   bool
+	Payload P
+}
+
+// Sections returns the current per-section payloads in table/section order.
+func (t *ScheduleTracker[P]) Sections() []ScheduleSection[P] {
 	tableIDs := make([]int, 0, len(t.tables))
 	for id := range t.tables {
 		tableIDs = append(tableIDs, int(id))
 	}
 	sort.Ints(tableIDs)
-	var out []P
+	var out []ScheduleSection[P]
 	for _, id := range tableIDs {
+		_, _, basic, _ := scheduleBaseOf(t.system, uint8(id))
 		table := t.tables[uint8(id)]
 		sections := make([]int, 0, len(table.payloads))
 		for section := range table.payloads {
@@ -288,10 +298,22 @@ func (t *ScheduleTracker[P]) Payloads() []P {
 		}
 		sort.Ints(sections)
 		for _, section := range sections {
-			out = append(out, table.payloads[uint8(section)])
+			out = append(out, ScheduleSection[P]{Basic: basic, Payload: table.payloads[uint8(section)]})
 		}
 	}
 	return out
+}
+
+// HasBasic reports whether any basic schedule table was received. A service
+// with only extended tables has no event names yet and does not count as
+// observed.
+func (t *ScheduleTracker[P]) HasBasic() bool {
+	for id := range t.tables {
+		if _, _, basic, _ := scheduleBaseOf(t.system, id); basic {
+			return true
+		}
+	}
+	return false
 }
 
 // Diagnosis summarizes missing tables and sections for log-only output.

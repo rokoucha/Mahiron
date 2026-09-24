@@ -45,7 +45,7 @@ func TestScheduleTrackerBasicComplete(t *testing.T) {
 	if !tracker.BasicComplete() {
 		t.Fatalf("basic not complete: %s", tracker.Diagnosis())
 	}
-	if got := len(tracker.Payloads()); got != 8 {
+	if got := len(tracker.Sections()); got != 8 {
 		t.Fatalf("payloads = %d, want 8", got)
 	}
 	if !tracker.StableFor(now.Add(time.Hour), time.Minute) {
@@ -69,9 +69,9 @@ func TestScheduleTrackerReplacesSectionPayload(t *testing.T) {
 	tracker := NewScheduleTracker[string](ScheduleTS)
 	tracker.Observe(0x50, tsHeader(0, 7, 1, 0x50, 7), "old", now)
 	tracker.Observe(0x50, tsHeader(0, 7, 2, 0x50, 7), "new", now)
-	payloads := tracker.Payloads()
-	if len(payloads) != 1 || payloads[0] != "new" {
-		t.Fatalf("payloads = %v, want [new]", payloads)
+	sections := tracker.Sections()
+	if len(sections) != 1 || sections[0].Payload != "new" || !sections[0].Basic {
+		t.Fatalf("sections = %v, want one basic [new]", sections)
 	}
 }
 
@@ -109,5 +109,40 @@ func TestScheduleTrackerDiagnosisNamesMissing(t *testing.T) {
 	}
 	if got := tracker.Diagnosis(); got == "complete" {
 		t.Fatalf("diagnosis = %q, want missing details", got)
+	}
+}
+
+// TestScheduleTrackerCoversEightDays feeds all 32 three-hour segments of one
+// table. Section numbers run up to 255, so the coverage must span 32
+// segments rather than one day's 8.
+func TestScheduleTrackerCoversEightDays(t *testing.T) {
+	now := fixedNow()
+	tracker := NewScheduleTracker[string](ScheduleTS)
+	for segment := 0; segment < 32; segment++ {
+		section := uint8(segment * 8)
+		tracker.Observe(0x50, tsHeader(section, 255, 1, 0x50, section), "s", now)
+		if segment < 31 && tracker.BasicComplete() {
+			t.Fatalf("complete after segment %d of 32", segment)
+		}
+	}
+	if !tracker.BasicComplete() {
+		t.Fatalf("basic not complete: %s", tracker.Diagnosis())
+	}
+}
+
+func TestScheduleTrackerOtherStreamTables(t *testing.T) {
+	now := fixedNow()
+	tracker := NewScheduleTracker[string](ScheduleTS)
+	feedFullTable(t, tracker, 0x68, func(uint8) string { return "e" }, now)
+	if tracker.HasBasic() {
+		t.Fatal("extended-only tracker reports basic tables")
+	}
+	feedFullTable(t, tracker, 0x60, func(uint8) string { return "b" }, now)
+	if !tracker.HasBasic() || !tracker.BasicComplete() || !tracker.ExtendedComplete() {
+		t.Fatalf("other-stream tables not complete: %s", tracker.Diagnosis())
+	}
+	sections := tracker.Sections()
+	if len(sections) != 16 || !sections[0].Basic || sections[8].Basic {
+		t.Fatalf("sections = %v, want 8 basic then 8 extended", sections)
 	}
 }

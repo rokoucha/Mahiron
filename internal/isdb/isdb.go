@@ -103,14 +103,17 @@ const (
 )
 
 // ClassifyTSEITTableID classifies a TS EIT table_id per TR-B15: 0x4E/0x4F
-// are p/f, 0x50-0x57 basic schedule, 0x58-0x5F extended schedule.
+// are p/f (actual/other), 0x50-0x57 and 0x60-0x67 basic schedule, 0x58-0x5F
+// and 0x68-0x6F extended schedule (actual/other). Satellite streams carry
+// the other streams' schedules in the "other" tables, so they must not be
+// dropped.
 func ClassifyTSEITTableID(tableID uint8) EITKind {
 	switch {
 	case tableID == 0x4E || tableID == 0x4F:
 		return EITKindPresentFollowing
-	case tableID >= 0x50 && tableID <= 0x57:
+	case tableID >= 0x50 && tableID <= 0x57, tableID >= 0x60 && tableID <= 0x67:
 		return EITKindScheduleBasic
-	case tableID >= 0x58 && tableID <= 0x5F:
+	case tableID >= 0x58 && tableID <= 0x5F, tableID >= 0x68 && tableID <= 0x6F:
 		return EITKindScheduleExtended
 	default:
 		return EITKindOther
@@ -155,8 +158,10 @@ func ClassifyOriginalNetworkID(onid uint16) NetworkClass {
 		return NetworkClassAdvancedBS
 	case 0x000C:
 		return NetworkClassAdvancedWidebandCS
-	case 0x0004, 0x0006, 0x0007:
+	case 0x0004:
 		return NetworkClassBSSatellite
+	case 0x0006, 0x0007:
+		return NetworkClassCSSatellite
 	default:
 		return NetworkClassOther
 	}

@@ -44,6 +44,11 @@ func TestClassifyEITTableIDs(t *testing.T) {
 		{0x57, EITKindScheduleBasic, EITKindOther},
 		{0x58, EITKindScheduleExtended, EITKindOther},
 		{0x5F, EITKindScheduleExtended, EITKindOther},
+		// Satellite streams carry other streams' schedules in these.
+		{0x60, EITKindScheduleBasic, EITKindOther},
+		{0x67, EITKindScheduleBasic, EITKindOther},
+		{0x68, EITKindScheduleExtended, EITKindOther},
+		{0x6F, EITKindScheduleExtended, EITKindOther},
 		{0x8B, EITKindOther, EITKindPresentFollowing},
 		{0x8C, EITKindOther, EITKindScheduleBasic},
 		{0x93, EITKindOther, EITKindScheduleBasic},
@@ -67,6 +72,14 @@ func TestClassifyOriginalNetworkID(t *testing.T) {
 	}
 	if got := ClassifyOriginalNetworkID(0x000C); got != NetworkClassAdvancedWidebandCS {
 		t.Fatalf("0x000C = %v, want advanced wideband CS", got)
+	}
+	if got := ClassifyOriginalNetworkID(0x0004); got != NetworkClassBSSatellite {
+		t.Fatalf("0x0004 = %v, want BS", got)
+	}
+	for _, onid := range []uint16{0x0006, 0x0007} {
+		if got := ClassifyOriginalNetworkID(onid); got != NetworkClassCSSatellite {
+			t.Fatalf("%#04x = %v, want CS", onid, got)
+		}
 	}
 	for _, onid := range []uint16{0x0004, 0x0006, 0x0007} {
 		if !IsSatelliteOriginalNetworkID(onid) {
