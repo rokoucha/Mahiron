@@ -25,6 +25,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/event"
 	"github.com/21S1298001/mahiron/internal/job"
 	"github.com/21S1298001/mahiron/internal/job/defs"
+	"github.com/21S1298001/mahiron/internal/mirakurun"
 	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/server"
@@ -155,9 +156,9 @@ func buildRuntime(cfg *config.Config, database *db.DB, obs observability.SetupRe
 		EventHub:     events,
 	})
 
-	services := service.NewManager(serviceStore, cfg.Channels, events)
+	services := service.NewManager(serviceStore, cfg.Channels, mirakurun.NewEventPublisher(events))
 
-	programs := program.NewManager(programStore, events)
+	programs := program.NewManager(programStore, mirakurun.NewEventPublisher(events))
 	epgUpdater := epggather.NewUpdater(programs)
 
 	var dataBroadcastStore *cache.SQLiteModuleStore

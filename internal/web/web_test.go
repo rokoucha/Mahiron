@@ -12,6 +12,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/db"
 	"github.com/21S1298001/mahiron/internal/event"
 	"github.com/21S1298001/mahiron/internal/job"
+	"github.com/21S1298001/mahiron/internal/mirakurun"
 	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/service"
@@ -37,8 +38,8 @@ func TestHTTPContractRoundTripsThroughGeneratedClientAndSQLite(t *testing.T) {
 	disabled := false
 	channels := config.ChannelsConfig{{Name: "NHK", Type: "GR", Channel: "27", IsDisabled: &disabled}}
 	hub := event.New()
-	services := service.NewManager(service.NewSQLiteStore(database), channels, hub)
-	programs := program.NewManager(program.NewSQLiteStore(database), hub)
+	services := service.NewManager(service.NewSQLiteStore(database), channels, mirakurun.NewEventPublisher(hub))
+	programs := program.NewManager(program.NewSQLiteStore(database), mirakurun.NewEventPublisher(hub))
 	tuners := tuner.NewManager(&tuner.ManagerConfig{})
 	jobs, err := job.NewManager(job.Config{})
 	if err != nil {
@@ -221,7 +222,7 @@ func TestNewWebFiltersHTTPSpans(t *testing.T) {
 	t.Cleanup(func() { _ = database.Close() })
 	handler, err := NewWeb(WebConfig{
 		ServiceManager: testServiceManager{},
-		ProgramManager: program.NewManager(program.NewSQLiteStore(database), event.New()),
+		ProgramManager: program.NewManager(program.NewSQLiteStore(database), mirakurun.NewEventPublisher(event.New())),
 		StreamManager:  tracedTestStreamManager{},
 		EventHub:       event.New(),
 		TracerProvider: provider,

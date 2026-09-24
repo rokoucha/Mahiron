@@ -16,6 +16,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/db"
 	"github.com/21S1298001/mahiron/internal/event"
 	"github.com/21S1298001/mahiron/internal/job"
+	"github.com/21S1298001/mahiron/internal/mirakurun"
 	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/service"
@@ -97,8 +98,8 @@ func newFullEPGHandler(t *testing.T) http.Handler {
 	t.Cleanup(func() { _ = jobs.Shutdown(context.Background()) })
 
 	handler, err := NewWeb(WebConfig{
-		ServiceManager: service.NewManager(service.NewSQLiteStore(database), nil, hub),
-		ProgramManager: program.NewManager(store, hub),
+		ServiceManager: service.NewManager(service.NewSQLiteStore(database), nil, mirakurun.NewEventPublisher(hub)),
+		ProgramManager: program.NewManager(store, mirakurun.NewEventPublisher(hub)),
 		StreamManager:  testStreamManager{},
 		TunerManager:   tuner.NewManager(&tuner.ManagerConfig{}),
 		JobManager:     jobs,
@@ -198,8 +199,8 @@ func newContentEPGHandler(t *testing.T) http.Handler {
 	t.Cleanup(func() { _ = jobs.Shutdown(context.Background()) })
 
 	handler, err := NewWeb(WebConfig{
-		ServiceManager: service.NewManager(serviceStore, nil, hub),
-		ProgramManager: program.NewManager(store, hub),
+		ServiceManager: service.NewManager(serviceStore, nil, mirakurun.NewEventPublisher(hub)),
+		ProgramManager: program.NewManager(store, mirakurun.NewEventPublisher(hub)),
 		StreamManager:  testStreamManager{},
 		TunerManager:   tuner.NewManager(&tuner.ManagerConfig{}),
 		JobManager:     jobs,

@@ -1,4 +1,4 @@
-package event
+package mirakurun
 
 import (
 	"encoding/json"
@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/21S1298001/mahiron/internal/config"
-	"github.com/21S1298001/mahiron/internal/mirakurun"
+	"github.com/21S1298001/mahiron/internal/event"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/service"
 )
@@ -16,8 +16,9 @@ func TestServiceEventCarriesMirakurunPayload(t *testing.T) {
 	succeededAt := int64(2000)
 	logoID := int64(12)
 	tsmfRelTs := uint8(1)
-	hub := New()
-	hub.PublishServiceEvent(TypeUpdate, &service.Service{
+	hub := event.New()
+	publisher := NewEventPublisher(hub)
+	publisher.PublishServiceEvent(event.TypeUpdate, &service.Service{
 		ServiceId:         101,
 		NetworkId:         1,
 		TransportStreamId: 10,
@@ -59,7 +60,8 @@ func TestProgramEventCarriesMirakurunPayload(t *testing.T) {
 	samplingRate := 48000
 	networkID := uint16(1)
 	expiresAt := int64(3000)
-	hub := New()
+	hub := event.New()
+	publisher := NewEventPublisher(hub)
 	p := &program.Program{
 		ID:          program.ProgramID(1, 101, 9),
 		NetworkID:   1,
@@ -96,15 +98,15 @@ func TestProgramEventCarriesMirakurunPayload(t *testing.T) {
 			Name:        "series",
 		},
 	}
-	hub.PublishProgramEvent(TypeCreate, p)
+	publisher.PublishProgramEvent(event.TypeCreate, p)
 
 	events := hub.Log()
 	if len(events) != 1 {
 		t.Fatalf("events length = %d, want 1", len(events))
 	}
 	// The stored payload must equal the shared conversion's output.
-	api := mirakurun.ProgramToAPI(p)
-	if want := mirakurun.MarshalProgram(&api); string(events[0].Data) != string(want) {
+	api := ProgramToAPI(p)
+	if want := MarshalProgram(&api); string(events[0].Data) != string(want) {
 		t.Fatalf("program event data = %s, want %s", events[0].Data, want)
 	}
 
@@ -129,7 +131,7 @@ func TestProgramEventCarriesMirakurunPayload(t *testing.T) {
 		t.Fatalf("program video data = %s", events[0].Data)
 	}
 	// Empty collections stay present as arrays while genres stays omitted.
-	hub.PublishProgramEvent(TypeCreate, &program.Program{
+	publisher.PublishProgramEvent(event.TypeCreate, &program.Program{
 		ID:        program.ProgramID(1, 101, 9),
 		NetworkID: 1,
 		ServiceID: 101,
@@ -152,8 +154,9 @@ func TestProgramEventCarriesMirakurunPayload(t *testing.T) {
 }
 
 func TestProgramRemoveEventCarriesIDOnly(t *testing.T) {
-	hub := New()
-	hub.PublishProgramRemove(TypeRemove, 42)
+	hub := event.New()
+	publisher := NewEventPublisher(hub)
+	publisher.PublishProgramRemove(event.TypeRemove, 42)
 	events := hub.Log()
 	if len(events) != 1 {
 		t.Fatalf("events length = %d, want 1", len(events))

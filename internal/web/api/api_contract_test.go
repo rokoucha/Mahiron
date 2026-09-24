@@ -390,7 +390,7 @@ func TestProgramContractExtendedKeepsEveryItem(t *testing.T) {
 func TestProgramEventsShareAPIEncoding(t *testing.T) {
 	for _, p := range []*program.Program{contractMinimalProgram(), contractFullProgram()} {
 		hub := event.New()
-		hub.PublishProgramEvent(event.TypeCreate, p)
+		mirakurun.NewEventPublisher(hub).PublishProgramEvent(event.TypeCreate, p)
 		events := hub.Log()
 		if len(events) != 1 {
 			t.Fatalf("events length = %d, want 1", len(events))
@@ -406,7 +406,7 @@ func TestProgramEventsShareAPIEncoding(t *testing.T) {
 	}
 	// Removals carry only the program ID.
 	hub := event.New()
-	hub.PublishProgramRemove(event.TypeRemove, 42)
+	mirakurun.NewEventPublisher(hub).PublishProgramRemove(event.TypeRemove, 42)
 	if got := string(hub.Log()[0].Data); got != `{"id":42}` {
 		t.Errorf("remove data = %s, want %s", got, `{"id":42}`)
 	}
@@ -501,7 +501,7 @@ func TestServiceEventsShareAPIEncoding(t *testing.T) {
 			EPG: service.EPGStatus{LastAttemptAt: &attemptAt, LastSuccessAt: &successAt, LastError: "boom"}},
 	} {
 		hub := event.New()
-		hub.PublishServiceEvent(event.TypeUpdate, svc, channel)
+		mirakurun.NewEventPublisher(hub).PublishServiceEvent(event.TypeUpdate, svc, channel)
 		events := hub.Log()
 		if len(events) != 1 {
 			t.Fatalf("events length = %d, want 1", len(events))
@@ -551,8 +551,8 @@ func TestMirakurunOutputsShareOneFixture(t *testing.T) {
 	}
 
 	hub := event.New()
-	hub.PublishProgramEvent(event.TypeCreate, full)
-	hub.PublishServiceEvent(event.TypeUpdate, services[0], nil)
+	mirakurun.NewEventPublisher(hub).PublishProgramEvent(event.TypeCreate, full)
+	mirakurun.NewEventPublisher(hub).PublishServiceEvent(event.TypeUpdate, services[0], nil)
 	handler := NewHandler(HandlerConfig{
 		ProgramManager: pm,
 		ServiceManager: service.NewManager(serviceStore, config.ChannelsConfig{

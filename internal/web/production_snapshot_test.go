@@ -17,6 +17,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/db"
 	"github.com/21S1298001/mahiron/internal/event"
 	"github.com/21S1298001/mahiron/internal/job"
+	"github.com/21S1298001/mahiron/internal/mirakurun"
 	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/service"
@@ -53,7 +54,7 @@ func TestProductionSnapshot(t *testing.T) {
 	}
 	database := openSnapshotDB(t, filepath.Join(dir, "mahiron.db"))
 	hub := event.NewWithCapacity(100000)
-	services := service.NewManager(service.NewSQLiteStore(database), channels, hub)
+	services := service.NewManager(service.NewSQLiteStore(database), channels, mirakurun.NewEventPublisher(hub))
 	programs := program.NewManager(program.NewSQLiteStore(database))
 	handler := newSnapshotHandler(t, services, programs, hub)
 
@@ -182,7 +183,7 @@ func programEvents(t *testing.T, source *program.Manager) []byte {
 	}
 	t.Cleanup(func() { _ = database.Close() })
 	hub := event.NewWithCapacity(len(sample))
-	manager := program.NewManager(program.NewSQLiteStore(database), hub)
+	manager := program.NewManager(program.NewSQLiteStore(database), mirakurun.NewEventPublisher(hub))
 	if err := manager.UpsertPrograms(t.Context(), sample); err != nil {
 		t.Fatal(err)
 	}
