@@ -1,4 +1,4 @@
-package epg
+package epggather
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/program"
 )
 
-func newTestProgramManager(t *testing.T) *program.ProgramManager {
+func newTestProgramManager(t *testing.T) *program.Manager {
 	t.Helper()
 	database, err := db.OpenInMemory()
 	if err != nil {

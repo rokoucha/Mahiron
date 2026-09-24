@@ -11,7 +11,7 @@ import (
 )
 
 // TestRemoteProgramRoundTripsThroughStore guards the normalization that lets
-// ProgramManager.UpsertPrograms skip writing a program that hasn't actually
+// program.Manager.UpsertPrograms skip writing a program that hasn't actually
 // changed: it compares by reflect.DeepEqual, so a program converted from a
 // Mirakurun-style remote event must come out byte-for-byte identical to the
 // same program read back from the database, in particular for empty

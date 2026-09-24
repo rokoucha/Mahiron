@@ -1,13 +1,13 @@
 // Package defs contains the concrete job definitions wired into the generic
 // job manager. Feature-specific details should live behind usecase packages
-// such as internal/epg; this package only adapts them to job definitions.
+// such as internal/epggather; this package only adapts them to job definitions.
 package defs
 
 import (
 	"context"
 	"time"
 
-	"github.com/21S1298001/mahiron/internal/epg"
+	"github.com/21S1298001/mahiron/internal/epggather"
 	"github.com/21S1298001/mahiron/internal/job"
 	"github.com/21S1298001/mahiron/internal/service"
 	"github.com/21S1298001/mahiron/internal/servicescan"
@@ -38,8 +38,8 @@ type LogoGatherTargetStore interface {
 }
 
 type EPGGatherer interface {
-	Groups(context.Context) (map[uint16]*epg.Network, error)
-	BuildNetworkInputs(context.Context, uint16) ([]epg.Candidate, []epg.ServiceKey, error)
-	GatherNetwork(context.Context, uint16, []epg.Candidate, []epg.ServiceKey) error
+	Groups(context.Context) (map[uint16]*epggather.Network, error)
+	BuildNetworkInputs(context.Context, uint16) ([]epggather.Candidate, []epggather.ServiceKey, error)
+	GatherNetwork(context.Context, uint16, []epggather.Candidate, []epggather.ServiceKey) error
 	Cleanup(context.Context, time.Time) error
 }

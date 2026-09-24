@@ -6,7 +6,7 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/db"
-	"github.com/21S1298001/mahiron/internal/epg"
+	"github.com/21S1298001/mahiron/internal/epggather"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/service"
 	"github.com/21S1298001/mahiron/internal/stream"
@@ -14,7 +14,7 @@ import (
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 )
 
-func testStreamHeadHandler(t *testing.T) (*Handler, *service.ServiceManager) {
+func testStreamHeadHandler(t *testing.T) (*Handler, *service.Manager) {
 	t.Helper()
 	no := false
 	channels := config.ChannelsConfig{
@@ -57,15 +57,15 @@ func testStreamHeadHandler(t *testing.T) (*Handler, *service.ServiceManager) {
 		t.Fatal(err)
 	}
 
-	tunerManager := tuner.NewTunerManager(&tuner.TunerManagerConfig{
+	tunerManager := tuner.NewTunerManager(&tuner.ManagerConfig{
 		TunersConfig: config.TunersConfig{
 			{Name: "first", Types: []string{"GR"}, Command: "sleep 30"},
 		},
 	})
 	sm := service.NewServiceManager(store, channels)
-	stm := stream.NewStreamManager(stream.StreamManagerConfig{
+	stm := stream.NewStreamManager(stream.ManagerConfig{
 		Channels:     channels,
-		EITUpdater:   epg.NewUpdater(pm),
+		EITUpdater:   epggather.NewUpdater(pm),
 		TunerManager: tunerManager,
 	})
 	handler := NewHandler(HandlerConfig{

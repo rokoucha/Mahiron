@@ -7,10 +7,10 @@ import (
 )
 
 type LogoCollectorAdapter struct {
-	manager *StreamManager
+	manager *Manager
 }
 
-func NewLogoCollectorAdapter(manager *StreamManager) *LogoCollectorAdapter {
+func NewLogoCollectorAdapter(manager *Manager) *LogoCollectorAdapter {
 	return &LogoCollectorAdapter{manager: manager}
 }
 
@@ -23,10 +23,10 @@ func (a *LogoCollectorAdapter) ObserveLogos(ctx context.Context, channelType, ch
 }
 
 type ServiceScannerAdapter struct {
-	manager *StreamManager
+	manager *Manager
 }
 
-func NewServiceScannerAdapter(manager *StreamManager) *ServiceScannerAdapter {
+func NewServiceScannerAdapter(manager *Manager) *ServiceScannerAdapter {
 	return &ServiceScannerAdapter{manager: manager}
 }
 

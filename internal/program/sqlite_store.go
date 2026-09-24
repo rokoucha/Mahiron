@@ -90,7 +90,7 @@ func buildListProgramsSQL(query Query) (string, []any) {
 	return sqlStr, args
 }
 
-func NewSQLiteStore(database *db.DB) ProgramStore {
+func NewSQLiteStore(database *db.DB) Store {
 	return &sqliteStore{
 		write: database.Write,
 		read:  database.Read,

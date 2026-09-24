@@ -365,7 +365,7 @@ func TestGetServiceReturnsNotFound(t *testing.T) {
 func TestApiServiceExposesEPGStatus(t *testing.T) {
 	tests := []struct {
 		name             string
-		setup            func(context.Context, *service.ServiceManager, *testing.T)
+		setup            func(context.Context, *service.Manager, *testing.T)
 		wantReady        bool
 		wantAttempt      apigen.OptUnixtimeMS
 		wantUpdated      apigen.OptUnixtimeMS
@@ -378,7 +378,7 @@ func TestApiServiceExposesEPGStatus(t *testing.T) {
 		},
 		{
 			name: "latest failed attempt",
-			setup: func(ctx context.Context, sm *service.ServiceManager, t *testing.T) {
+			setup: func(ctx context.Context, sm *service.Manager, t *testing.T) {
 				t.Helper()
 				if err := sm.SetEPGAttempt(ctx, 1, 101, 1000, "boom"); err != nil {
 					t.Fatal(err)
@@ -393,7 +393,7 @@ func TestApiServiceExposesEPGStatus(t *testing.T) {
 		},
 		{
 			name: "success",
-			setup: func(ctx context.Context, sm *service.ServiceManager, t *testing.T) {
+			setup: func(ctx context.Context, sm *service.Manager, t *testing.T) {
 				t.Helper()
 				if err := sm.SetEPGSuccess(ctx, 1, 101, 2000); err != nil {
 					t.Fatal(err)

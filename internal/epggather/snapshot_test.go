@@ -1,4 +1,4 @@
-package epg
+package epggather
 
 import (
 	"testing"

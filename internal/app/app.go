@@ -19,7 +19,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/db"
 	"github.com/21S1298001/mahiron/internal/db/gen"
-	"github.com/21S1298001/mahiron/internal/epg"
+	"github.com/21S1298001/mahiron/internal/epggather"
 	"github.com/21S1298001/mahiron/internal/event"
 	"github.com/21S1298001/mahiron/internal/job"
 	"github.com/21S1298001/mahiron/internal/job/defs"
@@ -132,15 +132,15 @@ func Run(ctx context.Context, args []string) int {
 type applicationRuntime struct {
 	dataBroadcastStore *databroadcast.SQLiteModuleStore
 	database           *db.DB
-	jobs               *job.JobManager
+	jobs               *job.Manager
 	obs                observability.SetupResult
-	epgScan            *epg.Service
-	programs           *program.ProgramManager
+	epgScan            *epggather.Service
+	programs           *program.Manager
 	server             *server.Server
 	scanner            *servicescan.Service
-	services           *service.ServiceManager
-	streams            *stream.StreamManager
-	tuners             *tuner.TunerManager
+	services           *service.Manager
+	streams            *stream.Manager
+	tuners             *tuner.Manager
 	stopCheckpointer   func()
 }
 
@@ -149,7 +149,7 @@ func buildRuntime(cfg *config.Config, database *db.DB, obs observability.SetupRe
 	programStore := program.NewSQLiteStore(database)
 	events := event.New()
 
-	tuners := tuner.NewTunerManager(&tuner.TunerManagerConfig{
+	tuners := tuner.NewTunerManager(&tuner.ManagerConfig{
 		TunersConfig: cfg.Tuners,
 		EventHub:     events,
 	})
@@ -157,7 +157,7 @@ func buildRuntime(cfg *config.Config, database *db.DB, obs observability.SetupRe
 	services := service.NewServiceManager(serviceStore, cfg.Channels, events)
 
 	programs := program.NewProgramManager(programStore, events)
-	epgUpdater := epg.NewUpdater(programs)
+	epgUpdater := epggather.NewUpdater(programs)
 
 	var dataBroadcastStore *databroadcast.SQLiteModuleStore
 	var moduleStore databroadcast.ModuleStore
@@ -188,7 +188,7 @@ func buildRuntime(cfg *config.Config, database *db.DB, obs observability.SetupRe
 	} else {
 		slog.Info("data broadcast API disabled")
 	}
-	streams := stream.NewStreamManager(stream.StreamManagerConfig{
+	streams := stream.NewStreamManager(stream.ManagerConfig{
 		Channels:       cfg.Channels,
 		Remotes:        cfg.Remotes,
 		EITUpdater:     epgUpdater,
@@ -202,7 +202,7 @@ func buildRuntime(cfg *config.Config, database *db.DB, obs observability.SetupRe
 	serviceScanner := stream.NewServiceScannerAdapter(streams)
 	logoCollector := stream.NewLogoCollectorAdapter(streams)
 	scanService := servicescan.NewService(services, serviceScanner, cfg.Channels, time.Duration(cfg.System.ServiceScanTimeout)*time.Millisecond)
-	epgService := epg.NewService(programs, services, streams, cfg.Channels, cfg.System.EpgRetentionDays, time.Duration(cfg.System.EpgRetrievalTime)*time.Millisecond)
+	epgService := epggather.NewService(programs, services, streams, cfg.Channels, cfg.System.EpgRetentionDays, time.Duration(cfg.System.EpgRetrievalTime)*time.Millisecond)
 
 	jobs, err := job.NewManager(job.Config{MaxHistory: 100, MaxConcurrentJobs: cfg.System.MaxConcurrentJobs}, events)
 	if err != nil {
@@ -335,7 +335,7 @@ func (r *applicationRuntime) shutdown() {
 	slog.Info("observability shut down")
 }
 
-func runStartupTasks(ctx context.Context, services *service.ServiceManager, programs *program.ProgramManager, jobs *job.JobManager, scanner *servicescan.Service, epgScan *epg.Service, database *db.DB, cfg *config.Config) error {
+func runStartupTasks(ctx context.Context, services *service.Manager, programs *program.Manager, jobs *job.Manager, scanner *servicescan.Service, epgScan *epggather.Service, database *db.DB, cfg *config.Config) error {
 	if err := services.ReconcileChannels(ctx); err != nil {
 		return fmt.Errorf("reconcile service channels: %w", err)
 	}
@@ -394,7 +394,7 @@ func loadChannelConfigState(ctx context.Context, database *db.DB, channels confi
 	return state
 }
 
-func enqueueStartupServiceUpdate(jobs *job.JobManager, serviceCount int, channelState channelConfigState) bool {
+func enqueueStartupServiceUpdate(jobs *job.Manager, serviceCount int, channelState channelConfigState) bool {
 	if serviceCount == 0 {
 		slog.Info("no services cached, running initial service update")
 		if _, err := jobs.Enqueue(defs.ServiceUpdaterKey); err != nil {
@@ -414,7 +414,7 @@ func enqueueStartupServiceUpdate(jobs *job.JobManager, serviceCount int, channel
 	return false
 }
 
-func missingScannedChannels(ctx context.Context, services *service.ServiceManager, channels []servicescan.Channel) ([]servicescan.Channel, error) {
+func missingScannedChannels(ctx context.Context, services *service.Manager, channels []servicescan.Channel) ([]servicescan.Channel, error) {
 	missing := make([]servicescan.Channel, 0)
 	for _, channel := range channels {
 		stored, err := services.GetServicesByChannel(ctx, channel.Type, channel.ID)
@@ -428,7 +428,7 @@ func missingScannedChannels(ctx context.Context, services *service.ServiceManage
 	return missing, nil
 }
 
-func enqueueStartupServiceScans(ctx context.Context, jobs *job.JobManager, scanner defs.ServiceScanner, epgScan defs.EPGGatherer, channels []servicescan.Channel) {
+func enqueueStartupServiceScans(ctx context.Context, jobs *job.Manager, scanner defs.ServiceScanner, epgScan defs.EPGGatherer, channels []servicescan.Channel) {
 	if len(channels) == 0 {
 		return
 	}
@@ -440,7 +440,7 @@ func enqueueStartupServiceScans(ctx context.Context, jobs *job.JobManager, scann
 	slog.Info("unscanned channels found, enqueued service scans", "queued", queued, "channels", len(channels))
 }
 
-func enqueueStartupEPGGather(jobs *job.JobManager, serviceCount int, staleServices int) {
+func enqueueStartupEPGGather(jobs *job.Manager, serviceCount int, staleServices int) {
 	// EPG gathering requires a non-empty service list. If we don't have one
 	// yet, the service updater above is responsible for populating it; each
 	// scan that discovers a new network will immediately enqueue an EPG
@@ -455,7 +455,7 @@ func enqueueStartupEPGGather(jobs *job.JobManager, serviceCount int, staleServic
 	}
 }
 
-func cleanupOldEPG(ctx context.Context, programs *program.ProgramManager, retentionDays int) {
+func cleanupOldEPG(ctx context.Context, programs *program.Manager, retentionDays int) {
 	if retentionDays <= 0 {
 		return
 	}

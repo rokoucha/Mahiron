@@ -17,11 +17,11 @@ import (
 
 func registerRuntimeMetrics(
 	provider metric.MeterProvider,
-	streams *stream.StreamManager,
-	tuners *tuner.TunerManager,
-	jobs *job.JobManager,
-	programs *program.ProgramManager,
-	services *service.ServiceManager,
+	streams *stream.Manager,
+	tuners *tuner.Manager,
+	jobs *job.Manager,
+	programs *program.Manager,
+	services *service.Manager,
 	events *event.Hub,
 	logs *observability.LogStore,
 	epgStaleAfter int64,
@@ -140,8 +140,8 @@ func observeEPGMetrics(
 	ctx context.Context,
 	observer metric.Observer,
 	programsInstrument, staleInstrument, failedInstrument metric.Int64ObservableGauge,
-	programs *program.ProgramManager,
-	services *service.ServiceManager,
+	programs *program.Manager,
+	services *service.Manager,
 	epgStaleAfter int64,
 ) {
 	count, err := programs.Count(ctx)

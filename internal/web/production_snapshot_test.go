@@ -128,7 +128,7 @@ func openSnapshotDB(t *testing.T, path string) *db.DB {
 	return database
 }
 
-func newSnapshotHandler(t *testing.T, services *service.ServiceManager, programs *program.ProgramManager, hub *event.Hub) http.Handler {
+func newSnapshotHandler(t *testing.T, services *service.Manager, programs *program.Manager, hub *event.Hub) http.Handler {
 	t.Helper()
 	jobs, err := job.NewManager(job.Config{})
 	if err != nil {
@@ -139,7 +139,7 @@ func newSnapshotHandler(t *testing.T, services *service.ServiceManager, programs
 		ServiceManager: services,
 		ProgramManager: programs,
 		StreamManager:  testStreamManager{},
-		TunerManager:   tuner.NewTunerManager(&tuner.TunerManagerConfig{}),
+		TunerManager:   tuner.NewTunerManager(&tuner.ManagerConfig{}),
 		JobManager:     jobs,
 		LogStore:       observability.NewLogStore(16),
 		EventHub:       hub,
@@ -164,7 +164,7 @@ func snapshotGet(t *testing.T, handler http.Handler, path string) []byte {
 // programEvents republishes a spread of the stored programs through a program
 // manager on an empty database, which publishes a create event for each, and
 // returns the event payloads.
-func programEvents(t *testing.T, source *program.ProgramManager) []byte {
+func programEvents(t *testing.T, source *program.Manager) []byte {
 	t.Helper()
 	all, err := source.List(t.Context(), program.Query{})
 	if err != nil {

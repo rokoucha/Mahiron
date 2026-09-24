@@ -14,7 +14,7 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/db"
-	"github.com/21S1298001/mahiron/internal/epg"
+	"github.com/21S1298001/mahiron/internal/epggather"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/service"
 	"github.com/21S1298001/mahiron/internal/stream"
@@ -32,18 +32,18 @@ func testProgramHandler(t *testing.T) *Handler {
 	}
 	t.Cleanup(func() { _ = database.Close() })
 	pm := program.NewProgramManager(program.NewSQLiteStore(database))
-	updater := epg.NewUpdater(pm)
-	if err := updater.UpsertEITSection(ctx, &epg.EITSection{
+	updater := epggather.NewUpdater(pm)
+	if err := updater.UpsertEITSection(ctx, &epggather.EITSection{
 		OriginalNetworkID: 1,
 		ServiceID:         101,
-		Events: []epg.EITEvent{
+		Events: []epggather.EITEvent{
 			{EventID: 10, StartTime: 2000, Duration: 30000, Scrambled: false,
-				Descriptors: []epg.EITDescriptor{
+				Descriptors: []epggather.EITDescriptor{
 					{Type: "ShortEvent", EventName: "second"},
 				},
 			},
 			{EventID: 9, StartTime: 1000, Duration: 30000, Scrambled: false,
-				Descriptors: []epg.EITDescriptor{
+				Descriptors: []epggather.EITDescriptor{
 					{Type: "ShortEvent", EventName: "first"},
 				},
 			},

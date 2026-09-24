@@ -11,7 +11,7 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 )
 
-func newTestManager(t *testing.T) *JobManager {
+func newTestManager(t *testing.T) *Manager {
 	t.Helper()
 	mgr, err := NewManager(Config{MaxHistory: 10})
 	if err != nil {
@@ -20,7 +20,7 @@ func newTestManager(t *testing.T) *JobManager {
 	return mgr
 }
 
-func waitJob(t *testing.T, mgr *JobManager, id string) *Job {
+func waitJob(t *testing.T, mgr *Manager, id string) *Job {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	defer cancel()

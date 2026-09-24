@@ -139,7 +139,7 @@ type scannedRemoteEvent struct {
 }
 
 // readRemoteEventsBatched keeps the event stream moving while amortizing the
-// durable SQLite commit used by ProgramManager. A remote can emit tens of
+// durable SQLite commit used by program.Manager. A remote can emit tens of
 // thousands of program updates per hour; committing each event separately is
 // especially expensive when the database lives on network storage.
 func readRemoteEventsBatched(ctx context.Context, src io.Reader, updater ProgramUpdater, updateTuner func(string, tuner.Status), flushInterval time.Duration, maxBatchSize int) error {

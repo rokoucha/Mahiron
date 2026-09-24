@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/21S1298001/mahiron/internal/epg"
+	"github.com/21S1298001/mahiron/internal/epggather"
 	"github.com/21S1298001/mahiron/internal/job"
 	"github.com/21S1298001/mahiron/internal/job/run"
 )
@@ -77,7 +77,7 @@ func epgGathererHandler(registry Registry, service EPGGatherer) func(context.Con
 // want to trigger gathering for a freshly discovered network without waiting
 // for the next cron tick. Returns true when a job was actually enqueued (not
 // already running and not skipped for having no services).
-func enqueueEPGGatherForNetwork(ctx context.Context, registry Registry, service EPGGatherer, networkID uint16, presetCandidates []epg.Candidate, presetServices []epg.ServiceKey) (bool, error) {
+func enqueueEPGGatherForNetwork(ctx context.Context, registry Registry, service EPGGatherer, networkID uint16, presetCandidates []epggather.Candidate, presetServices []epggather.ServiceKey) (bool, error) {
 	candidates := presetCandidates
 	serviceKeys := presetServices
 	if len(candidates) == 0 && len(serviceKeys) == 0 {
@@ -92,8 +92,8 @@ func enqueueEPGGatherForNetwork(ctx context.Context, registry Registry, service 
 		return false, nil
 	}
 	nid := networkID
-	networkCandidates := append([]epg.Candidate(nil), candidates...)
-	networkServices := append([]epg.ServiceKey(nil), serviceKeys...)
+	networkCandidates := append([]epggather.Candidate(nil), candidates...)
+	networkServices := append([]epggather.ServiceKey(nil), serviceKeys...)
 	definition := job.JobDefinition{
 		Key: fmt.Sprintf("epg-gather:nid:%d", nid), Name: fmt.Sprintf("EPG Gather NID %d", nid), IsRerunnable: true,
 		ExclusiveKeys: []string{"epg-service-topology"},
@@ -101,7 +101,7 @@ func enqueueEPGGatherForNetwork(ctx context.Context, registry Registry, service 
 			return service.GatherNetwork(childCtx, nid, networkCandidates, networkServices)
 		},
 		RetryDelays: []time.Duration{time.Minute, 2 * time.Minute, 4 * time.Minute},
-		RetryIf:     epg.RetryableError,
+		RetryIf:     epggather.RetryableError,
 	}
 	if _, err := registry.EnqueueDefinition(definition); err != nil {
 		if errors.Is(err, job.ErrJobAlreadyRunning) {

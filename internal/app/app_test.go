@@ -9,7 +9,7 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/db"
-	"github.com/21S1298001/mahiron/internal/epg"
+	"github.com/21S1298001/mahiron/internal/epggather"
 	"github.com/21S1298001/mahiron/internal/job"
 	"github.com/21S1298001/mahiron/internal/job/defs"
 	"github.com/21S1298001/mahiron/internal/observability"
@@ -297,15 +297,15 @@ func (s *blockingStartupScanner) ScanChannel(ctx context.Context, _, _ string, _
 
 type startupEPGGatherer struct{}
 
-func (startupEPGGatherer) Groups(context.Context) (map[uint16]*epg.Network, error) {
+func (startupEPGGatherer) Groups(context.Context) (map[uint16]*epggather.Network, error) {
 	return nil, nil
 }
 
-func (startupEPGGatherer) BuildNetworkInputs(context.Context, uint16) ([]epg.Candidate, []epg.ServiceKey, error) {
+func (startupEPGGatherer) BuildNetworkInputs(context.Context, uint16) ([]epggather.Candidate, []epggather.ServiceKey, error) {
 	return nil, nil, nil
 }
 
-func (startupEPGGatherer) GatherNetwork(context.Context, uint16, []epg.Candidate, []epg.ServiceKey) error {
+func (startupEPGGatherer) GatherNetwork(context.Context, uint16, []epggather.Candidate, []epggather.ServiceKey) error {
 	return nil
 }
 

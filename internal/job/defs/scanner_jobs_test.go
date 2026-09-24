@@ -8,7 +8,7 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/db"
-	"github.com/21S1298001/mahiron/internal/epg"
+	"github.com/21S1298001/mahiron/internal/epggather"
 	"github.com/21S1298001/mahiron/internal/job"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/service"
@@ -37,10 +37,10 @@ func TestServiceUpdaterDispatchesPerChannel(t *testing.T) {
 	mgr := newTestManager(t)
 	serviceStore := service.NewSQLiteStore(database)
 	sm := service.NewServiceManager(serviceStore, channels)
-	stm := stream.NewStreamManager(stream.StreamManagerConfig{Channels: channels, TunerManager: noTunerManager{}})
+	stm := stream.NewStreamManager(stream.ManagerConfig{Channels: channels, TunerManager: noTunerManager{}})
 	pm := program.NewProgramManager(program.NewSQLiteStore(database))
 	scanService := servicescan.NewService(sm, stream.NewServiceScannerAdapter(stm), channels, 30*time.Second)
-	epgService := epg.NewService(pm, sm, stm, channels, 0, 10*time.Minute)
+	epgService := epggather.NewService(pm, sm, stm, channels, 0, 10*time.Minute)
 	RegisterServiceUpdater(mgr, scanService, epgService)
 	if _, err := mgr.Enqueue(ServiceUpdaterKey); err != nil {
 		t.Fatal(err)
@@ -64,8 +64,8 @@ func TestServiceUpdaterScansWithoutWaitingForBusyTuner(t *testing.T) {
 	scanner := &recordingServiceScanner{channels: []servicescan.Channel{{Type: "EXT1", ID: "11"}}}
 	sm := service.NewServiceManager(service.NewSQLiteStore(database), channels)
 	pm := program.NewProgramManager(program.NewSQLiteStore(database))
-	stm := stream.NewStreamManager(stream.StreamManagerConfig{Channels: channels, TunerManager: noTunerManager{}})
-	epgService := epg.NewService(pm, sm, stm, channels, 0, 10*time.Minute)
+	stm := stream.NewStreamManager(stream.ManagerConfig{Channels: channels, TunerManager: noTunerManager{}})
+	epgService := epggather.NewService(pm, sm, stm, channels, 0, 10*time.Minute)
 	RegisterServiceUpdater(mgr, scanner, epgService)
 
 	if _, err := mgr.Enqueue(ServiceUpdaterKey); err != nil {
@@ -121,8 +121,8 @@ func TestServiceScanRetriesWhenTunerUnavailable(t *testing.T) {
 	}
 	sm := service.NewServiceManager(service.NewSQLiteStore(database), channels)
 	pm := program.NewProgramManager(program.NewSQLiteStore(database))
-	stm := stream.NewStreamManager(stream.StreamManagerConfig{Channels: channels, TunerManager: noTunerManager{}})
-	epgService := epg.NewService(pm, sm, stm, channels, 0, 10*time.Minute)
+	stm := stream.NewStreamManager(stream.ManagerConfig{Channels: channels, TunerManager: noTunerManager{}})
+	epgService := epggather.NewService(pm, sm, stm, channels, 0, 10*time.Minute)
 	RegisterServiceUpdater(mgr, scanner, epgService)
 
 	if _, err := mgr.Enqueue(ServiceUpdaterKey); err != nil {
@@ -152,8 +152,8 @@ func TestServiceScanDoesNotRetryChannelNotFound(t *testing.T) {
 	}
 	sm := service.NewServiceManager(service.NewSQLiteStore(database), channels)
 	pm := program.NewProgramManager(program.NewSQLiteStore(database))
-	stm := stream.NewStreamManager(stream.StreamManagerConfig{Channels: channels, TunerManager: noTunerManager{}})
-	epgService := epg.NewService(pm, sm, stm, channels, 0, 10*time.Minute)
+	stm := stream.NewStreamManager(stream.ManagerConfig{Channels: channels, TunerManager: noTunerManager{}})
+	epgService := epggather.NewService(pm, sm, stm, channels, 0, 10*time.Minute)
 	RegisterServiceUpdater(mgr, scanner, epgService)
 
 	if _, err := mgr.Enqueue(ServiceUpdaterKey); err != nil {
@@ -208,8 +208,8 @@ func TestEPGGathererDispatchesPerNetwork(t *testing.T) {
 	}
 	defer func() { _ = programDatabase.Close() }()
 	mgr := newTestManager(t)
-	stm := stream.NewStreamManager(stream.StreamManagerConfig{Channels: channels, TunerManager: noTunerManager{}})
-	epgService := epg.NewService(program.NewProgramManager(program.NewSQLiteStore(programDatabase)), sm, stm, channels, 3, 10*time.Minute)
+	stm := stream.NewStreamManager(stream.ManagerConfig{Channels: channels, TunerManager: noTunerManager{}})
+	epgService := epggather.NewService(program.NewProgramManager(program.NewSQLiteStore(programDatabase)), sm, stm, channels, 3, 10*time.Minute)
 	RegisterEPGGathererService(mgr, epgService)
 	if _, err := mgr.Enqueue(EPGGathererKey); err != nil {
 		t.Fatal(err)
@@ -231,9 +231,9 @@ func TestEnqueueEPGGatherForNetworkIgnoresMissingNetwork(t *testing.T) {
 	defer func() { _ = database.Close() }()
 	mgr := newTestManager(t)
 	sm := service.NewServiceManager(service.NewSQLiteStore(database), channels)
-	stm := stream.NewStreamManager(stream.StreamManagerConfig{Channels: channels, TunerManager: noTunerManager{}})
+	stm := stream.NewStreamManager(stream.ManagerConfig{Channels: channels, TunerManager: noTunerManager{}})
 	pm := program.NewProgramManager(program.NewSQLiteStore(database))
-	epgService := epg.NewService(pm, sm, stm, channels, 0, 10*time.Minute)
+	epgService := epggather.NewService(pm, sm, stm, channels, 0, 10*time.Minute)
 
 	enqueued, err := enqueueEPGGatherForNetwork(ctx, mgr, epgService, 999, nil, nil)
 	if err != nil {
@@ -349,8 +349,8 @@ func TestServiceUpdaterStartsEPGGatherAfterServiceScans(t *testing.T) {
 		{Nid: 4, Tsid: 1, Sid: 101, Name: "test", Type: 1, EITScheduleFlag: true},
 		{Nid: 4, Tsid: 1, Sid: 102, Name: "test", Type: 1, EITScheduleFlag: true},
 	}}, channels, 30*time.Second)
-	stm := stream.NewStreamManager(stream.StreamManagerConfig{Channels: channels, TunerManager: noTunerManager{}})
-	epgService := epg.NewService(pm, sm, stm, channels, 0, 10*time.Minute)
+	stm := stream.NewStreamManager(stream.ManagerConfig{Channels: channels, TunerManager: noTunerManager{}})
+	epgService := epggather.NewService(pm, sm, stm, channels, 0, 10*time.Minute)
 	RegisterServiceUpdater(mgr, scanService, epgService)
 
 	if _, err := mgr.Enqueue(ServiceUpdaterKey); err != nil {
@@ -397,15 +397,15 @@ func (s *recordingServiceScanner) lastWait() bool {
 
 type fakeEPGGatherer struct{}
 
-func (fakeEPGGatherer) Groups(context.Context) (map[uint16]*epg.Network, error) {
+func (fakeEPGGatherer) Groups(context.Context) (map[uint16]*epggather.Network, error) {
 	return nil, nil
 }
 
-func (fakeEPGGatherer) BuildNetworkInputs(context.Context, uint16) ([]epg.Candidate, []epg.ServiceKey, error) {
-	return nil, []epg.ServiceKey{{NetworkID: 4, ServiceID: 101}}, nil
+func (fakeEPGGatherer) BuildNetworkInputs(context.Context, uint16) ([]epggather.Candidate, []epggather.ServiceKey, error) {
+	return nil, []epggather.ServiceKey{{NetworkID: 4, ServiceID: 101}}, nil
 }
 
-func (fakeEPGGatherer) GatherNetwork(context.Context, uint16, []epg.Candidate, []epg.ServiceKey) error {
+func (fakeEPGGatherer) GatherNetwork(context.Context, uint16, []epggather.Candidate, []epggather.ServiceKey) error {
 	return nil
 }
 
@@ -442,7 +442,7 @@ func (f *fakeLogoObserver) ObserveLogos(ctx context.Context, _, _ string, observ
 	return observe(f.image)
 }
 
-func waitForJobKeys(t *testing.T, mgr *job.JobManager, expected map[string]bool) {
+func waitForJobKeys(t *testing.T, mgr *job.Manager, expected map[string]bool) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	defer cancel()
@@ -467,7 +467,7 @@ func waitForJobKeys(t *testing.T, mgr *job.JobManager, expected map[string]bool)
 	}
 }
 
-func waitForJobKeyStatus(t *testing.T, mgr *job.JobManager, key string, status job.JobStatus) *job.Job {
+func waitForJobKeyStatus(t *testing.T, mgr *job.Manager, key string, status job.JobStatus) *job.Job {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	defer cancel()
@@ -486,12 +486,12 @@ func waitForJobKeyStatus(t *testing.T, mgr *job.JobManager, key string, status j
 	}
 }
 
-func waitForFinishedJobKey(t *testing.T, mgr *job.JobManager, key string) *job.Job {
+func waitForFinishedJobKey(t *testing.T, mgr *job.Manager, key string) *job.Job {
 	t.Helper()
 	return waitForJobKeyStatus(t, mgr, key, job.StatusFinished)
 }
 
-func newTestManager(t *testing.T) *job.JobManager {
+func newTestManager(t *testing.T) *job.Manager {
 	t.Helper()
 	mgr, err := job.NewManager(job.Config{MaxHistory: 10})
 	if err != nil {
@@ -500,7 +500,7 @@ func newTestManager(t *testing.T) *job.JobManager {
 	return mgr
 }
 
-func waitJob(t *testing.T, mgr *job.JobManager, id string) *job.Job {
+func waitJob(t *testing.T, mgr *job.Manager, id string) *job.Job {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	defer cancel()

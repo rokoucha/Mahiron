@@ -7,7 +7,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/db"
 )
 
-func newTestManager(t *testing.T) *ProgramManager {
+func newTestManager(t *testing.T) *Manager {
 	t.Helper()
 	database, err := db.OpenInMemory()
 	if err != nil {
@@ -239,11 +239,11 @@ func TestUpsertProgramsKeepsExistingDetailsWhenIncomingIsSparse(t *testing.T) {
 	}
 }
 
-// recordingProgramStore wraps a real ProgramStore and counts calls to the
+// recordingProgramStore wraps a real Store and counts calls to the
 // write methods, so a test can assert that an unchanged UpsertPrograms or
 // ReplaceServicePrograms call skipped the underlying write entirely.
 type recordingProgramStore struct {
-	ProgramStore
+	Store
 	upsertCalls  int
 	lastUpsert   []*Program
 	replaceCalls int
@@ -252,12 +252,12 @@ type recordingProgramStore struct {
 func (s *recordingProgramStore) UpsertAll(ctx context.Context, programs []*Program) error {
 	s.upsertCalls++
 	s.lastUpsert = programs
-	return s.ProgramStore.UpsertAll(ctx, programs)
+	return s.Store.UpsertAll(ctx, programs)
 }
 
 func (s *recordingProgramStore) ReplaceServicePrograms(ctx context.Context, networkID, serviceID uint16, from int64, programs []*Program) error {
 	s.replaceCalls++
-	return s.ProgramStore.ReplaceServicePrograms(ctx, networkID, serviceID, from, programs)
+	return s.Store.ReplaceServicePrograms(ctx, networkID, serviceID, from, programs)
 }
 
 func TestUpsertProgramsSkipsWriteWhenUnchanged(t *testing.T) {
@@ -274,7 +274,7 @@ func TestUpsertProgramsSkipsWriteWhenUnchanged(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	recording := &recordingProgramStore{ProgramStore: NewSQLiteStore(database)}
+	recording := &recordingProgramStore{Store: NewSQLiteStore(database)}
 	manager := NewProgramManager(recording)
 	if err := manager.UpsertPrograms(ctx, []*Program{
 		{ID: p.ID, NetworkID: 1, ServiceID: 2, EventID: 1, StartAt: 1000, Duration: 1000, Name: "title"},
@@ -301,7 +301,7 @@ func TestUpsertProgramsWritesOnlyChangedPrograms(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	recording := &recordingProgramStore{ProgramStore: NewSQLiteStore(database)}
+	recording := &recordingProgramStore{Store: NewSQLiteStore(database)}
 	manager := NewProgramManager(recording)
 	if err := manager.UpsertPrograms(ctx, []*Program{
 		{ID: unchanged.ID, NetworkID: 1, ServiceID: 2, EventID: 1, StartAt: 1000, Duration: 1000, Name: "unchanged"},
@@ -331,7 +331,7 @@ func TestReplaceServiceProgramsSkipsWriteWhenIdentical(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	recording := &recordingProgramStore{ProgramStore: NewSQLiteStore(database)}
+	recording := &recordingProgramStore{Store: NewSQLiteStore(database)}
 	manager := NewProgramManager(recording)
 	if err := manager.ReplaceServicePrograms(ctx, 1, 2, 0, []*Program{
 		{ID: p.ID, NetworkID: 1, ServiceID: 2, EventID: 1, StartAt: 1000, Duration: 1000, Name: "title"},

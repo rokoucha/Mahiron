@@ -21,8 +21,8 @@ type eventPublisher interface {
 	PublishProgramEvent(typ string, data map[string]any)
 }
 
-type ProgramManager struct {
-	store      ProgramStore
+type Manager struct {
+	store      Store
 	events     eventPublisher
 	eventMu    sync.Mutex
 	eventTimer *time.Timer
@@ -35,15 +35,15 @@ type programEvent struct {
 	removeID int64
 }
 
-func NewProgramManager(store ProgramStore, events ...eventPublisher) *ProgramManager {
-	m := &ProgramManager{store: store}
+func NewProgramManager(store Store, events ...eventPublisher) *Manager {
+	m := &Manager{store: store}
 	if len(events) > 0 {
 		m.events = events[0]
 	}
 	return m
 }
 
-func (m *ProgramManager) UpsertPrograms(ctx context.Context, programs []*Program) error {
+func (m *Manager) UpsertPrograms(ctx context.Context, programs []*Program) error {
 	source := observability.EPGMetricSource(ctx)
 	attempted := nonNilProgramCount(programs)
 	pending := make(map[int64]*Program, len(programs))
@@ -103,19 +103,19 @@ func (m *ProgramManager) UpsertPrograms(ctx context.Context, programs []*Program
 	return nil
 }
 
-func (m *ProgramManager) Get(ctx context.Context, id int64) (*Program, bool, error) {
+func (m *Manager) Get(ctx context.Context, id int64) (*Program, bool, error) {
 	return m.store.Get(ctx, id)
 }
 
-func (m *ProgramManager) List(ctx context.Context, query Query) ([]*Program, error) {
+func (m *Manager) List(ctx context.Context, query Query) ([]*Program, error) {
 	return m.store.List(ctx, query)
 }
 
-func (m *ProgramManager) ListFunc(ctx context.Context, query Query, yield func(*Program) error) error {
+func (m *Manager) ListFunc(ctx context.Context, query Query, yield func(*Program) error) error {
 	return m.store.ListFunc(ctx, query, yield)
 }
 
-func (m *ProgramManager) DeleteEndedBefore(ctx context.Context, cutoff int64) error {
+func (m *Manager) DeleteEndedBefore(ctx context.Context, cutoff int64) error {
 	source := observability.EPGMetricSource(ctx)
 	removed, err := m.store.ListEndedIDsBefore(ctx, cutoff)
 	if err != nil {
@@ -132,7 +132,7 @@ func (m *ProgramManager) DeleteEndedBefore(ctx context.Context, cutoff int64) er
 	return nil
 }
 
-func (m *ProgramManager) ReplaceServicePrograms(ctx context.Context, networkID, serviceID uint16, from int64, programs []*Program) error {
+func (m *Manager) ReplaceServicePrograms(ctx context.Context, networkID, serviceID uint16, from int64, programs []*Program) error {
 	source := observability.EPGMetricSource(ctx)
 	attempted := nonNilProgramCount(programs)
 	beforeList, err := m.store.ListByServiceFrom(ctx, networkID, serviceID, from)
@@ -179,7 +179,7 @@ func (m *ProgramManager) ReplaceServicePrograms(ctx context.Context, networkID, 
 	return nil
 }
 
-func (m *ProgramManager) Count(ctx context.Context) (int, error) { return m.store.Count(ctx) }
+func (m *Manager) Count(ctx context.Context) (int, error) { return m.store.Count(ctx) }
 
 // identicalServicePrograms reports whether incoming exactly matches the
 // existing rows keyed by ID, with no additions or removals.
@@ -344,21 +344,21 @@ func cloneSeries(series *Series) *Series {
 	return &clone
 }
 
-func (m *ProgramManager) enqueueProgramEvent(typ string, p *Program) {
+func (m *Manager) enqueueProgramEvent(typ string, p *Program) {
 	if m.events == nil {
 		return
 	}
 	m.enqueueEvent(programEvent{typ: typ, program: p})
 }
 
-func (m *ProgramManager) enqueueProgramRemoveEvent(id int64) {
+func (m *Manager) enqueueProgramRemoveEvent(id int64) {
 	if m.events == nil {
 		return
 	}
 	m.enqueueEvent(programEvent{typ: eventTypeRemove, removeID: id})
 }
 
-func (m *ProgramManager) enqueueEvent(event programEvent) {
+func (m *Manager) enqueueEvent(event programEvent) {
 	m.eventMu.Lock()
 	defer m.eventMu.Unlock()
 	m.eventQueue = append(m.eventQueue, event)
@@ -369,7 +369,7 @@ func (m *ProgramManager) enqueueEvent(event programEvent) {
 	m.eventTimer = time.AfterFunc(programEventDelay, m.flushEvents)
 }
 
-func (m *ProgramManager) flushEvents() {
+func (m *Manager) flushEvents() {
 	m.eventMu.Lock()
 	queue := append([]programEvent(nil), m.eventQueue...)
 	m.eventQueue = nil

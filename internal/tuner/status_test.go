@@ -11,7 +11,7 @@ import (
 )
 
 func TestTunerStatusTracksChannelsProcessAndUsers(t *testing.T) {
-	mgr := NewTunerManager(&TunerManagerConfig{TunersConfig: config.TunersConfig{
+	mgr := NewTunerManager(&ManagerConfig{TunersConfig: config.TunersConfig{
 		{Name: "test", Types: []string{"CATV"}, Command: "sleep 10"},
 	}})
 	requested := &config.ChannelConfig{Name: "Logical", Type: "BS", Channel: "101"}
@@ -65,7 +65,7 @@ func TestTunerStatusTracksChannelsProcessAndUsers(t *testing.T) {
 }
 
 func TestTunerStatusMarksUnexpectedProcessExitAsFault(t *testing.T) {
-	mgr := NewTunerManager(&TunerManagerConfig{TunersConfig: config.TunersConfig{
+	mgr := NewTunerManager(&ManagerConfig{TunersConfig: config.TunersConfig{
 		{Name: "broken", Types: []string{"GR"}, Command: "command-that-does-not-exist"},
 	}})
 	channel := &config.ChannelConfig{Type: "GR", Channel: "27"}
@@ -99,7 +99,7 @@ func TestTunerStatusMarksUnexpectedProcessExitAsFault(t *testing.T) {
 }
 
 func TestDisabledAndDVBTunerStatus(t *testing.T) {
-	mgr := NewTunerManager(&TunerManagerConfig{TunersConfig: config.TunersConfig{
+	mgr := NewTunerManager(&ManagerConfig{TunersConfig: config.TunersConfig{
 		{Name: "disabled", Types: []string{"GR"}, Command: "sleep 1", IsDisabled: true},
 		{Name: "dvb", Types: []string{"SKY"}, Command: "sleep 1", DvbDevicePath: "/dev/null"},
 	}})
@@ -116,7 +116,7 @@ func TestDisabledAndDVBTunerStatus(t *testing.T) {
 }
 
 func TestTunerStatusSortsTypes(t *testing.T) {
-	mgr := NewTunerManager(&TunerManagerConfig{TunersConfig: config.TunersConfig{
+	mgr := NewTunerManager(&ManagerConfig{TunersConfig: config.TunersConfig{
 		{Name: "test", Types: []string{"SKY", "GR", "BS", "GR"}, Command: "sleep 1"},
 	}})
 	statuses := mgr.Statuses()
@@ -127,7 +127,7 @@ func TestTunerStatusSortsTypes(t *testing.T) {
 }
 
 func TestTunerStatusStreamInfoIsSnapshot(t *testing.T) {
-	mgr := NewTunerManager(&TunerManagerConfig{TunersConfig: config.TunersConfig{
+	mgr := NewTunerManager(&ManagerConfig{TunersConfig: config.TunersConfig{
 		{Name: "test", Types: []string{"GR"}, Command: "true"},
 	}})
 	item := mgr.tuners[0]
@@ -157,7 +157,7 @@ func TestTunerStatusStreamInfoIsSnapshot(t *testing.T) {
 }
 
 func TestTunerStatusOmitsProcessFieldsForNonProcessDevice(t *testing.T) {
-	mgr := NewTunerManager(&TunerManagerConfig{TunersConfig: config.TunersConfig{
+	mgr := NewTunerManager(&ManagerConfig{TunersConfig: config.TunersConfig{
 		{Name: "test", Types: []string{"GR"}, Command: "sleep 1"},
 	}})
 	item := mgr.tuners[0]

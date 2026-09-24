@@ -39,7 +39,7 @@ func TestHTTPContractRoundTripsThroughGeneratedClientAndSQLite(t *testing.T) {
 	hub := event.New()
 	services := service.NewServiceManager(service.NewSQLiteStore(database), channels, hub)
 	programs := program.NewProgramManager(program.NewSQLiteStore(database), hub)
-	tuners := tuner.NewTunerManager(&tuner.TunerManagerConfig{})
+	tuners := tuner.NewTunerManager(&tuner.ManagerConfig{})
 	jobs, err := job.NewManager(job.Config{})
 	if err != nil {
 		t.Fatal(err)

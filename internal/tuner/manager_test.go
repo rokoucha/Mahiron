@@ -11,7 +11,7 @@ import (
 )
 
 func TestTunerManagerReservesIndividualTuners(t *testing.T) {
-	mgr := NewTunerManager(&TunerManagerConfig{TunersConfig: config.TunersConfig{
+	mgr := NewTunerManager(&ManagerConfig{TunersConfig: config.TunersConfig{
 		{Name: "first", Types: []string{"GR"}, Command: "first", Decoder: "decode-first"},
 		{Name: "second", Types: []string{"GR"}, Command: "second", Decoder: "decode-second"},
 	}})
@@ -42,7 +42,7 @@ func TestTunerManagerReservesIndividualTuners(t *testing.T) {
 }
 
 func TestTunerManagerWaitCanBeCancelled(t *testing.T) {
-	mgr := NewTunerManager(&TunerManagerConfig{TunersConfig: config.TunersConfig{
+	mgr := NewTunerManager(&ManagerConfig{TunersConfig: config.TunersConfig{
 		{Name: "only", Types: []string{"GR"}, Command: "only"},
 	}})
 	channel := &config.ChannelConfig{Type: "GR", Channel: "27"}
@@ -59,7 +59,7 @@ func TestTunerManagerWaitCanBeCancelled(t *testing.T) {
 }
 
 func TestStaleDeviceCompletionDoesNotFaultNewReservation(t *testing.T) {
-	mgr := NewTunerManager(&TunerManagerConfig{TunersConfig: config.TunersConfig{
+	mgr := NewTunerManager(&ManagerConfig{TunersConfig: config.TunersConfig{
 		{Name: "only", Types: []string{"GR"}, Command: "true"},
 	}})
 	channel := &config.ChannelConfig{Type: "GR", Channel: "27"}
@@ -84,7 +84,7 @@ func TestStaleDeviceCompletionDoesNotFaultNewReservation(t *testing.T) {
 }
 
 func TestFaultClearsOnReleaseAndTunerCanBeReacquired(t *testing.T) {
-	mgr := NewTunerManager(&TunerManagerConfig{TunersConfig: config.TunersConfig{
+	mgr := NewTunerManager(&ManagerConfig{TunersConfig: config.TunersConfig{
 		{Name: "only", Types: []string{"GR"}, Command: "true"},
 	}})
 	channel := &config.ChannelConfig{Type: "GR", Channel: "27"}
@@ -113,7 +113,7 @@ func TestFaultClearsOnReleaseAndTunerCanBeReacquired(t *testing.T) {
 }
 
 func TestTunerManagerSelectsTunersRoundRobin(t *testing.T) {
-	mgr := NewTunerManager(&TunerManagerConfig{TunersConfig: config.TunersConfig{
+	mgr := NewTunerManager(&ManagerConfig{TunersConfig: config.TunersConfig{
 		{Name: "first", Types: []string{"GR"}, Command: "first", Decoder: "decode-first"},
 		{Name: "second", Types: []string{"GR"}, Command: "second", Decoder: "decode-second"},
 	}})
@@ -134,7 +134,7 @@ func TestTunerManagerSelectsTunersRoundRobin(t *testing.T) {
 }
 
 func TestTunerManagerHighPriorityGrabsLowPriorityTuner(t *testing.T) {
-	mgr := NewTunerManager(&TunerManagerConfig{TunersConfig: config.TunersConfig{
+	mgr := NewTunerManager(&ManagerConfig{TunersConfig: config.TunersConfig{
 		{Name: "only", Types: []string{"GR"}, Command: "true", Decoder: "decode-only"},
 	}})
 	channel := &config.ChannelConfig{Type: "GR", Channel: "27"}
@@ -160,7 +160,7 @@ func TestTunerManagerHighPriorityGrabsLowPriorityTuner(t *testing.T) {
 }
 
 func TestTunerManagerEqualPriorityCannotGrab(t *testing.T) {
-	mgr := NewTunerManager(&TunerManagerConfig{TunersConfig: config.TunersConfig{
+	mgr := NewTunerManager(&ManagerConfig{TunersConfig: config.TunersConfig{
 		{Name: "only", Types: []string{"GR"}, Command: "true"},
 	}})
 	channel := &config.ChannelConfig{Type: "GR", Channel: "27"}
@@ -179,7 +179,7 @@ func TestTunerManagerEqualPriorityCannotGrab(t *testing.T) {
 }
 
 func TestTunerManagerLowerPriorityCannotGrab(t *testing.T) {
-	mgr := NewTunerManager(&TunerManagerConfig{TunersConfig: config.TunersConfig{
+	mgr := NewTunerManager(&ManagerConfig{TunersConfig: config.TunersConfig{
 		{Name: "only", Types: []string{"GR"}, Command: "true"},
 	}})
 	channel := &config.ChannelConfig{Type: "GR", Channel: "27"}
@@ -198,7 +198,7 @@ func TestTunerManagerLowerPriorityCannotGrab(t *testing.T) {
 }
 
 func TestTunerManagerDefaultPriorityGrabsNegativeReservation(t *testing.T) {
-	mgr := NewTunerManager(&TunerManagerConfig{TunersConfig: config.TunersConfig{
+	mgr := NewTunerManager(&ManagerConfig{TunersConfig: config.TunersConfig{
 		{Name: "only", Types: []string{"GR"}, Command: "true"},
 	}})
 	channel := &config.ChannelConfig{Type: "GR", Channel: "27"}
@@ -219,7 +219,7 @@ func TestTunerManagerDefaultPriorityGrabsNegativeReservation(t *testing.T) {
 }
 
 func TestTunerManagerDefaultPriorityGrabsTunerHeldByNegativePriorityUser(t *testing.T) {
-	mgr := NewTunerManager(&TunerManagerConfig{TunersConfig: config.TunersConfig{
+	mgr := NewTunerManager(&ManagerConfig{TunersConfig: config.TunersConfig{
 		{Name: "only", Types: []string{"GR"}, Command: "true"},
 	}})
 	channel := &config.ChannelConfig{Type: "GR", Channel: "27"}
@@ -241,7 +241,7 @@ func TestTunerManagerDefaultPriorityGrabsTunerHeldByNegativePriorityUser(t *test
 }
 
 func TestTunerManagerHighestActiveUserPriorityProtectsTuner(t *testing.T) {
-	mgr := NewTunerManager(&TunerManagerConfig{TunersConfig: config.TunersConfig{
+	mgr := NewTunerManager(&ManagerConfig{TunersConfig: config.TunersConfig{
 		{Name: "only", Types: []string{"GR"}, Command: "true"},
 	}})
 	channel := &config.ChannelConfig{Type: "GR", Channel: "27"}
@@ -261,7 +261,7 @@ func TestTunerManagerHighestActiveUserPriorityProtectsTuner(t *testing.T) {
 }
 
 func TestTunerManagerGrabsLowestPriorityCandidate(t *testing.T) {
-	mgr := NewTunerManager(&TunerManagerConfig{TunersConfig: config.TunersConfig{
+	mgr := NewTunerManager(&ManagerConfig{TunersConfig: config.TunersConfig{
 		{Name: "first", Types: []string{"GR"}, Command: "true", Decoder: "decode-first"},
 		{Name: "second", Types: []string{"GR"}, Command: "true", Decoder: "decode-second"},
 	}})
@@ -289,7 +289,7 @@ func TestTunerManagerGrabsLowestPriorityCandidate(t *testing.T) {
 }
 
 func TestTunerManagerReservesDVBCommandTuner(t *testing.T) {
-	mgr := NewTunerManager(&TunerManagerConfig{TunersConfig: config.TunersConfig{
+	mgr := NewTunerManager(&ManagerConfig{TunersConfig: config.TunersConfig{
 		{Name: "dvb", Types: []string{"SKY"}, Command: "true", DvbDevicePath: "/dev/null", Decoder: "decode-dvb"},
 	}})
 	channel := &config.ChannelConfig{Type: "SKY", Channel: "JCSAT3A"}
@@ -306,7 +306,7 @@ func TestTunerManagerReservesDVBCommandTuner(t *testing.T) {
 }
 
 func TestTunerManagerCheckAvailableDoesNotReserve(t *testing.T) {
-	mgr := NewTunerManager(&TunerManagerConfig{TunersConfig: config.TunersConfig{
+	mgr := NewTunerManager(&ManagerConfig{TunersConfig: config.TunersConfig{
 		{Name: "first", Types: []string{"GR"}, Command: "sleep 10"},
 	}})
 	if err := mgr.CheckAvailable(context.Background(), "GR"); err != nil {
@@ -322,7 +322,7 @@ func TestTunerManagerCheckAvailableDoesNotReserve(t *testing.T) {
 }
 
 func TestTunerManagerKillProcess(t *testing.T) {
-	mgr := NewTunerManager(&TunerManagerConfig{TunersConfig: config.TunersConfig{
+	mgr := NewTunerManager(&ManagerConfig{TunersConfig: config.TunersConfig{
 		{Name: "first", Types: []string{"GR"}, Command: "sleep 10"},
 	}})
 	channel := &config.ChannelConfig{Type: "GR", Channel: "27"}
@@ -346,7 +346,7 @@ func TestTunerManagerKillProcess(t *testing.T) {
 }
 
 func TestTunerManagerKillProcessIdleAndMissing(t *testing.T) {
-	mgr := NewTunerManager(&TunerManagerConfig{TunersConfig: config.TunersConfig{
+	mgr := NewTunerManager(&ManagerConfig{TunersConfig: config.TunersConfig{
 		{Name: "first", Types: []string{"GR"}, Command: "sleep 1"},
 	}})
 	if err := mgr.KillProcess(context.Background(), 0); err != nil {

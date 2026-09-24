@@ -8,7 +8,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/config"
 )
 
-func (s *ServiceManager) orderServices(services []*Service) []*Service {
+func (s *Manager) orderServices(services []*Service) []*Service {
 	ordered := append([]*Service(nil), services...)
 	order := serviceOrder(s.channels)
 	sort.SliceStable(ordered, func(i, j int) bool {

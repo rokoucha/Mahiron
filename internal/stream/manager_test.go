@@ -23,14 +23,14 @@ import (
 	"github.com/21S1298001/mahiron/ts"
 )
 
-func testManager(t *testing.T, devices *fakeTunerDeviceRecorder) *StreamManager {
+func testManager(t *testing.T, devices *fakeTunerDeviceRecorder) *Manager {
 	t.Helper()
 	return testManagerWithDescrambler(t, devices, nil)
 }
 
 func TestConfiguredRemoteTunersFiltersByRemoteRouteType(t *testing.T) {
 	disabled := true
-	manager := NewStreamManager(StreamManagerConfig{
+	manager := NewStreamManager(ManagerConfig{
 		Channels: config.ChannelsConfig{
 			{Type: "GR", Channel: "27", Routes: []config.ChannelRouteConfig{{Type: "GR", Channel: "27", Remote: "living"}}},
 			{Type: "BS", Channel: "101", Routes: []config.ChannelRouteConfig{{Type: "BS", Channel: "101", Remote: "living", IsDisabled: &disabled}}},
@@ -52,7 +52,7 @@ func TestDataBroadcastCachedModuleOutlivesSession(t *testing.T) {
 	cache := databroadcast.NewModuleCache(1024)
 	key := databroadcast.ModuleCacheKey{ChannelType: "GR", ChannelID: "27", ServiceID: 101, ComponentTag: 0x40, DownloadID: 7, ModuleID: 2, Version: 3, Size: 4}
 	cache.Put(key, ts.DSMCCModule{DownloadID: 7, ModuleID: 2, Version: 3, Size: 4, Data: []byte("data")})
-	manager := NewStreamManager(StreamManagerConfig{ModuleStore: cache})
+	manager := NewStreamManager(ManagerConfig{ModuleStore: cache})
 	module, ok := manager.DataBroadcastCachedModule("GR", "27", 101, 0x40, 7, 2, 3)
 	if !ok || string(module.Data) != "data" || module.ETag == "" {
 		t.Fatalf("module = %#v, found = %v", module, ok)
@@ -68,7 +68,7 @@ func TestDataBroadcastProvisionalSnapshotUsesConfiguredSnapshotStore(t *testing.
 	if err := store.PutSnapshot("GR", "27", databroadcast.PersistedService{ServiceID: 101}); err != nil {
 		t.Fatal(err)
 	}
-	manager := NewStreamManager(StreamManagerConfig{ModuleStore: store, SnapshotStore: store})
+	manager := NewStreamManager(ManagerConfig{ModuleStore: store, SnapshotStore: store})
 	snapshot, storedAt, found := manager.DataBroadcastProvisionalSnapshot("GR", "27", 101)
 	if !found || storedAt == 0 || snapshot.ServiceID != 101 {
 		t.Fatalf("snapshot = %#v, storedAt = %d, found = %v", snapshot, storedAt, found)
@@ -76,7 +76,7 @@ func TestDataBroadcastProvisionalSnapshotUsesConfiguredSnapshotStore(t *testing.
 }
 
 func TestDataBroadcastProvisionalSnapshotNotFoundWithoutSnapshotStore(t *testing.T) {
-	manager := NewStreamManager(StreamManagerConfig{ModuleStore: databroadcast.NewModuleCache(1024)})
+	manager := NewStreamManager(ManagerConfig{ModuleStore: databroadcast.NewModuleCache(1024)})
 	if _, _, found := manager.DataBroadcastProvisionalSnapshot("GR", "27", 101); found {
 		t.Fatal("expected no provisional snapshot without a configured SnapshotStore")
 	}
@@ -88,20 +88,20 @@ func TestDataBroadcastProvisionalSnapshotMissingReturnsNotFound(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
-	manager := NewStreamManager(StreamManagerConfig{ModuleStore: store, SnapshotStore: store})
+	manager := NewStreamManager(ManagerConfig{ModuleStore: store, SnapshotStore: store})
 	if _, _, found := manager.DataBroadcastProvisionalSnapshot("GR", "27", 101); found {
 		t.Fatal("expected no provisional snapshot when nothing was ever persisted")
 	}
 }
 
-func testManagerWithDescrambler(t *testing.T, devices *fakeTunerDeviceRecorder, descramblers *fakeDescramblerRecorder) *StreamManager {
+func testManagerWithDescrambler(t *testing.T, devices *fakeTunerDeviceRecorder, descramblers *fakeDescramblerRecorder) *Manager {
 	t.Helper()
 	no := false
 	factory := source.DescramblerFactory(nil)
 	if descramblers != nil {
 		factory = descramblers.NewDescrambler
 	}
-	return NewStreamManager(StreamManagerConfig{
+	return NewStreamManager(ManagerConfig{
 		Channels: config.ChannelsConfig{
 			{
 				Name:       "NHK",
@@ -178,7 +178,7 @@ func TestManagerSelectsRouteByFreeChannelType(t *testing.T) {
 	routeManager := &routeSelectingTunerManager{
 		availableType: "CATV_BS",
 	}
-	manager := NewStreamManager(StreamManagerConfig{
+	manager := NewStreamManager(ManagerConfig{
 		Channels: config.ChannelsConfig{
 			{
 				Name:       "NHK BS",
@@ -214,7 +214,7 @@ func TestManagerSelectsRouteByFreeChannelType(t *testing.T) {
 func TestManagerSharesLocalRouteAcrossLogicalChannels(t *testing.T) {
 	no := false
 	devices := &fakeTunerDeviceRecorder{}
-	manager := NewStreamManager(StreamManagerConfig{
+	manager := NewStreamManager(ManagerConfig{
 		Channels: config.ChannelsConfig{
 			{
 				Name: "NHK 1", Type: "GR", Channel: "27", IsDisabled: &no,
@@ -269,7 +269,7 @@ func TestManagerSharesLocalRouteAcrossLogicalChannels(t *testing.T) {
 func TestManagerCoalescesConcurrentLocalRouteCreation(t *testing.T) {
 	no := false
 	tuners := &slowTunerManager{delay: 20 * time.Millisecond}
-	manager := NewStreamManager(StreamManagerConfig{
+	manager := NewStreamManager(ManagerConfig{
 		Channels: config.ChannelsConfig{
 			{
 				Name: "NHK 1", Type: "GR", Channel: "27", IsDisabled: &no,
@@ -316,7 +316,7 @@ func TestManagerCoalescesConcurrentLocalRouteCreation(t *testing.T) {
 func TestManagerKeepsSharedRouteRunningUntilAllLogicalConsumersDetach(t *testing.T) {
 	no := false
 	device := &fakeLiveTunerDevice{}
-	manager := NewStreamManager(StreamManagerConfig{
+	manager := NewStreamManager(ManagerConfig{
 		Channels: config.ChannelsConfig{
 			{
 				Name: "NHK 1", Type: "GR", Channel: "27", IsDisabled: &no,
@@ -380,7 +380,7 @@ func TestManagerKeepsSharedRouteRunningUntilAllLogicalConsumersDetach(t *testing
 func TestManagerPassesTunerUserPriorityToAllocator(t *testing.T) {
 	no := false
 	tuners := &priorityCapturingTunerManager{}
-	manager := NewStreamManager(StreamManagerConfig{
+	manager := NewStreamManager(ManagerConfig{
 		Channels: config.ChannelsConfig{
 			{Name: "NHK", Type: "GR", Channel: "27", IsDisabled: &no},
 		},
@@ -399,7 +399,7 @@ func TestManagerPassesTunerUserPriorityToAllocator(t *testing.T) {
 func TestManagerPassesBackgroundWaitToAllocator(t *testing.T) {
 	no := false
 	tuners := &priorityCapturingTunerManager{}
-	manager := NewStreamManager(StreamManagerConfig{
+	manager := NewStreamManager(ManagerConfig{
 		Channels:     config.ChannelsConfig{{Name: "NHK", Type: "GR", Channel: "27", IsDisabled: &no}},
 		TunerManager: tuners,
 	})
@@ -488,7 +488,7 @@ func TestSessionRegistryRemoveIfSameKeepsNewerSession(t *testing.T) {
 func TestManagerDoesNotBlockHasSessionDuringAcquire(t *testing.T) {
 	no := false
 	tuners := newBlockingTunerManager("27")
-	manager := NewStreamManager(StreamManagerConfig{
+	manager := NewStreamManager(ManagerConfig{
 		Channels:     config.ChannelsConfig{{Name: "NHK", Type: "GR", Channel: "27", IsDisabled: &no}},
 		TunerManager: tuners,
 	})
@@ -520,7 +520,7 @@ func TestManagerDoesNotBlockHasSessionDuringAcquire(t *testing.T) {
 func TestManagerAllowsDifferentSessionCreationDuringAcquire(t *testing.T) {
 	no := false
 	tuners := newBlockingTunerManager("27")
-	manager := NewStreamManager(StreamManagerConfig{
+	manager := NewStreamManager(ManagerConfig{
 		Channels: config.ChannelsConfig{
 			{Name: "NHK 1", Type: "GR", Channel: "27", IsDisabled: &no},
 			{Name: "NHK 2", Type: "GR", Channel: "28", IsDisabled: &no},
@@ -558,7 +558,7 @@ func TestManagerAllowsDifferentSessionCreationDuringAcquire(t *testing.T) {
 func TestManagerCoalescesConcurrentSameSessionCreation(t *testing.T) {
 	no := false
 	tuners := newBlockingTunerManager("27")
-	manager := NewStreamManager(StreamManagerConfig{
+	manager := NewStreamManager(ManagerConfig{
 		Channels:     config.ChannelsConfig{{Name: "NHK", Type: "GR", Channel: "27", IsDisabled: &no}},
 		TunerManager: tuners,
 	})
@@ -600,7 +600,7 @@ func TestManagerShutdownWaitsForInflightSessionWithoutHoldingLock(t *testing.T) 
 	device := &fakeLiveTunerDevice{}
 	tuners := newBlockingTunerManager("27")
 	tuners.devices["27"] = device
-	manager := NewStreamManager(StreamManagerConfig{
+	manager := NewStreamManager(ManagerConfig{
 		Channels:     config.ChannelsConfig{{Name: "NHK", Type: "GR", Channel: "27", IsDisabled: &no}},
 		TunerManager: tuners,
 	})
@@ -662,7 +662,7 @@ func TestManagerSelectsRemoteRouteWhenLocalUnavailable(t *testing.T) {
 		})}))
 	}
 
-	manager := NewStreamManager(StreamManagerConfig{
+	manager := NewStreamManager(ManagerConfig{
 		Channels: config.ChannelsConfig{
 			{
 				Name: "NHK", Type: "GR", Channel: "27", IsDisabled: &no,
@@ -719,7 +719,7 @@ func TestManagerSelectsRemoteRouteWhenRemoteAlreadyTunedToSameRoute(t *testing.T
 		})}))
 	}
 
-	manager := NewStreamManager(StreamManagerConfig{
+	manager := NewStreamManager(ManagerConfig{
 		Channels: config.ChannelsConfig{
 			{
 				Name: "NHK", Type: "GR", Channel: "27", IsDisabled: &no,
@@ -769,7 +769,7 @@ func TestManagerFallsBackWhenRemoteRouteUnavailable(t *testing.T) {
 		})}))
 	}
 
-	manager := NewStreamManager(StreamManagerConfig{
+	manager := NewStreamManager(ManagerConfig{
 		Channels: config.ChannelsConfig{
 			{
 				Name: "NHK", Type: "GR", Channel: "27", IsDisabled: &no,
@@ -821,7 +821,7 @@ func TestManagerStartsRemoteProgramEventSyncOutsideSessionLifecycle(t *testing.T
 		})}))
 	}
 
-	manager := NewStreamManager(StreamManagerConfig{
+	manager := NewStreamManager(ManagerConfig{
 		Channels: config.ChannelsConfig{{
 			Name:       "NHK",
 			Type:       "GR",
