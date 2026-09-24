@@ -8,15 +8,15 @@ import (
 	"github.com/21S1298001/mahiron/internal/program"
 )
 
-type LogoCollectorAdapter struct {
+type LogoGatherAdapter struct {
 	manager *Manager
 }
 
-func NewLogoCollectorAdapter(manager *Manager) *LogoCollectorAdapter {
-	return &LogoCollectorAdapter{manager: manager}
+func NewLogoGatherAdapter(manager *Manager) *LogoGatherAdapter {
+	return &LogoGatherAdapter{manager: manager}
 }
 
-func (a *LogoCollectorAdapter) ObserveLogos(ctx context.Context, channelType, channelID string, observe func(model.Logo) error) error {
+func (a *LogoGatherAdapter) ObserveLogos(ctx context.Context, channelType, channelID string, observe func(model.Logo) error) error {
 	session, err := a.manager.GetOrCreateWait(ctx, channelType, channelID)
 	if err != nil {
 		return err
@@ -24,15 +24,15 @@ func (a *LogoCollectorAdapter) ObserveLogos(ctx context.Context, channelType, ch
 	return session.ObserveLogos(ctx, observe)
 }
 
-type ServiceScannerAdapter struct {
+type ServiceScanAdapter struct {
 	manager *Manager
 }
 
-func NewServiceScannerAdapter(manager *Manager) *ServiceScannerAdapter {
-	return &ServiceScannerAdapter{manager: manager}
+func NewServiceScanAdapter(manager *Manager) *ServiceScanAdapter {
+	return &ServiceScanAdapter{manager: manager}
 }
 
-func (a *ServiceScannerAdapter) ScanServices(scanCtx, acquireCtx context.Context, channelType, channelID string, wait bool) ([]model.Service, error) {
+func (a *ServiceScanAdapter) ScanServices(scanCtx, acquireCtx context.Context, channelType, channelID string, wait bool) ([]model.Service, error) {
 	if services, handled, err := a.manager.scanRemoteServices(scanCtx, channelType, channelID); handled {
 		return services, err
 	}

@@ -209,8 +209,8 @@ func buildRuntime(cfg *config.Config, database *db.DB, obs observability.SetupRe
 		TunerManager:   tuners,
 		ModuleStore:    moduleStore,
 	})
-	scanAdapter := stream.NewServiceScannerAdapter(streams)
-	logoCollector := stream.NewLogoCollectorAdapter(streams)
+	scanAdapter := stream.NewServiceScanAdapter(streams)
+	logoAdapter := stream.NewLogoGatherAdapter(streams)
 	serviceScanner := servicescan.NewScanner(services, scanAdapter, cfg.Channels, time.Duration(cfg.System.ServiceScanTimeout)*time.Millisecond)
 	epgGatherer := epggather.NewGatherer(eventWriter, programs, services, stream.NewEPGGatherAdapter(streams), cfg.Channels, cfg.System.EpgRetentionDays, time.Duration(cfg.System.EpgRetrievalTime)*time.Millisecond)
 
@@ -221,7 +221,7 @@ func buildRuntime(cfg *config.Config, database *db.DB, obs observability.SetupRe
 
 	defs.RegisterServiceUpdater(jobs, serviceScanner, epgGatherer)
 	defs.RegisterEPGGatherer(jobs, epgGatherer)
-	defs.RegisterLogoGatherer(jobs, logoCollector, services, time.Duration(cfg.System.LogoGatherTimeout)*time.Millisecond)
+	defs.RegisterLogoGatherer(jobs, logoAdapter, services, time.Duration(cfg.System.LogoGatherTimeout)*time.Millisecond)
 
 	schedules := cfg.System.Jobs
 	if len(schedules) == 0 {
