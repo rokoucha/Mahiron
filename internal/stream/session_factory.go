@@ -15,7 +15,7 @@ var (
 
 // createSession acquires an input and builds the shared channel session. A
 // remote handle only adds API-backed operations around that implementation.
-func (m *StreamManager) createSession(ctx context.Context, key sessionKey, channelType, channel string, wait bool) (Session, string, string, error) {
+func (m *Manager) createSession(ctx context.Context, key sessionKey, channelType, channel string, wait bool) (Session, string, string, error) {
 	handle, err := m.sources.Acquire(ctx, channelType, channel, wait)
 	if err != nil {
 		return nil, "", "", err

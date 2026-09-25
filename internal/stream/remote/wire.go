@@ -10,8 +10,10 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/21S1298001/mahiron/internal/program"
+	"github.com/21S1298001/mahiron/internal/mirakurun"
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/tuner"
+	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 )
 
 type remoteTuner struct {
@@ -47,39 +49,6 @@ func (t remoteTuner) matchesRoute(channelType, channel string) bool {
 		t.CurrentChannelType == channelType && t.CurrentChannel == channel
 }
 
-type remoteService struct {
-	ServiceID           uint16 `json:"serviceId"`
-	NetworkID           uint16 `json:"networkId"`
-	TransportStreamID   uint16 `json:"transportStreamId"`
-	Name                string `json:"name"`
-	Type                int    `json:"type"`
-	EITScheduleFlag     *bool  `json:"eitScheduleFlag"`
-	EITPresentFollowing *bool  `json:"eitPresentFollowing"`
-	LogoID              *int64 `json:"logoId"`
-	HasLogoData         bool   `json:"hasLogoData"`
-	RemoteControlKeyID  int    `json:"remoteControlKeyId"`
-}
-
-func uint8Ptr(v uint8) *uint8 { return &v }
-
-type remoteProgram struct {
-	ID           int64               `json:"id"`
-	EventID      uint16              `json:"eventId"`
-	ServiceID    uint16              `json:"serviceId"`
-	NetworkID    uint16              `json:"networkId"`
-	StartAt      int64               `json:"startAt"`
-	Duration     int                 `json:"duration"`
-	IsFree       bool                `json:"isFree"`
-	Name         string              `json:"name"`
-	Description  string              `json:"description"`
-	Genres       []remoteGenre       `json:"genres"`
-	Video        *remoteVideo        `json:"video"`
-	Audios       []remoteAudio       `json:"audios"`
-	Extended     map[string]string   `json:"extended"`
-	RelatedItems []remoteRelatedItem `json:"relatedItems"`
-	Series       *remoteSeries       `json:"series"`
-}
-
 type remoteEvent struct {
 	Resource string          `json:"resource"`
 	Type     string          `json:"type"`
@@ -111,12 +80,12 @@ func readRemoteProgramEvents(ctx context.Context, src io.Reader, updater Program
 		if event.Resource != "program" || event.Type != "update" && event.Type != "create" {
 			continue
 		}
-		var remote remoteProgram
-		if err := json.Unmarshal(event.Data, &remote); err != nil {
+		remote, err := decodeRemoteProgram(event.Data)
+		if err != nil {
 			slog.Debug("failed to decode remote program event data", "err", err)
 			continue
 		}
-		if err := updater.UpsertPrograms(ctx, []*program.Program{remote.Program()}); err != nil {
+		if err := updater.UpsertEvents(ctx, []model.Event{remote}); err != nil {
 			return err
 		}
 	}
@@ -139,7 +108,7 @@ type scannedRemoteEvent struct {
 }
 
 // readRemoteEventsBatched keeps the event stream moving while amortizing the
-// durable SQLite commit used by ProgramManager. A remote can emit tens of
+// durable SQLite commit used by program.Manager. A remote can emit tens of
 // thousands of program updates per hour; committing each event separately is
 // especially expensive when the database lives on network storage.
 func readRemoteEventsBatched(ctx context.Context, src io.Reader, updater ProgramUpdater, updateTuner func(string, tuner.Status), flushInterval time.Duration, maxBatchSize int) error {
@@ -157,19 +126,19 @@ func readRemoteEventsBatched(ctx context.Context, src io.Reader, updater Program
 
 	ticker := time.NewTicker(flushInterval)
 	defer ticker.Stop()
-	pending := make(map[int64]*program.Program, maxBatchSize)
+	pending := make(map[int64]model.Event, maxBatchSize)
 	order := make([]int64, 0, maxBatchSize)
 	flush := func() error {
 		if len(pending) == 0 || updater == nil {
 			return nil
 		}
-		programs := make([]*program.Program, 0, len(pending))
+		events := make([]model.Event, 0, len(pending))
 		for _, id := range order {
 			if item, ok := pending[id]; ok {
-				programs = append(programs, item)
+				events = append(events, item)
 			}
 		}
-		if err := updater.UpsertPrograms(ctx, programs); err != nil {
+		if err := updater.UpsertEvents(ctx, events); err != nil {
 			return err
 		}
 		clear(pending)
@@ -204,15 +173,15 @@ func readRemoteEventsBatched(ctx context.Context, src io.Reader, updater Program
 				if updater == nil || event.Type != "update" && event.Type != "create" {
 					continue
 				}
-				var item remoteProgram
-				if json.Unmarshal(event.Data, &item) != nil {
+				program, err := decodeRemoteProgram(event.Data)
+				if err != nil {
 					continue
 				}
-				program := item.Program()
-				if _, exists := pending[program.ID]; !exists {
-					order = append(order, program.ID)
+				id := model.ProgramID(program.Key, program.EventID)
+				if _, exists := pending[id]; !exists {
+					order = append(order, id)
 				}
-				pending[program.ID] = program
+				pending[id] = program
 				if len(pending) >= maxBatchSize {
 					if err := flush(); err != nil {
 						return err
@@ -255,130 +224,13 @@ func scanRemoteEvents(ctx context.Context, src io.Reader, dst chan<- scannedRemo
 	}
 }
 
-func (p remoteProgram) Program() *program.Program {
-	prog := &program.Program{
-		ID:           p.ID,
-		EventID:      p.EventID,
-		ServiceID:    p.ServiceID,
-		NetworkID:    p.NetworkID,
-		StartAt:      p.StartAt,
-		Duration:     p.Duration,
-		IsFree:       p.IsFree,
-		Name:         p.Name,
-		Description:  p.Description,
-		Genres:       remoteGenres(p.Genres),
-		Audios:       remoteAudios(p.Audios),
-		Extended:     normalizeStringMap(p.Extended),
-		RelatedItems: remoteRelatedItems(p.RelatedItems),
+// decodeRemoteProgram decodes a Mirakurun-compatible program with the ogen
+// types and converts it through the shared conversion, the same one the API
+// serves. Payloads missing required fields are rejected.
+func decodeRemoteProgram(data json.RawMessage) (model.Event, error) {
+	var api apigen.Program
+	if err := json.Unmarshal(data, &api); err != nil {
+		return model.Event{}, err
 	}
-	if p.Video != nil {
-		prog.Video = &program.Video{
-			StreamContent: p.Video.StreamContent,
-			ComponentType: p.Video.ComponentType,
-		}
-	}
-	if p.Series != nil {
-		pattern := -1
-		if p.Series.Pattern != nil {
-			pattern = *p.Series.Pattern
-		}
-		prog.Series = &program.Series{
-			ID:          p.Series.ID,
-			Repeat:      p.Series.Repeat,
-			Pattern:     pattern,
-			ExpiresAt:   p.Series.ExpiresAt,
-			Episode:     p.Series.Episode,
-			LastEpisode: p.Series.LastEpisode,
-			Name:        p.Series.Name,
-		}
-	}
-	return prog
-}
-
-type remoteGenre struct {
-	Lv1 int `json:"lv1"`
-	Lv2 int `json:"lv2"`
-	Un1 int `json:"un1"`
-	Un2 int `json:"un2"`
-}
-
-func remoteGenres(items []remoteGenre) []program.Genre {
-	if len(items) == 0 {
-		return nil
-	}
-	result := make([]program.Genre, len(items))
-	for i, item := range items {
-		result[i] = program.Genre{Lv1: item.Lv1, Lv2: item.Lv2, Un1: item.Un1, Un2: item.Un2}
-	}
-	return result
-}
-
-func normalizeStringMap(m map[string]string) map[string]string {
-	if len(m) == 0 {
-		return nil
-	}
-	return m
-}
-
-type remoteVideo struct {
-	StreamContent int `json:"streamContent"`
-	ComponentType int `json:"componentType"`
-}
-
-type remoteAudio struct {
-	ComponentType int      `json:"componentType"`
-	ComponentTag  *int     `json:"componentTag"`
-	IsMain        *bool    `json:"isMain"`
-	SamplingRate  *int     `json:"samplingRate"`
-	Langs         []string `json:"langs"`
-}
-
-func remoteAudios(items []remoteAudio) []program.Audio {
-	if len(items) == 0 {
-		return nil
-	}
-	result := make([]program.Audio, len(items))
-	for i, item := range items {
-		result[i] = program.Audio{
-			ComponentType: item.ComponentType,
-			ComponentTag:  item.ComponentTag,
-			IsMain:        item.IsMain,
-			SamplingRate:  item.SamplingRate,
-			Langs:         item.Langs,
-		}
-	}
-	return result
-}
-
-type remoteRelatedItem struct {
-	Type      string  `json:"type"`
-	NetworkID *uint16 `json:"networkId"`
-	ServiceID uint16  `json:"serviceId"`
-	EventID   uint16  `json:"eventId"`
-}
-
-func remoteRelatedItems(items []remoteRelatedItem) []program.RelatedItem {
-	if len(items) == 0 {
-		return nil
-	}
-	result := make([]program.RelatedItem, len(items))
-	for i, item := range items {
-		result[i] = program.RelatedItem{
-			Type:      program.RelatedItemType(item.Type),
-			NetworkID: item.NetworkID,
-			ServiceID: item.ServiceID,
-			EventID:   item.EventID,
-		}
-	}
-	return result
-}
-
-type remoteSeries struct {
-	ID          int    `json:"id"`
-	Repeat      int    `json:"repeat"`
-	Pattern     *int   `json:"pattern"`
-	ExpiresAt   *int64 `json:"expiresAt"`
-	Episode     int    `json:"episode"`
-	LastEpisode int    `json:"lastEpisode"`
-	Name        string `json:"name"`
+	return mirakurun.EventFromAPI(&api), nil
 }

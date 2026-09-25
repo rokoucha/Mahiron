@@ -206,17 +206,18 @@ type RawHandler interface {
 	// Streams data-broadcast state changes. Modules whose status is "rejected" are announced for
 	// diagnostics but must be excluded from a receiver's DII download list because no resource will become
 	// available. URL fields in event payloads are absolute paths rooted at the API mount; clients deployed
-	// through a subpath proxy should construct request URLs from the endpoint paths instead.
+	// through a subpath proxy should construct request URLs from the endpoint paths instead. The data of
+	// each event is a DataBroadcastEvent.
 	//
-	// GET /services/{id}/data-broadcast/events
+	// GET /services/{id}/data-broadcast/bml/events
 	GetServiceDataBroadcastEvents(ctx context.Context, params GetServiceDataBroadcastEventsParams, w http.ResponseWriter) error
 	// GetServiceDataBroadcastModuleRaw implements getServiceDataBroadcastModuleRaw operation.
 	//
-	// GET /services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}/raw
+	// GET /services/{id}/data-broadcast/bml/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}/raw
 	GetServiceDataBroadcastModuleRaw(ctx context.Context, params GetServiceDataBroadcastModuleRawParams, w http.ResponseWriter) error
 	// GetServiceDataBroadcastModuleResource implements getServiceDataBroadcastModuleResource operation.
 	//
-	// GET /services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}/resources/{resourceId}
+	// GET /services/{id}/data-broadcast/bml/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}/resources/{resourceId}
 	GetServiceDataBroadcastModuleResource(ctx context.Context, params GetServiceDataBroadcastModuleResourceParams, w http.ResponseWriter) error
 	// GetServiceDataBroadcastModuleVersion implements getServiceDataBroadcastModuleVersion operation.
 	//
@@ -224,7 +225,7 @@ type RawHandler interface {
 	// directly to one module-scoped resource, and is a string only for a named multipart resource. rawUrl
 	// and resource url values are absolute paths rooted at the API mount.
 	//
-	// GET /services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}
+	// GET /services/{id}/data-broadcast/bml/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}
 	GetServiceDataBroadcastModuleVersion(ctx context.Context, params GetServiceDataBroadcastModuleVersionParams, w http.ResponseWriter) error
 	// GetServiceDataBroadcastState implements getServiceDataBroadcastState operation.
 	//
@@ -238,7 +239,7 @@ type RawHandler interface {
 	// samples rather than carousel state and a stale value would be misleading. Pass allowCache=0 to
 	// require live state, returning 404 instead of a cache snapshot.
 	//
-	// GET /services/{id}/data-broadcast/state
+	// GET /services/{id}/data-broadcast/bml/state
 	GetServiceDataBroadcastState(ctx context.Context, params GetServiceDataBroadcastStateParams, w http.ResponseWriter) error
 }
 

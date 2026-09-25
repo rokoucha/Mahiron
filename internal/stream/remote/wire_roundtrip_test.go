@@ -3,21 +3,31 @@ package remote
 import (
 	"context"
 	"encoding/json"
-	"reflect"
 	"testing"
 
 	mahirondb "github.com/21S1298001/mahiron/internal/db"
+	"github.com/21S1298001/mahiron/internal/mirakurun"
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/program"
+	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 )
 
-// TestRemoteProgramRoundTripsThroughStore guards the normalization that lets
-// ProgramManager.UpsertPrograms skip writing a program that hasn't actually
-// changed: it compares by reflect.DeepEqual, so a program converted from a
-// Mirakurun-style remote event must come out byte-for-byte identical to the
-// same program read back from the database, in particular for empty
-// collections (Genres/Audios/Extended/RelatedItems), which the database
-// normalizes to nil regardless of whether the wire JSON omitted the field or
-// spelled it out as an empty array/object.
+// countingStore counts the writes that reach the program store.
+type countingStore struct {
+	program.Store
+	upserts int
+}
+
+func (s *countingStore) UpsertAll(ctx context.Context, programs []*program.Program) error {
+	s.upserts++
+	return s.Store.UpsertAll(ctx, programs)
+}
+
+// TestRemoteProgramRoundTripsThroughStore guards that program.Manager skips
+// writing a remote program that hasn't changed: a program converted from a
+// Mirakurun-style remote event must compare equal to the same program read
+// back from the database, in particular for empty collections, which the
+// wire JSON may omit or spell out as empty arrays and objects.
 func TestRemoteProgramRoundTripsThroughStore(t *testing.T) {
 	ctx := context.Background()
 	database, err := mahirondb.OpenInMemory()
@@ -25,7 +35,8 @@ func TestRemoteProgramRoundTripsThroughStore(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = database.Close() }()
-	store := program.NewSQLiteStore(database)
+	store := &countingStore{Store: program.NewSQLiteStore(database)}
+	manager := program.NewManager(store)
 
 	cases := []struct {
 		name string
@@ -53,30 +64,25 @@ func TestRemoteProgramRoundTripsThroughStore(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			var remote remoteProgram
-			if err := json.Unmarshal([]byte(tc.json), &remote); err != nil {
+			before := store.upserts
+			if err := manager.UpsertEvents(ctx, []model.Event{decodeTestProgram(t, tc.json)}); err != nil {
 				t.Fatal(err)
 			}
-			converted := remote.Program()
-			if err := store.UpsertAll(ctx, []*program.Program{converted}); err != nil {
+			if err := manager.UpsertEvents(ctx, []model.Event{decodeTestProgram(t, tc.json)}); err != nil {
 				t.Fatal(err)
 			}
-			stored, ok, err := store.Get(ctx, converted.ID)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !ok {
-				t.Fatal("program not stored")
-			}
-
-			var remoteAgain remoteProgram
-			if err := json.Unmarshal([]byte(tc.json), &remoteAgain); err != nil {
-				t.Fatal(err)
-			}
-			wanted := remoteAgain.Program()
-			if !reflect.DeepEqual(wanted, stored) {
-				t.Fatalf("round trip mismatch:\n  converted = %#v\n  stored    = %#v", wanted, stored)
+			if got := store.upserts - before; got != 1 {
+				t.Fatalf("store writes = %d, want 1: the unchanged second upsert must be skipped", got)
 			}
 		})
 	}
+}
+
+func decodeTestProgram(t *testing.T, raw string) model.Event {
+	t.Helper()
+	var api apigen.Program
+	if err := json.Unmarshal([]byte(raw), &api); err != nil {
+		t.Fatal(err)
+	}
+	return mirakurun.EventFromAPI(&api)
 }

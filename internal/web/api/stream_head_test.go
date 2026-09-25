@@ -6,7 +6,7 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/db"
-	"github.com/21S1298001/mahiron/internal/epg"
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/service"
 	"github.com/21S1298001/mahiron/internal/stream"
@@ -14,7 +14,7 @@ import (
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 )
 
-func testStreamHeadHandler(t *testing.T) (*Handler, *service.ServiceManager) {
+func testStreamHeadHandler(t *testing.T) (*Handler, *service.Manager) {
 	t.Helper()
 	no := false
 	channels := config.ChannelsConfig{
@@ -27,45 +27,37 @@ func testStreamHeadHandler(t *testing.T) (*Handler, *service.ServiceManager) {
 	t.Cleanup(func() { _ = database.Close() })
 
 	store := service.NewSQLiteStore(database)
-	pm := program.NewProgramManager(program.NewSQLiteStore(database))
+	pm := program.NewManager(program.NewSQLiteStore(database))
 	if err := store.ReplaceChannelServices(context.Background(), "GR", "27", []*service.Service{
 		{
-			Id:                 "0000100001",
-			ServiceId:          1,
-			NetworkId:          1,
-			Name:               "Test Service",
-			Type:               1,
-			RemoteControlKeyId: 1,
-			ChannelType:        "GR",
-			ChannelId:          "27",
+			Id: "0000100001",
+			Service: model.Service{
+				Key:              model.ServiceKey{ServiceID: 1, NetworkID: 1},
+				Name:             "Test Service",
+				Type:             1,
+				RemoteControlKey: new(uint8(1)),
+			},
+			ChannelType: "GR",
+			ChannelId:   "27",
 		},
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := pm.ReplaceServicePrograms(context.Background(), 1, 1, 0, []*program.Program{
-		{
-			ID:        program.ProgramID(1, 1, 10),
-			EventID:   10,
-			ServiceID: 1,
-			NetworkID: 1,
-			StartAt:   1000,
-			Duration:  1000,
-			IsFree:    true,
-			Name:      "Test Program",
-		},
+		{ID: program.ProgramID(1, 1, 10), Event: model.Event{Key: model.ServiceKey{ServiceID: 1, NetworkID: 1}, EventID: 10, StartAt: testPtr[int64](1000), DurationMS: testPtr[int](1000), Name: "Test Program"}},
 	}); err != nil {
 		t.Fatal(err)
 	}
 
-	tunerManager := tuner.NewTunerManager(&tuner.TunerManagerConfig{
+	tunerManager := tuner.NewManager(&tuner.ManagerConfig{
 		TunersConfig: config.TunersConfig{
 			{Name: "first", Types: []string{"GR"}, Command: "sleep 30"},
 		},
 	})
-	sm := service.NewServiceManager(store, channels)
-	stm := stream.NewStreamManager(stream.StreamManagerConfig{
+	sm := service.NewManager(store, channels)
+	stm := stream.NewManager(stream.ManagerConfig{
 		Channels:     channels,
-		EITUpdater:   epg.NewUpdater(pm),
+		EITUpdater:   pm,
 		TunerManager: tunerManager,
 	})
 	handler := NewHandler(HandlerConfig{

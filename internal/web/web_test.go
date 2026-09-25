@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"github.com/21S1298001/mahiron/internal/web/api"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
@@ -12,6 +13,8 @@ import (
 	"github.com/21S1298001/mahiron/internal/db"
 	"github.com/21S1298001/mahiron/internal/event"
 	"github.com/21S1298001/mahiron/internal/job"
+	"github.com/21S1298001/mahiron/internal/mirakurun"
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/service"
@@ -37,9 +40,9 @@ func TestHTTPContractRoundTripsThroughGeneratedClientAndSQLite(t *testing.T) {
 	disabled := false
 	channels := config.ChannelsConfig{{Name: "NHK", Type: "GR", Channel: "27", IsDisabled: &disabled}}
 	hub := event.New()
-	services := service.NewServiceManager(service.NewSQLiteStore(database), channels, hub)
-	programs := program.NewProgramManager(program.NewSQLiteStore(database), hub)
-	tuners := tuner.NewTunerManager(&tuner.TunerManagerConfig{})
+	services := service.NewManager(service.NewSQLiteStore(database), channels, api.NewServiceEventPublisher(mirakurun.NewEventPublisher(hub)))
+	programs := program.NewManager(program.NewSQLiteStore(database), mirakurun.NewEventPublisher(hub))
+	tuners := tuner.NewManager(&tuner.ManagerConfig{})
 	jobs, err := job.NewManager(job.Config{})
 	if err != nil {
 		t.Fatal(err)
@@ -90,9 +93,10 @@ func TestHTTPContractRoundTripsThroughGeneratedClientAndSQLite(t *testing.T) {
 	// /api/programs is served outside the generated server so the whole EPG
 	// is never held in memory at once, which only works if the bytes it
 	// streams still satisfy the contract the generated client decodes.
-	if err := programs.UpsertPrograms(t.Context(), []*program.Program{{
-		ID: program.ProgramID(1, 101, 9), EventID: 9, ServiceID: 101, NetworkID: 1,
-		StartAt: 1000, Duration: 30000, Name: "first",
+	startAt, duration := int64(1000), 30000
+	if err := programs.UpsertEvents(t.Context(), []model.Event{{
+		Key: model.ServiceKey{NetworkID: 1, ServiceID: 101}, EventID: 9,
+		StartAt: &startAt, DurationMS: &duration, Name: "first", FreeCA: true,
 	}}); err != nil {
 		t.Fatal(err)
 	}
@@ -221,7 +225,7 @@ func TestNewWebFiltersHTTPSpans(t *testing.T) {
 	t.Cleanup(func() { _ = database.Close() })
 	handler, err := NewWeb(WebConfig{
 		ServiceManager: testServiceManager{},
-		ProgramManager: program.NewProgramManager(program.NewSQLiteStore(database), event.New()),
+		ProgramManager: program.NewManager(program.NewSQLiteStore(database), mirakurun.NewEventPublisher(event.New())),
 		StreamManager:  tracedTestStreamManager{},
 		EventHub:       event.New(),
 		TracerProvider: provider,

@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"context"
+	"github.com/21S1298001/mahiron/internal/model"
 	"io"
 	"reflect"
 	"testing"
@@ -27,28 +28,28 @@ func testListHandler(t *testing.T) *Handler {
 	serviceStore := service.NewSQLiteStore(database)
 	services := []*service.Service{
 		{
-			Id:                  "0000100101",
-			ServiceId:           101,
-			NetworkId:           1,
-			TransportStreamId:   10,
-			Name:                "NHK Service",
-			Type:                1,
-			EITScheduleFlag:     true,
-			EITPresentFollowing: true,
-			RemoteControlKeyId:  3,
-			ChannelType:         "GR",
-			ChannelId:           "27",
+			Id: "0000100101",
+			Service: model.Service{
+				Key:              model.ServiceKey{ServiceID: 101, NetworkID: 1, StreamID: 10},
+				Name:             "NHK Service",
+				Type:             1,
+				EITSchedule:      true,
+				EITPresentFollow: true,
+				RemoteControlKey: new(uint8(3)),
+			},
+			ChannelType: "GR",
+			ChannelId:   "27",
 		},
 		{
-			Id:                 "0000200102",
-			ServiceId:          102,
-			NetworkId:          2,
-			TransportStreamId:  20,
-			Name:               "BS Service",
-			Type:               1,
-			RemoteControlKeyId: 4,
-			ChannelType:        "BS",
-			ChannelId:          "101",
+			Id: "0000200102",
+			Service: model.Service{
+				Key:              model.ServiceKey{ServiceID: 102, NetworkID: 2, StreamID: 20},
+				Name:             "BS Service",
+				Type:             1,
+				RemoteControlKey: new(uint8(4)),
+			},
+			ChannelType: "BS",
+			ChannelId:   "101",
 		},
 	}
 	if err := serviceStore.ReplaceChannelServices(ctx, "GR", "27", []*service.Service{services[0]}); err != nil {
@@ -58,8 +59,8 @@ func testListHandler(t *testing.T) *Handler {
 		t.Fatal(err)
 	}
 	return NewHandler(HandlerConfig{
-		ProgramManager: program.NewProgramManager(program.NewSQLiteStore(database)),
-		ServiceManager: service.NewServiceManager(serviceStore, config.ChannelsConfig{
+		ProgramManager: program.NewManager(program.NewSQLiteStore(database)),
+		ServiceManager: service.NewManager(serviceStore, config.ChannelsConfig{
 			{Name: "NHK", Type: "GR", Channel: "27", IsDisabled: &no},
 			{Name: "BS", Type: "BS", Channel: "101", IsDisabled: &no},
 			{Name: "Disabled", Type: "GR", Channel: "28", IsDisabled: &yes},
@@ -130,21 +131,33 @@ func TestGetChannelsFetchesServicesInOneQuery(t *testing.T) {
 	t.Cleanup(func() { _ = database.Close() })
 	baseStore := service.NewSQLiteStore(database)
 	if err := baseStore.ReplaceChannelServices(ctx, "GR", "27", []*service.Service{{
-		Id: "0000100101", ServiceId: 101, NetworkId: 1, TransportStreamId: 10,
-		Name: "NHK Service", Type: 1, ChannelType: "GR", ChannelId: "27",
+		Id: "0000100101",
+		Service: model.Service{
+			Key:  model.ServiceKey{ServiceID: 101, NetworkID: 1, StreamID: 10},
+			Name: "NHK Service",
+			Type: 1,
+		},
+		ChannelType: "GR",
+		ChannelId:   "27",
 	}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := baseStore.ReplaceChannelServices(ctx, "BS", "101", []*service.Service{{
-		Id: "0000200102", ServiceId: 102, NetworkId: 2, TransportStreamId: 20,
-		Name: "BS Service", Type: 1, ChannelType: "BS", ChannelId: "101",
+		Id: "0000200102",
+		Service: model.Service{
+			Key:  model.ServiceKey{ServiceID: 102, NetworkID: 2, StreamID: 20},
+			Name: "BS Service",
+			Type: 1,
+		},
+		ChannelType: "BS",
+		ChannelId:   "101",
 	}}); err != nil {
 		t.Fatal(err)
 	}
 
 	counting := &countingServiceStore{Store: baseStore}
 	handler := NewHandler(HandlerConfig{
-		ServiceManager: service.NewServiceManager(counting, config.ChannelsConfig{
+		ServiceManager: service.NewManager(counting, config.ChannelsConfig{
 			{Name: "NHK", Type: "GR", Channel: "27", IsDisabled: &no},
 			{Name: "BS", Type: "BS", Channel: "101", IsDisabled: &no},
 		}),
@@ -176,7 +189,7 @@ func TestGetChannelsPropagatesStoreError(t *testing.T) {
 	}
 	store := service.NewSQLiteStore(database)
 	handler := NewHandler(HandlerConfig{
-		ServiceManager: service.NewServiceManager(store, config.ChannelsConfig{{Type: "GR", Channel: "27"}}),
+		ServiceManager: service.NewManager(store, config.ChannelsConfig{{Type: "GR", Channel: "27"}}),
 	})
 	if err := database.Close(); err != nil {
 		t.Fatal(err)
@@ -239,49 +252,49 @@ func TestServiceListEndpointsReturnServerOrder(t *testing.T) {
 	store := service.NewSQLiteStore(database)
 	if err := store.ReplaceChannelServices(ctx, "GR", "27", []*service.Service{
 		{
-			Id:                 "0000100103",
-			ServiceId:          103,
-			NetworkId:          1,
-			TransportStreamId:  1,
-			Name:               "GR 3",
-			Type:               1,
-			RemoteControlKeyId: 3,
+			Id: "0000100103",
+			Service: model.Service{
+				Key:              model.ServiceKey{ServiceID: 103, NetworkID: 1, StreamID: 1},
+				Name:             "GR 3",
+				Type:             1,
+				RemoteControlKey: new(uint8(3)),
+			},
 		},
 		{
-			Id:                "0000100101",
-			ServiceId:         101,
-			NetworkId:         1,
-			TransportStreamId: 1,
-			Name:              "GR no key",
-			Type:              1,
+			Id: "0000100101",
+			Service: model.Service{
+				Key:  model.ServiceKey{ServiceID: 101, NetworkID: 1, StreamID: 1},
+				Name: "GR no key",
+				Type: 1,
+			},
 		},
 		{
-			Id:                 "0000100102",
-			ServiceId:          102,
-			NetworkId:          1,
-			TransportStreamId:  1,
-			Name:               "GR 1",
-			Type:               1,
-			RemoteControlKeyId: 1,
+			Id: "0000100102",
+			Service: model.Service{
+				Key:              model.ServiceKey{ServiceID: 102, NetworkID: 1, StreamID: 1},
+				Name:             "GR 1",
+				Type:             1,
+				RemoteControlKey: new(uint8(1)),
+			},
 		},
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.ReplaceChannelServices(ctx, "BS", "101", []*service.Service{
 		{
-			Id:                "0000200201",
-			ServiceId:         201,
-			NetworkId:         2,
-			TransportStreamId: 1,
-			Name:              "BS",
-			Type:              1,
+			Id: "0000200201",
+			Service: model.Service{
+				Key:  model.ServiceKey{ServiceID: 201, NetworkID: 2, StreamID: 1},
+				Name: "BS",
+				Type: 1,
+			},
 		},
 	}); err != nil {
 		t.Fatal(err)
 	}
 	handler := NewHandler(HandlerConfig{
-		ProgramManager: program.NewProgramManager(program.NewSQLiteStore(database)),
-		ServiceManager: service.NewServiceManager(store, config.ChannelsConfig{
+		ProgramManager: program.NewManager(program.NewSQLiteStore(database)),
+		ServiceManager: service.NewManager(store, config.ChannelsConfig{
 			{Name: "BS", Type: "BS", Channel: "101"},
 			{Name: "GR", Type: "GR", Channel: "27"},
 		}),
@@ -365,7 +378,7 @@ func TestGetServiceReturnsNotFound(t *testing.T) {
 func TestApiServiceExposesEPGStatus(t *testing.T) {
 	tests := []struct {
 		name             string
-		setup            func(context.Context, *service.ServiceManager, *testing.T)
+		setup            func(context.Context, *service.Manager, *testing.T)
 		wantReady        bool
 		wantAttempt      apigen.OptUnixtimeMS
 		wantUpdated      apigen.OptUnixtimeMS
@@ -378,7 +391,7 @@ func TestApiServiceExposesEPGStatus(t *testing.T) {
 		},
 		{
 			name: "latest failed attempt",
-			setup: func(ctx context.Context, sm *service.ServiceManager, t *testing.T) {
+			setup: func(ctx context.Context, sm *service.Manager, t *testing.T) {
 				t.Helper()
 				if err := sm.SetEPGAttempt(ctx, 1, 101, 1000, "boom"); err != nil {
 					t.Fatal(err)
@@ -393,7 +406,7 @@ func TestApiServiceExposesEPGStatus(t *testing.T) {
 		},
 		{
 			name: "success",
-			setup: func(ctx context.Context, sm *service.ServiceManager, t *testing.T) {
+			setup: func(ctx context.Context, sm *service.Manager, t *testing.T) {
 				t.Helper()
 				if err := sm.SetEPGSuccess(ctx, 1, 101, 2000); err != nil {
 					t.Fatal(err)
@@ -415,11 +428,11 @@ func TestApiServiceExposesEPGStatus(t *testing.T) {
 			t.Cleanup(func() { _ = database.Close() })
 			store := service.NewSQLiteStore(database)
 			if err := store.ReplaceChannelServices(ctx, "GR", "27", []*service.Service{
-				{Id: "0000100101", ServiceId: 101, NetworkId: 1, ChannelType: "GR", ChannelId: "27"},
+				{Id: "0000100101", Service: model.Service{Key: model.ServiceKey{ServiceID: 101, NetworkID: 1}}, ChannelType: "GR", ChannelId: "27"},
 			}); err != nil {
 				t.Fatal(err)
 			}
-			sm := service.NewServiceManager(store, config.ChannelsConfig{{Type: "GR", Channel: "27"}})
+			sm := service.NewManager(store, config.ChannelsConfig{{Type: "GR", Channel: "27"}})
 			if tt.setup != nil {
 				tt.setup(ctx, sm, t)
 			}
@@ -464,11 +477,11 @@ func TestApiServiceExposesMirakurunLogoFieldsAndImage(t *testing.T) {
 	logoVersion := int64(3)
 	downloadDataID := int64(0x1234)
 	if err := store.ReplaceChannelServices(ctx, "GR", "27", []*service.Service{
-		{Id: "0000100101", ServiceId: 101, NetworkId: 1, Name: "logo", LogoId: &logoID, LogoVersion: &logoVersion, LogoDownloadDataId: &downloadDataID, ChannelType: "GR", ChannelId: "27"},
+		{Id: "0000100101", Service: model.Service{Key: model.ServiceKey{ServiceID: 101, NetworkID: 1}, Name: "logo", Logo: &model.LogoRef{LogoID: uint16(logoID), Version: new(uint16(logoVersion)), DownloadDataID: new(uint16(downloadDataID))}}, ChannelType: "GR", ChannelId: "27"},
 	}); err != nil {
 		t.Fatal(err)
 	}
-	sm := service.NewServiceManager(store, config.ChannelsConfig{{Type: "GR", Channel: "27"}})
+	sm := service.NewManager(store, config.ChannelsConfig{{Type: "GR", Channel: "27"}})
 	handler := NewHandler(HandlerConfig{ServiceManager: sm})
 
 	res, err := handler.GetServices(ctx, apigen.GetServicesParams{})

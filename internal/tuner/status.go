@@ -147,7 +147,7 @@ func (r *tunerRuntime) resetReservation() bool {
 	return wasFaulted
 }
 
-func (tm *TunerManager) Statuses() []Status {
+func (tm *Manager) Statuses() []Status {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 	result := make([]Status, len(tm.tuners))
@@ -157,7 +157,7 @@ func (tm *TunerManager) Statuses() []Status {
 	return result
 }
 
-func (tm *TunerManager) Status(index int) (Status, bool) {
+func (tm *Manager) Status(index int) (Status, bool) {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 	if index < 0 || index >= len(tm.tuners) {
@@ -166,7 +166,7 @@ func (tm *TunerManager) Status(index int) (Status, bool) {
 	return tm.statusLocked(index), true
 }
 
-func (tm *TunerManager) ProcessUptimes() []ProcessUptime {
+func (tm *Manager) ProcessUptimes() []ProcessUptime {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 
@@ -194,12 +194,12 @@ func (tm *TunerManager) ProcessUptimes() []ProcessUptime {
 	return result
 }
 
-func (tm *TunerManager) statusLocked(index int) Status {
+func (tm *Manager) statusLocked(index int) Status {
 	item := tm.tuners[index]
 	return tm.statusLockedByTuner(item)
 }
 
-func (tm *TunerManager) statusLockedByTuner(item *Tuner) Status {
+func (tm *Manager) statusLockedByTuner(item *Tuner) Status {
 	runtime := tm.runtime[item]
 	index := -1
 	for i, candidate := range tm.tuners {
@@ -239,7 +239,7 @@ func (tm *TunerManager) statusLockedByTuner(item *Tuner) Status {
 	return status
 }
 
-func (tm *TunerManager) addUser(item *Tuner, user User) {
+func (tm *Manager) addUser(item *Tuner, user User) {
 	if user.ID == "" {
 		return
 	}
@@ -276,7 +276,7 @@ func cloneUser(user User) User {
 	return user
 }
 
-func (tm *TunerManager) updateUserStreamInfo(item *Tuner, userID, key string, info StreamInfo) {
+func (tm *Manager) updateUserStreamInfo(item *Tuner, userID, key string, info StreamInfo) {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 	runtime := tm.runtime[item]
@@ -290,7 +290,7 @@ func (tm *TunerManager) updateUserStreamInfo(item *Tuner, userID, key string, in
 	tracked.user.StreamInfo[key] = info
 }
 
-func (tm *TunerManager) removeUser(item *Tuner, id string) {
+func (tm *Manager) removeUser(item *Tuner, id string) {
 	tm.mu.Lock()
 	runtime := tm.runtime[item]
 	tracked := runtime.users[id]
@@ -313,7 +313,7 @@ func (tm *TunerManager) removeUser(item *Tuner, id string) {
 	tm.publishTunerStatusUpdate(eventTypeUpdate, update)
 }
 
-func (tm *TunerManager) SeedEventLog() {
+func (tm *Manager) SeedEventLog() {
 	if tm.events == nil {
 		return
 	}
@@ -416,7 +416,7 @@ func (s StreamSetting) EventData() map[string]any {
 	return data
 }
 
-func (tm *TunerManager) publishStatus(typ string, status Status) {
+func (tm *Manager) publishStatus(typ string, status Status) {
 	if tm.events == nil {
 		return
 	}

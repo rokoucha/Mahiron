@@ -125,17 +125,18 @@ type Invoker interface {
 	// Streams data-broadcast state changes. Modules whose status is "rejected" are announced for
 	// diagnostics but must be excluded from a receiver's DII download list because no resource will become
 	// available. URL fields in event payloads are absolute paths rooted at the API mount; clients deployed
-	// through a subpath proxy should construct request URLs from the endpoint paths instead.
+	// through a subpath proxy should construct request URLs from the endpoint paths instead. The data of
+	// each event is a DataBroadcastEvent.
 	//
-	// GET /services/{id}/data-broadcast/events
+	// GET /services/{id}/data-broadcast/bml/events
 	GetServiceDataBroadcastEvents(ctx context.Context, params GetServiceDataBroadcastEventsParams) (GetServiceDataBroadcastEventsRes, error)
 	// GetServiceDataBroadcastModuleRaw invokes getServiceDataBroadcastModuleRaw operation.
 	//
-	// GET /services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}/raw
+	// GET /services/{id}/data-broadcast/bml/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}/raw
 	GetServiceDataBroadcastModuleRaw(ctx context.Context, params GetServiceDataBroadcastModuleRawParams) (GetServiceDataBroadcastModuleRawRes, error)
 	// GetServiceDataBroadcastModuleResource invokes getServiceDataBroadcastModuleResource operation.
 	//
-	// GET /services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}/resources/{resourceId}
+	// GET /services/{id}/data-broadcast/bml/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}/resources/{resourceId}
 	GetServiceDataBroadcastModuleResource(ctx context.Context, params GetServiceDataBroadcastModuleResourceParams) (GetServiceDataBroadcastModuleResourceRes, error)
 	// GetServiceDataBroadcastModuleVersion invokes getServiceDataBroadcastModuleVersion operation.
 	//
@@ -143,7 +144,7 @@ type Invoker interface {
 	// directly to one module-scoped resource, and is a string only for a named multipart resource. rawUrl
 	// and resource url values are absolute paths rooted at the API mount.
 	//
-	// GET /services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}
+	// GET /services/{id}/data-broadcast/bml/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}
 	GetServiceDataBroadcastModuleVersion(ctx context.Context, params GetServiceDataBroadcastModuleVersionParams) (GetServiceDataBroadcastModuleVersionRes, error)
 	// GetServiceDataBroadcastState invokes getServiceDataBroadcastState operation.
 	//
@@ -157,7 +158,7 @@ type Invoker interface {
 	// samples rather than carousel state and a stale value would be misleading. Pass allowCache=0 to
 	// require live state, returning 404 instead of a cache snapshot.
 	//
-	// GET /services/{id}/data-broadcast/state
+	// GET /services/{id}/data-broadcast/bml/state
 	GetServiceDataBroadcastState(ctx context.Context, params GetServiceDataBroadcastStateParams) (GetServiceDataBroadcastStateRes, error)
 	// GetServicePrograms invokes getServicePrograms operation.
 	//
@@ -2737,9 +2738,10 @@ func (c *Client) sendGetServiceByChannel(ctx context.Context, params GetServiceB
 // Streams data-broadcast state changes. Modules whose status is "rejected" are announced for
 // diagnostics but must be excluded from a receiver's DII download list because no resource will become
 // available. URL fields in event payloads are absolute paths rooted at the API mount; clients deployed
-// through a subpath proxy should construct request URLs from the endpoint paths instead.
+// through a subpath proxy should construct request URLs from the endpoint paths instead. The data of
+// each event is a DataBroadcastEvent.
 //
-// GET /services/{id}/data-broadcast/events
+// GET /services/{id}/data-broadcast/bml/events
 func (c *Client) GetServiceDataBroadcastEvents(ctx context.Context, params GetServiceDataBroadcastEventsParams) (GetServiceDataBroadcastEventsRes, error) {
 	res, err := c.sendGetServiceDataBroadcastEvents(ctx, params)
 	return res, err
@@ -2749,7 +2751,7 @@ func (c *Client) sendGetServiceDataBroadcastEvents(ctx context.Context, params G
 	otelAttrs := []attribute.KeyValue{
 		otelogen.OperationID("getServiceDataBroadcastEvents"),
 		semconv.HTTPRequestMethodKey.String("GET"),
-		semconv.URLTemplateKey.String("/services/{id}/data-broadcast/events"),
+		semconv.URLTemplateKey.String("/services/{id}/data-broadcast/bml/events"),
 	}
 	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
 
@@ -2802,7 +2804,7 @@ func (c *Client) sendGetServiceDataBroadcastEvents(ctx context.Context, params G
 		}
 		pathParts[1] = encoded
 	}
-	pathParts[2] = "/data-broadcast/events"
+	pathParts[2] = "/data-broadcast/bml/events"
 	uri.AddPathParts(u, pathParts[:]...)
 
 	stage = "EncodeQueryParams"
@@ -2866,7 +2868,7 @@ func (c *Client) sendGetServiceDataBroadcastEvents(ctx context.Context, params G
 
 // GetServiceDataBroadcastModuleRaw invokes getServiceDataBroadcastModuleRaw operation.
 //
-// GET /services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}/raw
+// GET /services/{id}/data-broadcast/bml/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}/raw
 func (c *Client) GetServiceDataBroadcastModuleRaw(ctx context.Context, params GetServiceDataBroadcastModuleRawParams) (GetServiceDataBroadcastModuleRawRes, error) {
 	res, err := c.sendGetServiceDataBroadcastModuleRaw(ctx, params)
 	return res, err
@@ -2876,7 +2878,7 @@ func (c *Client) sendGetServiceDataBroadcastModuleRaw(ctx context.Context, param
 	otelAttrs := []attribute.KeyValue{
 		otelogen.OperationID("getServiceDataBroadcastModuleRaw"),
 		semconv.HTTPRequestMethodKey.String("GET"),
-		semconv.URLTemplateKey.String("/services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}/raw"),
+		semconv.URLTemplateKey.String("/services/{id}/data-broadcast/bml/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}/raw"),
 	}
 	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
 
@@ -2929,7 +2931,7 @@ func (c *Client) sendGetServiceDataBroadcastModuleRaw(ctx context.Context, param
 		}
 		pathParts[1] = encoded
 	}
-	pathParts[2] = "/data-broadcast/components/"
+	pathParts[2] = "/data-broadcast/bml/components/"
 	{
 		// Encode "componentTag" parameter.
 		e := uri.NewPathEncoder(uri.PathEncoderConfig{
@@ -3048,7 +3050,7 @@ func (c *Client) sendGetServiceDataBroadcastModuleRaw(ctx context.Context, param
 
 // GetServiceDataBroadcastModuleResource invokes getServiceDataBroadcastModuleResource operation.
 //
-// GET /services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}/resources/{resourceId}
+// GET /services/{id}/data-broadcast/bml/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}/resources/{resourceId}
 func (c *Client) GetServiceDataBroadcastModuleResource(ctx context.Context, params GetServiceDataBroadcastModuleResourceParams) (GetServiceDataBroadcastModuleResourceRes, error) {
 	res, err := c.sendGetServiceDataBroadcastModuleResource(ctx, params)
 	return res, err
@@ -3058,7 +3060,7 @@ func (c *Client) sendGetServiceDataBroadcastModuleResource(ctx context.Context, 
 	otelAttrs := []attribute.KeyValue{
 		otelogen.OperationID("getServiceDataBroadcastModuleResource"),
 		semconv.HTTPRequestMethodKey.String("GET"),
-		semconv.URLTemplateKey.String("/services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}/resources/{resourceId}"),
+		semconv.URLTemplateKey.String("/services/{id}/data-broadcast/bml/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}/resources/{resourceId}"),
 	}
 	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
 
@@ -3111,7 +3113,7 @@ func (c *Client) sendGetServiceDataBroadcastModuleResource(ctx context.Context, 
 		}
 		pathParts[1] = encoded
 	}
-	pathParts[2] = "/data-broadcast/components/"
+	pathParts[2] = "/data-broadcast/bml/components/"
 	{
 		// Encode "componentTag" parameter.
 		e := uri.NewPathEncoder(uri.PathEncoderConfig{
@@ -3252,7 +3254,7 @@ func (c *Client) sendGetServiceDataBroadcastModuleResource(ctx context.Context, 
 // directly to one module-scoped resource, and is a string only for a named multipart resource. rawUrl
 // and resource url values are absolute paths rooted at the API mount.
 //
-// GET /services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}
+// GET /services/{id}/data-broadcast/bml/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}
 func (c *Client) GetServiceDataBroadcastModuleVersion(ctx context.Context, params GetServiceDataBroadcastModuleVersionParams) (GetServiceDataBroadcastModuleVersionRes, error) {
 	res, err := c.sendGetServiceDataBroadcastModuleVersion(ctx, params)
 	return res, err
@@ -3262,7 +3264,7 @@ func (c *Client) sendGetServiceDataBroadcastModuleVersion(ctx context.Context, p
 	otelAttrs := []attribute.KeyValue{
 		otelogen.OperationID("getServiceDataBroadcastModuleVersion"),
 		semconv.HTTPRequestMethodKey.String("GET"),
-		semconv.URLTemplateKey.String("/services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}"),
+		semconv.URLTemplateKey.String("/services/{id}/data-broadcast/bml/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}"),
 	}
 	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
 
@@ -3315,7 +3317,7 @@ func (c *Client) sendGetServiceDataBroadcastModuleVersion(ctx context.Context, p
 		}
 		pathParts[1] = encoded
 	}
-	pathParts[2] = "/data-broadcast/components/"
+	pathParts[2] = "/data-broadcast/bml/components/"
 	{
 		// Encode "componentTag" parameter.
 		e := uri.NewPathEncoder(uri.PathEncoderConfig{
@@ -3443,7 +3445,7 @@ func (c *Client) sendGetServiceDataBroadcastModuleVersion(ctx context.Context, p
 // samples rather than carousel state and a stale value would be misleading. Pass allowCache=0 to
 // require live state, returning 404 instead of a cache snapshot.
 //
-// GET /services/{id}/data-broadcast/state
+// GET /services/{id}/data-broadcast/bml/state
 func (c *Client) GetServiceDataBroadcastState(ctx context.Context, params GetServiceDataBroadcastStateParams) (GetServiceDataBroadcastStateRes, error) {
 	res, err := c.sendGetServiceDataBroadcastState(ctx, params)
 	return res, err
@@ -3453,7 +3455,7 @@ func (c *Client) sendGetServiceDataBroadcastState(ctx context.Context, params Ge
 	otelAttrs := []attribute.KeyValue{
 		otelogen.OperationID("getServiceDataBroadcastState"),
 		semconv.HTTPRequestMethodKey.String("GET"),
-		semconv.URLTemplateKey.String("/services/{id}/data-broadcast/state"),
+		semconv.URLTemplateKey.String("/services/{id}/data-broadcast/bml/state"),
 	}
 	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
 
@@ -3506,7 +3508,7 @@ func (c *Client) sendGetServiceDataBroadcastState(ctx context.Context, params Ge
 		}
 		pathParts[1] = encoded
 	}
-	pathParts[2] = "/data-broadcast/state"
+	pathParts[2] = "/data-broadcast/bml/state"
 	uri.AddPathParts(u, pathParts[:]...)
 
 	stage = "EncodeQueryParams"

@@ -2,36 +2,40 @@ package program
 
 import (
 	"context"
+	"reflect"
 	"testing"
+	"time"
 
 	"github.com/21S1298001/mahiron/internal/db"
+	"github.com/21S1298001/mahiron/internal/model"
+	"github.com/21S1298001/mahiron/internal/observability"
 )
 
-func newTestManager(t *testing.T) *ProgramManager {
+func newTestManager(t *testing.T) *Manager {
 	t.Helper()
 	database, err := db.OpenInMemory()
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = database.Close() })
-	return NewProgramManager(NewSQLiteStore(database))
+	return NewManager(NewSQLiteStore(database))
 }
 
 func TestListFiltersAndSorts(t *testing.T) {
 	ctx := context.Background()
 	manager := newTestManager(t)
 	if err := manager.store.UpsertAll(ctx, []*Program{
-		{ID: ProgramID(1, 2, 2), NetworkID: 1, ServiceID: 2, EventID: 2, StartAt: 2000},
+		{ID: ProgramID(1, 2, 2), Event: model.Event{Key: model.ServiceKey{NetworkID: 1, ServiceID: 2}, EventID: 2, StartAt: testPtr[int64](2000), FreeCA: true}},
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := manager.store.UpsertAll(ctx, []*Program{
-		{ID: ProgramID(1, 2, 1), NetworkID: 1, ServiceID: 2, EventID: 1, StartAt: 1000},
+		{ID: ProgramID(1, 2, 1), Event: model.Event{Key: model.ServiceKey{NetworkID: 1, ServiceID: 2}, EventID: 1, StartAt: testPtr[int64](1000), FreeCA: true}},
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := manager.store.UpsertAll(ctx, []*Program{
-		{ID: ProgramID(1, 3, 1), NetworkID: 1, ServiceID: 3, EventID: 1, StartAt: 500},
+		{ID: ProgramID(1, 3, 1), Event: model.Event{Key: model.ServiceKey{NetworkID: 1, ServiceID: 3}, EventID: 1, StartAt: testPtr[int64](500), FreeCA: true}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -54,8 +58,8 @@ func TestListFiltersByID(t *testing.T) {
 	manager := newTestManager(t)
 	wanted := ProgramID(1, 2, 1)
 	if err := manager.store.UpsertAll(ctx, []*Program{
-		{ID: wanted, NetworkID: 1, ServiceID: 2, EventID: 1},
-		{ID: ProgramID(1, 2, 2), NetworkID: 1, ServiceID: 2, EventID: 2},
+		{ID: wanted, Event: model.Event{Key: model.ServiceKey{NetworkID: 1, ServiceID: 2}, EventID: 1, FreeCA: true}},
+		{ID: ProgramID(1, 2, 2), Event: model.Event{Key: model.ServiceKey{NetworkID: 1, ServiceID: 2}, EventID: 2, FreeCA: true}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -77,17 +81,17 @@ func TestSQLiteStoreRejectsInvalidJSON(t *testing.T) {
 	defer func() { _ = database.Close() }()
 	id := ProgramID(1, 2, 1)
 	_, err = database.Write.ExecContext(ctx, `INSERT INTO programs
-		(id, event_id, service_id, network_id, start_at, duration, is_free, genres)
+		(id, event_id, service_id, network_id, start_at, duration, is_free, event)
 		VALUES (?, 1, 2, 1, 0, 0, 1, '{')`, id)
 	if err != nil {
 		t.Fatal(err)
 	}
 	store := NewSQLiteStore(database)
 	if _, _, err := store.Get(ctx, id); err == nil {
-		t.Fatal("Get succeeded with invalid genres JSON")
+		t.Fatal("Get succeeded with invalid event JSON")
 	}
 	if _, err := store.List(ctx, Query{}); err == nil {
-		t.Fatal("List succeeded with invalid genres JSON")
+		t.Fatal("List succeeded with invalid event JSON")
 	}
 }
 
@@ -96,14 +100,14 @@ func TestReplaceServiceProgramsDeletesFutureAndKeepsPast(t *testing.T) {
 	manager := newTestManager(t)
 	now := int64(10000)
 	if err := manager.store.UpsertAll(ctx, []*Program{
-		{ID: ProgramID(1, 2, 1), NetworkID: 1, ServiceID: 2, EventID: 1, StartAt: 1000, Duration: 1000},
-		{ID: ProgramID(1, 2, 2), NetworkID: 1, ServiceID: 2, EventID: 2, StartAt: 5000, Duration: 1000},
-		{ID: ProgramID(1, 2, 3), NetworkID: 1, ServiceID: 2, EventID: 3, StartAt: 9000, Duration: 2000},
+		{ID: ProgramID(1, 2, 1), Event: model.Event{Key: model.ServiceKey{NetworkID: 1, ServiceID: 2}, EventID: 1, StartAt: testPtr[int64](1000), DurationMS: testPtr[int](1000), FreeCA: true}},
+		{ID: ProgramID(1, 2, 2), Event: model.Event{Key: model.ServiceKey{NetworkID: 1, ServiceID: 2}, EventID: 2, StartAt: testPtr[int64](5000), DurationMS: testPtr[int](1000), FreeCA: true}},
+		{ID: ProgramID(1, 2, 3), Event: model.Event{Key: model.ServiceKey{NetworkID: 1, ServiceID: 2}, EventID: 3, StartAt: testPtr[int64](9000), DurationMS: testPtr[int](2000), FreeCA: true}},
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := manager.ReplaceServicePrograms(ctx, 1, 2, now, []*Program{
-		{ID: ProgramID(1, 2, 4), NetworkID: 1, ServiceID: 2, EventID: 4, StartAt: 12000, Duration: 1000},
+		{ID: ProgramID(1, 2, 4), Event: model.Event{Key: model.ServiceKey{NetworkID: 1, ServiceID: 2}, EventID: 4, StartAt: testPtr[int64](12000), DurationMS: testPtr[int](1000), FreeCA: true}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -127,8 +131,8 @@ func TestReplaceServiceProgramsReplacesAcrossServices(t *testing.T) {
 	ctx := context.Background()
 	manager := newTestManager(t)
 	if err := manager.store.UpsertAll(ctx, []*Program{
-		{ID: ProgramID(1, 2, 1), NetworkID: 1, ServiceID: 2, EventID: 1, StartAt: 5000, Duration: 1000},
-		{ID: ProgramID(1, 3, 1), NetworkID: 1, ServiceID: 3, EventID: 1, StartAt: 5000, Duration: 1000},
+		{ID: ProgramID(1, 2, 1), Event: model.Event{Key: model.ServiceKey{NetworkID: 1, ServiceID: 2}, EventID: 1, StartAt: testPtr[int64](5000), DurationMS: testPtr[int](1000), FreeCA: true}},
+		{ID: ProgramID(1, 3, 1), Event: model.Event{Key: model.ServiceKey{NetworkID: 1, ServiceID: 3}, EventID: 1, StartAt: testPtr[int64](5000), DurationMS: testPtr[int](1000), FreeCA: true}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -150,20 +154,14 @@ func TestSQLiteStoreRoundTripsExtendedAndRelatedAndSeries(t *testing.T) {
 	manager := newTestManager(t)
 	id := ProgramID(1, 2, 1)
 	nid, sid := uint16(1), uint16(2)
-	program := &Program{
-		ID:        id,
-		NetworkID: nid,
-		ServiceID: sid,
-		EventID:   1,
-		StartAt:   1000,
-		Duration:  1000,
-		Name:      "name",
-		Extended:  map[string]string{"出演者": "foo", "概要": "bar"},
-		RelatedItems: []RelatedItem{
-			{Type: RelatedItemTypeShared, NetworkID: &nid, ServiceID: sid, EventID: 9},
-		},
-		Series: &Series{ID: 7, Repeat: 0, Pattern: 0, Episode: 1, LastEpisode: 12, Name: "series-name"},
-	}
+	program := &Program{ID: id, Event: model.Event{
+		Key: model.ServiceKey{NetworkID: nid, StreamID: 0x4010, ServiceID: sid}, EventID: 1,
+		StartAt: testPtr[int64](1000), DurationMS: testPtr[int](1000), Name: "name", FreeCA: true,
+		Extended: []model.ExtendedBlock{{Language: "jpn", Items: []model.ExtendedItem{{Name: "出演者", Text: "foo"}, {Name: "概要", Text: "bar"}}, Body: "body"}},
+		Related:  []model.RelatedEvent{{GroupType: model.EventGroupShared, NetworkID: nid, ServiceID: sid, EventID: 9}},
+		Series:   &model.Series{ID: 7, Repeat: 0, Pattern: testPtr(0), Episode: 1, LastEpisode: 12, Name: "series-name"},
+		Parental: []model.ParentalRating{{Country: "jpn", Age: 13}},
+	}}
 	if err := manager.store.UpsertAll(ctx, []*Program{program}); err != nil {
 		t.Fatal(err)
 	}
@@ -174,14 +172,10 @@ func TestSQLiteStoreRoundTripsExtendedAndRelatedAndSeries(t *testing.T) {
 	if !ok {
 		t.Fatal("program not stored")
 	}
-	if got.Extended["出演者"] != "foo" {
-		t.Fatalf("Extended[出演者] = %q", got.Extended["出演者"])
-	}
-	if len(got.RelatedItems) != 1 || got.RelatedItems[0].Type != RelatedItemTypeShared {
-		t.Fatalf("RelatedItems = %#v", got.RelatedItems)
-	}
-	if got.Series == nil || got.Series.ID != 7 || got.Series.Name != "series-name" {
-		t.Fatalf("Series = %#v", got.Series)
+	// The whole event survives the store, stream ID and extended order
+	// included.
+	if !reflect.DeepEqual(got, program) {
+		t.Fatalf("stored program = %#v, want %#v", got, program)
 	}
 }
 
@@ -189,35 +183,23 @@ func TestUpsertProgramsKeepsExistingDetailsWhenIncomingIsSparse(t *testing.T) {
 	ctx := context.Background()
 	manager := newTestManager(t)
 	id := ProgramID(1, 2, 1)
-	existing := &Program{
-		ID:          id,
-		NetworkID:   1,
-		ServiceID:   2,
-		EventID:     1,
-		StartAt:     1000,
-		Duration:    1000,
-		IsFree:      true,
-		Name:        "existing title",
-		Description: "existing description",
-		Genres:      []Genre{{Lv1: 0, Lv2: 1, Un1: 15, Un2: 15}},
-		Video:       &Video{StreamContent: 1, ComponentType: 179},
-		Audios:      []Audio{{ComponentType: 1}},
-		Extended:    map[string]string{"出演者": "existing cast"},
-		Series:      &Series{ID: 7, Name: "existing series"},
-	}
+	existing := &Program{ID: id, Event: model.Event{
+		Key: model.ServiceKey{NetworkID: 1, ServiceID: 2}, EventID: 1,
+		StartAt: testPtr[int64](1000), DurationMS: testPtr[int](1000),
+		Name: "existing title", Description: "existing description",
+		Genres:   []model.Genre{{Lv1: 0, Lv2: 1, Un1: 15, Un2: 15}},
+		Videos:   []model.VideoComponent{{Codec: model.VideoCodecMPEG2, Resolution: model.VideoResolution1080i, Aspect: model.VideoAspect16x9NoPanVector}},
+		Audios:   []model.AudioComponent{{ComponentType: 1, Languages: []string{"jpn"}}},
+		Extended: []model.ExtendedBlock{{Items: []model.ExtendedItem{{Name: "出演者", Text: "existing cast"}}}},
+		Series:   &model.Series{ID: 7, Name: "existing series"},
+	}}
 	if err := manager.UpsertPrograms(ctx, []*Program{existing}); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := manager.UpsertPrograms(ctx, []*Program{{
-		ID:        id,
-		NetworkID: 1,
-		ServiceID: 2,
-		EventID:   1,
-		StartAt:   2000,
-		Duration:  2000,
-		IsFree:    false,
-	}}); err != nil {
+	if err := manager.UpsertPrograms(ctx, []*Program{
+		{ID: id, Event: model.Event{Key: model.ServiceKey{NetworkID: 1, ServiceID: 2}, EventID: 1, StartAt: testPtr[int64](2000), DurationMS: testPtr[int](2000), FreeCA: true}},
+	}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -228,22 +210,22 @@ func TestUpsertProgramsKeepsExistingDetailsWhenIncomingIsSparse(t *testing.T) {
 	if !ok {
 		t.Fatal("program not stored")
 	}
-	if got.StartAt != 2000 || got.Duration != 2000 || got.IsFree {
-		t.Fatalf("event fields = start:%d duration:%d isFree:%v", got.StartAt, got.Duration, got.IsFree)
+	if *got.StartAt != 2000 || *got.DurationMS != 2000 || !got.FreeCA {
+		t.Fatalf("event fields = start:%d duration:%d freeCA:%v", *got.StartAt, *got.DurationMS, got.FreeCA)
 	}
 	if got.Name != existing.Name || got.Description != existing.Description {
 		t.Fatalf("text fields = %q/%q", got.Name, got.Description)
 	}
-	if len(got.Genres) != 1 || got.Video == nil || len(got.Audios) != 1 || got.Extended["出演者"] != "existing cast" || got.Series == nil {
+	if len(got.Genres) != 1 || len(got.Videos) != 1 || len(got.Audios) != 1 || len(got.Extended) != 1 || got.Series == nil {
 		t.Fatalf("details were not preserved: %#v", got)
 	}
 }
 
-// recordingProgramStore wraps a real ProgramStore and counts calls to the
+// recordingProgramStore wraps a real Store and counts calls to the
 // write methods, so a test can assert that an unchanged UpsertPrograms or
 // ReplaceServicePrograms call skipped the underlying write entirely.
 type recordingProgramStore struct {
-	ProgramStore
+	Store
 	upsertCalls  int
 	lastUpsert   []*Program
 	replaceCalls int
@@ -252,12 +234,12 @@ type recordingProgramStore struct {
 func (s *recordingProgramStore) UpsertAll(ctx context.Context, programs []*Program) error {
 	s.upsertCalls++
 	s.lastUpsert = programs
-	return s.ProgramStore.UpsertAll(ctx, programs)
+	return s.Store.UpsertAll(ctx, programs)
 }
 
 func (s *recordingProgramStore) ReplaceServicePrograms(ctx context.Context, networkID, serviceID uint16, from int64, programs []*Program) error {
 	s.replaceCalls++
-	return s.ProgramStore.ReplaceServicePrograms(ctx, networkID, serviceID, from, programs)
+	return s.Store.ReplaceServicePrograms(ctx, networkID, serviceID, from, programs)
 }
 
 func TestUpsertProgramsSkipsWriteWhenUnchanged(t *testing.T) {
@@ -268,16 +250,16 @@ func TestUpsertProgramsSkipsWriteWhenUnchanged(t *testing.T) {
 	}
 	defer func() { _ = database.Close() }()
 
-	p := &Program{ID: ProgramID(1, 2, 1), NetworkID: 1, ServiceID: 2, EventID: 1, StartAt: 1000, Duration: 1000, Name: "title"}
-	seed := NewProgramManager(NewSQLiteStore(database))
+	p := &Program{ID: ProgramID(1, 2, 1), Event: model.Event{Key: model.ServiceKey{NetworkID: 1, ServiceID: 2}, EventID: 1, StartAt: testPtr[int64](1000), DurationMS: testPtr[int](1000), Name: "title", FreeCA: true}}
+	seed := NewManager(NewSQLiteStore(database))
 	if err := seed.UpsertPrograms(ctx, []*Program{p}); err != nil {
 		t.Fatal(err)
 	}
 
-	recording := &recordingProgramStore{ProgramStore: NewSQLiteStore(database)}
-	manager := NewProgramManager(recording)
+	recording := &recordingProgramStore{Store: NewSQLiteStore(database)}
+	manager := NewManager(recording)
 	if err := manager.UpsertPrograms(ctx, []*Program{
-		{ID: p.ID, NetworkID: 1, ServiceID: 2, EventID: 1, StartAt: 1000, Duration: 1000, Name: "title"},
+		{ID: p.ID, Event: model.Event{Key: model.ServiceKey{NetworkID: 1, ServiceID: 2}, EventID: 1, StartAt: testPtr[int64](1000), DurationMS: testPtr[int](1000), Name: "title", FreeCA: true}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -294,18 +276,18 @@ func TestUpsertProgramsWritesOnlyChangedPrograms(t *testing.T) {
 	}
 	defer func() { _ = database.Close() }()
 
-	unchanged := &Program{ID: ProgramID(1, 2, 1), NetworkID: 1, ServiceID: 2, EventID: 1, StartAt: 1000, Duration: 1000, Name: "unchanged"}
-	changed := &Program{ID: ProgramID(1, 2, 2), NetworkID: 1, ServiceID: 2, EventID: 2, StartAt: 2000, Duration: 1000, Name: "old name"}
-	seed := NewProgramManager(NewSQLiteStore(database))
+	unchanged := &Program{ID: ProgramID(1, 2, 1), Event: model.Event{Key: model.ServiceKey{NetworkID: 1, ServiceID: 2}, EventID: 1, StartAt: testPtr[int64](1000), DurationMS: testPtr[int](1000), Name: "unchanged", FreeCA: true}}
+	changed := &Program{ID: ProgramID(1, 2, 2), Event: model.Event{Key: model.ServiceKey{NetworkID: 1, ServiceID: 2}, EventID: 2, StartAt: testPtr[int64](2000), DurationMS: testPtr[int](1000), Name: "old name", FreeCA: true}}
+	seed := NewManager(NewSQLiteStore(database))
 	if err := seed.UpsertPrograms(ctx, []*Program{unchanged, changed}); err != nil {
 		t.Fatal(err)
 	}
 
-	recording := &recordingProgramStore{ProgramStore: NewSQLiteStore(database)}
-	manager := NewProgramManager(recording)
+	recording := &recordingProgramStore{Store: NewSQLiteStore(database)}
+	manager := NewManager(recording)
 	if err := manager.UpsertPrograms(ctx, []*Program{
-		{ID: unchanged.ID, NetworkID: 1, ServiceID: 2, EventID: 1, StartAt: 1000, Duration: 1000, Name: "unchanged"},
-		{ID: changed.ID, NetworkID: 1, ServiceID: 2, EventID: 2, StartAt: 2000, Duration: 1000, Name: "new name"},
+		{ID: unchanged.ID, Event: model.Event{Key: model.ServiceKey{NetworkID: 1, ServiceID: 2}, EventID: 1, StartAt: testPtr[int64](1000), DurationMS: testPtr[int](1000), Name: "unchanged", FreeCA: true}},
+		{ID: changed.ID, Event: model.Event{Key: model.ServiceKey{NetworkID: 1, ServiceID: 2}, EventID: 2, StartAt: testPtr[int64](2000), DurationMS: testPtr[int](1000), Name: "new name", FreeCA: true}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -325,16 +307,16 @@ func TestReplaceServiceProgramsSkipsWriteWhenIdentical(t *testing.T) {
 	}
 	defer func() { _ = database.Close() }()
 
-	p := &Program{ID: ProgramID(1, 2, 1), NetworkID: 1, ServiceID: 2, EventID: 1, StartAt: 1000, Duration: 1000, Name: "title"}
-	seed := NewProgramManager(NewSQLiteStore(database))
+	p := &Program{ID: ProgramID(1, 2, 1), Event: model.Event{Key: model.ServiceKey{NetworkID: 1, ServiceID: 2}, EventID: 1, StartAt: testPtr[int64](1000), DurationMS: testPtr[int](1000), Name: "title", FreeCA: true}}
+	seed := NewManager(NewSQLiteStore(database))
 	if err := seed.ReplaceServicePrograms(ctx, 1, 2, 0, []*Program{p}); err != nil {
 		t.Fatal(err)
 	}
 
-	recording := &recordingProgramStore{ProgramStore: NewSQLiteStore(database)}
-	manager := NewProgramManager(recording)
+	recording := &recordingProgramStore{Store: NewSQLiteStore(database)}
+	manager := NewManager(recording)
 	if err := manager.ReplaceServicePrograms(ctx, 1, 2, 0, []*Program{
-		{ID: p.ID, NetworkID: 1, ServiceID: 2, EventID: 1, StartAt: 1000, Duration: 1000, Name: "title"},
+		{ID: p.ID, Event: model.Event{Key: model.ServiceKey{NetworkID: 1, ServiceID: 2}, EventID: 1, StartAt: testPtr[int64](1000), DurationMS: testPtr[int](1000), Name: "title", FreeCA: true}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -347,29 +329,15 @@ func TestUpsertProgramsFillsSparseProgramWithLaterDetails(t *testing.T) {
 	ctx := context.Background()
 	manager := newTestManager(t)
 	id := ProgramID(1, 2, 1)
-	if err := manager.UpsertPrograms(ctx, []*Program{{
-		ID:        id,
-		NetworkID: 1,
-		ServiceID: 2,
-		EventID:   1,
-		StartAt:   1000,
-		Duration:  1000,
-	}}); err != nil {
+	if err := manager.UpsertPrograms(ctx, []*Program{
+		{ID: id, Event: model.Event{Key: model.ServiceKey{NetworkID: 1, ServiceID: 2}, EventID: 1, StartAt: testPtr[int64](1000), DurationMS: testPtr[int](1000), FreeCA: true}},
+	}); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := manager.UpsertPrograms(ctx, []*Program{{
-		ID:          id,
-		NetworkID:   1,
-		ServiceID:   2,
-		EventID:     1,
-		StartAt:     1000,
-		Duration:    1000,
-		Name:        "later title",
-		Description: "later description",
-		Genres:      []Genre{{Lv1: 2, Lv2: 3, Un1: 15, Un2: 15}},
-		Audios:      []Audio{{ComponentType: 3}},
-	}}); err != nil {
+	if err := manager.UpsertPrograms(ctx, []*Program{
+		{ID: id, Event: model.Event{Key: model.ServiceKey{NetworkID: 1, ServiceID: 2}, EventID: 1, StartAt: testPtr[int64](1000), DurationMS: testPtr[int](1000), Name: "later title", Description: "later description", Genres: []model.Genre{{Lv1: 2, Lv2: 3, Un1: 15, Un2: 15}}, Audios: []model.AudioComponent{{ComponentType: 3, Languages: []string{}}}, FreeCA: true}},
+	}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -382,5 +350,41 @@ func TestUpsertProgramsFillsSparseProgramWithLaterDetails(t *testing.T) {
 	}
 	if got.Name != "later title" || got.Description != "later description" || len(got.Genres) != 1 || len(got.Audios) != 1 {
 		t.Fatalf("program was not filled by later details: %#v", got)
+	}
+}
+
+type cleanupRecordingStore struct {
+	Store
+	cutoffs []int64
+	sources []string
+}
+
+func (s *cleanupRecordingStore) DeleteEndedBefore(ctx context.Context, cutoff int64) error {
+	s.cutoffs = append(s.cutoffs, cutoff)
+	s.sources = append(s.sources, observability.EPGMetricSource(ctx))
+	return s.Store.DeleteEndedBefore(ctx, cutoff)
+}
+
+func TestDeleteExpiredDeletesProgramsPastRetention(t *testing.T) {
+	ctx := context.Background()
+	base := newTestManager(t)
+	store := &cleanupRecordingStore{Store: base.store}
+	manager := NewManager(store)
+	now := time.UnixMilli(10 * 24 * 60 * 60 * 1000)
+
+	if err := manager.DeleteExpired(ctx, now, 0); err != nil {
+		t.Fatal(err)
+	}
+	if len(store.cutoffs) != 0 {
+		t.Fatalf("cutoffs = %v, want none without retention", store.cutoffs)
+	}
+	if err := manager.DeleteExpired(ctx, now, 3); err != nil {
+		t.Fatal(err)
+	}
+	if want := now.Add(-3 * 24 * time.Hour).UnixMilli(); len(store.cutoffs) != 1 || store.cutoffs[0] != want {
+		t.Fatalf("cutoffs = %v, want [%d]", store.cutoffs, want)
+	}
+	if store.sources[0] != "cleanup" {
+		t.Fatalf("delete source = %q, want cleanup", store.sources[0])
 	}
 }

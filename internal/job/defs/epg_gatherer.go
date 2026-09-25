@@ -7,9 +7,10 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/21S1298001/mahiron/internal/epg"
+	"github.com/21S1298001/mahiron/internal/epggather"
 	"github.com/21S1298001/mahiron/internal/job"
 	"github.com/21S1298001/mahiron/internal/job/run"
+	"github.com/21S1298001/mahiron/internal/model"
 )
 
 const (
@@ -19,18 +20,22 @@ const (
 	EPGGathererDefaultSchedule = "20,50 * * * *"
 )
 
-func RegisterEPGGathererService(registry Registry, service EPGGatherer) {
+func RegisterEPGGatherer(registry Registry, service EPGGatherer, programs ProgramCleaner, retentionDays int) {
 	registry.Register(job.JobDefinition{
-		Key:           EPGGathererKey,
-		Name:          EPGGathererName,
-		Handler:       epgGathererHandler(registry, service),
+		Key:  EPGGathererKey,
+		Name: EPGGathererName,
+		Handler: epgGathererHandler(registry, service, func(ctx context.Context) error {
+			return programs.DeleteExpired(ctx, time.Now(), retentionDays)
+		}),
 		ExclusiveKeys: []string{"epg-service-topology"},
 		IsRerunnable:  true,
 		RetryDelays:   []time.Duration{time.Minute, 2 * time.Minute, 4 * time.Minute},
 	})
 }
 
-func epgGathererHandler(registry Registry, service EPGGatherer) func(context.Context) error {
+// epgGathererHandler dispatches the per-network EPG gather jobs, then runs
+// cleanup when it is set.
+func epgGathererHandler(registry Registry, service EPGGatherer, cleanup func(context.Context) error) func(context.Context) error {
 	return func(ctx context.Context) error {
 		grouped, err := service.Groups(ctx)
 		if err != nil {
@@ -59,12 +64,14 @@ func epgGathererHandler(registry Registry, service EPGGatherer) func(context.Con
 				"queued":   queued,
 			},
 		}
-		if err := service.Cleanup(ctx, time.Now()); err != nil {
-			result.Warnings = append(result.Warnings, fmt.Sprintf("cleanup failed: %v", err))
-			slog.Warn("failed to clean up old EPG data", "err", err)
-		} else {
-			result.Counts["cleanupSucceeded"] = 1
-			slog.Debug("EPG cleanup completed")
+		if cleanup != nil {
+			if err := cleanup(ctx); err != nil {
+				result.Warnings = append(result.Warnings, fmt.Sprintf("cleanup failed: %v", err))
+				slog.Warn("failed to clean up old EPG data", "err", err)
+			} else {
+				result.Counts["cleanupSucceeded"] = 1
+				slog.Debug("EPG cleanup completed")
+			}
 		}
 		run.Set(ctx, result)
 		return nil
@@ -77,7 +84,7 @@ func epgGathererHandler(registry Registry, service EPGGatherer) func(context.Con
 // want to trigger gathering for a freshly discovered network without waiting
 // for the next cron tick. Returns true when a job was actually enqueued (not
 // already running and not skipped for having no services).
-func enqueueEPGGatherForNetwork(ctx context.Context, registry Registry, service EPGGatherer, networkID uint16, presetCandidates []epg.Candidate, presetServices []epg.ServiceKey) (bool, error) {
+func enqueueEPGGatherForNetwork(ctx context.Context, registry Registry, service EPGGatherer, networkID uint16, presetCandidates []epggather.Candidate, presetServices []model.ServiceKey) (bool, error) {
 	candidates := presetCandidates
 	serviceKeys := presetServices
 	if len(candidates) == 0 && len(serviceKeys) == 0 {
@@ -92,8 +99,8 @@ func enqueueEPGGatherForNetwork(ctx context.Context, registry Registry, service 
 		return false, nil
 	}
 	nid := networkID
-	networkCandidates := append([]epg.Candidate(nil), candidates...)
-	networkServices := append([]epg.ServiceKey(nil), serviceKeys...)
+	networkCandidates := append([]epggather.Candidate(nil), candidates...)
+	networkServices := append([]model.ServiceKey(nil), serviceKeys...)
 	definition := job.JobDefinition{
 		Key: fmt.Sprintf("epg-gather:nid:%d", nid), Name: fmt.Sprintf("EPG Gather NID %d", nid), IsRerunnable: true,
 		ExclusiveKeys: []string{"epg-service-topology"},
@@ -101,7 +108,7 @@ func enqueueEPGGatherForNetwork(ctx context.Context, registry Registry, service 
 			return service.GatherNetwork(childCtx, nid, networkCandidates, networkServices)
 		},
 		RetryDelays: []time.Duration{time.Minute, 2 * time.Minute, 4 * time.Minute},
-		RetryIf:     epg.RetryableError,
+		RetryIf:     epggather.RetryableError,
 	}
 	if _, err := registry.EnqueueDefinition(definition); err != nil {
 		if errors.Is(err, job.ErrJobAlreadyRunning) {

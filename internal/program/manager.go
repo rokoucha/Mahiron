@@ -2,10 +2,10 @@ package program
 
 import (
 	"context"
-	"reflect"
 	"sync"
 	"time"
 
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/observability"
 )
 
@@ -18,11 +18,12 @@ const (
 )
 
 type eventPublisher interface {
-	PublishProgramEvent(typ string, data map[string]any)
+	PublishProgramEvent(typ string, event *model.Event)
+	PublishProgramRemove(typ string, id int64)
 }
 
-type ProgramManager struct {
-	store      ProgramStore
+type Manager struct {
+	store      Store
 	events     eventPublisher
 	eventMu    sync.Mutex
 	eventTimer *time.Timer
@@ -35,15 +36,28 @@ type programEvent struct {
 	removeID int64
 }
 
-func NewProgramManager(store ProgramStore, events ...eventPublisher) *ProgramManager {
-	m := &ProgramManager{store: store}
+func NewManager(store Store, events ...eventPublisher) *Manager {
+	m := &Manager{store: store}
 	if len(events) > 0 {
 		m.events = events[0]
 	}
 	return m
 }
 
-func (m *ProgramManager) UpsertPrograms(ctx context.Context, programs []*Program) error {
+// UpsertEvents stores broadcast events, merging each with the stored program
+// of the same ID.
+func (m *Manager) UpsertEvents(ctx context.Context, events []model.Event) error {
+	if len(events) == 0 {
+		return nil
+	}
+	programs := make([]*Program, len(events))
+	for i := range events {
+		programs[i] = FromEvent(events[i])
+	}
+	return m.UpsertPrograms(ctx, programs)
+}
+
+func (m *Manager) UpsertPrograms(ctx context.Context, programs []*Program) error {
 	source := observability.EPGMetricSource(ctx)
 	attempted := nonNilProgramCount(programs)
 	pending := make(map[int64]*Program, len(programs))
@@ -76,10 +90,10 @@ func (m *ProgramManager) UpsertPrograms(ctx context.Context, programs []*Program
 		p := pending[id]
 		existing, ok := before[id]
 		after := mergeUpsertProgram(existing, p)
-		if ok && reflect.DeepEqual(existing, after) {
+		if ok && sameProgram(existing, after) {
 			continue
 		}
-		toWrite = append(toWrite, p)
+		toWrite = append(toWrite, after)
 		if !ok {
 			events = append(events, pendingEvent{typ: eventTypeCreate, after: after})
 		} else {
@@ -103,19 +117,19 @@ func (m *ProgramManager) UpsertPrograms(ctx context.Context, programs []*Program
 	return nil
 }
 
-func (m *ProgramManager) Get(ctx context.Context, id int64) (*Program, bool, error) {
+func (m *Manager) Get(ctx context.Context, id int64) (*Program, bool, error) {
 	return m.store.Get(ctx, id)
 }
 
-func (m *ProgramManager) List(ctx context.Context, query Query) ([]*Program, error) {
+func (m *Manager) List(ctx context.Context, query Query) ([]*Program, error) {
 	return m.store.List(ctx, query)
 }
 
-func (m *ProgramManager) ListFunc(ctx context.Context, query Query, yield func(*Program) error) error {
+func (m *Manager) ListFunc(ctx context.Context, query Query, yield func(*Program) error) error {
 	return m.store.ListFunc(ctx, query, yield)
 }
 
-func (m *ProgramManager) DeleteEndedBefore(ctx context.Context, cutoff int64) error {
+func (m *Manager) DeleteEndedBefore(ctx context.Context, cutoff int64) error {
 	source := observability.EPGMetricSource(ctx)
 	removed, err := m.store.ListEndedIDsBefore(ctx, cutoff)
 	if err != nil {
@@ -132,7 +146,17 @@ func (m *ProgramManager) DeleteEndedBefore(ctx context.Context, cutoff int64) er
 	return nil
 }
 
-func (m *ProgramManager) ReplaceServicePrograms(ctx context.Context, networkID, serviceID uint16, from int64, programs []*Program) error {
+// DeleteExpired deletes the programs that ended more than retentionDays
+// before now. A retentionDays of 0 or less keeps every program.
+func (m *Manager) DeleteExpired(ctx context.Context, now time.Time, retentionDays int) error {
+	if retentionDays <= 0 {
+		return nil
+	}
+	cutoff := now.Add(-time.Duration(retentionDays) * 24 * time.Hour).UnixMilli()
+	return m.DeleteEndedBefore(observability.ContextWithEPGMetricSource(ctx, "cleanup"), cutoff)
+}
+
+func (m *Manager) ReplaceServicePrograms(ctx context.Context, networkID, serviceID uint16, from int64, programs []*Program) error {
 	source := observability.EPGMetricSource(ctx)
 	attempted := nonNilProgramCount(programs)
 	beforeList, err := m.store.ListByServiceFrom(ctx, networkID, serviceID, from)
@@ -166,7 +190,7 @@ func (m *ProgramManager) ReplaceServicePrograms(ctx context.Context, networkID, 
 		case !ok:
 			changed++
 			m.enqueueProgramEvent(eventTypeCreate, p)
-		case !reflect.DeepEqual(existing, p):
+		case !sameProgram(existing, p):
 			changed++
 			m.enqueueProgramEvent(eventTypeUpdate, p)
 		}
@@ -179,7 +203,7 @@ func (m *ProgramManager) ReplaceServicePrograms(ctx context.Context, networkID, 
 	return nil
 }
 
-func (m *ProgramManager) Count(ctx context.Context) (int, error) { return m.store.Count(ctx) }
+func (m *Manager) Count(ctx context.Context) (int, error) { return m.store.Count(ctx) }
 
 // identicalServicePrograms reports whether incoming exactly matches the
 // existing rows keyed by ID, with no additions or removals.
@@ -191,7 +215,7 @@ func identicalServicePrograms(before map[int64]*Program, incoming []*Program) bo
 		}
 		count++
 		existing, ok := before[p.ID]
-		if !ok || !reflect.DeepEqual(existing, p) {
+		if !ok || !sameProgram(existing, p) {
 			return false
 		}
 	}
@@ -208,13 +232,16 @@ func nonNilProgramCount(programs []*Program) int {
 	return count
 }
 
+// mergeUpsertProgram fills what incoming lacks from the stored program: a
+// basic EIT table carries names and components, an extended table only the
+// extended description, and p/f and schedule updates arrive separately.
 func mergeUpsertProgram(existing, incoming *Program) *Program {
 	if incoming == nil {
 		return nil
 	}
-	merged := cloneProgram(incoming)
+	merged := *incoming
 	if existing == nil {
-		return merged
+		return &merged
 	}
 	if merged.Name == "" {
 		merged.Name = existing.Name
@@ -222,143 +249,48 @@ func mergeUpsertProgram(existing, incoming *Program) *Program {
 	if merged.Description == "" {
 		merged.Description = existing.Description
 	}
-	if len(merged.Genres) == 0 {
-		merged.Genres = cloneGenres(existing.Genres)
+	if merged.Language == "" {
+		merged.Language = existing.Language
 	}
-	if merged.Video == nil {
-		merged.Video = cloneVideo(existing.Video)
+	if len(merged.Genres) == 0 {
+		merged.Genres = existing.Genres
+	}
+	if len(merged.Videos) == 0 {
+		merged.Videos = existing.Videos
 	}
 	if len(merged.Audios) == 0 {
-		merged.Audios = cloneAudios(existing.Audios)
+		merged.Audios = existing.Audios
 	}
 	if len(merged.Extended) == 0 {
-		merged.Extended = cloneStringMap(existing.Extended)
+		merged.Extended = existing.Extended
 	}
-	if len(merged.RelatedItems) == 0 {
-		merged.RelatedItems = cloneRelatedItems(existing.RelatedItems)
+	if len(merged.Related) == 0 {
+		merged.Related = existing.Related
+	}
+	if len(merged.Parental) == 0 {
+		merged.Parental = existing.Parental
 	}
 	if merged.Series == nil {
-		merged.Series = cloneSeries(existing.Series)
+		merged.Series = existing.Series
 	}
-	return merged
+	return &merged
 }
 
-func cloneProgram(p *Program) *Program {
-	if p == nil {
-		return nil
-	}
-	clone := *p
-	clone.Genres = cloneGenres(p.Genres)
-	clone.Video = cloneVideo(p.Video)
-	clone.Audios = cloneAudios(p.Audios)
-	clone.Extended = cloneStringMap(p.Extended)
-	clone.RelatedItems = cloneRelatedItems(p.RelatedItems)
-	clone.Series = cloneSeries(p.Series)
-	return &clone
-}
-
-func cloneGenres(items []Genre) []Genre {
-	return append([]Genre(nil), items...)
-}
-
-func cloneVideo(video *Video) *Video {
-	if video == nil {
-		return nil
-	}
-	clone := *video
-	return &clone
-}
-
-func cloneAudios(items []Audio) []Audio {
-	if len(items) == 0 {
-		return nil
-	}
-	clones := make([]Audio, len(items))
-	for i := range items {
-		clones[i] = items[i]
-		clones[i].ComponentTag = cloneInt(items[i].ComponentTag)
-		clones[i].IsMain = cloneBool(items[i].IsMain)
-		clones[i].SamplingRate = cloneInt(items[i].SamplingRate)
-		clones[i].Langs = append([]string(nil), items[i].Langs...)
-	}
-	return clones
-}
-
-func cloneInt(v *int) *int {
-	if v == nil {
-		return nil
-	}
-	clone := *v
-	return &clone
-}
-
-func cloneBool(v *bool) *bool {
-	if v == nil {
-		return nil
-	}
-	clone := *v
-	return &clone
-}
-
-func cloneStringMap(items map[string]string) map[string]string {
-	if len(items) == 0 {
-		return nil
-	}
-	clone := make(map[string]string, len(items))
-	for k, v := range items {
-		clone[k] = v
-	}
-	return clone
-}
-
-func cloneRelatedItems(items []RelatedItem) []RelatedItem {
-	if len(items) == 0 {
-		return nil
-	}
-	clones := make([]RelatedItem, len(items))
-	for i := range items {
-		clones[i] = items[i]
-		clones[i].NetworkID = cloneUint16(items[i].NetworkID)
-		clones[i].TransportStreamID = cloneUint16(items[i].TransportStreamID)
-	}
-	return clones
-}
-
-func cloneUint16(v *uint16) *uint16 {
-	if v == nil {
-		return nil
-	}
-	clone := *v
-	return &clone
-}
-
-func cloneSeries(series *Series) *Series {
-	if series == nil {
-		return nil
-	}
-	clone := *series
-	if series.ExpiresAt != nil {
-		expiresAt := *series.ExpiresAt
-		clone.ExpiresAt = &expiresAt
-	}
-	return &clone
-}
-
-func (m *ProgramManager) enqueueProgramEvent(typ string, p *Program) {
+func (m *Manager) enqueueProgramEvent(typ string, p *Program) {
 	if m.events == nil {
 		return
 	}
 	m.enqueueEvent(programEvent{typ: typ, program: p})
 }
 
-func (m *ProgramManager) enqueueProgramRemoveEvent(id int64) {
+func (m *Manager) enqueueProgramRemoveEvent(id int64) {
 	if m.events == nil {
 		return
 	}
 	m.enqueueEvent(programEvent{typ: eventTypeRemove, removeID: id})
 }
 
-func (m *ProgramManager) enqueueEvent(event programEvent) {
+func (m *Manager) enqueueEvent(event programEvent) {
 	m.eventMu.Lock()
 	defer m.eventMu.Unlock()
 	m.eventQueue = append(m.eventQueue, event)
@@ -369,7 +301,7 @@ func (m *ProgramManager) enqueueEvent(event programEvent) {
 	m.eventTimer = time.AfterFunc(programEventDelay, m.flushEvents)
 }
 
-func (m *ProgramManager) flushEvents() {
+func (m *Manager) flushEvents() {
 	m.eventMu.Lock()
 	queue := append([]programEvent(nil), m.eventQueue...)
 	m.eventQueue = nil
@@ -378,9 +310,9 @@ func (m *ProgramManager) flushEvents() {
 
 	for _, event := range queue {
 		if event.typ == eventTypeRemove {
-			m.events.PublishProgramEvent(event.typ, map[string]any{"id": event.removeID})
+			m.events.PublishProgramRemove(event.typ, event.removeID)
 		} else {
-			m.events.PublishProgramEvent(event.typ, event.program.EventData())
+			m.events.PublishProgramEvent(event.typ, &event.program.Event)
 		}
 		time.Sleep(10 * time.Millisecond)
 	}

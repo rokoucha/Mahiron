@@ -1,26 +1,20 @@
 -- name: ListServices :many
-SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.type,
-       s.eit_schedule_flag, s.eit_present_following,
-       s.logo_id, s.logo_version, s.logo_download_data_id, EXISTS (
+SELECT sqlc.embed(s), EXISTS (
          SELECT 1 FROM service_logos l
          WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
            AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
        ) AS has_logo_data,
-       s.remote_control_key_id, s.channel_type, s.channel_id,
        epg.last_attempt_at, epg.last_success_at, epg.last_error
 FROM services s
 LEFT JOIN epg_service_status epg
   ON epg.network_id = s.network_id AND epg.service_id = s.service_id;
 
 -- name: GetServiceByID :one
-SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.type,
-       s.eit_schedule_flag, s.eit_present_following,
-       s.logo_id, s.logo_version, s.logo_download_data_id, EXISTS (
+SELECT sqlc.embed(s), EXISTS (
          SELECT 1 FROM service_logos l
          WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
            AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
        ) AS has_logo_data,
-       s.remote_control_key_id, s.channel_type, s.channel_id,
        epg.last_attempt_at, epg.last_success_at, epg.last_error
 FROM services s
 LEFT JOIN epg_service_status epg
@@ -28,14 +22,11 @@ LEFT JOIN epg_service_status epg
 WHERE s.id = ?;
 
 -- name: GetServiceByItemID :one
-SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.type,
-       s.eit_schedule_flag, s.eit_present_following,
-       s.logo_id, s.logo_version, s.logo_download_data_id, EXISTS (
+SELECT sqlc.embed(s), EXISTS (
          SELECT 1 FROM service_logos l
          WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
            AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
        ) AS has_logo_data,
-       s.remote_control_key_id, s.channel_type, s.channel_id,
        epg.last_attempt_at, epg.last_success_at, epg.last_error
 FROM services s
 LEFT JOIN epg_service_status epg
@@ -43,14 +34,11 @@ LEFT JOIN epg_service_status epg
 WHERE s.network_id * 100000 + s.service_id = ?;
 
 -- name: GetServiceByNetworkServiceID :one
-SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.type,
-       s.eit_schedule_flag, s.eit_present_following,
-       s.logo_id, s.logo_version, s.logo_download_data_id, EXISTS (
+SELECT sqlc.embed(s), EXISTS (
          SELECT 1 FROM service_logos l
          WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
            AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
        ) AS has_logo_data,
-       s.remote_control_key_id, s.channel_type, s.channel_id,
        epg.last_attempt_at, epg.last_success_at, epg.last_error
 FROM services s
 LEFT JOIN epg_service_status epg
@@ -58,14 +46,11 @@ LEFT JOIN epg_service_status epg
 WHERE s.network_id = ? AND s.service_id = ?;
 
 -- name: GetServicesByChannel :many
-SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.type,
-       s.eit_schedule_flag, s.eit_present_following,
-       s.logo_id, s.logo_version, s.logo_download_data_id, EXISTS (
+SELECT sqlc.embed(s), EXISTS (
          SELECT 1 FROM service_logos l
          WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
            AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
        ) AS has_logo_data,
-       s.remote_control_key_id, s.channel_type, s.channel_id,
        epg.last_attempt_at, epg.last_success_at, epg.last_error
 FROM services s
 LEFT JOIN epg_service_status epg
@@ -73,14 +58,11 @@ LEFT JOIN epg_service_status epg
 WHERE s.channel_type = ? AND s.channel_id = ?;
 
 -- name: GetServiceByChannelAndID :one
-SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.type,
-       s.eit_schedule_flag, s.eit_present_following,
-       s.logo_id, s.logo_version, s.logo_download_data_id, EXISTS (
+SELECT sqlc.embed(s), EXISTS (
          SELECT 1 FROM service_logos l
          WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
            AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
        ) AS has_logo_data,
-       s.remote_control_key_id, s.channel_type, s.channel_id,
        epg.last_attempt_at, epg.last_success_at, epg.last_error
 FROM services s
 LEFT JOIN epg_service_status epg
@@ -89,14 +71,11 @@ WHERE s.channel_type = sqlc.arg(channel_type)
   AND s.channel_id = sqlc.arg(channel_id)
   AND s.id = sqlc.arg(id)
 UNION ALL
-SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.type,
-       s.eit_schedule_flag, s.eit_present_following,
-       s.logo_id, s.logo_version, s.logo_download_data_id, EXISTS (
+SELECT sqlc.embed(s), EXISTS (
          SELECT 1 FROM service_logos l
          WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
            AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
        ) AS has_logo_data,
-       s.remote_control_key_id, s.channel_type, s.channel_id,
        epg.last_attempt_at, epg.last_success_at, epg.last_error
 FROM services s
 LEFT JOIN epg_service_status epg
@@ -129,19 +108,23 @@ LEFT JOIN epg_service_status epg
 DELETE FROM services WHERE channel_type = ? AND channel_id = ?;
 
 -- name: UpsertService :exec
-INSERT INTO services (id, service_id, network_id, transport_stream_id, name, type, eit_schedule_flag, eit_present_following, logo_id, logo_version, logo_download_data_id, remote_control_key_id, channel_type, channel_id)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO services (id, service_id, network_id, transport_stream_id, name, provider_name, type, running_status, free_ca, eit_schedule_flag, eit_present_following, logo_id, logo_version, logo_download_data_id, simple_logo, remote_control_key_id, channel_type, channel_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
   service_id=excluded.service_id,
   network_id=excluded.network_id,
   transport_stream_id=excluded.transport_stream_id,
   name=excluded.name,
+  provider_name=excluded.provider_name,
   type=excluded.type,
+  running_status=excluded.running_status,
+  free_ca=excluded.free_ca,
   eit_schedule_flag=excluded.eit_schedule_flag,
   eit_present_following=excluded.eit_present_following,
   logo_id=excluded.logo_id,
   logo_version=excluded.logo_version,
   logo_download_data_id=excluded.logo_download_data_id,
+  simple_logo=excluded.simple_logo,
   remote_control_key_id=excluded.remote_control_key_id,
   channel_type=excluded.channel_type,
   channel_id=excluded.channel_id;
@@ -202,7 +185,7 @@ LIMIT 1;
 -- name: KnownLogoTargets :many
 SELECT s.network_id, s.service_id, s.transport_stream_id, s.channel_type, s.channel_id, s.logo_id, s.logo_version, s.logo_download_data_id
 FROM services s
-WHERE s.logo_id IS NOT NULL AND s.logo_id >= 0
+WHERE s.logo_id IS NOT NULL
   AND s.logo_version IS NOT NULL
   AND s.logo_download_data_id IS NOT NULL
 ORDER BY s.channel_type, s.channel_id, s.network_id, s.service_id;
@@ -210,7 +193,7 @@ ORDER BY s.channel_type, s.channel_id, s.network_id, s.service_id;
 -- name: MissingLogoTargets :many
 SELECT s.network_id, s.service_id, s.transport_stream_id, s.channel_type, s.channel_id, s.logo_id, s.logo_version, s.logo_download_data_id
 FROM services s
-WHERE s.logo_id IS NOT NULL AND s.logo_id >= 0
+WHERE s.logo_id IS NOT NULL
   AND s.logo_version IS NOT NULL
   AND s.logo_download_data_id IS NOT NULL
   AND NOT EXISTS (
@@ -222,14 +205,11 @@ WHERE s.logo_id IS NOT NULL AND s.logo_id >= 0
 ORDER BY s.channel_type, s.channel_id, s.network_id, s.service_id;
 
 -- name: GetServiceByTriplet :one
-SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.type,
-       s.eit_schedule_flag, s.eit_present_following,
-       s.logo_id, s.logo_version, s.logo_download_data_id, EXISTS (
+SELECT sqlc.embed(s), EXISTS (
          SELECT 1 FROM service_logos l
          WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
            AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
        ) AS has_logo_data,
-       s.remote_control_key_id, s.channel_type, s.channel_id,
        epg.last_attempt_at, epg.last_success_at, epg.last_error
 FROM services s
 LEFT JOIN epg_service_status epg

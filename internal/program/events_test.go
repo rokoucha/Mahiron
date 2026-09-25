@@ -5,19 +5,26 @@ import (
 	"testing"
 
 	"github.com/21S1298001/mahiron/internal/db"
+	"github.com/21S1298001/mahiron/internal/model"
 )
 
 type publishedProgramEvent struct {
-	typ  string
-	data map[string]any
+	typ      string
+	program  *model.Event
+	removeID int64
+	isRemove bool
 }
 
 type fakeProgramEventPublisher struct {
 	events []publishedProgramEvent
 }
 
-func (p *fakeProgramEventPublisher) PublishProgramEvent(typ string, data map[string]any) {
-	p.events = append(p.events, publishedProgramEvent{typ: typ, data: data})
+func (p *fakeProgramEventPublisher) PublishProgramEvent(typ string, event *model.Event) {
+	p.events = append(p.events, publishedProgramEvent{typ: typ, program: event})
+}
+
+func (p *fakeProgramEventPublisher) PublishProgramRemove(typ string, id int64) {
+	p.events = append(p.events, publishedProgramEvent{typ: typ, removeID: id, isRemove: true})
 }
 
 func TestProgramManagerPublishesCreateUpdateAndRemoveEvents(t *testing.T) {
@@ -28,9 +35,9 @@ func TestProgramManagerPublishesCreateUpdateAndRemoveEvents(t *testing.T) {
 	}
 	defer func() { _ = database.Close() }()
 	publisher := &fakeProgramEventPublisher{}
-	manager := NewProgramManager(NewSQLiteStore(database), publisher)
+	manager := NewManager(NewSQLiteStore(database), publisher)
 
-	p := &Program{ID: ProgramID(1, 101, 1), NetworkID: 1, ServiceID: 101, EventID: 1, Name: "first"}
+	p := &Program{ID: ProgramID(1, 101, 1), Event: model.Event{Key: model.ServiceKey{NetworkID: 1, ServiceID: 101}, EventID: 1, Name: "first", FreeCA: true}}
 	if err := manager.UpsertPrograms(ctx, []*Program{p}); err != nil {
 		t.Fatal(err)
 	}
@@ -54,8 +61,8 @@ func TestProgramManagerPublishesCreateUpdateAndRemoveEvents(t *testing.T) {
 	if events[0].typ != eventTypeCreate || events[1].typ != eventTypeUpdate || events[2].typ != eventTypeRemove {
 		t.Fatalf("event types = %s/%s/%s", events[0].typ, events[1].typ, events[2].typ)
 	}
-	if got, want := events[2].data["id"], p.ID; got != want {
-		t.Fatalf("remove payload id = %v, want %d", got, want)
+	if !events[2].isRemove || events[2].removeID != p.ID {
+		t.Fatalf("remove payload = %#v, want id %d", events[2], p.ID)
 	}
 }
 
@@ -67,32 +74,19 @@ func TestProgramManagerPublishesMergedSparseUpdateEvent(t *testing.T) {
 	}
 	defer func() { _ = database.Close() }()
 	publisher := &fakeProgramEventPublisher{}
-	manager := NewProgramManager(NewSQLiteStore(database), publisher)
+	manager := NewManager(NewSQLiteStore(database), publisher)
 
 	id := ProgramID(1, 101, 1)
-	if err := manager.UpsertPrograms(ctx, []*Program{{
-		ID:          id,
-		NetworkID:   1,
-		ServiceID:   101,
-		EventID:     1,
-		StartAt:     1000,
-		Duration:    1000,
-		Name:        "existing title",
-		Description: "existing description",
-		Genres:      []Genre{{Lv1: 0, Lv2: 1}},
-	}}); err != nil {
+	if err := manager.UpsertPrograms(ctx, []*Program{
+		{ID: id, Event: model.Event{Key: model.ServiceKey{NetworkID: 1, ServiceID: 101}, EventID: 1, StartAt: testPtr[int64](1000), DurationMS: testPtr[int](1000), Name: "existing title", Description: "existing description", Genres: []model.Genre{{Lv1: 0, Lv2: 1}}, FreeCA: true}},
+	}); err != nil {
 		t.Fatal(err)
 	}
 	manager.flushEvents()
 
-	if err := manager.UpsertPrograms(ctx, []*Program{{
-		ID:        id,
-		NetworkID: 1,
-		ServiceID: 101,
-		EventID:   1,
-		StartAt:   2000,
-		Duration:  2000,
-	}}); err != nil {
+	if err := manager.UpsertPrograms(ctx, []*Program{
+		{ID: id, Event: model.Event{Key: model.ServiceKey{NetworkID: 1, ServiceID: 101}, EventID: 1, StartAt: testPtr[int64](2000), DurationMS: testPtr[int](2000), FreeCA: true}},
+	}); err != nil {
 		t.Fatal(err)
 	}
 	manager.flushEvents()
@@ -105,26 +99,16 @@ func TestProgramManagerPublishesMergedSparseUpdateEvent(t *testing.T) {
 	if update.typ != eventTypeUpdate {
 		t.Fatalf("event type = %s, want %s", update.typ, eventTypeUpdate)
 	}
-	if got, want := update.data["name"], "existing title"; got != want {
+	if update.program == nil {
+		t.Fatalf("update payload = nil, want program")
+	}
+	if got, want := update.program.Name, "existing title"; got != want {
 		t.Fatalf("update payload name = %v, want %q", got, want)
 	}
-	if got, want := update.data["startAt"], int64(2000); got != want {
+	if got, want := *update.program.StartAt, int64(2000); got != want {
 		t.Fatalf("update payload startAt = %v, want %d", got, want)
 	}
 }
 
-func TestProgramEventDataOmitsEmptyGenres(t *testing.T) {
-	p := &Program{ID: ProgramID(1, 101, 1), NetworkID: 1, ServiceID: 101, EventID: 1}
-	if _, ok := p.EventData()["genres"]; ok {
-		t.Errorf("genres key present for program without genres")
-	}
-
-	p.Genres = []Genre{{Lv1: 0, Lv2: 1, Un1: 15, Un2: 15}}
-	genres, ok := p.EventData()["genres"].([]map[string]any)
-	if !ok {
-		t.Fatalf("genres = %#v, want []map[string]any", p.EventData()["genres"])
-	}
-	if len(genres) != 1 || genres[0]["lv1"] != 0 || genres[0]["lv2"] != 1 {
-		t.Errorf("genres = %#v, want one entry with lv1=0 lv2=1", genres)
-	}
-}
+// Genres omission in the Mirakurun shape is pinned by
+// TestProgramContractOmitsEmptyKeys via internal/mirakurun.

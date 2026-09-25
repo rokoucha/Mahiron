@@ -5,6 +5,9 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"image"
+	"image/color"
+	"image/png"
 	"io"
 	"net/http"
 	"strings"
@@ -13,14 +16,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/21S1298001/mahiron/internal/bml"
 	"github.com/21S1298001/mahiron/internal/config"
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/program"
-	"github.com/21S1298001/mahiron/internal/service"
-	"github.com/21S1298001/mahiron/internal/stream/databroadcast"
 	"github.com/21S1298001/mahiron/internal/stream/internal/streamtest"
 	"github.com/21S1298001/mahiron/internal/stream/source"
 	"github.com/21S1298001/mahiron/internal/tuner"
-	"github.com/21S1298001/mahiron/ts"
 )
 
 func TestRemoteClientCheckAvailableForRouteAndBasicAuth(t *testing.T) {
@@ -233,7 +235,7 @@ func TestRemoteSessionStreamsChannelServiceAndProgram(t *testing.T) {
 		t.Fatal(err)
 	}
 	var programOut bytes.Buffer
-	if err := session.ProgramStream(context.Background(), &program.Program{ID: 10100009}, true, &programOut); err != nil {
+	if err := session.ProgramStream(context.Background(), model.Event{Key: model.ServiceKey{ServiceID: 101}, EventID: 9}, true, &programOut); err != nil {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(channelOut.Bytes(), packet) || serviceOut.Len() != 0 || programOut.Len() != 0 {
@@ -377,7 +379,7 @@ func TestRemoteSessionTracksDataBroadcastObserver(t *testing.T) {
 	channel := config.ChannelConfig{Type: "GR", Channel: "27"}
 	session := newTestSession(client, channel, channel, "living")
 	user := tuner.User{ID: "data-broadcast", Agent: "data broadcast client"}
-	err := session.ObserveDataBroadcast(tuner.WithUser(context.Background(), user), 101, false, func(event databroadcast.DataBroadcastEvent) error {
+	err := session.ObserveDataBroadcast(tuner.WithUser(context.Background(), user), 101, false, func(event bml.Event) error {
 		if event.Type != "snapshot" {
 			t.Fatalf("event type = %q, want snapshot", event.Type)
 		}
@@ -406,7 +408,7 @@ func TestRemoteSessionRestartsDataBroadcastStreamAfterUpstreamEnds(t *testing.T)
 	}))
 
 	for range 2 {
-		if err := session.ObserveDataBroadcast(t.Context(), 101, false, func(databroadcast.DataBroadcastEvent) error {
+		if err := session.ObserveDataBroadcast(t.Context(), 101, false, func(bml.Event) error {
 			return nil
 		}); err != nil {
 			t.Fatal(err)
@@ -502,10 +504,10 @@ func TestRemoteSessionScanServicesUsesRemoteAPI(t *testing.T) {
 	if auth != wantAuth {
 		t.Fatalf("Authorization = %q, want %q", auth, wantAuth)
 	}
-	if len(got) != 1 || got[0].Nid != 32736 || got[0].Sid != 1024 || got[0].Tsid != 32736 || got[0].Name != "remote service" || got[0].RemoteControlKeyId == nil || *got[0].RemoteControlKeyId != 5 {
+	if len(got) != 1 || got[0].Key != (model.ServiceKey{NetworkID: 32736, StreamID: 32736, ServiceID: 1024}) || got[0].Name != "remote service" || got[0].RemoteControlKey == nil || *got[0].RemoteControlKey != 5 {
 		t.Fatalf("services = %#v", got)
 	}
-	if got[0].LogoId != 12 || got[0].LogoVersion == nil || *got[0].LogoVersion != 0 || got[0].LogoDownloadDataId == nil || *got[0].LogoDownloadDataId != 1024 {
+	if got[0].Logo == nil || got[0].Logo.LogoID != 12 || got[0].Logo.Version == nil || *got[0].Logo.Version != 0 || got[0].Logo.DownloadDataID == nil || *got[0].Logo.DownloadDataID != 1024 {
 		t.Fatalf("logo metadata = %#v", got[0])
 	}
 }
@@ -521,6 +523,7 @@ func TestRemoteClientScanServicesReturnsStatusError(t *testing.T) {
 }
 
 func TestRemoteSessionObserveLogosUsesRemoteAPI(t *testing.T) {
+	logoPNG := testLogoPNG(t)
 	var paths []string
 	client := NewClient(config.RemoteConfig{URL: "http://remote.local/api"})
 	client.httpClient = &http.Client{Transport: streamtest.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
@@ -531,6 +534,7 @@ func TestRemoteSessionObserveLogosUsesRemoteAPI(t *testing.T) {
 				t.Fatalf("query = %q, want channel.type=GR and channel.channel=27", r.URL.RawQuery)
 			}
 			return streamtest.StringResponse(http.StatusOK, `[{
+				"id": 400101,
 				"serviceId": 101,
 				"networkId": 4,
 				"transportStreamId": 4,
@@ -539,6 +543,7 @@ func TestRemoteSessionObserveLogosUsesRemoteAPI(t *testing.T) {
 				"logoId": 12,
 				"hasLogoData": true
 			}, {
+				"id": 400102,
 				"serviceId": 102,
 				"networkId": 4,
 				"transportStreamId": 4,
@@ -548,7 +553,7 @@ func TestRemoteSessionObserveLogosUsesRemoteAPI(t *testing.T) {
 				"hasLogoData": false
 			}]`), nil
 		case "/api/services/400101/logo":
-			return streamtest.StringResponse(http.StatusOK, "png"), nil
+			return streamtest.StringResponse(http.StatusOK, string(logoPNG)), nil
 		default:
 			return streamtest.StringResponse(http.StatusNotFound, ""), nil
 		}
@@ -557,9 +562,9 @@ func TestRemoteSessionObserveLogosUsesRemoteAPI(t *testing.T) {
 	session := newTestSession(client, channel, channel, "")
 
 	var observed int
-	err := session.ObserveLogos(context.Background(), func(image *ts.LogoImage) error {
+	err := session.ObserveLogos(context.Background(), func(image model.Logo) error {
 		observed++
-		if image.OriginalNetworkID != 4 || image.LogoID != 12 || image.LogoVersion != 0 || image.DownloadDataID != 101 || string(image.Data) != "png" {
+		if image.NetworkID != 4 || image.LogoID != 12 || image.Version != 0 || image.DownloadDataID != 101 || !bytes.Equal(image.Data, logoPNG) {
 			t.Fatalf("image = %#v", image)
 		}
 		return nil
@@ -573,6 +578,18 @@ func TestRemoteSessionObserveLogosUsesRemoteAPI(t *testing.T) {
 	if len(paths) != 2 || paths[0] != "/api/services" || paths[1] != "/api/services/400101/logo" {
 		t.Fatalf("paths = %#v", paths)
 	}
+}
+
+// testLogoPNG encodes a 1x1 paletted PNG, which already carries its PLTE
+// and passes the ARIB palette completion unchanged.
+func testLogoPNG(t *testing.T) []byte {
+	t.Helper()
+	img := image.NewPaletted(image.Rect(0, 0, 1, 1), color.Palette{color.Black})
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
 }
 
 func TestRemoteClientListServicePrograms(t *testing.T) {
@@ -615,25 +632,25 @@ func TestRemoteClientListServicePrograms(t *testing.T) {
 		t.Fatalf("len(programs) = %d", len(programs))
 	}
 	p := programs[0]
-	if p.ID != 101001 || p.EventID != 1 || p.ServiceID != 101 || p.NetworkID != 4 || p.Name != "news" || !p.IsFree {
+	if p.EventID != 1 || p.Key.ServiceID != 101 || p.Key.NetworkID != 4 || p.Name != "news" || p.FreeCA {
 		t.Fatalf("program = %#v", p)
 	}
 	if len(p.Genres) != 1 || p.Genres[0].Lv1 != 0 || p.Genres[0].Lv2 != 1 || p.Genres[0].Un1 != 15 {
 		t.Fatalf("genres = %#v", p.Genres)
 	}
-	if p.Video == nil || p.Video.StreamContent != 1 || p.Video.ComponentType != 179 {
-		t.Fatalf("video = %#v", p.Video)
+	if len(p.Videos) != 1 || p.Videos[0].Codec != model.VideoCodecMPEG2 || p.Videos[0].Resolution != model.VideoResolution1080i {
+		t.Fatalf("video = %#v", p.Videos)
 	}
-	if len(p.Audios) != 1 || p.Audios[0].SamplingRate == nil || *p.Audios[0].SamplingRate != 48000 || len(p.Audios[0].Langs) != 1 || p.Audios[0].Langs[0] != "jpn" {
+	if len(p.Audios) != 1 || p.Audios[0].SamplingHz != 48000 || len(p.Audios[0].Languages) != 1 || p.Audios[0].Languages[0] != "jpn" {
 		t.Fatalf("audios = %#v", p.Audios)
 	}
-	if p.Extended["key"] != "value" {
+	if len(p.Extended) != 1 || p.Extended[0].Items[0] != (model.ExtendedItem{Name: "key", Text: "value"}) {
 		t.Fatalf("extended = %#v", p.Extended)
 	}
-	if len(p.RelatedItems) != 1 || p.RelatedItems[0].Type != "shared" || p.RelatedItems[0].NetworkID == nil || *p.RelatedItems[0].NetworkID != 4 {
-		t.Fatalf("related = %#v", p.RelatedItems)
+	if len(p.Related) != 1 || p.Related[0].GroupType != model.EventGroupShared || p.Related[0].NetworkID != 4 {
+		t.Fatalf("related = %#v", p.Related)
 	}
-	if p.Series == nil || p.Series.ID != 7 || p.Series.Pattern != 2 || p.Series.ExpiresAt == nil || *p.Series.ExpiresAt != 3000 {
+	if p.Series == nil || p.Series.ID != 7 || p.Series.Pattern == nil || *p.Series.Pattern != 2 || p.Series.ExpiresAt == nil || *p.Series.ExpiresAt != 3000 {
 		t.Fatalf("series = %#v", p.Series)
 	}
 }
@@ -674,7 +691,7 @@ func TestReadRemoteEventsDispatchesProgramsAndTuners(t *testing.T) {
 	var eventType string
 	var status tuner.Status
 	err := readRemoteEvents(context.Background(), strings.NewReader(`[
-{"resource":"program","type":"update","data":{"id":401010001,"eventId":1,"serviceId":101,"networkId":4}},
+{"resource":"program","type":"update","data":{"id":401010001,"eventId":1,"serviceId":101,"networkId":4,"startAt":1000,"duration":1800000,"isFree":true}},
 {"resource":"tuner","type":"update","data":{"index":2,"name":"remote","types":["GR"],"isAvailable":true}}
 `), updater, func(typ string, item tuner.Status) {
 		eventType, status = typ, item
@@ -682,7 +699,7 @@ func TestReadRemoteEventsDispatchesProgramsAndTuners(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(updater.programs) != 1 || updater.programs[0].ID != 401010001 {
+	if len(updater.programs) != 1 || updater.programs[0].ID != program.ProgramID(4, 101, 1) {
 		t.Fatalf("programs = %#v", updater.programs)
 	}
 	if eventType != "update" || status.Index != 2 || status.Name != "remote" {
@@ -692,10 +709,10 @@ func TestReadRemoteEventsDispatchesProgramsAndTuners(t *testing.T) {
 
 func TestReadRemoteEventsBatchesProgramsAndKeepsLatestUpdate(t *testing.T) {
 	src := strings.NewReader(`[
-{"resource":"program","type":"update","data":{"id":401010001,"eventId":1,"serviceId":101,"networkId":4,"name":"old"}},
-{"resource":"program","type":"update","data":{"id":401010001,"eventId":1,"serviceId":101,"networkId":4,"name":"new"}},
-{"resource":"program","type":"create","data":{"id":401010002,"eventId":2,"serviceId":101,"networkId":4,"name":"next"}},
-{"resource":"program","type":"create","data":{"id":401010003,"eventId":3,"serviceId":101,"networkId":4,"name":"later"}}
+{"resource":"program","type":"update","data":{"id":401010001,"eventId":1,"serviceId":101,"networkId":4,"startAt":1000,"duration":1800000,"isFree":true,"name":"old"}},
+{"resource":"program","type":"update","data":{"id":401010001,"eventId":1,"serviceId":101,"networkId":4,"startAt":1000,"duration":1800000,"isFree":true,"name":"new"}},
+{"resource":"program","type":"create","data":{"id":401010002,"eventId":2,"serviceId":101,"networkId":4,"startAt":2000,"duration":1800000,"isFree":false,"name":"next"}},
+{"resource":"program","type":"create","data":{"id":401010003,"eventId":3,"serviceId":101,"networkId":4,"startAt":3000,"duration":1800000,"isFree":false,"name":"later"}}
 ]`)
 	updater := &batchRecordingProgramUpdater{}
 
@@ -708,10 +725,10 @@ func TestReadRemoteEventsBatchesProgramsAndKeepsLatestUpdate(t *testing.T) {
 	if got, want := len(updater.calls[0]), 2; got != want {
 		t.Fatalf("first batch size = %d, want %d", got, want)
 	}
-	if updater.calls[0][0].ID != 401010001 || updater.calls[0][0].Name != "new" {
+	if updater.calls[0][0].ID != program.ProgramID(4, 101, 1) || updater.calls[0][0].Name != "new" {
 		t.Fatalf("deduplicated program = %#v, want latest update", updater.calls[0][0])
 	}
-	if got, want := len(updater.calls[1]), 1; got != want || updater.calls[1][0].ID != 401010003 {
+	if got, want := len(updater.calls[1]), 1; got != want || updater.calls[1][0].ID != program.ProgramID(4, 101, 3) {
 		t.Fatalf("EOF batch = %#v, want final program", updater.calls[1])
 	}
 }
@@ -719,7 +736,7 @@ func TestReadRemoteEventsBatchesProgramsAndKeepsLatestUpdate(t *testing.T) {
 func TestReadRemoteEventsReturnsBatchUpdateError(t *testing.T) {
 	want := errors.New("database unavailable")
 	updater := &batchRecordingProgramUpdater{err: want}
-	src := strings.NewReader(`{"resource":"program","type":"update","data":{"id":1,"eventId":1,"serviceId":1,"networkId":1}}`)
+	src := strings.NewReader(`{"resource":"program","type":"update","data":{"id":1,"eventId":1,"serviceId":1,"networkId":1,"startAt":1000,"duration":1000,"isFree":true}}`)
 
 	err := readRemoteEventsBatched(context.Background(), src, updater, nil, time.Hour, 256)
 	if !errors.Is(err, want) {
@@ -735,12 +752,12 @@ func TestReadRemoteEventsFlushesProgramsOnInterval(t *testing.T) {
 		done <- readRemoteEventsBatched(context.Background(), reader, updater, nil, 10*time.Millisecond, 256)
 	}()
 
-	if _, err := io.WriteString(writer, "{\"resource\":\"program\",\"type\":\"update\",\"data\":{\"id\":1,\"eventId\":1,\"serviceId\":1,\"networkId\":1}}\n"); err != nil {
+	if _, err := io.WriteString(writer, "{\"resource\":\"program\",\"type\":\"update\",\"data\":{\"id\":1,\"eventId\":1,\"serviceId\":1,\"networkId\":1,\"startAt\":1000,\"duration\":1000,\"isFree\":true}}\n"); err != nil {
 		t.Fatal(err)
 	}
 	select {
 	case programs := <-updater.calls:
-		if len(programs) != 1 || programs[0].ID != 1 {
+		if len(programs) != 1 || programs[0].ID != program.ProgramID(1, 1, 1) {
 			t.Fatalf("interval batch = %#v", programs)
 		}
 	case <-time.After(time.Second):
@@ -768,7 +785,7 @@ func TestReadRemoteProgramEventsUpsertsProgramUpdates(t *testing.T) {
 	if got, want := len(updater.programs), 2; got != want {
 		t.Fatalf("upserted programs = %d, want %d", got, want)
 	}
-	if updater.programs[0].ID != 401010001 || updater.programs[0].Name != "updated" || updater.programs[1].EventID != 2 {
+	if updater.programs[0].ID != program.ProgramID(4, 101, 1) || updater.programs[0].Name != "updated" || updater.programs[1].EventID != 2 {
 		t.Fatalf("programs = %#v", updater.programs)
 	}
 }
@@ -778,7 +795,7 @@ func TestReadRemoteProgramEventsIgnoresMalformedAndFilteredEvents(t *testing.T) 
 not-json
 {"resource":"service","type":"update","data":{"id":1}}
 {"resource":"program","type":"remove","data":{"id":401010001,"eventId":1,"serviceId":101,"networkId":4}}
-{"resource":"program","type":"update","data":{"id":401010002,"eventId":2,"serviceId":101,"networkId":4,"name":"kept"}}
+{"resource":"program","type":"update","data":{"id":401010002,"eventId":2,"serviceId":101,"networkId":4,"startAt":1000,"duration":1800000,"isFree":true,"name":"kept"}}
 {"resource":"program","type":"update","data":}
 `)
 	updater := &recordingProgramUpdater{}
@@ -789,7 +806,7 @@ not-json
 	if got, want := len(updater.programs), 1; got != want {
 		t.Fatalf("upserted programs = %d, want %d", got, want)
 	}
-	if updater.programs[0].ID != 401010002 || updater.programs[0].Name != "kept" {
+	if updater.programs[0].ID != program.ProgramID(4, 101, 2) || updater.programs[0].Name != "kept" {
 		t.Fatalf("program = %#v", updater.programs[0])
 	}
 }
@@ -812,65 +829,12 @@ func TestReadRemoteProgramEventsStopsCleanlyOnCanceledContextAndEOF(t *testing.T
 	}
 }
 
-func TestKnownServiceProgramUpdaterFiltersUnknownServicesAfterRefresh(t *testing.T) {
-	inner := &recordingProgramUpdater{}
-	lister := &recordingServiceLister{
-		services: []*service.Service{{NetworkId: 4, ServiceId: 101}},
-	}
-	updater := NewKnownServiceProgramUpdater(inner, lister)
-
-	err := updater.UpsertPrograms(context.Background(), []*program.Program{
-		{ID: 401010001, NetworkID: 4, ServiceID: 101, EventID: 1},
-		{ID: 401020001, NetworkID: 4, ServiceID: 102, EventID: 1},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got, want := len(inner.programs), 1; got != want {
-		t.Fatalf("upserted programs = %d, want %d", got, want)
-	}
-	if inner.programs[0].ServiceID != 101 {
-		t.Fatalf("program = %#v, want known service", inner.programs[0])
-	}
-	if got, want := lister.calls, 2; got != want {
-		t.Fatalf("service list calls = %d, want %d (initial load and unknown refresh)", got, want)
-	}
-}
-
-func TestKnownServiceProgramUpdaterRefreshesUnknownOnce(t *testing.T) {
-	inner := &recordingProgramUpdater{}
-	lister := &recordingServiceLister{
-		services: []*service.Service{{NetworkId: 4, ServiceId: 101}},
-		refreshServices: []*service.Service{
-			{NetworkId: 4, ServiceId: 101},
-			{NetworkId: 4, ServiceId: 102},
-		},
-	}
-	updater := NewKnownServiceProgramUpdater(inner, lister)
-
-	err := updater.UpsertPrograms(context.Background(), []*program.Program{
-		{ID: 401020001, NetworkID: 4, ServiceID: 102, EventID: 1},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got, want := len(inner.programs), 1; got != want {
-		t.Fatalf("upserted programs = %d, want %d", got, want)
-	}
-	if inner.programs[0].ServiceID != 102 {
-		t.Fatalf("program = %#v, want refreshed service", inner.programs[0])
-	}
-	if got, want := lister.calls, 2; got != want {
-		t.Fatalf("service list calls = %d, want %d (initial load and unknown refresh)", got, want)
-	}
-}
-
 type recordingProgramUpdater struct {
 	programs []*program.Program
 }
 
-func (u *recordingProgramUpdater) UpsertPrograms(_ context.Context, programs []*program.Program) error {
-	u.programs = append(u.programs, programs...)
+func (u *recordingProgramUpdater) UpsertEvents(_ context.Context, events []model.Event) error {
+	u.programs = append(u.programs, programsOf(events)...)
 	return nil
 }
 
@@ -883,27 +847,23 @@ type notifyingProgramUpdater struct {
 	calls chan []*program.Program
 }
 
-func (u *notifyingProgramUpdater) UpsertPrograms(_ context.Context, programs []*program.Program) error {
-	u.calls <- append([]*program.Program(nil), programs...)
+func (u *notifyingProgramUpdater) UpsertEvents(_ context.Context, events []model.Event) error {
+	u.calls <- programsOf(events)
 	return nil
 }
 
-func (u *batchRecordingProgramUpdater) UpsertPrograms(_ context.Context, programs []*program.Program) error {
-	batch := append([]*program.Program(nil), programs...)
+func (u *batchRecordingProgramUpdater) UpsertEvents(_ context.Context, events []model.Event) error {
+	batch := programsOf(events)
 	u.calls = append(u.calls, batch)
 	return u.err
 }
 
-type recordingServiceLister struct {
-	calls           int
-	services        []*service.Service
-	refreshServices []*service.Service
-}
-
-func (l *recordingServiceLister) GetServices(context.Context) ([]*service.Service, error) {
-	l.calls++
-	if l.calls > 1 && l.refreshServices != nil {
-		return l.refreshServices, nil
+// programsOf gives the recorded events their program IDs, which come from
+// the service key and event ID.
+func programsOf(events []model.Event) []*program.Program {
+	programs := make([]*program.Program, len(events))
+	for i := range events {
+		programs[i] = program.FromEvent(events[i])
 	}
-	return l.services, nil
+	return programs
 }

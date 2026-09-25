@@ -20,8 +20,8 @@ func GetServiceStream(ctx context.Context, h *Handler, params apigen.GetServiceS
 		return &apigen.GetServiceStreamNotFound{}, nil
 	}
 	decode := shouldDecode(params.Decode)
-	serviceID := service.ServiceId
-	networkID := service.NetworkId
+	serviceID := service.Key.ServiceID
+	networkID := service.Key.NetworkID
 	ctx, userID := tunerUserContext(ctx, params.XMirakurunPriority, decode, h.serviceManager.GetChannel(service.ChannelType, service.ChannelId), &networkID, &serviceID)
 
 	session, err := h.streamManager.GetOrCreate(ctx, service.ChannelType, service.ChannelId)
@@ -39,7 +39,7 @@ func GetServiceStream(ctx context.Context, h *Handler, params apigen.GetServiceS
 	go func() {
 		defer func() { _ = fi.Close() }()
 		slog.Info("stream request started", "type", service.ChannelType, "channel", service.ChannelId, "kind", "service", "networkId", networkID, "serviceId", serviceID, "decode", decode, "userId", userID)
-		if err := session.ServiceStream(ctx, service.ServiceId, decode, fi); err != nil && !errors.Is(err, io.ErrClosedPipe) {
+		if err := session.ServiceStream(ctx, service.Key.ServiceID, decode, fi); err != nil && !errors.Is(err, io.ErrClosedPipe) {
 			slog.Error("failed to stream service", "service", service.Id, "err", err)
 		}
 		slog.Debug("stream request finished", "type", service.ChannelType, "channel", service.ChannelId, "kind", "service", "networkId", networkID, "serviceId", serviceID, "decode", decode, "userId", userID)
@@ -62,8 +62,8 @@ func ServicesIDStreamHead(ctx context.Context, h *Handler, params apigen.Service
 		return &apigen.ServicesIDStreamHeadNotFound{}, nil
 	}
 	decode := shouldDecode(params.Decode)
-	serviceID := service.ServiceId
-	networkID := service.NetworkId
+	serviceID := service.Key.ServiceID
+	networkID := service.Key.NetworkID
 	_, userID := tunerUserContext(ctx, params.XMirakurunPriority, decode, h.serviceManager.GetChannel(service.ChannelType, service.ChannelId), &networkID, &serviceID)
 
 	return &apigen.ServicesIDStreamHeadOK{

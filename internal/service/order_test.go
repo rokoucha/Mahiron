@@ -1,6 +1,7 @@
 package service
 
 import (
+	"github.com/21S1298001/mahiron/internal/model"
 	"testing"
 
 	"github.com/21S1298001/mahiron/internal/config"
@@ -8,7 +9,7 @@ import (
 
 func TestOrderServicesUsesChannelTypeFirstSeenOrder(t *testing.T) {
 	yes := true
-	manager := NewServiceManager(nil, config.ChannelsConfig{
+	manager := NewManager(nil, config.ChannelsConfig{
 		{Type: "BS", Channel: "101"},
 		{Type: "GR", Channel: "27", IsDisabled: &yes},
 		{Type: "GR", Channel: "26"},
@@ -30,7 +31,7 @@ func TestOrderServicesUsesChannelTypeFirstSeenOrder(t *testing.T) {
 }
 
 func TestOrderServicesSortsRemoteKeysBeforeMissingThenServiceFallbacks(t *testing.T) {
-	manager := NewServiceManager(nil, config.ChannelsConfig{{Type: "GR", Channel: "27"}})
+	manager := NewManager(nil, config.ChannelsConfig{{Type: "GR", Channel: "27"}})
 	services := []*Service{
 		testOrderService("no-key-low-service", "GR", 0, 1, 1, 1),
 		testOrderService("key-three", "GR", 3, 99, 1, 1),
@@ -58,16 +59,20 @@ func TestOrderServicesSortsRemoteKeysBeforeMissingThenServiceFallbacks(t *testin
 	}
 }
 
+// testOrderService builds a service; a remoteKey of 0 means no key.
 func testOrderService(name, channelType string, remoteKey uint8, serviceID, networkID, transportStreamID uint16) *Service {
-	return &Service{
-		Id:                 name,
-		Name:               name,
-		ChannelType:        channelType,
-		RemoteControlKeyId: remoteKey,
-		ServiceId:          serviceID,
-		NetworkId:          networkID,
-		TransportStreamId:  transportStreamID,
+	svc := &Service{
+		Id: name,
+		Service: model.Service{
+			Key:  model.ServiceKey{ServiceID: serviceID, NetworkID: networkID, StreamID: transportStreamID},
+			Name: name,
+		},
+		ChannelType: channelType,
 	}
+	if remoteKey != 0 {
+		svc.RemoteControlKey = &remoteKey
+	}
+	return svc
 }
 
 func serviceNames(services []*Service) []string {

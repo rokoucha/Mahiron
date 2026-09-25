@@ -10,6 +10,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/db"
 	"github.com/21S1298001/mahiron/internal/job"
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/service"
 	"github.com/21S1298001/mahiron/internal/stream"
@@ -17,7 +18,7 @@ import (
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 )
 
-func newStatusHandler(t *testing.T) (*Handler, *job.JobManager, *service.ServiceManager, *program.ProgramManager, *db.DB) {
+func newStatusHandler(t *testing.T) (*Handler, *job.Manager, *service.Manager, *program.Manager, *db.DB) {
 	t.Helper()
 	database, err := db.OpenInMemory()
 	if err != nil {
@@ -29,8 +30,8 @@ func newStatusHandler(t *testing.T) (*Handler, *job.JobManager, *service.Service
 		t.Fatal(err)
 	}
 	store := service.NewSQLiteStore(database)
-	sm := service.NewServiceManager(store, config.ChannelsConfig{})
-	pm := program.NewProgramManager(program.NewSQLiteStore(database))
+	sm := service.NewManager(store, config.ChannelsConfig{})
+	pm := program.NewManager(program.NewSQLiteStore(database))
 	return NewHandler(HandlerConfig{ServiceManager: sm, ProgramManager: pm, JobManager: mgr, EpgStaleAfter: 5000}), mgr, sm, pm, database
 }
 
@@ -39,8 +40,8 @@ func TestGetStatusExposesEPGSnapshot(t *testing.T) {
 	handler, mgr, sm, pm, database := newStatusHandler(t)
 	store := service.NewSQLiteStore(database)
 	if err := store.ReplaceChannelServices(ctx, "GR", "27", []*service.Service{
-		{Id: "0000100101", ServiceId: 101, NetworkId: 1, ChannelType: "GR", ChannelId: "27"},
-		{Id: "0000100102", ServiceId: 102, NetworkId: 1, ChannelType: "GR", ChannelId: "27"},
+		{Id: "0000100101", Service: model.Service{Key: model.ServiceKey{ServiceID: 101, NetworkID: 1}}, ChannelType: "GR", ChannelId: "27"},
+		{Id: "0000100102", Service: model.Service{Key: model.ServiceKey{ServiceID: 102, NetworkID: 1}}, ChannelType: "GR", ChannelId: "27"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +52,7 @@ func TestGetStatusExposesEPGSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := pm.ReplaceServicePrograms(ctx, 1, 101, 0, []*program.Program{
-		{ID: program.ProgramID(1, 101, 9), NetworkID: 1, ServiceID: 101, EventID: 9, StartAt: 1000, Duration: 1000},
+		{ID: program.ProgramID(1, 101, 9), Event: model.Event{Key: model.ServiceKey{NetworkID: 1, ServiceID: 101}, EventID: 9, StartAt: testPtr[int64](1000), DurationMS: testPtr[int](1000), FreeCA: true}},
 	}); err != nil {
 		t.Fatal(err)
 	}

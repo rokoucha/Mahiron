@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/server/middleware"
@@ -85,8 +86,8 @@ func IptvPlaylistGet(ctx context.Context, h *Handler) (apigen.IptvPlaylistGetRes
 			channelName = channel.Name
 		}
 		chno := guideID
-		if svc.RemoteControlKeyId != 0 {
-			chno = strconv.Itoa(int(svc.RemoteControlKeyId))
+		if svc.RemoteControlKey != nil {
+			chno = strconv.Itoa(int(*svc.RemoteControlKey))
 		}
 		fmt.Fprintf(
 			&b,
@@ -235,8 +236,8 @@ func xmltvProgramOf(p *program.Program, serviceNames map[string]string) xmltvPro
 	}
 
 	item := xmltvProgram{
-		Start:    xmltvTime(p.StartAt),
-		Stop:     xmltvTime(p.StartAt + int64(p.Duration)),
+		Start:    xmltvTime(p.StartAtOrZero()),
+		Stop:     xmltvTime(p.StartAtOrZero() + int64(p.DurationOrZero())),
 		Channel:  channelID,
 		Title:    []xmltvTextNode{{Value: title}},
 		Category: xmltvCategories(p.Genres),
@@ -252,10 +253,10 @@ func xmltvTime(ms int64) string {
 }
 
 func iptvProgramGuideID(p *program.Program) string {
-	return strconv.FormatInt(int64(p.NetworkID)*100000+int64(p.ServiceID), 10)
+	return strconv.FormatInt(p.Key.MirakurunID(), 10)
 }
 
-func xmltvCategories(genres []program.Genre) []xmltvTextNode {
+func xmltvCategories(genres []model.Genre) []xmltvTextNode {
 	if len(genres) == 0 {
 		return nil
 	}

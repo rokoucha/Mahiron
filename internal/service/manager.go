@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/21S1298001/mahiron/internal/config"
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/ts"
 )
 
@@ -18,32 +19,32 @@ const (
 )
 
 type eventPublisher interface {
-	PublishServiceEvent(typ string, data map[string]any)
+	PublishServiceEvent(typ string, svc *Service, channel *config.ChannelConfig)
 }
 
-type ServiceManager struct {
+type Manager struct {
 	store    Store
 	channels config.ChannelsConfig
 	events   eventPublisher
 }
 
-func NewServiceManager(store Store, channels config.ChannelsConfig, events ...eventPublisher) *ServiceManager {
+func NewManager(store Store, channels config.ChannelsConfig, events ...eventPublisher) *Manager {
 	var publisher eventPublisher
 	if len(events) > 0 {
 		publisher = events[0]
 	}
-	return &ServiceManager{
+	return &Manager{
 		store:    store,
 		channels: channels,
 		events:   publisher,
 	}
 }
 
-func (s *ServiceManager) CountServices(ctx context.Context) (int, error) {
+func (s *Manager) CountServices(ctx context.Context) (int, error) {
 	return s.store.Count(ctx)
 }
 
-func (s *ServiceManager) GetServices(ctx context.Context) ([]*Service, error) {
+func (s *Manager) GetServices(ctx context.Context) ([]*Service, error) {
 	services, err := s.store.List(ctx)
 	if err != nil {
 		return nil, err
@@ -51,7 +52,7 @@ func (s *ServiceManager) GetServices(ctx context.Context) ([]*Service, error) {
 	return s.orderServices(services), nil
 }
 
-func (s *ServiceManager) SetEPGAttempt(ctx context.Context, networkID, serviceID uint16, attemptedAt int64, lastError string) error {
+func (s *Manager) SetEPGAttempt(ctx context.Context, networkID, serviceID uint16, attemptedAt int64, lastError string) error {
 	if err := s.store.SetEPGAttempt(ctx, networkID, serviceID, attemptedAt, lastError); err != nil {
 		return err
 	}
@@ -59,7 +60,7 @@ func (s *ServiceManager) SetEPGAttempt(ctx context.Context, networkID, serviceID
 	return nil
 }
 
-func (s *ServiceManager) SetEPGSuccess(ctx context.Context, networkID, serviceID uint16, succeededAt int64) error {
+func (s *Manager) SetEPGSuccess(ctx context.Context, networkID, serviceID uint16, succeededAt int64) error {
 	if err := s.store.SetEPGSuccess(ctx, networkID, serviceID, succeededAt); err != nil {
 		return err
 	}
@@ -67,11 +68,11 @@ func (s *ServiceManager) SetEPGSuccess(ctx context.Context, networkID, serviceID
 	return nil
 }
 
-func (s *ServiceManager) EPGSummary(ctx context.Context, staleAfter int64, now int64) (stale, failed int, lastSuccess *int64, err error) {
+func (s *Manager) EPGSummary(ctx context.Context, staleAfter int64, now int64) (stale, failed int, lastSuccess *int64, err error) {
 	return s.store.EPGSummary(ctx, staleAfter, now)
 }
 
-func (s *ServiceManager) ReconcileChannels(ctx context.Context) error {
+func (s *Manager) ReconcileChannels(ctx context.Context) error {
 	active := make([]ChannelKey, 0, len(s.channels))
 	for _, channel := range s.channels {
 		if !config.IsChannelDisabled(channel) {
@@ -91,7 +92,7 @@ func (s *ServiceManager) ReconcileChannels(ctx context.Context) error {
 	return nil
 }
 
-func (s *ServiceManager) GetServiceById(ctx context.Context, id string) (*Service, error) {
+func (s *Manager) GetServiceById(ctx context.Context, id string) (*Service, error) {
 	// Try exact string ID match first
 	svc, err := s.store.GetByID(ctx, id)
 	if err != nil {
@@ -109,11 +110,11 @@ func (s *ServiceManager) GetServiceById(ctx context.Context, id string) (*Servic
 	return s.store.GetByItemID(ctx, parsedId)
 }
 
-func (s *ServiceManager) GetServiceByItemID(ctx context.Context, itemID int64) (*Service, error) {
+func (s *Manager) GetServiceByItemID(ctx context.Context, itemID int64) (*Service, error) {
 	return s.store.GetByItemID(ctx, itemID)
 }
 
-func (s *ServiceManager) GetChannels() config.ChannelsConfig {
+func (s *Manager) GetChannels() config.ChannelsConfig {
 	channels := make(config.ChannelsConfig, 0, len(s.channels))
 	for _, channel := range s.channels {
 		if config.IsChannelDisabled(channel) {
@@ -124,7 +125,7 @@ func (s *ServiceManager) GetChannels() config.ChannelsConfig {
 	return channels
 }
 
-func (s *ServiceManager) GetChannel(channelType string, channelId string) *config.ChannelConfig {
+func (s *Manager) GetChannel(channelType string, channelId string) *config.ChannelConfig {
 	for i := range s.channels {
 		if s.channels[i].Type == channelType && s.channels[i].Channel == channelId && !config.IsChannelDisabled(s.channels[i]) {
 			channel := s.channels[i]
@@ -134,7 +135,7 @@ func (s *ServiceManager) GetChannel(channelType string, channelId string) *confi
 	return nil
 }
 
-func (s *ServiceManager) GetServicesByChannel(ctx context.Context, channelType string, channelId string) ([]*Service, error) {
+func (s *Manager) GetServicesByChannel(ctx context.Context, channelType string, channelId string) ([]*Service, error) {
 	services, err := s.store.GetByChannel(ctx, channelType, channelId)
 	if err != nil {
 		return nil, err
@@ -145,7 +146,7 @@ func (s *ServiceManager) GetServicesByChannel(ctx context.Context, channelType s
 // GetServicesGroupedByChannel fetches every service in a single query and
 // groups the results by channel, so a caller listing many channels does not
 // issue one GetServicesByChannel query per channel.
-func (s *ServiceManager) GetServicesGroupedByChannel(ctx context.Context) (map[ChannelKey][]*Service, error) {
+func (s *Manager) GetServicesGroupedByChannel(ctx context.Context) (map[ChannelKey][]*Service, error) {
 	services, err := s.store.List(ctx)
 	if err != nil {
 		return nil, err
@@ -161,7 +162,7 @@ func (s *ServiceManager) GetServicesGroupedByChannel(ctx context.Context) (map[C
 	return grouped, nil
 }
 
-func (s *ServiceManager) ReplaceChannelServices(ctx context.Context, channelType, channelId string, services []*Service) error {
+func (s *Manager) ReplaceChannelServices(ctx context.Context, channelType, channelId string, services []*Service) error {
 	beforeList, err := s.store.GetByChannel(ctx, channelType, channelId)
 	if err != nil {
 		return err
@@ -204,7 +205,7 @@ func (s *ServiceManager) ReplaceChannelServices(ctx context.Context, channelType
 	return nil
 }
 
-func (s *ServiceManager) GetServiceByChannelAndId(ctx context.Context, channelType string, channelId string, id string) (*Service, error) {
+func (s *Manager) GetServiceByChannelAndId(ctx context.Context, channelType string, channelId string, id string) (*Service, error) {
 	parsedId, parseErr := strconv.ParseInt(id, 10, 64)
 	if parseErr != nil {
 		parsedId = 0
@@ -212,19 +213,19 @@ func (s *ServiceManager) GetServiceByChannelAndId(ctx context.Context, channelTy
 	return s.store.GetByChannelAndID(ctx, channelType, channelId, id, parsedId)
 }
 
-func (s *ServiceManager) GetLogoByServiceItemID(ctx context.Context, itemID int64) ([]byte, error) {
+func (s *Manager) GetLogoByServiceItemID(ctx context.Context, itemID int64) ([]byte, error) {
 	return s.store.GetLogoByServiceItemID(ctx, itemID)
 }
 
-func (s *ServiceManager) KnownLogoTargets(ctx context.Context) ([]LogoTarget, error) {
+func (s *Manager) KnownLogoTargets(ctx context.Context) ([]LogoTarget, error) {
 	return s.store.KnownLogoTargets(ctx)
 }
 
-func (s *ServiceManager) MissingLogoTargets(ctx context.Context) ([]LogoTarget, error) {
+func (s *Manager) MissingLogoTargets(ctx context.Context) ([]LogoTarget, error) {
 	return s.store.MissingLogoTargets(ctx)
 }
 
-func (s *ServiceManager) LogoGatherTargets(ctx context.Context) ([]LogoTarget, error) {
+func (s *Manager) LogoGatherTargets(ctx context.Context) ([]LogoTarget, error) {
 	targets, err := s.store.MissingLogoTargets(ctx)
 	if err != nil {
 		return nil, err
@@ -247,7 +248,7 @@ func (s *ServiceManager) LogoGatherTargets(ctx context.Context) ([]LogoTarget, e
 	return s.appendCommonLogoTargets(ctx, targets)
 }
 
-func (s *ServiceManager) appendCommonLogoTargets(ctx context.Context, targets []LogoTarget) ([]LogoTarget, error) {
+func (s *Manager) appendCommonLogoTargets(ctx context.Context, targets []LogoTarget) ([]LogoTarget, error) {
 	services, err := s.store.List(ctx)
 	if err != nil {
 		return nil, err
@@ -266,10 +267,10 @@ func (s *ServiceManager) appendCommonLogoTargets(ctx context.Context, targets []
 	}
 	var refreshTarget *LogoTarget
 	for _, svc := range services {
-		if !ts.IsSatelliteOriginalNetworkID(svc.NetworkId) {
+		if !ts.IsSatelliteOriginalNetworkID(svc.Key.NetworkID) {
 			continue
 		}
-		if _, ok := commonServices[commonDataServiceKey{svc.NetworkId, svc.TransportStreamId, svc.ServiceId}]; ok {
+		if _, ok := commonServices[commonDataServiceKey{svc.Key.NetworkID, svc.Key.StreamID, svc.Key.ServiceID}]; ok {
 			continue
 		}
 		target := commonLogoTargetForService(svc, commonChannel)
@@ -303,9 +304,9 @@ func commonLogoTargetForService(svc *Service, commonChannel *ChannelKey) LogoTar
 		isProbe = false
 	}
 	return LogoTarget{
-		NetworkId:         svc.NetworkId,
-		ServiceId:         svc.ServiceId,
-		TransportStreamId: svc.TransportStreamId,
+		NetworkId:         svc.Key.NetworkID,
+		ServiceId:         svc.Key.ServiceID,
+		TransportStreamId: svc.Key.StreamID,
 		ChannelType:       channel.Type,
 		ChannelId:         channel.ID,
 		IsCommonData:      true,
@@ -317,7 +318,7 @@ type commonDataServiceKey struct {
 	networkID, transportStreamID, serviceID uint16
 }
 
-func (s *ServiceManager) commonDataServiceKeys(ctx context.Context) (map[commonDataServiceKey]struct{}, error) {
+func (s *Manager) commonDataServiceKeys(ctx context.Context) (map[commonDataServiceKey]struct{}, error) {
 	announcements, err := s.store.ListCommonDataAnnouncements(ctx)
 	if err != nil {
 		return nil, err
@@ -331,7 +332,7 @@ func (s *ServiceManager) commonDataServiceKeys(ctx context.Context) (map[commonD
 	return result, nil
 }
 
-func (s *ServiceManager) commonDataChannel(ctx context.Context) (*ChannelKey, error) {
+func (s *Manager) commonDataChannel(ctx context.Context) (*ChannelKey, error) {
 	announcements, err := s.store.ListCommonDataAnnouncements(ctx)
 	if err != nil {
 		return nil, err
@@ -364,7 +365,7 @@ func commonLogoTargetKey(target LogoTarget) string {
 	return fmt.Sprintf("%d/%d/%d/%t/%t/%s/%s", target.NetworkId, target.TransportStreamId, target.ServiceId, target.IsCommonData, target.IsSDTTProbe, target.ChannelType, target.ChannelId)
 }
 
-func (s *ServiceManager) UpsertLogo(ctx context.Context, networkID, transportStreamID, serviceID uint16, logoID int64, logoType int64, logoVersion int64, downloadDataID int64, data []byte, updatedAt int64) error {
+func (s *Manager) UpsertLogo(ctx context.Context, networkID, transportStreamID, serviceID uint16, logoID int64, logoType int64, logoVersion int64, downloadDataID int64, data []byte, updatedAt int64) error {
 	if err := s.store.UpsertLogo(ctx, networkID, transportStreamID, serviceID, logoID, logoType, logoVersion, downloadDataID, data, updatedAt); err != nil {
 		return err
 	}
@@ -372,7 +373,7 @@ func (s *ServiceManager) UpsertLogo(ctx context.Context, networkID, transportStr
 	return nil
 }
 
-func (s *ServiceManager) DeleteLogo(ctx context.Context, networkID, transportStreamID, serviceID uint16, logoID int64, logoType int64, logoVersion int64, downloadDataID int64) error {
+func (s *Manager) DeleteLogo(ctx context.Context, networkID, transportStreamID, serviceID uint16, logoID int64, logoType int64, logoVersion int64, downloadDataID int64) error {
 	if err := s.store.DeleteLogo(ctx, networkID, transportStreamID, serviceID, logoID, logoType, logoVersion, downloadDataID); err != nil {
 		return err
 	}
@@ -380,32 +381,27 @@ func (s *ServiceManager) DeleteLogo(ctx context.Context, networkID, transportStr
 	return nil
 }
 
-func (s *ServiceManager) UpsertLogoImage(ctx context.Context, image *ts.LogoImage) error {
+// UpsertLogoImage stores a broadcast logo for every service that references
+// it. Sessions already completed the PNG.
+func (s *Manager) UpsertLogoImage(ctx context.Context, image model.Logo) error {
 	targets, err := s.store.KnownLogoTargets(ctx)
 	if err != nil {
 		return err
 	}
-	var data []byte
 	now := time.Now().UnixMilli()
 	for _, target := range targets {
-		if target.NetworkId != image.OriginalNetworkID ||
+		if target.NetworkId != image.NetworkID ||
 			target.LogoId != int64(image.LogoID) ||
-			target.LogoVersion != int64(image.LogoVersion) ||
+			target.LogoVersion != int64(image.Version) ||
 			target.LogoDownloadDataId != int64(image.DownloadDataID) {
 			continue
 		}
-		if image.IsDeleted {
-			if err := s.DeleteLogo(ctx, target.NetworkId, target.TransportStreamId, target.ServiceId, target.LogoId, int64(image.LogoType), int64(image.LogoVersion), int64(image.DownloadDataID)); err != nil {
+		if image.Deleted {
+			if err := s.DeleteLogo(ctx, target.NetworkId, target.TransportStreamId, target.ServiceId, target.LogoId, int64(image.LogoType), int64(image.Version), int64(image.DownloadDataID)); err != nil {
 				return err
 			}
 		} else {
-			if data == nil {
-				data, err = ts.NormalizeARIBLogoPNG(image.Data)
-				if err != nil {
-					return err
-				}
-			}
-			if err := s.UpsertLogo(ctx, target.NetworkId, target.TransportStreamId, target.ServiceId, target.LogoId, int64(image.LogoType), int64(image.LogoVersion), int64(image.DownloadDataID), data, now); err != nil {
+			if err := s.UpsertLogo(ctx, target.NetworkId, target.TransportStreamId, target.ServiceId, target.LogoId, int64(image.LogoType), int64(image.Version), int64(image.DownloadDataID), image.Data, now); err != nil {
 				return err
 			}
 		}
@@ -413,7 +409,7 @@ func (s *ServiceManager) UpsertLogoImage(ctx context.Context, image *ts.LogoImag
 	return nil
 }
 
-func (s *ServiceManager) UpsertCommonLogoImage(ctx context.Context, image ts.CommonLogoImage) error {
+func (s *Manager) UpsertCommonLogoImage(ctx context.Context, image ts.CommonLogoImage) error {
 	if image.IsNetwork {
 		return nil
 	}
@@ -461,7 +457,7 @@ func (s *ServiceManager) UpsertCommonLogoImage(ctx context.Context, image ts.Com
 	return nil
 }
 
-func (s *ServiceManager) UpsertCommonDataAnnouncement(ctx context.Context, announcement ts.CommonDataAnnouncement, channelType, channelID string) error {
+func (s *Manager) UpsertCommonDataAnnouncement(ctx context.Context, announcement ts.CommonDataAnnouncement, channelType, channelID string) error {
 	return s.store.UpsertCommonDataAnnouncement(ctx, CommonDataAnnouncement{
 		OriginalNetworkID:   announcement.OriginalNetworkID,
 		TransportStreamID:   announcement.TransportStreamID,
@@ -485,7 +481,7 @@ func sameServiceCore(a, b *Service) bool {
 	return reflect.DeepEqual(aCore, bCore)
 }
 
-func (s *ServiceManager) SeedEventLog(ctx context.Context) error {
+func (s *Manager) SeedEventLog(ctx context.Context) error {
 	services, err := s.store.List(ctx)
 	if err != nil {
 		return err
@@ -496,7 +492,7 @@ func (s *ServiceManager) SeedEventLog(ctx context.Context) error {
 	return nil
 }
 
-func (s *ServiceManager) publishServiceByKey(ctx context.Context, typ string, networkID, serviceID uint16) {
+func (s *Manager) publishServiceByKey(ctx context.Context, typ string, networkID, serviceID uint16) {
 	svc, err := s.store.GetByNetworkServiceID(ctx, networkID, serviceID)
 	if err != nil {
 		return
@@ -504,14 +500,14 @@ func (s *ServiceManager) publishServiceByKey(ctx context.Context, typ string, ne
 	s.publishService(typ, svc)
 }
 
-func (s *ServiceManager) publishService(typ string, svc *Service) {
+func (s *Manager) publishService(typ string, svc *Service) {
 	if s.events == nil || svc == nil {
 		return
 	}
-	s.events.PublishServiceEvent(typ, svc.EventData(s.GetChannel(svc.ChannelType, svc.ChannelId)))
+	s.events.PublishServiceEvent(typ, svc, s.GetChannel(svc.ChannelType, svc.ChannelId))
 }
 
-func (s *ServiceManager) prunedServices(ctx context.Context, active []ChannelKey) ([]*Service, error) {
+func (s *Manager) prunedServices(ctx context.Context, active []ChannelKey) ([]*Service, error) {
 	allowed := make(map[ChannelKey]struct{}, len(active))
 	for _, key := range active {
 		allowed[key] = struct{}{}

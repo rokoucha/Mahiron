@@ -3080,16 +3080,17 @@ func (s *Server) handleGetServiceByChannelRequest(args [3]string, argsEscaped bo
 // Streams data-broadcast state changes. Modules whose status is "rejected" are announced for
 // diagnostics but must be excluded from a receiver's DII download list because no resource will become
 // available. URL fields in event payloads are absolute paths rooted at the API mount; clients deployed
-// through a subpath proxy should construct request URLs from the endpoint paths instead.
+// through a subpath proxy should construct request URLs from the endpoint paths instead. The data of
+// each event is a DataBroadcastEvent.
 //
-// GET /services/{id}/data-broadcast/events
+// GET /services/{id}/data-broadcast/bml/events
 func (s *Server) handleGetServiceDataBroadcastEventsRequest(args [1]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
 	statusWriter := &codeRecorder{ResponseWriter: w}
 	w = statusWriter
 	otelAttrs := []attribute.KeyValue{
 		otelogen.OperationID("getServiceDataBroadcastEvents"),
 		semconv.HTTPRequestMethodKey.String("GET"),
-		semconv.HTTPRouteKey.String("/services/{id}/data-broadcast/events"),
+		semconv.HTTPRouteKey.String("/services/{id}/data-broadcast/bml/events"),
 	}
 	// Add attributes from config.
 	otelAttrs = append(otelAttrs, s.cfg.Attributes...)
@@ -3221,14 +3222,14 @@ func (s *Server) handleGetServiceDataBroadcastEventsRequest(args [1]string, args
 
 // handleGetServiceDataBroadcastModuleRawRequest handles getServiceDataBroadcastModuleRaw operation.
 //
-// GET /services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}/raw
+// GET /services/{id}/data-broadcast/bml/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}/raw
 func (s *Server) handleGetServiceDataBroadcastModuleRawRequest(args [5]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
 	statusWriter := &codeRecorder{ResponseWriter: w}
 	w = statusWriter
 	otelAttrs := []attribute.KeyValue{
 		otelogen.OperationID("getServiceDataBroadcastModuleRaw"),
 		semconv.HTTPRequestMethodKey.String("GET"),
-		semconv.HTTPRouteKey.String("/services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}/raw"),
+		semconv.HTTPRouteKey.String("/services/{id}/data-broadcast/bml/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}/raw"),
 	}
 	// Add attributes from config.
 	otelAttrs = append(otelAttrs, s.cfg.Attributes...)
@@ -3372,14 +3373,14 @@ func (s *Server) handleGetServiceDataBroadcastModuleRawRequest(args [5]string, a
 
 // handleGetServiceDataBroadcastModuleResourceRequest handles getServiceDataBroadcastModuleResource operation.
 //
-// GET /services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}/resources/{resourceId}
+// GET /services/{id}/data-broadcast/bml/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}/resources/{resourceId}
 func (s *Server) handleGetServiceDataBroadcastModuleResourceRequest(args [6]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
 	statusWriter := &codeRecorder{ResponseWriter: w}
 	w = statusWriter
 	otelAttrs := []attribute.KeyValue{
 		otelogen.OperationID("getServiceDataBroadcastModuleResource"),
 		semconv.HTTPRequestMethodKey.String("GET"),
-		semconv.HTTPRouteKey.String("/services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}/resources/{resourceId}"),
+		semconv.HTTPRouteKey.String("/services/{id}/data-broadcast/bml/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}/resources/{resourceId}"),
 	}
 	// Add attributes from config.
 	otelAttrs = append(otelAttrs, s.cfg.Attributes...)
@@ -3531,14 +3532,14 @@ func (s *Server) handleGetServiceDataBroadcastModuleResourceRequest(args [6]stri
 // directly to one module-scoped resource, and is a string only for a named multipart resource. rawUrl
 // and resource url values are absolute paths rooted at the API mount.
 //
-// GET /services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}
+// GET /services/{id}/data-broadcast/bml/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}
 func (s *Server) handleGetServiceDataBroadcastModuleVersionRequest(args [5]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
 	statusWriter := &codeRecorder{ResponseWriter: w}
 	w = statusWriter
 	otelAttrs := []attribute.KeyValue{
 		otelogen.OperationID("getServiceDataBroadcastModuleVersion"),
 		semconv.HTTPRequestMethodKey.String("GET"),
-		semconv.HTTPRouteKey.String("/services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}"),
+		semconv.HTTPRouteKey.String("/services/{id}/data-broadcast/bml/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}"),
 	}
 	// Add attributes from config.
 	otelAttrs = append(otelAttrs, s.cfg.Attributes...)
@@ -3692,14 +3693,14 @@ func (s *Server) handleGetServiceDataBroadcastModuleVersionRequest(args [5]strin
 // samples rather than carousel state and a stale value would be misleading. Pass allowCache=0 to
 // require live state, returning 404 instead of a cache snapshot.
 //
-// GET /services/{id}/data-broadcast/state
+// GET /services/{id}/data-broadcast/bml/state
 func (s *Server) handleGetServiceDataBroadcastStateRequest(args [1]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
 	statusWriter := &codeRecorder{ResponseWriter: w}
 	w = statusWriter
 	otelAttrs := []attribute.KeyValue{
 		otelogen.OperationID("getServiceDataBroadcastState"),
 		semconv.HTTPRequestMethodKey.String("GET"),
-		semconv.HTTPRouteKey.String("/services/{id}/data-broadcast/state"),
+		semconv.HTTPRouteKey.String("/services/{id}/data-broadcast/bml/state"),
 	}
 	// Add attributes from config.
 	otelAttrs = append(otelAttrs, s.cfg.Attributes...)

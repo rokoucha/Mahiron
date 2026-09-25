@@ -12,13 +12,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/21S1298001/mahiron/internal/bml"
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/db"
-	"github.com/21S1298001/mahiron/internal/epg"
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/service"
 	"github.com/21S1298001/mahiron/internal/stream"
-	"github.com/21S1298001/mahiron/internal/stream/databroadcast"
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 	"github.com/go-faster/jx"
 )
@@ -31,36 +31,25 @@ func testProgramHandler(t *testing.T) *Handler {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = database.Close() })
-	pm := program.NewProgramManager(program.NewSQLiteStore(database))
-	updater := epg.NewUpdater(pm)
-	if err := updater.UpsertEITSection(ctx, &epg.EITSection{
-		OriginalNetworkID: 1,
-		ServiceID:         101,
-		Events: []epg.EITEvent{
-			{EventID: 10, StartTime: 2000, Duration: 30000, Scrambled: false,
-				Descriptors: []epg.EITDescriptor{
-					{Type: "ShortEvent", EventName: "second"},
-				},
-			},
-			{EventID: 9, StartTime: 1000, Duration: 30000, Scrambled: false,
-				Descriptors: []epg.EITDescriptor{
-					{Type: "ShortEvent", EventName: "first"},
-				},
-			},
-		},
+	pm := program.NewManager(program.NewSQLiteStore(database))
+	start10, start9, duration := int64(2000), int64(1000), 30000
+	key := model.ServiceKey{NetworkID: 1, ServiceID: 101}
+	if err := pm.UpsertEvents(ctx, []model.Event{
+		{Key: key, EventID: 10, StartAt: &start10, DurationMS: &duration, Name: "second"},
+		{Key: key, EventID: 9, StartAt: &start9, DurationMS: &duration, Name: "first"},
 	}); err != nil {
 		t.Fatal(err)
 	}
 
 	serviceStore := service.NewSQLiteStore(database)
 	if err := serviceStore.ReplaceChannelServices(ctx, "GR", "27", []*service.Service{
-		{Id: "0000100101", ServiceId: 101, NetworkId: 1, Name: "NHK Service", ChannelType: "GR", ChannelId: "27"},
+		{Id: "0000100101", Service: model.Service{Key: model.ServiceKey{ServiceID: 101, NetworkID: 1}, Name: "NHK Service"}, ChannelType: "GR", ChannelId: "27"},
 	}); err != nil {
 		t.Fatal(err)
 	}
 	return NewHandler(HandlerConfig{
 		ProgramManager: pm,
-		ServiceManager: service.NewServiceManager(serviceStore, config.ChannelsConfig{
+		ServiceManager: service.NewManager(serviceStore, config.ChannelsConfig{
 			{Name: "NHK", Type: "GR", Channel: "27"},
 		}),
 	})
@@ -190,15 +179,15 @@ func TestGetProgramStreamMissingProgramAndService(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = database.Close() })
-	pm := program.NewProgramManager(program.NewSQLiteStore(database))
+	pm := program.NewManager(program.NewSQLiteStore(database))
 	if err := pm.ReplaceServicePrograms(ctx, 1, 101, 0, []*program.Program{
-		{ID: program.ProgramID(1, 101, 9), NetworkID: 1, ServiceID: 101, EventID: 9, StartAt: 1000, Duration: 1000},
+		{ID: program.ProgramID(1, 101, 9), Event: model.Event{Key: model.ServiceKey{NetworkID: 1, ServiceID: 101}, EventID: 9, StartAt: testPtr[int64](1000), DurationMS: testPtr[int](1000), FreeCA: true}},
 	}); err != nil {
 		t.Fatal(err)
 	}
 	missingServiceHandler := NewHandler(HandlerConfig{
 		ProgramManager: pm,
-		ServiceManager: service.NewServiceManager(service.NewSQLiteStore(database), config.ChannelsConfig{}),
+		ServiceManager: service.NewManager(service.NewSQLiteStore(database), config.ChannelsConfig{}),
 		StreamManager:  fakeProgramStreamManager{session: fakeProgramStreamSession{}},
 	})
 	res, err = missingServiceHandler.GetProgramStream(context.Background(), apigen.GetProgramStreamParams{ID: program.ProgramID(1, 101, 9)})
@@ -230,16 +219,16 @@ func TestProgramsIDStreamHeadOnlyRequiresProgram(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = database.Close() })
-	pm := program.NewProgramManager(program.NewSQLiteStore(database))
+	pm := program.NewManager(program.NewSQLiteStore(database))
 	id := program.ProgramID(1, 101, 9)
 	if err := pm.ReplaceServicePrograms(ctx, 1, 101, 0, []*program.Program{
-		{ID: id, NetworkID: 1, ServiceID: 101, EventID: 9, StartAt: 1000, Duration: 1000},
+		{ID: id, Event: model.Event{Key: model.ServiceKey{NetworkID: 1, ServiceID: 101}, EventID: 9, StartAt: testPtr[int64](1000), DurationMS: testPtr[int](1000), FreeCA: true}},
 	}); err != nil {
 		t.Fatal(err)
 	}
 	handler := NewHandler(HandlerConfig{
 		ProgramManager: pm,
-		ServiceManager: service.NewServiceManager(service.NewSQLiteStore(database), config.ChannelsConfig{}),
+		ServiceManager: service.NewManager(service.NewSQLiteStore(database), config.ChannelsConfig{}),
 	})
 	res, err := handler.ProgramsIDStreamHead(context.Background(), apigen.ProgramsIDStreamHeadParams{ID: id})
 	if err != nil {
@@ -262,24 +251,18 @@ func TestApiProgramExposesExtendedRelatedAndSeries(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = database.Close() })
-	pm := program.NewProgramManager(program.NewSQLiteStore(database))
+	pm := program.NewManager(program.NewSQLiteStore(database))
 	id := program.ProgramID(1, 101, 7)
 	nid := uint16(1)
 	tsid := uint16(10)
 	if err := pm.ReplaceServicePrograms(ctx, 1, 101, 0, []*program.Program{
-		{
-			ID:        id,
-			NetworkID: 1,
-			ServiceID: 101,
-			EventID:   7,
-			StartAt:   1000,
-			Duration:  1000,
-			Extended:  map[string]string{"出演者": "Foo"},
-			RelatedItems: []program.RelatedItem{
-				{Type: program.RelatedItemTypeShared, NetworkID: &nid, TransportStreamID: &tsid, ServiceID: 101, EventID: 9},
-			},
-			Series: &program.Series{ID: 5, Pattern: 1, Episode: 1, LastEpisode: 12, Name: "series"},
-		},
+		{ID: id, Event: model.Event{
+			Key: model.ServiceKey{NetworkID: 1, ServiceID: 101}, EventID: 7,
+			StartAt: testPtr[int64](1000), DurationMS: testPtr[int](1000), FreeCA: true,
+			Extended: []model.ExtendedBlock{{Items: []model.ExtendedItem{{Name: "出演者", Text: "Foo"}}}},
+			Related:  []model.RelatedEvent{{GroupType: model.EventGroupShared, NetworkID: nid, StreamID: tsid, ServiceID: 101, EventID: 9}},
+			Series:   &model.Series{ID: 5, Pattern: testPtr(1), Episode: 1, LastEpisode: 12, Name: "series"},
+		}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -292,11 +275,11 @@ func TestApiProgramExposesExtendedRelatedAndSeries(t *testing.T) {
 	if !ok {
 		t.Fatalf("response type = %T, want *Program", res)
 	}
-	if !p.Extended.IsSet() {
+	if len(p.Extended) == 0 {
 		t.Fatal("Extended not set")
 	}
-	if p.Extended.Value["出演者"] != "Foo" {
-		t.Errorf("Extended[出演者] = %q, want Foo", p.Extended.Value["出演者"])
+	if !strings.Contains(string(p.Extended), `"出演者":"Foo"`) {
+		t.Errorf("Extended = %s, want 出演者 Foo", p.Extended)
 	}
 	if len(p.RelatedItems) != 1 {
 		t.Fatalf("RelatedItems = %d, want 1", len(p.RelatedItems))
@@ -318,7 +301,7 @@ func TestApiProgramExposesExtendedRelatedAndSeries(t *testing.T) {
 func TestApiProgramVideoTypeAndResolution(t *testing.T) {
 	tests := []struct {
 		name           string
-		video          *program.Video
+		video          *rawVideo
 		wantType       apigen.ProgramVideoType
 		wantTypeSet    bool
 		wantResolution apigen.ProgramVideoResolution
@@ -326,7 +309,7 @@ func TestApiProgramVideoTypeAndResolution(t *testing.T) {
 	}{
 		{
 			name:           "mpeg2 1080i",
-			video:          &program.Video{StreamContent: 0x1, ComponentType: 0xB3},
+			video:          &rawVideo{StreamContent: 0x1, ComponentType: 0xB3},
 			wantType:       apigen.ProgramVideoTypeMpeg2,
 			wantTypeSet:    true,
 			wantResolution: apigen.ProgramVideoResolution1080i,
@@ -334,7 +317,7 @@ func TestApiProgramVideoTypeAndResolution(t *testing.T) {
 		},
 		{
 			name:           "h264 720p",
-			video:          &program.Video{StreamContent: 0x5, ComponentType: 0xC3},
+			video:          &rawVideo{StreamContent: 0x5, ComponentType: 0xC3},
 			wantType:       apigen.ProgramVideoTypeH264,
 			wantTypeSet:    true,
 			wantResolution: apigen.ProgramVideoResolution720p,
@@ -342,15 +325,15 @@ func TestApiProgramVideoTypeAndResolution(t *testing.T) {
 		},
 		{
 			name:           "h265 4320p",
-			video:          &program.Video{StreamContent: 0x9, ComponentType: 0x83},
+			video:          &rawVideo{StreamContent: 0x9, ComponentType: 0x83},
 			wantType:       apigen.ProgramVideoTypeH265,
 			wantTypeSet:    true,
 			wantResolution: apigen.ProgramVideoResolution4320p,
 			wantResSet:     true,
 		},
 		{
-			name:        "unknown values keep raw fields only",
-			video:       &program.Video{StreamContent: 0xF, ComponentType: 0xF1},
+			name:        "unknown values become 0",
+			video:       &rawVideo{StreamContent: 0xF, ComponentType: 0xF1},
 			wantTypeSet: false,
 			wantResSet:  false,
 		},
@@ -358,16 +341,17 @@ func TestApiProgramVideoTypeAndResolution(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p := apiProgram(&program.Program{Video: tt.video})
+			p := contractAPIProgram(rawVideoProgram(tt.video))
+			want := wantRawVideo(tt.video)
 			video, ok := p.Video.Get()
 			if !ok {
 				t.Fatal("Video not set")
 			}
-			if got, ok := video.StreamContent.Get(); !ok || got != tt.video.StreamContent {
-				t.Fatalf("StreamContent = %d, %v; want %d, true", got, ok, tt.video.StreamContent)
+			if got, ok := video.StreamContent.Get(); !ok || got != want.StreamContent {
+				t.Fatalf("StreamContent = %d, %v; want %d, true", got, ok, want.StreamContent)
 			}
-			if got, ok := video.ComponentType.Get(); !ok || got != tt.video.ComponentType {
-				t.Fatalf("ComponentType = %d, %v; want %d, true", got, ok, tt.video.ComponentType)
+			if got, ok := video.ComponentType.Get(); !ok || got != want.ComponentType {
+				t.Fatalf("ComponentType = %d, %v; want %d, true", got, ok, want.ComponentType)
 			}
 			gotType, gotTypeSet := video.Type.Get()
 			if gotTypeSet != tt.wantTypeSet || gotType != tt.wantType {
@@ -415,7 +399,7 @@ func (s fakeProgramStreamSession) ServiceStream(context.Context, uint16, bool, i
 	return errors.New("unexpected ServiceStream call")
 }
 
-func (s fakeProgramStreamSession) ProgramStream(_ context.Context, _ *program.Program, _ bool, dst io.Writer) error {
+func (s fakeProgramStreamSession) ProgramStream(_ context.Context, _ model.Event, _ bool, dst io.Writer) error {
 	if s.err != nil {
 		return s.err
 	}
@@ -423,12 +407,12 @@ func (s fakeProgramStreamSession) ProgramStream(_ context.Context, _ *program.Pr
 	return err
 }
 
-func (s fakeProgramStreamSession) ObserveDataBroadcast(context.Context, uint16, bool, func(databroadcast.DataBroadcastEvent) error) error {
+func (s fakeProgramStreamSession) ObserveDataBroadcast(context.Context, uint16, bool, func(bml.Event) error) error {
 	return errors.New("unexpected ObserveDataBroadcast call")
 }
 
-func (s fakeProgramStreamSession) DataBroadcastModule(uint16, byte, uint16) (databroadcast.DataBroadcastModule, bool) {
-	return databroadcast.DataBroadcastModule{}, false
+func (s fakeProgramStreamSession) DataBroadcastModule(uint16, byte, uint16) (bml.Module, bool) {
+	return bml.Module{}, false
 }
 
 func TestApiProgramRelatedItemsEmptyWhenNone(t *testing.T) {
@@ -444,8 +428,8 @@ func TestApiProgramRelatedItemsEmptyWhenNone(t *testing.T) {
 	if len(p.RelatedItems) != 0 {
 		t.Errorf("RelatedItems = %d, want 0", len(p.RelatedItems))
 	}
-	if p.Extended.IsSet() {
-		t.Errorf("Extended = %#v, want unset", p.Extended)
+	if len(p.Extended) != 0 {
+		t.Errorf("Extended = %s, want unset", p.Extended)
 	}
 	if p.Series.IsSet() {
 		t.Errorf("Series = %#v, want unset", p.Series)
@@ -454,7 +438,7 @@ func TestApiProgramRelatedItemsEmptyWhenNone(t *testing.T) {
 
 func TestApiProgramGenres(t *testing.T) {
 	t.Run("omitted when empty", func(t *testing.T) {
-		p := apiProgram(&program.Program{})
+		p := contractAPIProgram(&program.Program{})
 		if p.Genres != nil {
 			t.Errorf("Genres = %#v, want nil", p.Genres)
 		}
@@ -468,7 +452,7 @@ func TestApiProgramGenres(t *testing.T) {
 	})
 
 	t.Run("kept when present", func(t *testing.T) {
-		p := apiProgram(&program.Program{Genres: []program.Genre{{Lv1: 0, Lv2: 1, Un1: 15, Un2: 15}}})
+		p := contractAPIProgram(&program.Program{Event: model.Event{Genres: []model.Genre{{Lv1: 0, Lv2: 1, Un1: 15, Un2: 15}}, FreeCA: true}})
 		if len(p.Genres) != 1 {
 			t.Fatalf("Genres length = %d, want 1", len(p.Genres))
 		}

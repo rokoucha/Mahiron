@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/21S1298001/mahiron/internal/bml"
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/event"
 	"github.com/21S1298001/mahiron/internal/job"
@@ -26,6 +27,12 @@ type Handler struct {
 	eventHub              EventHub
 	epgStaleAfter         int64
 	dataBroadcastDisabled bool
+	// bmlStore backs the BML API's retained-module and resource reads without
+	// going through the stream manager. bmlSnapshotStore rebuilds provisional
+	// snapshots when no live session exists. Both are nil when the
+	// data-broadcast cache is disabled.
+	bmlStore         bml.ModuleStore
+	bmlSnapshotStore bml.SnapshotStore
 }
 
 var _ apigen.Handler = (*Handler)(nil)
@@ -41,6 +48,8 @@ type HandlerConfig struct {
 	EventHub              EventHub
 	EpgStaleAfter         int64
 	DataBroadcastDisabled bool
+	BMLStore              bml.ModuleStore
+	BMLSnapshotStore      bml.SnapshotStore
 }
 
 type ServiceManager interface {
@@ -105,6 +114,8 @@ func NewHandler(config HandlerConfig) *Handler {
 		eventHub:              config.EventHub,
 		epgStaleAfter:         config.EpgStaleAfter,
 		dataBroadcastDisabled: config.DataBroadcastDisabled,
+		bmlStore:              config.BMLStore,
+		bmlSnapshotStore:      config.BMLSnapshotStore,
 	}
 }
 

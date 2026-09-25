@@ -11,6 +11,7 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/db"
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/server/middleware"
 	"github.com/21S1298001/mahiron/internal/service"
@@ -30,26 +31,26 @@ func testIPTVHandler(t *testing.T) *Handler {
 	serviceStore := service.NewSQLiteStore(database)
 	services := []*service.Service{
 		{
-			Id:                 "0000100101",
-			ServiceId:          101,
-			NetworkId:          1,
-			TransportStreamId:  10,
-			Name:               "NHK & News",
-			Type:               1,
-			RemoteControlKeyId: 3,
-			ChannelType:        "GR",
-			ChannelId:          "27",
+			Id: "0000100101",
+			Service: model.Service{
+				Key:              model.ServiceKey{ServiceID: 101, NetworkID: 1, StreamID: 10},
+				Name:             "NHK & News",
+				Type:             1,
+				RemoteControlKey: new(uint8(3)),
+			},
+			ChannelType: "GR",
+			ChannelId:   "27",
 		},
 		{
-			Id:                 "0000200102",
-			ServiceId:          102,
-			NetworkId:          2,
-			TransportStreamId:  20,
-			Name:               "BS Service",
-			Type:               1,
-			RemoteControlKeyId: 4,
-			ChannelType:        "BS",
-			ChannelId:          "101",
+			Id: "0000200102",
+			Service: model.Service{
+				Key:              model.ServiceKey{ServiceID: 102, NetworkID: 2, StreamID: 20},
+				Name:             "BS Service",
+				Type:             1,
+				RemoteControlKey: new(uint8(4)),
+			},
+			ChannelType: "BS",
+			ChannelId:   "101",
 		},
 	}
 	if err := serviceStore.ReplaceChannelServices(ctx, "GR", "27", []*service.Service{services[0]}); err != nil {
@@ -59,27 +60,16 @@ func testIPTVHandler(t *testing.T) *Handler {
 		t.Fatal(err)
 	}
 
-	programManager := program.NewProgramManager(program.NewSQLiteStore(database))
+	programManager := program.NewManager(program.NewSQLiteStore(database))
 	if err := programManager.UpsertPrograms(ctx, []*program.Program{
-		{
-			ID:          program.ProgramID(1, 101, 501),
-			EventID:     501,
-			ServiceID:   101,
-			NetworkID:   1,
-			StartAt:     time.Date(2026, 6, 21, 12, 30, 0, 0, time.Local).UnixMilli(),
-			Duration:    int((30 * time.Minute).Milliseconds()),
-			IsFree:      true,
-			Name:        `Morning "News" & Weather`,
-			Description: "Headlines <and> forecast",
-			Genres:      []program.Genre{{Lv1: 0, Lv2: 1}},
-		},
+		{ID: program.ProgramID(1, 101, 501), Event: model.Event{Key: model.ServiceKey{ServiceID: 101, NetworkID: 1}, EventID: 501, StartAt: testPtr[int64](time.Date(2026, 6, 21, 12, 30, 0, 0, time.Local).UnixMilli()), DurationMS: testPtr[int](int((30 * time.Minute).Milliseconds())), Name: `Morning "News" & Weather`, Description: "Headlines <and> forecast", Genres: []model.Genre{{Lv1: 0, Lv2: 1}}}},
 	}); err != nil {
 		t.Fatal(err)
 	}
 
 	return NewHandler(HandlerConfig{
 		ProgramManager: programManager,
-		ServiceManager: service.NewServiceManager(serviceStore, config.ChannelsConfig{
+		ServiceManager: service.NewManager(serviceStore, config.ChannelsConfig{
 			{Name: "Terrestrial", Type: "GR", Channel: "27", IsDisabled: &no},
 			{Name: "Satellite", Type: "BS", Channel: "101", IsDisabled: &no},
 		}),

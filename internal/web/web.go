@@ -6,6 +6,7 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/21S1298001/mahiron/internal/bml"
 	"github.com/21S1298001/mahiron/internal/event"
 	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/internal/version"
@@ -48,6 +49,8 @@ type WebConfig struct {
 	EventHub              *event.Hub
 	EpgStaleAfter         int64
 	DataBroadcastDisabled bool
+	BMLStore              bml.ModuleStore
+	BMLSnapshotStore      bml.SnapshotStore
 	MeterProvider         metric.MeterProvider
 	TracerProvider        trace.TracerProvider
 	// Pprof serves the net/http/pprof handlers under /debug/pprof.
@@ -66,6 +69,8 @@ func NewWeb(config WebConfig) (http.Handler, error) {
 		EventHub:              config.EventHub,
 		EpgStaleAfter:         config.EpgStaleAfter,
 		DataBroadcastDisabled: config.DataBroadcastDisabled,
+		BMLStore:              config.BMLStore,
+		BMLSnapshotStore:      config.BMLSnapshotStore,
 	})
 	api, err := apigen.NewServer(apiHandler, apiHandler,
 		apigen.WithMeterProvider(config.MeterProvider),
@@ -81,6 +86,10 @@ func NewWeb(config WebConfig) (http.Handler, error) {
 	// specific pattern over the "/api/" prefix the generated server is
 	// mounted on.
 	mux.HandleFunc("GET /api/programs", apiHandler.WriteProgramsJSON)
+	// GET /api/events embeds pre-encoded payloads as-is so the key order
+	// stays stable; the generated server would re-encode EventData maps with
+	// jx in iteration order. Same ServeMux precedence as above.
+	mux.HandleFunc("GET /api/events", apiHandler.WriteEventsJSON)
 	mux.Handle("/api/", http.StripPrefix("/api", api))
 	if config.Pprof {
 		registerPprof(mux)

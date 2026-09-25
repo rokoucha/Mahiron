@@ -1,20 +1,19 @@
 package api
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 
-	"github.com/21S1298001/mahiron/internal/stream/databroadcast"
-	"github.com/21S1298001/mahiron/ts"
+	"github.com/go-faster/jx"
+
+	"github.com/21S1298001/mahiron/internal/bml"
+	"github.com/21S1298001/mahiron/internal/bml/resource"
+	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 )
 
-func writeDataBroadcastSSE(w io.Writer, serviceItemID int64, event databroadcast.DataBroadcastEvent) error {
-	payload := apiDataBroadcastEvent(serviceItemID, event)
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return err
-	}
+func writeDataBroadcastSSE(w io.Writer, serviceItemID int64, event bml.Event) error {
+	e := &jx.Encoder{}
+	encodeDataBroadcastEvent(e, apiDataBroadcastEvent(serviceItemID, event))
 	if _, err := fmt.Fprintf(w, "event: %s\n", event.Type); err != nil {
 		return err
 	}
@@ -24,129 +23,177 @@ func writeDataBroadcastSSE(w io.Writer, serviceItemID int64, event databroadcast
 	if _, err := w.Write([]byte("data: ")); err != nil {
 		return err
 	}
-	if _, err := w.Write(data); err != nil {
+	if _, err := w.Write(e.Bytes()); err != nil {
 		return err
 	}
-	_, err = w.Write([]byte("\n\n"))
+	_, err := w.Write([]byte("\n\n"))
 	return err
 }
 
-func apiDataBroadcastEvent(serviceItemID int64, event databroadcast.DataBroadcastEvent) map[string]any {
-	result := map[string]any{"type": event.Type, "sequence": event.Sequence, "revision": event.Revision}
+// writeDataBroadcastJSON writes a data-broadcast response body with its
+// generated encoder.
+func writeDataBroadcastJSON(w io.Writer, value interface{ Encode(*jx.Encoder) }) error {
+	e := &jx.Encoder{}
+	value.Encode(e)
+	_, err := w.Write(append(e.Bytes(), '\n'))
+	return err
+}
+
+// apiDataBroadcastEvent converts a notification. Only the field named by the
+// event type is set, and it is null when the notification carries nothing.
+func apiDataBroadcastEvent(serviceItemID int64, event bml.Event) apigen.DataBroadcastEvent {
+	result := apigen.DataBroadcastEvent{Type: event.Type, Sequence: int64(event.Sequence), Revision: int64(event.Revision)}
 	switch event.Type {
 	case "snapshot":
-		result["snapshot"] = apiDataBroadcastSnapshot(serviceItemID, event.Snapshot, "live", nil)
+		result.Snapshot = apigen.NewOptDataBroadcastSnapshot(apiDataBroadcastSnapshot(serviceItemID, event.Snapshot, apigen.DataBroadcastSnapshotOriginLive, nil))
 	case "pmt":
-		result["pmt"] = apiDataBroadcastPMT(serviceItemID, event.PMT)
+		result.Pmt = apigen.OptNilDataBroadcastPMT{Set: true, Null: event.PMT == nil}
+		if event.PMT != nil {
+			result.Pmt.Value = apiDataBroadcastPMT(serviceItemID, event.PMT)
+		}
 	case "moduleListUpdated":
-		result["moduleList"] = apiDataBroadcastModuleList(serviceItemID, event.ModuleList)
+		result.ModuleList = apigen.OptNilDataBroadcastModuleList{Set: true, Null: event.ModuleList == nil}
+		if event.ModuleList != nil {
+			result.ModuleList.Value = apiDataBroadcastModuleList(serviceItemID, event.ModuleList)
+		}
 	case "moduleUpdated":
-		result["module"] = apiDataBroadcastModule(serviceItemID, event.Module)
+		result.Module = apigen.OptNilDataBroadcastModule{Set: true, Null: event.Module == nil}
+		if event.Module != nil {
+			result.Module.Value = apiDataBroadcastModule(serviceItemID, event.Module)
+		}
 	case "programInfo":
-		result["programInfo"] = apiDataBroadcastProgramInfo(event.ProgramInfo)
+		result.ProgramInfo = apigen.OptNilDataBroadcastProgramInfo{Set: true, Null: event.ProgramInfo == nil}
+		if event.ProgramInfo != nil {
+			result.ProgramInfo.Value = apiDataBroadcastProgramInfo(event.ProgramInfo)
+		}
 	case "currentTime":
-		result["currentTime"] = apiDataBroadcastCurrentTime(event.CurrentTime)
+		result.CurrentTime = apigen.OptNilDataBroadcastCurrentTime{Set: true, Null: event.CurrentTime == nil}
+		if event.CurrentTime != nil {
+			result.CurrentTime.Value = apiDataBroadcastCurrentTime(event.CurrentTime)
+		}
 	case "esEventUpdated":
-		result["esEvent"] = apiDataBroadcastESEvent(event.ESEvent)
+		result.EsEvent = apigen.OptNilDataBroadcastESEvent{Set: true, Null: event.ESEvent == nil}
+		if event.ESEvent != nil {
+			result.EsEvent.Value = apiDataBroadcastESEvent(event.ESEvent)
+		}
 	case "bit":
-		result["bit"] = apiDataBroadcastBIT(event.BIT)
+		result.Bit = apigen.OptNilDataBroadcastBIT{Set: true, Null: event.BIT == nil}
+		if event.BIT != nil {
+			result.Bit.Value = apiDataBroadcastBIT(event.BIT)
+		}
 	case "pcr":
-		result["pcr"] = apiDataBroadcastPCR(event.PCR)
+		result.Pcr = apigen.OptNilDataBroadcastPCR{Set: true, Null: event.PCR == nil}
+		if event.PCR != nil {
+			result.Pcr.Value = apiDataBroadcastPCR(event.PCR)
+		}
 	}
 	return result
 }
 
-// apiDataBroadcastSnapshot renders a snapshot. origin is "live" for state
-// read from an active channel session, or "cache" for a provisional snapshot
-// rebuilt from persisted PMT/DII sections without a tuner. storedAtUnixMilli
-// is nil for a live snapshot; a cache snapshot always carries it, and always
-// has null programInfo/currentTime/pcr (see RestoreSnapshot).
-func apiDataBroadcastSnapshot(serviceItemID int64, snapshot databroadcast.DataBroadcastSnapshot, origin string, storedAtUnixMilli *int64) map[string]any {
-	return map[string]any{
-		"serviceId":   snapshot.ServiceID,
-		"revision":    snapshot.Revision,
-		"origin":      origin,
-		"storedAt":    storedAtUnixMilli,
-		"pmt":         apiDataBroadcastPMT(serviceItemID, snapshot.PMT),
-		"components":  apiDataBroadcastComponents(serviceItemID, snapshot.Components),
-		"programInfo": apiDataBroadcastProgramInfo(snapshot.ProgramInfo),
-		"currentTime": apiDataBroadcastCurrentTime(snapshot.CurrentTime),
-		"bit":         apiDataBroadcastBIT(snapshot.BIT),
-		"pcr":         apiDataBroadcastPCR(snapshot.PCR),
+// apiDataBroadcastSnapshot renders a snapshot. origin is live for state read
+// from an active channel session, or cache for a provisional snapshot rebuilt
+// from persisted PMT/DII sections without a tuner. storedAtUnixMilli is nil
+// for a live snapshot; a cache snapshot always carries it, and always has
+// null programInfo/currentTime/pcr (see RestoreSnapshot).
+func apiDataBroadcastSnapshot(serviceItemID int64, snapshot bml.Snapshot, origin apigen.DataBroadcastSnapshotOrigin, storedAtUnixMilli *int64) apigen.DataBroadcastSnapshot {
+	result := apigen.DataBroadcastSnapshot{
+		ServiceId:  int(snapshot.ServiceID),
+		Revision:   int64(snapshot.Revision),
+		Origin:     origin,
+		StoredAt:   nilInt64(storedAtUnixMilli),
+		Pmt:        apigen.NilDataBroadcastPMT{Null: snapshot.PMT == nil},
+		Components: apiDataBroadcastComponents(serviceItemID, snapshot.Components),
+		ProgramInfo: apigen.NilDataBroadcastProgramInfo{
+			Null: snapshot.ProgramInfo == nil,
+		},
+		CurrentTime: apigen.NilDataBroadcastCurrentTime{Null: snapshot.CurrentTime == nil},
+		Bit:         apigen.NilDataBroadcastBIT{Null: snapshot.BIT == nil},
+		Pcr:         apigen.NilDataBroadcastPCR{Null: snapshot.PCR == nil},
 	}
+	if snapshot.PMT != nil {
+		result.Pmt.Value = apiDataBroadcastPMT(serviceItemID, snapshot.PMT)
+	}
+	if snapshot.ProgramInfo != nil {
+		result.ProgramInfo.Value = apiDataBroadcastProgramInfo(snapshot.ProgramInfo)
+	}
+	if snapshot.CurrentTime != nil {
+		result.CurrentTime.Value = apiDataBroadcastCurrentTime(snapshot.CurrentTime)
+	}
+	if snapshot.BIT != nil {
+		result.Bit.Value = apiDataBroadcastBIT(snapshot.BIT)
+	}
+	if snapshot.PCR != nil {
+		result.Pcr.Value = apiDataBroadcastPCR(snapshot.PCR)
+	}
+	return result
 }
 
-func apiDataBroadcastProgramInfo(info *databroadcast.DataBroadcastProgramInfo) any {
-	if info == nil {
-		return nil
+func apiDataBroadcastProgramInfo(info *bml.ProgramInfo) apigen.DataBroadcastProgramInfo {
+	var eventIDs []int
+	if info.EventIDs != nil {
+		eventIDs = make([]int, len(info.EventIDs))
+		for i, id := range info.EventIDs {
+			eventIDs[i] = int(id)
+		}
 	}
-	return map[string]any{"serviceId": info.ServiceID, "eventIds": info.EventIDs, "rawSectionHex": info.RawSectionHex}
+	return apigen.DataBroadcastProgramInfo{ServiceId: int(info.ServiceID), EventIds: eventIDs, RawSectionHex: info.RawSectionHex}
 }
 
-func apiDataBroadcastCurrentTime(current *databroadcast.DataBroadcastCurrentTime) any {
-	if current == nil {
-		return nil
-	}
-	return map[string]any{"jstTimeUnixMilli": current.JSTTimeUnixMilli}
+func apiDataBroadcastCurrentTime(current *bml.CurrentTime) apigen.DataBroadcastCurrentTime {
+	return apigen.DataBroadcastCurrentTime{JstTimeUnixMilli: current.JSTTimeUnixMilli}
 }
 
-func apiDataBroadcastPCR(pcr *databroadcast.DataBroadcastPCR) any {
-	if pcr == nil {
-		return nil
-	}
-	return map[string]any{"pcrBase": pcr.PCRBase, "pcrExtension": pcr.PCRExtension}
+func apiDataBroadcastPCR(pcr *bml.PCR) apigen.DataBroadcastPCR {
+	return apigen.DataBroadcastPCR{PcrBase: int64(pcr.PCRBase), PcrExtension: int(pcr.PCRExtension)}
 }
 
-func apiDataBroadcastESEvent(event *databroadcast.DataBroadcastESEvent) any {
-	if event == nil {
-		return nil
-	}
-	events := make([]map[string]any, 0, len(event.Events))
+func apiDataBroadcastESEvent(event *bml.ESEvent) apigen.DataBroadcastESEvent {
+	events := make([]apigen.DataBroadcastGeneralEvent, 0, len(event.Events))
 	for _, item := range event.Events {
-		value := map[string]any{"type": item.Type}
-		if item.NPTReference != nil {
-			value["postDiscontinuityIndicator"] = item.NPTReference.PostDiscontinuityIndicator
-			value["dsmContentId"] = item.NPTReference.DSMContentID
-			value["STCReference"] = item.NPTReference.STCReference
-			value["NPTReference"] = item.NPTReference.NPTReference
-			value["scaleNumerator"] = item.NPTReference.ScaleNumerator
-			value["scaleDenominator"] = item.NPTReference.ScaleDenominator
+		value := apigen.DataBroadcastGeneralEvent{Type: item.Type}
+		if npt := item.NPTReference; npt != nil {
+			value.PostDiscontinuityIndicator = apigen.NewOptBool(npt.PostDiscontinuityIndicator)
+			value.DsmContentId = apigen.NewOptInt(int(npt.DSMContentID))
+			value.STCReference = apigen.NewOptInt64(int64(npt.STCReference))
+			value.NPTReference = apigen.NewOptInt64(int64(npt.NPTReference))
+			value.ScaleNumerator = apigen.NewOptInt(int(npt.ScaleNumerator))
+			value.ScaleDenominator = apigen.NewOptInt(int(npt.ScaleDenominator))
 		} else {
-			value["eventMessageGroupId"] = item.EventMessageGroupID
-			value["timeMode"] = item.TimeMode
-			value["eventMessageType"] = item.EventMessageType
-			value["eventMessageId"] = item.EventMessageID
-			value["privateDataByte"] = bytesToNumbers(item.PrivateData)
+			value.EventMessageGroupId = apigen.NewOptInt(int(item.EventMessageGroupID))
+			value.TimeMode = apigen.NewOptInt(int(item.TimeMode))
+			value.EventMessageType = apigen.NewOptInt(int(item.EventMessageType))
+			value.EventMessageId = apigen.NewOptInt(int(item.EventMessageID))
+			value.PrivateDataByte = bytesToNumbers(item.PrivateData)
 			if item.EventMessageNPT != nil {
-				value["eventMessageNPT"] = *item.EventMessageNPT
+				value.EventMessageNPT = apigen.NewOptInt64(int64(*item.EventMessageNPT))
 			}
 		}
 		events = append(events, value)
 	}
-	return map[string]any{"componentId": event.ComponentTag, "dataEventId": event.DataEventID, "events": events}
+	return apigen.DataBroadcastESEvent{ComponentId: int(event.ComponentTag), DataEventId: int(event.DataEventID), Events: events}
 }
 
-func apiDataBroadcastBIT(bit *databroadcast.DataBroadcastBIT) any {
-	if bit == nil {
-		return nil
-	}
-	broadcasters := make([]map[string]any, 0, len(bit.Broadcasters))
+func apiDataBroadcastBIT(bit *bml.BIT) apigen.DataBroadcastBIT {
+	broadcasters := make([]apigen.DataBroadcastBroadcaster, 0, len(bit.Broadcasters))
 	for _, broadcaster := range bit.Broadcasters {
-		services := make([]map[string]any, 0, len(broadcaster.Services))
+		services := make([]apigen.DataBroadcastBITService, 0, len(broadcaster.Services))
 		for _, service := range broadcaster.Services {
-			services = append(services, map[string]any{"serviceId": service.ServiceID, "serviceType": service.ServiceType})
+			services = append(services, apigen.DataBroadcastBITService{ServiceId: int(service.ServiceID), ServiceType: int(service.ServiceType)})
 		}
-		affiliated := make([]map[string]any, 0, len(broadcaster.AffiliationBroadcasters))
+		affiliated := make([]apigen.DataBroadcastAffiliatedBroadcaster, 0, len(broadcaster.AffiliationBroadcasters))
 		for _, item := range broadcaster.AffiliationBroadcasters {
-			affiliated = append(affiliated, map[string]any{"originalNetworkId": item.OriginalNetworkID, "broadcasterId": item.BroadcasterID})
+			affiliated = append(affiliated, apigen.DataBroadcastAffiliatedBroadcaster{OriginalNetworkId: int(item.OriginalNetworkID), BroadcasterId: int(item.BroadcasterID)})
 		}
-		broadcasters = append(broadcasters, map[string]any{
-			"broadcasterId": broadcaster.BroadcasterID, "broadcasterName": broadcaster.BroadcasterName,
-			"services": services, "affiliations": bytesToNumbers(broadcaster.Affiliations),
-			"affiliationBroadcasters": affiliated, "terrestrialBroadcasterId": broadcaster.TerrestrialBroadcasterID,
+		broadcasters = append(broadcasters, apigen.DataBroadcastBroadcaster{
+			BroadcasterId:            int(broadcaster.BroadcasterID),
+			BroadcasterName:          nilString(broadcaster.BroadcasterName),
+			Services:                 services,
+			Affiliations:             bytesToNumbers(broadcaster.Affiliations),
+			AffiliationBroadcasters:  affiliated,
+			TerrestrialBroadcasterId: nilInt(broadcaster.TerrestrialBroadcasterID),
 		})
 	}
-	return map[string]any{"originalNetworkId": bit.OriginalNetworkID, "version": bit.Version, "broadcasters": broadcasters, "rawSectionHex": bit.RawSectionHex}
+	return apigen.DataBroadcastBIT{OriginalNetworkId: int(bit.OriginalNetworkID), Version: int(bit.Version), Broadcasters: broadcasters, RawSectionHex: bit.RawSectionHex}
 }
 
 func bytesToNumbers(values []byte) []int {
@@ -157,132 +204,186 @@ func bytesToNumbers(values []byte) []int {
 	return result
 }
 
-func apiDataBroadcastPMT(serviceItemID int64, pmt *databroadcast.DataBroadcastPMT) any {
-	if pmt == nil {
-		return nil
-	}
-	return map[string]any{
-		"serviceId":     pmt.ServiceID,
-		"version":       pmt.Version,
-		"pcrPid":        pmt.PCRPID,
-		"components":    apiDataBroadcastComponents(serviceItemID, pmt.Components),
-		"rawSectionHex": pmt.RawSectionHex,
+func apiDataBroadcastPMT(serviceItemID int64, pmt *bml.PMT) apigen.DataBroadcastPMT {
+	return apigen.DataBroadcastPMT{
+		ServiceId:     int(pmt.ServiceID),
+		Version:       int(pmt.Version),
+		PcrPid:        int(pmt.PCRPID),
+		Components:    apiDataBroadcastComponents(serviceItemID, pmt.Components),
+		RawSectionHex: pmt.RawSectionHex,
 	}
 }
 
-func apiDataBroadcastComponents(serviceItemID int64, components []databroadcast.DataBroadcastComponent) []map[string]any {
-	result := make([]map[string]any, 0, len(components))
+func apiDataBroadcastComponents(serviceItemID int64, components []bml.Component) []apigen.DataBroadcastComponent {
+	result := make([]apigen.DataBroadcastComponent, 0, len(components))
 	for _, component := range components {
-		modules := make([]map[string]any, 0, len(component.Modules))
-		for i := range component.Modules {
-			modules = append(modules, apiDataBroadcastModule(serviceItemID, &component.Modules[i]))
-		}
-		result = append(result, map[string]any{
-			"componentTag":    component.ComponentTag,
-			"pid":             component.PID,
-			"streamType":      component.StreamType,
-			"dataComponentId": component.DataComponentID,
-			"bxmlInfo":        apiAdditionalAribBXMLInfo(component.BXMLInfo),
-			"dataEventId":     component.DataEventID,
-			"returnToEntry":   component.ReturnToEntry,
-			"carousel": map[string]any{
-				"status": component.CarouselStatus, "downloadId": component.CarouselDownloadID,
-				"blockSize": component.CarouselBlockSize,
+		item := apigen.DataBroadcastComponent{
+			ComponentTag:    int(component.ComponentTag),
+			Pid:             int(component.PID),
+			StreamType:      int(component.StreamType),
+			DataComponentId: nilInt(component.DataComponentID),
+			BxmlInfo:        apigen.NilDataBroadcastBXMLInfo{Null: component.BXMLInfo == nil},
+			DataEventId:     int(component.DataEventID),
+			ReturnToEntry:   apigen.NilDataBroadcastReturnToEntry{Null: component.ReturnToEntry == nil},
+			Carousel: apigen.DataBroadcastCarousel{
+				Status:     component.CarouselStatus,
+				DownloadId: nilInt64(component.CarouselDownloadID),
+				BlockSize:  nilInt(component.CarouselBlockSize),
 			},
-			"modules": modules,
+			Modules: apiDataBroadcastModules(serviceItemID, component.Modules),
+		}
+		if component.BXMLInfo != nil {
+			item.BxmlInfo.Value = apiDataBroadcastBXMLInfo(component.BXMLInfo)
+		}
+		if component.ReturnToEntry != nil {
+			item.ReturnToEntry.Value = apigen.DataBroadcastReturnToEntry(*component.ReturnToEntry)
+		}
+		result = append(result, item)
+	}
+	return result
+}
+
+func apiDataBroadcastBXMLInfo(info *bml.BXMLInfo) apigen.DataBroadcastBXMLInfo {
+	result := apigen.DataBroadcastBXMLInfo{TransmissionFormat: int(info.TransmissionFormat), EntryPointFlag: info.EntryPointFlag}
+	if entry := info.EntryPointInfo; entry != nil {
+		result.EntryPointInfo = apigen.NewOptDataBroadcastBXMLEntryPoint(apigen.DataBroadcastBXMLEntryPoint{
+			AutoStartFlag:      entry.AutoStartFlag,
+			DocumentResolution: int(entry.DocumentResolution),
+			UseXML:             entry.UseXML,
+			DefaultVersionFlag: entry.DefaultVersionFlag,
+			IndependentFlag:    entry.IndependentFlag,
+			StyleForTVFlag:     entry.StyleForTVFlag,
+			BmlMajorVersion:    int(entry.BMLMajorVersion),
+			BmlMinorVersion:    int(entry.BMLMinorVersion),
+			BxmlMajorVersion:   nilInt(entry.BXMLMajorVersion),
+			BxmlMinorVersion:   nilInt(entry.BXMLMinorVersion),
+		})
+	}
+	if carousel := info.AdditionalAribCarouselInfo; carousel != nil {
+		result.AdditionalAribCarouselInfo = apigen.NewOptDataBroadcastBXMLCarousel(apigen.DataBroadcastBXMLCarousel{
+			DataEventId:           int(carousel.DataEventID),
+			EventSectionFlag:      carousel.EventSectionFlag,
+			OndemandRetrievalFlag: carousel.OnDemandRetrievalFlag,
+			FileStorableFlag:      carousel.FileStorableFlag,
+			StartPriority:         int(carousel.StartPriority),
 		})
 	}
 	return result
 }
 
-func apiAdditionalAribBXMLInfo(info *ts.AdditionalAribBXMLInfo) any {
-	if info == nil {
-		return nil
+func apiDataBroadcastModuleList(serviceItemID int64, list *bml.ModuleList) apigen.DataBroadcastModuleList {
+	result := apigen.DataBroadcastModuleList{
+		ComponentTag:  int(list.ComponentTag),
+		DownloadId:    int64(list.DownloadID),
+		BlockSize:     int(list.BlockSize),
+		DataEventId:   int(list.DataEventID),
+		ReturnToEntry: apigen.NilBool{Null: list.ReturnToEntry == nil},
+		Modules:       apiDataBroadcastModules(serviceItemID, list.Modules),
 	}
-	result := map[string]any{"transmissionFormat": info.TransmissionFormat, "entryPointFlag": info.EntryPointFlag}
-	if entry := info.EntryPointInfo; entry != nil {
-		result["entryPointInfo"] = map[string]any{
-			"autoStartFlag": entry.AutoStartFlag, "documentResolution": entry.DocumentResolution,
-			"useXML": entry.UseXML, "defaultVersionFlag": entry.DefaultVersionFlag,
-			"independentFlag": entry.IndependentFlag, "styleForTVFlag": entry.StyleForTVFlag,
-			"bmlMajorVersion": entry.BMLMajorVersion, "bmlMinorVersion": entry.BMLMinorVersion,
-			"bxmlMajorVersion": entry.BXMLMajorVersion, "bxmlMinorVersion": entry.BXMLMinorVersion,
-		}
-	}
-	if carousel := info.AdditionalAribCarouselInfo; carousel != nil {
-		result["additionalAribCarouselInfo"] = map[string]any{
-			"dataEventId": carousel.DataEventID, "eventSectionFlag": carousel.EventSectionFlag,
-			"ondemandRetrievalFlag": carousel.OnDemandRetrievalFlag, "fileStorableFlag": carousel.FileStorableFlag,
-			"startPriority": carousel.StartPriority,
-		}
+	if list.ReturnToEntry != nil {
+		result.ReturnToEntry.Value = *list.ReturnToEntry
 	}
 	return result
 }
 
-func apiDataBroadcastModuleList(serviceItemID int64, list *databroadcast.DataBroadcastModuleList) any {
-	if list == nil {
-		return nil
+func apiDataBroadcastModules(serviceItemID int64, modules []bml.Module) []apigen.DataBroadcastModule {
+	result := make([]apigen.DataBroadcastModule, 0, len(modules))
+	for i := range modules {
+		result = append(result, apiDataBroadcastModule(serviceItemID, &modules[i]))
 	}
-	modules := make([]map[string]any, 0, len(list.Modules))
-	for i := range list.Modules {
-		modules = append(modules, apiDataBroadcastModule(serviceItemID, &list.Modules[i]))
-	}
-	return map[string]any{
-		"componentTag":  list.ComponentTag,
-		"downloadId":    list.DownloadID,
-		"blockSize":     list.BlockSize,
-		"dataEventId":   list.DataEventID,
-		"returnToEntry": list.ReturnToEntry,
-		"modules":       modules,
-	}
+	return result
 }
 
-func apiDataBroadcastModule(serviceItemID int64, module *databroadcast.DataBroadcastModule) map[string]any {
-	if module == nil {
-		return nil
-	}
-	return map[string]any{
-		"componentTag":    module.ComponentTag,
-		"moduleId":        module.ModuleID,
-		"downloadId":      module.DownloadID,
-		"version":         module.Version,
-		"size":            module.Size,
-		"info":            module.Info,
-		"metadata":        apiDataBroadcastModuleMetadata(module.Metadata),
-		"complete":        module.Complete,
-		"status":          module.Status,
-		"rejectionReason": module.RejectionReason,
-		"receivedBlocks":  module.ReceivedBlocks,
-		"totalBlocks":     module.TotalBlocks,
-		"etag":            module.ETag,
-		"url":             fmt.Sprintf("/api/services/%d/data-broadcast/components/%d/carousels/%d/modules/%d/versions/%d", serviceItemID, module.ComponentTag, module.DownloadID, module.ModuleID, module.Version),
-	}
+// dataBroadcastModuleURL is the path of a module generation. It is rooted at
+// the API mount, as the API description states.
+func dataBroadcastModuleURL(serviceItemID int64, module *bml.Module) string {
+	return fmt.Sprintf("/api/services/%d/data-broadcast/bml/components/%d/carousels/%d/modules/%d/versions/%d", serviceItemID, module.ComponentTag, module.DownloadID, module.ModuleID, module.Version)
 }
 
-func apiDataBroadcastModuleManifest(serviceItemID int64, module databroadcast.DataBroadcastModule, resources []databroadcast.ModuleResource) map[string]any {
-	base := fmt.Sprintf("/api/services/%d/data-broadcast/components/%d/carousels/%d/modules/%d/versions/%d", serviceItemID, module.ComponentTag, module.DownloadID, module.ModuleID, module.Version)
-	items := make([]map[string]any, 0, len(resources))
+func apiDataBroadcastModule(serviceItemID int64, module *bml.Module) apigen.DataBroadcastModule {
+	result := apigen.DataBroadcastModule{
+		ComponentTag:    int(module.ComponentTag),
+		ModuleId:        int(module.ModuleID),
+		DownloadId:      int64(module.DownloadID),
+		Version:         int(module.Version),
+		Size:            int64(module.Size),
+		Info:            module.Info,
+		Metadata:        apigen.NilDataBroadcastModuleMetadata{Null: module.Metadata == nil},
+		Complete:        module.Complete,
+		Status:          module.Status,
+		RejectionReason: nilString(module.RejectionReason),
+		ReceivedBlocks:  module.ReceivedBlocks,
+		TotalBlocks:     module.TotalBlocks,
+		Etag:            module.ETag,
+		URL:             dataBroadcastModuleURL(serviceItemID, module),
+	}
+	if module.Metadata != nil {
+		result.Metadata.Value = apiDataBroadcastModuleMetadata(module.Metadata)
+	}
+	return result
+}
+
+func apiDataBroadcastModuleManifest(serviceItemID int64, module bml.Module, resources []resource.ModuleResource) apigen.DataBroadcastModuleManifest {
+	base := dataBroadcastModuleURL(serviceItemID, &module)
+	items := make([]apigen.DataBroadcastModuleResource, 0, len(resources))
 	for _, resource := range resources {
-		items = append(items, map[string]any{"id": resource.ID, "contentLocation": resource.ContentLocation, "contentType": resource.ContentType, "url": base + "/resources/" + resource.ID})
+		items = append(items, apigen.DataBroadcastModuleResource{
+			ID:              resource.ID,
+			ContentLocation: nilString(resource.ContentLocation),
+			ContentType:     resource.ContentType,
+			URL:             base + "/resources/" + resource.ID,
+		})
 	}
-	return map[string]any{"componentTag": module.ComponentTag, "downloadId": module.DownloadID, "moduleId": module.ModuleID, "version": module.Version, "size": module.Size, "etag": module.ETag, "rawUrl": base + "/raw", "resources": items}
+	return apigen.DataBroadcastModuleManifest{
+		ComponentTag: int(module.ComponentTag),
+		DownloadId:   int64(module.DownloadID),
+		ModuleId:     int(module.ModuleID),
+		Version:      int(module.Version),
+		Size:         int64(module.Size),
+		Etag:         module.ETag,
+		RawUrl:       base + "/raw",
+		Resources:    items,
+	}
 }
 
-func apiDataBroadcastModuleMetadata(metadata *ts.DSMCCModuleMetadata) any {
-	if metadata == nil {
-		return nil
+func apiDataBroadcastModuleMetadata(metadata *bml.ModuleMetadata) apigen.DataBroadcastModuleMetadata {
+	return apigen.DataBroadcastModuleMetadata{
+		Type:                     metadata.Type,
+		Name:                     metadata.Name,
+		Crc32:                    nilInt64(metadata.CRC32),
+		EstimatedDownloadSeconds: nilInt64(metadata.EstimatedDownloadSeconds),
+		CachingPriority:          nilInt(metadata.CachingPriority),
+		ExpireMode:               nilInt(metadata.ExpireMode),
+		ExpireDataByte:           bytesToNumbers(metadata.ExpireData),
+		ActivationMode:           nilInt(metadata.ActivationMode),
+		ActivationDataByte:       bytesToNumbers(metadata.ActivationData),
+		CompressionType:          nilInt(metadata.CompressionType),
+		OriginalSize:             nilInt64(metadata.OriginalSize),
 	}
-	return map[string]any{
-		"type":                     metadata.Type,
-		"name":                     metadata.Name,
-		"crc32":                    metadata.CRC32,
-		"estimatedDownloadSeconds": metadata.EstimatedDownloadSeconds,
-		"cachingPriority":          metadata.CachingPriority,
-		"expireMode":               metadata.ExpireMode,
-		"expireDataByte":           bytesToNumbers(metadata.ExpireData),
-		"activationMode":           metadata.ActivationMode,
-		"activationDataByte":       bytesToNumbers(metadata.ActivationData),
-		"compressionType":          metadata.CompressionType,
-		"originalSize":             metadata.OriginalSize,
+}
+
+type integer interface {
+	~uint8 | ~uint16 | ~uint32 | ~int64
+}
+
+// nilInt converts an optional broadcast value to a nullable API integer.
+func nilInt[T integer](value *T) apigen.NilInt {
+	if value == nil {
+		return apigen.NilInt{Null: true}
 	}
+	return apigen.NewNilInt(int(*value))
+}
+
+func nilInt64[T integer](value *T) apigen.NilInt64 {
+	if value == nil {
+		return apigen.NilInt64{Null: true}
+	}
+	return apigen.NewNilInt64(int64(*value))
+}
+
+func nilString(value *string) apigen.NilString {
+	if value == nil {
+		return apigen.NilString{Null: true}
+	}
+	return apigen.NewNilString(*value)
 }

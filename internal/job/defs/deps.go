@@ -1,17 +1,17 @@
 // Package defs contains the concrete job definitions wired into the generic
 // job manager. Feature-specific details should live behind usecase packages
-// such as internal/epg; this package only adapts them to job definitions.
+// such as internal/epggather; this package only adapts them to job definitions.
 package defs
 
 import (
 	"context"
 	"time"
 
-	"github.com/21S1298001/mahiron/internal/epg"
+	"github.com/21S1298001/mahiron/internal/epggather"
 	"github.com/21S1298001/mahiron/internal/job"
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/service"
 	"github.com/21S1298001/mahiron/internal/servicescan"
-	"github.com/21S1298001/mahiron/ts"
 )
 
 type Registry interface {
@@ -25,12 +25,12 @@ type ServiceScanner interface {
 }
 
 type LogoCollector interface {
-	ObserveLogos(context.Context, string, string, func(*ts.LogoImage) error) error
+	ObserveLogos(context.Context, string, string, func(model.Logo) error) error
 }
 
 type LogoStore interface {
 	MissingLogoTargets(context.Context) ([]service.LogoTarget, error)
-	UpsertLogoImage(context.Context, *ts.LogoImage) error
+	UpsertLogoImage(context.Context, model.Logo) error
 }
 
 type LogoGatherTargetStore interface {
@@ -38,8 +38,12 @@ type LogoGatherTargetStore interface {
 }
 
 type EPGGatherer interface {
-	Groups(context.Context) (map[uint16]*epg.Network, error)
-	BuildNetworkInputs(context.Context, uint16) ([]epg.Candidate, []epg.ServiceKey, error)
-	GatherNetwork(context.Context, uint16, []epg.Candidate, []epg.ServiceKey) error
-	Cleanup(context.Context, time.Time) error
+	Groups(context.Context) (map[uint16]*epggather.Network, error)
+	BuildNetworkInputs(context.Context, uint16) ([]epggather.Candidate, []model.ServiceKey, error)
+	GatherNetwork(context.Context, uint16, []epggather.Candidate, []model.ServiceKey) error
+}
+
+// ProgramCleaner deletes the programs past the retention period.
+type ProgramCleaner interface {
+	DeleteExpired(ctx context.Context, now time.Time, retentionDays int) error
 }

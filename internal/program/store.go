@@ -2,7 +2,7 @@ package program
 
 import "context"
 
-type ProgramStore interface {
+type Store interface {
 	UpsertAll(ctx context.Context, programs []*Program) error
 	Get(ctx context.Context, id int64) (*Program, bool, error)
 	List(ctx context.Context, query Query) ([]*Program, error)

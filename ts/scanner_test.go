@@ -46,103 +46,6 @@ func TestParseSDTRejectsBrokenCRC(t *testing.T) {
 	}
 }
 
-func TestServiceScanSkipsBrokenServiceDescriptor(t *testing.T) {
-	section := buildSDT(t, 0x1234, 0x5678, []sdtServiceSpec{
-		{
-			serviceID:   100,
-			descriptors: []byte{DescriptorTagService, 2, 1, 5},
-		},
-	})
-	scan := NewServiceScan()
-	scan.Observe(buildPAT(t, map[uint16]uint16{100: 0x0100}))
-	scan.Observe(section)
-	got := scan.Services()
-	if len(got) != 0 {
-		t.Fatalf("Services returned %#v, want no services", got)
-	}
-}
-
-func TestServiceScanDoesNotFilterServiceTypes(t *testing.T) {
-	scan := NewServiceScan()
-	scan.Observe(buildPAT(t, map[uint16]uint16{
-		100: 0x0100,
-		101: 0x0101,
-	}))
-	scan.Observe(buildSDT(t, 0x1234, 0x5678, []sdtServiceSpec{
-		{
-			serviceID:   100,
-			descriptors: serviceDescriptor(0xAD, nil, []byte{0x0e, '4', 'K'}),
-		},
-		{
-			serviceID:   101,
-			descriptors: serviceDescriptor(0xC0, nil, []byte{0x0e, 'D', 'A', 'T', 'A'}),
-		},
-	}))
-	got := scan.Services()
-	want := []ServiceInfo{
-		{Nid: 0x5678, Tsid: 0x1234, Sid: 100, Name: "４Ｋ", Type: 0xAD, EITScheduleFlag: true, EITPresentFollowing: true, LogoId: -1},
-		{Nid: 0x5678, Tsid: 0x1234, Sid: 101, Name: "ＤＡＴＡ", Type: 0xC0, EITScheduleFlag: true, EITPresentFollowing: true, LogoId: -1},
-	}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("Services returned %#v, want %#v", got, want)
-	}
-}
-
-func TestServiceScanCompletesWithoutSDTForEveryPATService(t *testing.T) {
-	state := newServiceScanState()
-	observeTable(t, state, PIDPAT, buildPAT(t, map[uint16]uint16{
-		100:    0x0100,
-		0xfff0: 0x0101,
-	}))
-	observeTable(t, state, PIDSDT, buildSDT(t, 0x1234, 0x5678, []sdtServiceSpec{{
-		serviceID:   100,
-		descriptors: serviceDescriptor(1, nil, []byte{0x0e, 'N', 'H', 'K'}),
-	}}))
-	observeTable(t, state, PIDNIT, buildNIT(t))
-
-	if !state.complete() {
-		t.Fatal("service scan did not complete after complete PAT, SDT, and NIT tables")
-	}
-	services := state.serviceList()
-	if len(services) != 1 || services[0].Sid != 100 {
-		t.Fatalf("service list = %#v, want only SID 100", services)
-	}
-}
-
-func TestServiceScanWaitsForEveryTableSection(t *testing.T) {
-	state := newServiceScanState()
-	pat0 := withTableHeader(buildPAT(t, map[uint16]uint16{100: 0x0100}), TableIDPAT, 0, 0, 1)
-	pat1 := withTableHeader(buildPAT(t, map[uint16]uint16{101: 0x0101}), TableIDPAT, 0, 1, 1)
-	sdt0 := withTableHeader(buildSDT(t, 0x1234, 0x5678, []sdtServiceSpec{{
-		serviceID:   100,
-		descriptors: serviceDescriptor(1, nil, []byte{0x0e, 'A'}),
-	}}), TableIDSDT0, 0, 0, 1)
-	sdt1 := withTableHeader(buildSDT(t, 0x1234, 0x5678, []sdtServiceSpec{{
-		serviceID:   101,
-		descriptors: serviceDescriptor(1, nil, []byte{0x0e, 'B'}),
-	}}), TableIDSDT0, 0, 1, 1)
-	nit0 := withTableHeader(buildNIT(t), TableIDNIT0, 0, 0, 1)
-	nit1 := withTableHeader(buildNIT(t), TableIDNIT0, 0, 1, 1)
-
-	for _, table := range []struct {
-		pid     uint16
-		section Section
-	}{{PIDPAT, pat0}, {PIDSDT, sdt0}, {PIDNIT, nit0}, {PIDPAT, pat1}, {PIDSDT, sdt1}} {
-		observeTable(t, state, table.pid, table.section)
-		if state.complete() {
-			t.Fatal("service scan completed before all NIT sections arrived")
-		}
-	}
-	observeTable(t, state, PIDNIT, nit1)
-	if !state.complete() {
-		t.Fatal("service scan did not complete after all table sections arrived")
-	}
-	services := state.serviceList()
-	if len(services) != 2 || services[0].Sid != 100 || services[1].Sid != 101 {
-		t.Fatalf("service list = %#v, want SIDs 100 and 101", services)
-	}
-}
-
 func TestTableSectionSetResetsOnVersionChange(t *testing.T) {
 	var sections tableSectionSet
 	v0s0 := withTableHeader(buildNIT(t), TableIDNIT0, 0, 0, 1)
@@ -157,28 +60,6 @@ func TestTableSectionSetResetsOnVersionChange(t *testing.T) {
 	}
 	if _, ready := sections.add(v1s0); !ready {
 		t.Fatal("version 1 table did not become ready with both version 1 sections")
-	}
-}
-
-func TestServiceScanIgnoresOtherTransportSDT(t *testing.T) {
-	state := newServiceScanState()
-	observeTable(t, state, PIDPAT, buildPAT(t, map[uint16]uint16{100: 0x0100}))
-	observeTable(t, state, PIDNIT, buildNIT(t))
-	other := withTableHeader(buildSDT(t, 0x9999, 0x5678, []sdtServiceSpec{{
-		serviceID:   100,
-		descriptors: serviceDescriptor(1, nil, []byte{0x0e, 'X'}),
-	}}), TableIDSDT1, 0, 0, 0)
-	observeTable(t, state, PIDSDT, other)
-	if state.complete() || len(state.services) != 0 {
-		t.Fatalf("other-TS SDT changed scan state: complete=%v services=%#v", state.complete(), state.services)
-	}
-
-	observeTable(t, state, PIDSDT, buildSDT(t, 0x1234, 0x5678, []sdtServiceSpec{{
-		serviceID:   100,
-		descriptors: serviceDescriptor(1, nil, []byte{0x0e, 'A'}),
-	}}))
-	if !state.complete() {
-		t.Fatal("actual-TS SDT did not complete service scan")
 	}
 }
 
@@ -221,30 +102,6 @@ func TestParseTSInformationDescriptorRejectsInvalidLengths(t *testing.T) {
 		if _, err := ParseTSInformationDescriptor(desc); !errors.Is(err, ErrInvalidSection) {
 			t.Fatalf("ParseTSInformationDescriptor(%#v) error = %v, want ErrInvalidSection", desc, err)
 		}
-	}
-}
-
-func TestRemoteKeysFromNITUsesTSInformationDescriptor(t *testing.T) {
-	section := buildNITWithTransportStreams(t, []nitTransportSpec{
-		{tsid: 0x1111, onid: 0x5678, descriptors: tsInformationDescriptor(4, aribAlnum("A"), nil)},
-		{tsid: 0x2222, onid: 0x5678, descriptors: tsInformationDescriptor(8, aribAlnum("B"), nil)},
-	})
-
-	got := remoteKeysFromNIT(section)
-	want := map[uint16]uint8{0x1111: 4, 0x2222: 8}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("remote keys = %#v, want %#v", got, want)
-	}
-}
-
-func TestRemoteKeysFromNITIgnoresTerrestrialDeliverySystemDescriptor(t *testing.T) {
-	section := buildNITWithTransportStreams(t, []nitTransportSpec{
-		{tsid: 0x1111, onid: 0x5678, descriptors: descriptor(DescriptorTagTerrestrialDeliverySystem, []byte{0x04, 0x10, 0x00, 0x01})},
-	})
-
-	got := remoteKeysFromNIT(section)
-	if len(got) != 0 {
-		t.Fatalf("remote keys = %#v, want none", got)
 	}
 }
 
@@ -350,12 +207,6 @@ func withTableHeader(section Section, tableID, version, number, last byte) Secti
 	section[7] = last
 	writeCRC(section)
 	return section
-}
-
-func observeTable(t *testing.T, state *serviceScanState, pid uint16, section Section) {
-	t.Helper()
-	_ = pid
-	state.observeSection(section)
 }
 
 func serviceDescriptor(serviceType uint8, providerName, serviceName []byte) []byte {

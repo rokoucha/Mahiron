@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	"github.com/21S1298001/mahiron/internal/config"
+	"github.com/21S1298001/mahiron/internal/mirakurun"
 	"github.com/21S1298001/mahiron/internal/service"
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 )
@@ -158,10 +159,10 @@ func filterChannels(channels config.ChannelsConfig, channelType apigen.OptString
 func filterServices(services []*service.Service, params apigen.GetServicesParams) []*service.Service {
 	filtered := make([]*service.Service, 0, len(services))
 	for _, service := range services {
-		if value, ok := params.ServiceId.Get(); ok && int(service.ServiceId) != value {
+		if value, ok := params.ServiceId.Get(); ok && int(service.Key.ServiceID) != value {
 			continue
 		}
-		if value, ok := params.NetworkId.Get(); ok && int(service.NetworkId) != value {
+		if value, ok := params.NetworkId.Get(); ok && int(service.Key.NetworkID) != value {
 			continue
 		}
 		if value, ok := params.Name.Get(); ok && service.Name != value {
@@ -191,8 +192,14 @@ func apiChannelWithServices(ctx context.Context, h *Handler, channel config.Chan
 	return result, nil
 }
 
-func apiChannelWithoutServices(h *Handler, channel config.ChannelConfig) *apigen.Channel {
-	result := &apigen.Channel{
+func apiChannelWithoutServices(_ *Handler, channel config.ChannelConfig) *apigen.Channel {
+	result := apiChannel(channel)
+	return &result
+}
+
+// apiChannel converts a channel to its Mirakurun-compatible API shape.
+func apiChannel(channel config.ChannelConfig) apigen.Channel {
+	result := apigen.Channel{
 		Type:    channel.Type,
 		Channel: channel.Channel,
 		Name:    apigen.NewOptString(channel.Name),
@@ -225,57 +232,60 @@ func apiChannelRoutes(routes []config.ChannelRouteConfig) []apigen.ChannelRoute 
 	return result
 }
 
+// resolveServiceChannel returns the channel a service belongs to, or nil when
+// the channel is no longer configured.
+func resolveServiceChannel(h *Handler, svc *service.Service) *config.ChannelConfig {
+	return h.serviceManager.GetChannel(svc.ChannelType, svc.ChannelId)
+}
+
 func apiServices(h *Handler, services []*service.Service, includeChannel bool) []apigen.Service {
 	result := make([]apigen.Service, len(services))
-	for i, service := range services {
-		result[i] = *apiService(h, service, includeChannel)
+	for i, svc := range services {
+		result[i] = *apiService(h, svc, includeChannel)
 	}
 	return result
 }
 
-func apiService(h *Handler, service *service.Service, includeChannel bool) *apigen.Service {
-	result := &apigen.Service{
-		ID:                  apigen.ServiceItemId(service.ItemId()),
-		ServiceId:           apigen.ServiceId(service.ServiceId),
-		NetworkId:           apigen.NetworkId(service.NetworkId),
-		TransportStreamId:   apigen.NewOptTransportStreamId(apigen.TransportStreamId(service.TransportStreamId)),
-		Name:                service.Name,
-		Type:                int(service.Type),
-		EitScheduleFlag:     apigen.NewOptBool(service.EITScheduleFlag),
-		EitPresentFollowing: apigen.NewOptBool(service.EITPresentFollowing),
-		RemoteControlKeyId: apigen.NewOptInt(
-			int(service.RemoteControlKeyId),
-		),
-	}
-	applyEPGStatus(result, &service.EPG)
+func apiService(h *Handler, svc *service.Service, includeChannel bool) *apigen.Service {
+	var channel *config.ChannelConfig
 	if includeChannel {
-		if channel := h.serviceManager.GetChannel(service.ChannelType, service.ChannelId); channel != nil {
-			result.Channel = apigen.NewOptChannel(*apiChannelWithoutServices(h, *channel))
-		}
+		channel = resolveServiceChannel(h, svc)
 	}
-	if service.LogoId != nil {
-		result.LogoId = apigen.NewOptInt(int(*service.LogoId))
-	}
-	result.HasLogoData = apigen.NewOptBool(service.HasLogoData)
-	return result
+	result := mirakurun.ServiceToAPI(&svc.Service, apiServiceState(svc, channel))
+	return &result
 }
 
-func applyEPGStatus(result *apigen.Service, status *service.EPGStatus) {
-	if status == nil {
+// apiServiceState collects the Mahiron-managed state the API shows beside a
+// service. The channel is attached when it is known.
+func apiServiceState(svc *service.Service, channel *config.ChannelConfig) mirakurun.ServiceState {
+	state := mirakurun.ServiceState{
+		HasLogoData:      svc.HasLogoData,
+		EPGLastAttemptAt: svc.EPG.LastAttemptAt,
+		EPGLastSuccessAt: svc.EPG.LastSuccessAt,
+		EPGLastError:     svc.EPG.LastError,
+	}
+	if channel != nil {
+		apiChannel := apiChannel(*channel)
+		state.Channel = &apiChannel
+	}
+	return state
+}
+
+// ServiceEventPublisher publishes service changes as /api/events payloads,
+// filling the Mahiron-managed state the payload shows.
+type ServiceEventPublisher struct {
+	events *mirakurun.EventPublisher
+}
+
+func NewServiceEventPublisher(events *mirakurun.EventPublisher) *ServiceEventPublisher {
+	return &ServiceEventPublisher{events: events}
+}
+
+func (p *ServiceEventPublisher) PublishServiceEvent(typ string, svc *service.Service, channel *config.ChannelConfig) {
+	if svc == nil {
 		return
 	}
-	if status.LastSuccessAt != nil {
-		result.EpgReady = apigen.NewOptBool(true)
-		result.EpgUpdatedAt = apigen.NewOptUnixtimeMS(apigen.UnixtimeMS(*status.LastSuccessAt))
-	} else {
-		result.EpgReady = apigen.NewOptBool(false)
-	}
-	if status.LastAttemptAt != nil {
-		result.EpgLastAttemptAt = apigen.NewOptUnixtimeMS(apigen.UnixtimeMS(*status.LastAttemptAt))
-	}
-	if status.LastError != "" {
-		result.EpgLastError = apigen.NewOptString(status.LastError)
-	}
+	p.events.PublishServiceEvent(typ, &svc.Service, apiServiceState(svc, channel))
 }
 
 func notFound(reason string) *apigen.ErrorStatusCode {

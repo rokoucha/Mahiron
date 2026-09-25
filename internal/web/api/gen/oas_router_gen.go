@@ -1049,9 +1049,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 								break
 							}
 							switch elem[0] {
-							case 'd': // Prefix: "data-broadcast/"
+							case 'd': // Prefix: "data-broadcast/bml/"
 
-								if l := len("data-broadcast/"); len(elem) >= l && elem[0:l] == "data-broadcast/" {
+								if l := len("data-broadcast/bml/"); len(elem) >= l && elem[0:l] == "data-broadcast/bml/" {
 									elem = elem[l:]
 								} else {
 									break
@@ -2585,9 +2585,9 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 								break
 							}
 							switch elem[0] {
-							case 'd': // Prefix: "data-broadcast/"
+							case 'd': // Prefix: "data-broadcast/bml/"
 
-								if l := len("data-broadcast/"); len(elem) >= l && elem[0:l] == "data-broadcast/" {
+								if l := len("data-broadcast/bml/"); len(elem) >= l && elem[0:l] == "data-broadcast/bml/" {
 									elem = elem[l:]
 								} else {
 									break
@@ -2684,7 +2684,7 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 														r.summary = ""
 														r.operationID = "getServiceDataBroadcastModuleVersion"
 														r.operationGroup = ""
-														r.pathPattern = "/services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}"
+														r.pathPattern = "/services/{id}/data-broadcast/bml/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}"
 														r.args = args
 														r.count = 5
 														return r, true
@@ -2721,7 +2721,7 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 																r.summary = ""
 																r.operationID = "getServiceDataBroadcastModuleRaw"
 																r.operationGroup = ""
-																r.pathPattern = "/services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}/raw"
+																r.pathPattern = "/services/{id}/data-broadcast/bml/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}/raw"
 																r.args = args
 																r.count = 5
 																return r, true
@@ -2755,7 +2755,7 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 																r.summary = ""
 																r.operationID = "getServiceDataBroadcastModuleResource"
 																r.operationGroup = ""
-																r.pathPattern = "/services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}/resources/{resourceId}"
+																r.pathPattern = "/services/{id}/data-broadcast/bml/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}/resources/{resourceId}"
 																r.args = args
 																r.count = 6
 																return r, true
@@ -2790,7 +2790,7 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 											r.summary = ""
 											r.operationID = "getServiceDataBroadcastEvents"
 											r.operationGroup = ""
-											r.pathPattern = "/services/{id}/data-broadcast/events"
+											r.pathPattern = "/services/{id}/data-broadcast/bml/events"
 											r.args = args
 											r.count = 1
 											return r, true
@@ -2815,7 +2815,7 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 											r.summary = ""
 											r.operationID = "getServiceDataBroadcastState"
 											r.operationGroup = ""
-											r.pathPattern = "/services/{id}/data-broadcast/state"
+											r.pathPattern = "/services/{id}/data-broadcast/bml/state"
 											r.args = args
 											r.count = 1
 											return r, true

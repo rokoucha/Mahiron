@@ -9,9 +9,10 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/db"
-	"github.com/21S1298001/mahiron/internal/epg"
+	"github.com/21S1298001/mahiron/internal/epggather"
 	"github.com/21S1298001/mahiron/internal/job"
 	"github.com/21S1298001/mahiron/internal/job/defs"
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/internal/service"
 	"github.com/21S1298001/mahiron/internal/servicescan"
@@ -82,8 +83,8 @@ func TestBuildRuntimeWiresCurrentApplication(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildRuntime() message=%q err=%v", message, err)
 	}
-	if runtime.database == nil || runtime.jobs == nil || runtime.epgScan == nil || runtime.programs == nil ||
-		runtime.scanner == nil || runtime.server == nil || runtime.services == nil ||
+	if runtime.database == nil || runtime.jobs == nil || runtime.epgGatherer == nil || runtime.programs == nil ||
+		runtime.serviceScanner == nil || runtime.server == nil || runtime.services == nil ||
 		runtime.streams == nil || runtime.tuners == nil {
 		t.Fatalf("incomplete runtime: %#v", runtime)
 	}
@@ -228,13 +229,13 @@ func TestMissingScannedChannelsFindsOnlyConfiguredEmptyChannels(t *testing.T) {
 		{Type: "GR", Channel: "26"},
 		{Type: "GR", Channel: "25", IsDisabled: &disabled},
 	}
-	manager := service.NewServiceManager(store, channels)
+	manager := service.NewManager(store, channels)
 	if err := store.ReplaceChannelServices(ctx, "GR", "27", []*service.Service{
-		{Id: "0000100101", ServiceId: 101, NetworkId: 1, Name: "NHK", ChannelType: "GR", ChannelId: "27"},
+		{Id: "0000100101", Service: model.Service{Key: model.ServiceKey{ServiceID: 101, NetworkID: 1}, Name: "NHK"}, ChannelType: "GR", ChannelId: "27"},
 	}); err != nil {
 		t.Fatal(err)
 	}
-	scanner := servicescan.NewService(manager, nil, channels, 0)
+	scanner := servicescan.NewScanner(manager, nil, channels, 0)
 
 	missing, err := missingScannedChannels(ctx, manager, scanner.Channels())
 	if err != nil {
@@ -297,15 +298,15 @@ func (s *blockingStartupScanner) ScanChannel(ctx context.Context, _, _ string, _
 
 type startupEPGGatherer struct{}
 
-func (startupEPGGatherer) Groups(context.Context) (map[uint16]*epg.Network, error) {
+func (startupEPGGatherer) Groups(context.Context) (map[uint16]*epggather.Network, error) {
 	return nil, nil
 }
 
-func (startupEPGGatherer) BuildNetworkInputs(context.Context, uint16) ([]epg.Candidate, []epg.ServiceKey, error) {
+func (startupEPGGatherer) BuildNetworkInputs(context.Context, uint16) ([]epggather.Candidate, []model.ServiceKey, error) {
 	return nil, nil, nil
 }
 
-func (startupEPGGatherer) GatherNetwork(context.Context, uint16, []epg.Candidate, []epg.ServiceKey) error {
+func (startupEPGGatherer) GatherNetwork(context.Context, uint16, []epggather.Candidate, []model.ServiceKey) error {
 	return nil
 }
 

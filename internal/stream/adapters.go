@@ -3,18 +3,20 @@ package stream
 import (
 	"context"
 
-	"github.com/21S1298001/mahiron/ts"
+	"github.com/21S1298001/mahiron/internal/isdb"
+	"github.com/21S1298001/mahiron/internal/model"
+	"github.com/21S1298001/mahiron/internal/stream/remote"
 )
 
-type LogoCollectorAdapter struct {
-	manager *StreamManager
+type LogoGatherAdapter struct {
+	manager *Manager
 }
 
-func NewLogoCollectorAdapter(manager *StreamManager) *LogoCollectorAdapter {
-	return &LogoCollectorAdapter{manager: manager}
+func NewLogoGatherAdapter(manager *Manager) *LogoGatherAdapter {
+	return &LogoGatherAdapter{manager: manager}
 }
 
-func (a *LogoCollectorAdapter) ObserveLogos(ctx context.Context, channelType, channelID string, observe func(*ts.LogoImage) error) error {
+func (a *LogoGatherAdapter) ObserveLogos(ctx context.Context, channelType, channelID string, observe func(model.Logo) error) error {
 	session, err := a.manager.GetOrCreateWait(ctx, channelType, channelID)
 	if err != nil {
 		return err
@@ -22,15 +24,15 @@ func (a *LogoCollectorAdapter) ObserveLogos(ctx context.Context, channelType, ch
 	return session.ObserveLogos(ctx, observe)
 }
 
-type ServiceScannerAdapter struct {
-	manager *StreamManager
+type ServiceScanAdapter struct {
+	manager *Manager
 }
 
-func NewServiceScannerAdapter(manager *StreamManager) *ServiceScannerAdapter {
-	return &ServiceScannerAdapter{manager: manager}
+func NewServiceScanAdapter(manager *Manager) *ServiceScanAdapter {
+	return &ServiceScanAdapter{manager: manager}
 }
 
-func (a *ServiceScannerAdapter) ScanServices(scanCtx, acquireCtx context.Context, channelType, channelID string, wait bool) ([]ts.ServiceInfo, error) {
+func (a *ServiceScanAdapter) ScanServices(scanCtx, acquireCtx context.Context, channelType, channelID string, wait bool) ([]model.Service, error) {
 	if services, handled, err := a.manager.scanRemoteServices(scanCtx, channelType, channelID); handled {
 		return services, err
 	}
@@ -47,4 +49,41 @@ func (a *ServiceScannerAdapter) ScanServices(scanCtx, acquireCtx context.Context
 		return nil, err
 	}
 	return session.ScanServices(scanCtx)
+}
+
+// EPGGatherAdapter gives EPG gathering its channel sessions in model and
+// standard types only. A channel served by a remote yields the remote's
+// stored-program lister instead of EIT collection.
+type EPGGatherAdapter struct {
+	manager *Manager
+}
+
+func NewEPGGatherAdapter(manager *Manager) *EPGGatherAdapter {
+	return &EPGGatherAdapter{manager: manager}
+}
+
+func (a *EPGGatherAdapter) HasSession(channelType, channelID string) bool {
+	return a.manager.HasSession(channelType, channelID)
+}
+
+// NetworkWideEIT reports whether every stream of the network carries the
+// whole network's EIT schedule. TS satellite streams carry the other
+// streams' schedules in the actual-other tables; terrestrial streams and
+// ISDB-S3 (MH-EIT covers only its own TLV stream) do not.
+func (a *EPGGatherAdapter) NetworkWideEIT(networkID uint16) bool {
+	return isdb.IsSatelliteOriginalNetworkID(networkID)
+}
+
+func (a *EPGGatherAdapter) OpenSchedule(ctx context.Context, channelType, channelID string) (func(context.Context, func(model.ScheduleUpdate) error, func(model.PresentFollowing) error) error, func(context.Context, uint16, uint16) ([]model.Event, error), error) {
+	session, err := a.manager.GetOrCreateWait(ctx, channelType, channelID)
+	if err != nil {
+		return nil, nil, err
+	}
+	// A remote session is the one kind that lists stored programs; checking
+	// the type keeps a signature change from silently turning it into EIT
+	// collection.
+	if remoteSession, ok := session.(*remote.Session); ok {
+		return nil, remoteSession.ListServicePrograms, nil
+	}
+	return session.CollectSchedule, nil, nil
 }

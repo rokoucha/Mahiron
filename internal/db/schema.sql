@@ -9,13 +9,17 @@ CREATE TABLE IF NOT EXISTS services (
     network_id INTEGER NOT NULL,
     transport_stream_id INTEGER NOT NULL,
     name TEXT NOT NULL,
+    provider_name TEXT NOT NULL DEFAULT '',
     type INTEGER NOT NULL,
+    running_status INTEGER NOT NULL DEFAULT 0,
+    free_ca INTEGER NOT NULL DEFAULT 0,
     eit_schedule_flag INTEGER NOT NULL DEFAULT 1,
     eit_present_following INTEGER NOT NULL DEFAULT 1,
     logo_id INTEGER,
     logo_version INTEGER,
     logo_download_data_id INTEGER,
-    remote_control_key_id INTEGER NOT NULL,
+    simple_logo TEXT,
+    remote_control_key_id INTEGER,
     channel_type TEXT NOT NULL,
     channel_id TEXT NOT NULL
 );
@@ -57,12 +61,8 @@ CREATE TABLE IF NOT EXISTS programs (
     is_free INTEGER NOT NULL,
     name TEXT,
     description TEXT,
-    genres TEXT,
-    video TEXT,
-    audios TEXT,
-    extended TEXT,
-    related_items TEXT,
-    series TEXT
+    stream_id INTEGER NOT NULL DEFAULT 0,
+    event TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_programs_service ON programs(network_id, service_id);

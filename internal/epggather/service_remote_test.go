@@ -1,0 +1,180 @@
+package epggather
+
+import (
+	"context"
+	"errors"
+	"testing"
+	"time"
+
+	"github.com/21S1298001/mahiron/internal/model"
+	"github.com/21S1298001/mahiron/internal/observability"
+	"github.com/21S1298001/mahiron/internal/program"
+	"github.com/21S1298001/mahiron/internal/service"
+)
+
+// syncRemote gathers through a channel served by a remote, which OpenSchedule
+// reports by returning its stored-program lister.
+func syncRemote(ctx context.Context, store *remoteSyncProgramStore, status *remoteSyncServiceStore, session *remoteSyncSession, keys []model.ServiceKey) error {
+	return gatherNetwork(ctx, store, store, status, remoteEPGStreams{session: session}, keys[0].NetworkID,
+		[]Candidate{{Type: "GR", Channel: "27"}}, keys, time.Second)
+}
+
+func TestGatherNetworkSyncsStoredRemotePrograms(t *testing.T) {
+	ctx := context.Background()
+	key := model.ServiceKey{NetworkID: 4, ServiceID: 101}
+	store := newRemoteSyncProgramStore()
+	status := newRemoteSyncServiceStore()
+	session := &remoteSyncSession{
+		programs: map[model.ServiceKey][]model.Event{
+			key: {{Key: model.ServiceKey{NetworkID: 4, ServiceID: 101}, EventID: 1}},
+		},
+	}
+
+	if err := syncRemote(ctx, store, status, session, []model.ServiceKey{key}); err != nil {
+		t.Fatal(err)
+	}
+	if session.collectCalled {
+		t.Fatal("remote stored-program sync should not collect EIT")
+	}
+	if len(store.replaced[key]) != 1 || store.replaced[key][0].EventID != 1 {
+		t.Fatalf("replaced = %#v", store.replaced)
+	}
+	if store.sources[key] != "remote" {
+		t.Fatalf("replace source = %q, want remote", store.sources[key])
+	}
+	if status.attempts[key] == 0 {
+		t.Fatal("attempt timestamp was not recorded")
+	}
+	if status.successes[key] == 0 {
+		t.Fatal("success timestamp was not recorded")
+	}
+	if status.errors[key] != "" {
+		t.Fatalf("last error = %q, want empty", status.errors[key])
+	}
+}
+
+func TestGatherNetworkSyncsStoredRemoteProgramsPartialFailure(t *testing.T) {
+	ctx := context.Background()
+	okKey := model.ServiceKey{NetworkID: 4, ServiceID: 101}
+	failKey := model.ServiceKey{NetworkID: 4, ServiceID: 102}
+	wantErr := errors.New("remote unavailable")
+	store := newRemoteSyncProgramStore()
+	status := newRemoteSyncServiceStore()
+	session := &remoteSyncSession{
+		programs: map[model.ServiceKey][]model.Event{
+			okKey: {{Key: model.ServiceKey{NetworkID: 4, ServiceID: 101}, EventID: 1}},
+		},
+		errs: map[model.ServiceKey]error{failKey: wantErr},
+	}
+
+	err := syncRemote(ctx, store, status, session, []model.ServiceKey{okKey, failKey})
+	if err == nil {
+		t.Fatal("gatherNetwork error = nil, want partial failure")
+	}
+	if len(store.replaced[okKey]) != 1 {
+		t.Fatalf("successful service was not replaced: %#v", store.replaced)
+	}
+	if _, ok := store.replaced[failKey]; ok {
+		t.Fatalf("failed service was replaced: %#v", store.replaced)
+	}
+	if status.successes[okKey] == 0 {
+		t.Fatal("successful service did not record success")
+	}
+	if status.successes[failKey] != 0 {
+		t.Fatal("failed service recorded success")
+	}
+	if status.errors[failKey] != wantErr.Error() {
+		t.Fatalf("failed service error = %q, want %q", status.errors[failKey], wantErr.Error())
+	}
+}
+
+type remoteSyncProgramStore struct {
+	replaced map[model.ServiceKey][]*program.Program
+	sources  map[model.ServiceKey]string
+}
+
+func newRemoteSyncProgramStore() *remoteSyncProgramStore {
+	return &remoteSyncProgramStore{
+		replaced: make(map[model.ServiceKey][]*program.Program),
+		sources:  make(map[model.ServiceKey]string),
+	}
+}
+
+func (s *remoteSyncProgramStore) UpsertEvents(context.Context, []model.Event) error {
+	return errors.New("UpsertEvents should not be called")
+}
+
+func (s *remoteSyncProgramStore) DeleteEndedBefore(context.Context, int64) error {
+	return nil
+}
+
+func (s *remoteSyncProgramStore) ReplaceServicePrograms(ctx context.Context, networkID, serviceID uint16, _ int64, programs []*program.Program) error {
+	key := model.ServiceKey{NetworkID: networkID, ServiceID: serviceID}
+	s.replaced[key] = append([]*program.Program(nil), programs...)
+	s.sources[key] = observability.EPGMetricSource(ctx)
+	return nil
+}
+
+type remoteSyncServiceStore struct {
+	attempts  map[model.ServiceKey]int64
+	successes map[model.ServiceKey]int64
+	errors    map[model.ServiceKey]string
+}
+
+func newRemoteSyncServiceStore() *remoteSyncServiceStore {
+	return &remoteSyncServiceStore{
+		attempts:  make(map[model.ServiceKey]int64),
+		successes: make(map[model.ServiceKey]int64),
+		errors:    make(map[model.ServiceKey]string),
+	}
+}
+
+func (s *remoteSyncServiceStore) GetServices(context.Context) ([]*service.Service, error) {
+	return nil, nil
+}
+
+func (s *remoteSyncServiceStore) SetEPGAttempt(_ context.Context, networkID, serviceID uint16, attemptedAt int64, lastError string) error {
+	key := model.ServiceKey{NetworkID: networkID, ServiceID: serviceID}
+	s.attempts[key] = attemptedAt
+	s.errors[key] = lastError
+	return nil
+}
+
+func (s *remoteSyncServiceStore) SetEPGSuccess(_ context.Context, networkID, serviceID uint16, succeededAt int64) error {
+	key := model.ServiceKey{NetworkID: networkID, ServiceID: serviceID}
+	s.attempts[key] = succeededAt
+	s.successes[key] = succeededAt
+	s.errors[key] = ""
+	return nil
+}
+
+type remoteSyncSession struct {
+	programs      map[model.ServiceKey][]model.Event
+	errs          map[model.ServiceKey]error
+	collectCalled bool
+}
+
+type remoteEPGStreams struct {
+	session *remoteSyncSession
+}
+
+func (remoteEPGStreams) HasSession(string, string) bool { return false }
+
+func (remoteEPGStreams) NetworkWideEIT(uint16) bool { return false }
+
+func (s remoteEPGStreams) OpenSchedule(context.Context, string, string) (CollectSchedule, ListStoredPrograms, error) {
+	return s.session.CollectSchedule, s.session.ListServicePrograms, nil
+}
+
+func (s *remoteSyncSession) ListServicePrograms(_ context.Context, networkID, serviceID uint16) ([]model.Event, error) {
+	key := model.ServiceKey{NetworkID: networkID, ServiceID: serviceID}
+	if err := s.errs[key]; err != nil {
+		return nil, err
+	}
+	return s.programs[key], nil
+}
+
+func (s *remoteSyncSession) CollectSchedule(context.Context, func(model.ScheduleUpdate) error, func(model.PresentFollowing) error) error {
+	s.collectCalled = true
+	return nil
+}

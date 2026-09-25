@@ -22,7 +22,7 @@ type eventPublisher interface {
 	PublishTunerStatusEvent(typ string, data map[string]any)
 }
 
-type TunerManager struct {
+type Manager struct {
 	tuners     []*Tuner
 	mu         sync.Mutex
 	inUse      map[*Tuner]bool
@@ -32,19 +32,19 @@ type TunerManager struct {
 	events     eventPublisher
 }
 
-type TunerManagerConfig struct {
+type ManagerConfig struct {
 	TunersConfig config.TunersConfig
 	EventHub     eventPublisher
 }
 
-func NewTunerManager(cfg *TunerManagerConfig) *TunerManager {
+func NewManager(cfg *ManagerConfig) *Manager {
 	tuners := make([]*Tuner, len(cfg.TunersConfig))
 	runtime := make(map[*Tuner]*tunerRuntime, len(tuners))
 	for i, tunerConfig := range cfg.TunersConfig {
 		tuners[i] = NewTuner(tunerConfig)
 		runtime[tuners[i]] = &tunerRuntime{users: make(map[string]*trackedUser)}
 	}
-	return &TunerManager{
+	return &Manager{
 		tuners:     tuners,
 		inUse:      make(map[*Tuner]bool),
 		runtime:    runtime,
@@ -54,9 +54,9 @@ func NewTunerManager(cfg *TunerManagerConfig) *TunerManager {
 	}
 }
 
-func (tm *TunerManager) Shutdown(context.Context) error { return nil }
+func (tm *Manager) Shutdown(context.Context) error { return nil }
 
-func (tm *TunerManager) GetTuner(name string) *Tuner {
+func (tm *Manager) GetTuner(name string) *Tuner {
 	for _, item := range tm.tuners {
 		if item.Name() == name {
 			return item
@@ -65,7 +65,7 @@ func (tm *TunerManager) GetTuner(name string) *Tuner {
 	return nil
 }
 
-func (tm *TunerManager) GetTunerByType(channelType string) *Tuner {
+func (tm *Manager) GetTunerByType(channelType string) *Tuner {
 	for _, item := range tm.tuners {
 		if !item.IsDisabled() && slices.Contains(item.Groups(), channelType) {
 			return item
@@ -76,14 +76,14 @@ func (tm *TunerManager) GetTunerByType(channelType string) *Tuner {
 
 // NewDeviceByType reserves one physical tuner and returns a device that releases
 // that reservation when it stops.
-func (tm *TunerManager) NewDeviceByType(channelType string, channel *config.ChannelConfig) (Device, error) {
+func (tm *Manager) NewDeviceByType(channelType string, channel *config.ChannelConfig) (Device, error) {
 	device, _, err := tm.AcquireDevice(context.Background(), channelType, channel, channel, false)
 	return device, err
 }
 
 // CheckAvailable reports whether AcquireDevice could select a tuner of the
 // requested type without reserving or starting one.
-func (tm *TunerManager) CheckAvailable(ctx context.Context, channelType string) error {
+func (tm *Manager) CheckAvailable(ctx context.Context, channelType string) error {
 	requestPriority := priorityFromContext(ctx)
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
@@ -114,7 +114,7 @@ func (tm *TunerManager) CheckAvailable(ctx context.Context, channelType string) 
 	return ErrTunerUnavailable
 }
 
-func (tm *TunerManager) AcquireDevice(ctx context.Context, channelType string, requestedChannel, tunedChannel *config.ChannelConfig, wait bool) (device Device, decoder string, err error) {
+func (tm *Manager) AcquireDevice(ctx context.Context, channelType string, requestedChannel, tunedChannel *config.ChannelConfig, wait bool) (device Device, decoder string, err error) {
 	start := time.Now()
 	ctx, span := observability.StartSpan(ctx, observability.SpanTunerAcquireDevice,
 		observability.AttrChannelType.String(channelType),
@@ -218,7 +218,7 @@ func priorityFromContext(ctx context.Context) int {
 	return 0
 }
 
-func (tm *TunerManager) tryAcquireLocked(channelType string, requestPriority int, requestedChannel, tunedChannel *config.ChannelConfig) acquireAttempt {
+func (tm *Manager) tryAcquireLocked(channelType string, requestPriority int, requestedChannel, tunedChannel *config.ChannelConfig) acquireAttempt {
 	result := acquireAttempt{changed: tm.changed}
 	start := tm.nextByType[channelType]
 	for offset := range len(tm.tuners) {
@@ -279,7 +279,7 @@ func betterGrabCandidate(current grabCandidate, item *Tuner, runtime *tunerRunti
 	}
 }
 
-func (tm *TunerManager) reserveLocked(item *Tuner, priority int, requestedChannel, tunedChannel *config.ChannelConfig) (Device, string, bool) {
+func (tm *Manager) reserveLocked(item *Tuner, priority int, requestedChannel, tunedChannel *config.ChannelConfig) (Device, string, bool) {
 	base := item.NewDevice(tunedChannel)
 	if base == nil {
 		return nil, "", false
@@ -297,7 +297,7 @@ func (tm *TunerManager) reserveLocked(item *Tuner, priority int, requestedChanne
 	return managed, item.DecoderCommand(), true
 }
 
-func (tm *TunerManager) KillProcess(ctx context.Context, index int) error {
+func (tm *Manager) KillProcess(ctx context.Context, index int) error {
 	tm.mu.Lock()
 	if index < 0 || index >= len(tm.tuners) {
 		tm.mu.Unlock()
@@ -313,7 +313,7 @@ func (tm *TunerManager) KillProcess(ctx context.Context, index int) error {
 	return device.Stop(ctx)
 }
 
-func (tm *TunerManager) release(item *Tuner) {
+func (tm *Manager) release(item *Tuner) {
 	var update tunerStatusUpdate
 	wasFaulted := false
 	tm.mu.Lock()
@@ -332,7 +332,7 @@ func (tm *TunerManager) release(item *Tuner) {
 	tm.publishTunerStatusUpdate(eventTypeUpdate, update)
 }
 
-func (tm *TunerManager) DecoderCommandByType(channelType string) string {
+func (tm *Manager) DecoderCommandByType(channelType string) string {
 	item := tm.GetTunerByType(channelType)
 	if item == nil {
 		return ""
@@ -342,7 +342,7 @@ func (tm *TunerManager) DecoderCommandByType(channelType string) string {
 
 type managedDevice struct {
 	Device
-	manager *TunerManager
+	manager *Manager
 	tuner   *Tuner
 	once    sync.Once
 }
@@ -407,7 +407,7 @@ func (d *managedDevice) UpdateUserStreamInfo(userID, key string, info StreamInfo
 
 func (d *managedDevice) releaseOnce() { d.once.Do(func() { d.manager.release(d.tuner) }) }
 
-func (tm *TunerManager) markRunning(item *Tuner, device *managedDevice) {
+func (tm *Manager) markRunning(item *Tuner, device *managedDevice) {
 	tm.mu.Lock()
 	update := tm.updateRuntimeStatusLocked(item, func(runtime *tunerRuntime) bool {
 		if !runtime.inUse || runtime.device != device {
@@ -421,7 +421,7 @@ func (tm *TunerManager) markRunning(item *Tuner, device *managedDevice) {
 	tm.publishTunerStatusUpdate(eventTypeUpdate, update)
 }
 
-func (tm *TunerManager) markStopped(item *Tuner, device *managedDevice) {
+func (tm *Manager) markStopped(item *Tuner, device *managedDevice) {
 	tm.mu.Lock()
 	update := tm.updateRuntimeStatusLocked(item, func(runtime *tunerRuntime) bool {
 		if !runtime.inUse || runtime.device != device {
@@ -435,7 +435,7 @@ func (tm *TunerManager) markStopped(item *Tuner, device *managedDevice) {
 	tm.publishTunerStatusUpdate(eventTypeUpdate, update)
 }
 
-func (tm *TunerManager) markFault(item *Tuner, device *managedDevice) {
+func (tm *Manager) markFault(item *Tuner, device *managedDevice) {
 	tm.mu.Lock()
 	update := tm.updateRuntimeStatusLocked(item, func(runtime *tunerRuntime) bool {
 		if !runtime.inUse || runtime.device != device {
@@ -452,12 +452,12 @@ func (tm *TunerManager) markFault(item *Tuner, device *managedDevice) {
 	tm.publishTunerStatusUpdate(eventTypeUpdate, update)
 }
 
-func (tm *TunerManager) notifyChangedLocked() {
+func (tm *Manager) notifyChangedLocked() {
 	close(tm.changed)
 	tm.changed = make(chan struct{})
 }
 
-func (tm *TunerManager) updateRuntimeStatusLocked(item *Tuner, update func(*tunerRuntime) bool) tunerStatusUpdate {
+func (tm *Manager) updateRuntimeStatusLocked(item *Tuner, update func(*tunerRuntime) bool) tunerStatusUpdate {
 	runtime := tm.runtime[item]
 	if runtime == nil || !update(runtime) {
 		return tunerStatusUpdate{}
@@ -465,11 +465,11 @@ func (tm *TunerManager) updateRuntimeStatusLocked(item *Tuner, update func(*tune
 	return tm.statusUpdateLocked(item)
 }
 
-func (tm *TunerManager) statusUpdateLocked(item *Tuner) tunerStatusUpdate {
+func (tm *Manager) statusUpdateLocked(item *Tuner) tunerStatusUpdate {
 	return tunerStatusUpdate{status: tm.statusLockedByTuner(item), publish: true}
 }
 
-func (tm *TunerManager) publishTunerStatusUpdate(typ string, update tunerStatusUpdate) {
+func (tm *Manager) publishTunerStatusUpdate(typ string, update tunerStatusUpdate) {
 	if update.publish {
 		tm.publishStatus(typ, update.status)
 	}

@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/21S1298001/mahiron/internal/program"
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/util"
 	"github.com/21S1298001/mahiron/ts"
 )
@@ -21,10 +21,18 @@ var (
 
 // SubscribeProgram filters a service stream to the requested event, using EIT
 // present/following sections observed on the receiver demuxer.
-func (e *Demuxer) SubscribeProgram(ctx context.Context, stream *Demuxer, p *program.Program, dst io.Writer) error {
+func (e *Demuxer) SubscribeProgram(ctx context.Context, stream *Demuxer, event model.Event, dst io.Writer) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	gate := newProgramGate(p.NetworkID, p.ServiceID, p.EventID, programTimeout(p.StartAt, p.Duration), cancel)
+	var startAt int64
+	var duration int
+	if event.StartAt != nil {
+		startAt = *event.StartAt
+	}
+	if event.DurationMS != nil {
+		duration = *event.DurationMS
+	}
+	gate := newProgramGate(event.Key.NetworkID, event.Key.ServiceID, event.EventID, programTimeout(startAt, duration), cancel)
 	attached := make(chan struct{})
 	observeDone := make(chan error, 1)
 	go func() {
@@ -46,7 +54,7 @@ func (e *Demuxer) SubscribeProgram(ctx context.Context, stream *Demuxer, p *prog
 	r, w := io.Pipe()
 	streamDone := make(chan error, 1)
 	go func() {
-		streamDone <- stream.SubscribeService(ctx, p.ServiceID, w)
+		streamDone <- stream.SubscribeService(ctx, event.Key.ServiceID, w)
 		_ = w.Close()
 	}()
 	err := copyProgram(r, dst, gate)

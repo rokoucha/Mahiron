@@ -2,14 +2,15 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
 	"strings"
 
+	"github.com/21S1298001/mahiron/internal/bml"
+	"github.com/21S1298001/mahiron/internal/bml/cache"
+	"github.com/21S1298001/mahiron/internal/bml/resource"
 	"github.com/21S1298001/mahiron/internal/stream"
-	"github.com/21S1298001/mahiron/internal/stream/databroadcast"
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 )
 
@@ -27,8 +28,8 @@ func GetServiceDataBroadcastEvents(ctx context.Context, h *Handler, params apige
 		return nil
 	}
 	decode := shouldDecode(params.Decode)
-	serviceID := service.ServiceId
-	networkID := service.NetworkId
+	serviceID := service.Key.ServiceID
+	networkID := service.Key.NetworkID
 	ctx, userID := tunerUserContext(ctx, params.XMirakurunPriority, decode, h.serviceManager.GetChannel(service.ChannelType, service.ChannelId), &networkID, &serviceID)
 	session, err := h.streamManager.GetOrCreate(ctx, service.ChannelType, service.ChannelId)
 	if err != nil {
@@ -42,12 +43,17 @@ func GetServiceDataBroadcastEvents(ctx context.Context, h *Handler, params apige
 		}
 		return err
 	}
+	bmlSession, ok := session.(stream.BMLSource)
+	if !ok {
+		w.WriteHeader(http.StatusNotFound)
+		return nil
+	}
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Mirakurun-Tuner-User-ID", userID)
 	w.WriteHeader(http.StatusOK)
 	flusher := flushWriter{w: w}
-	return session.ObserveDataBroadcast(ctx, service.ServiceId, decode, func(event databroadcast.DataBroadcastEvent) error {
+	return bmlSession.ObserveDataBroadcast(ctx, service.Key.ServiceID, decode, func(event bml.Event) error {
 		return writeDataBroadcastSSE(flusher, params.ID, event)
 	})
 }
@@ -71,34 +77,43 @@ func GetServiceDataBroadcastState(ctx context.Context, h *Handler, params apigen
 		return nil
 	}
 	if session, ok := h.streamManager.GetExisting(service.ChannelType, service.ChannelId); ok {
+		bmlSession, ok := session.(stream.BMLSource)
+		if !ok {
+			w.WriteHeader(http.StatusNotFound)
+			return nil
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
-		return json.NewEncoder(w).Encode(apiDataBroadcastSnapshot(params.ID, session.DataBroadcastSnapshot(service.ServiceId), "live", nil))
+		snapshot := apiDataBroadcastSnapshot(params.ID, bmlSession.DataBroadcastSnapshot(service.Key.ServiceID), apigen.DataBroadcastSnapshotOriginLive, nil)
+		return writeDataBroadcastJSON(w, &snapshot)
 	}
-	if snapshot, storedAtUnixMilli, found := provisionalDataBroadcastSnapshot(h, params.AllowCache, service.ChannelType, service.ChannelId, service.ServiceId); found {
+	if snapshot, storedAtUnixMilli, found := provisionalDataBroadcastSnapshot(h, params.AllowCache, service.ChannelType, service.ChannelId, service.Key.ServiceID); found {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
-		return json.NewEncoder(w).Encode(apiDataBroadcastSnapshot(params.ID, snapshot, "cache", &storedAtUnixMilli))
+		api := apiDataBroadcastSnapshot(params.ID, snapshot, apigen.DataBroadcastSnapshotOriginCache, &storedAtUnixMilli)
+		return writeDataBroadcastJSON(w, &api)
 	}
 	w.WriteHeader(http.StatusNotFound)
 	return nil
 }
 
-func provisionalDataBroadcastSnapshot(h *Handler, allowCache apigen.OptInt, channelType, channelID string, serviceID uint16) (databroadcast.DataBroadcastSnapshot, int64, bool) {
+// provisionalDataBroadcastSnapshot reconstructs a data-broadcast snapshot from
+// persisted PMT/DII sections without allocating a tuner. It reads the stores
+// directly instead of going through the stream manager, which only manages
+// sessions.
+func provisionalDataBroadcastSnapshot(h *Handler, allowCache apigen.OptInt, channelType, channelID string, serviceID uint16) (bml.Snapshot, int64, bool) {
 	if !shouldAllowCache(allowCache) {
-		return databroadcast.DataBroadcastSnapshot{}, 0, false
+		return bml.Snapshot{}, 0, false
 	}
-	store, ok := h.streamManager.(interface {
-		DataBroadcastProvisionalSnapshot(string, string, uint16) (databroadcast.DataBroadcastSnapshot, int64, bool)
-	})
-	if !ok {
-		return databroadcast.DataBroadcastSnapshot{}, 0, false
+	if h.bmlSnapshotStore == nil {
+		return bml.Snapshot{}, 0, false
 	}
-	snapshot, storedAt, found := store.DataBroadcastProvisionalSnapshot(channelType, channelID, serviceID)
+	persisted, found := h.bmlSnapshotStore.GetSnapshot(channelType, channelID, serviceID)
 	if !found {
-		return databroadcast.DataBroadcastSnapshot{}, 0, false
+		return bml.Snapshot{}, 0, false
 	}
-	return snapshot, storedAt * 1000, true
+	existence, _ := h.bmlStore.(bml.ModuleExistenceStore)
+	return bml.RestoreSnapshot(channelType, channelID, persisted, existence), persisted.StoredAt * 1000, true
 }
 
 func GetServiceDataBroadcastModuleVersion(ctx context.Context, h *Handler, params apigen.GetServiceDataBroadcastModuleVersionParams, w http.ResponseWriter) error {
@@ -124,7 +139,8 @@ func GetServiceDataBroadcastModuleVersion(ctx context.Context, h *Handler, param
 		return writeModuleDecodeError(w, err)
 	}
 	w.Header().Set("Content-Type", "application/json")
-	return json.NewEncoder(w).Encode(apiDataBroadcastModuleManifest(params.ID, module, resources))
+	manifest := apiDataBroadcastModuleManifest(params.ID, module, resources)
+	return writeDataBroadcastJSON(w, &manifest)
 }
 
 func GetServiceDataBroadcastModuleRaw(ctx context.Context, h *Handler, params apigen.GetServiceDataBroadcastModuleRawParams, w http.ResponseWriter) error {
@@ -185,69 +201,79 @@ func GetServiceDataBroadcastModuleResource(ctx context.Context, h *Handler, para
 }
 
 func writeModuleDecodeError(w http.ResponseWriter, err error) error {
-	if errors.Is(err, databroadcast.ErrModuleResourceLimit) {
+	if errors.Is(err, resource.ErrModuleResourceLimit) {
 		w.WriteHeader(http.StatusInsufficientStorage)
 		return nil
 	}
-	if errors.Is(err, databroadcast.ErrMalformedModule) || errors.Is(err, databroadcast.ErrUnsupportedModuleCompression) {
+	if errors.Is(err, resource.ErrMalformedModule) || errors.Is(err, resource.ErrUnsupportedModuleCompression) {
 		w.WriteHeader(http.StatusUnprocessableEntity)
 		return nil
 	}
 	return err
 }
 
-func dataBroadcastModuleResources(ctx context.Context, h *Handler, serviceItemID int64, module databroadcast.DataBroadcastModule) ([]databroadcast.ModuleResource, error) {
+func dataBroadcastModuleResources(ctx context.Context, h *Handler, serviceItemID int64, module bml.Module) ([]resource.ModuleResource, error) {
 	service, err := h.serviceManager.GetServiceById(ctx, strconv.FormatInt(serviceItemID, 10))
 	if err != nil {
 		return nil, err
 	}
 	if service != nil {
-		if store, ok := h.streamManager.(interface {
-			DataBroadcastCachedResources(string, string, uint16, byte, uint32, uint16, byte) ([]databroadcast.ModuleResource, bool)
-		}); ok {
-			if resources, found := store.DataBroadcastCachedResources(service.ChannelType, service.ChannelId, service.ServiceId, module.ComponentTag, module.DownloadID, module.ModuleID, module.Version); found {
+		if store, ok := h.bmlStore.(cache.DecodedModuleStore); ok {
+			if resources, found := store.GetDecodedResources(bml.ModuleVersionKey{
+				ChannelType: service.ChannelType, ChannelID: service.ChannelId, ServiceID: service.Key.ServiceID,
+				ComponentTag: module.ComponentTag, DownloadID: module.DownloadID, ModuleID: module.ModuleID, Version: module.Version,
+			}); found {
 				return resources, nil
 			}
 		}
 	}
-	return databroadcast.DecodeModuleResources(module)
+	return resource.DecodeModuleResources(module)
 }
 
-func dataBroadcastVersionModule(ctx context.Context, h *Handler, serviceItemID int64, componentTag byte, downloadID uint32, moduleID uint16, version byte) (databroadcast.DataBroadcastModule, int, error) {
+func dataBroadcastVersionModule(ctx context.Context, h *Handler, serviceItemID int64, componentTag byte, downloadID uint32, moduleID uint16, version byte) (bml.Module, int, error) {
 	service, err := h.serviceManager.GetServiceById(ctx, strconv.FormatInt(serviceItemID, 10))
 	if err != nil {
-		return databroadcast.DataBroadcastModule{}, 0, err
+		return bml.Module{}, 0, err
 	}
 	if service == nil {
-		return databroadcast.DataBroadcastModule{}, http.StatusNotFound, nil
+		return bml.Module{}, http.StatusNotFound, nil
 	}
 	if session, ok := h.streamManager.GetExisting(service.ChannelType, service.ChannelId); ok {
-		module, found := session.DataBroadcastModuleVersion(service.ServiceId, componentTag, downloadID, moduleID, version)
+		bmlSession, ok := session.(stream.BMLSource)
+		if !ok {
+			return bml.Module{}, http.StatusNotFound, nil
+		}
+		module, found := bmlSession.DataBroadcastModuleVersion(service.Key.ServiceID, componentTag, downloadID, moduleID, version)
 		if found {
 			return module, 0, nil
 		}
-		if announced, rejected := announcedModuleVersion(session.DataBroadcastSnapshot(service.ServiceId), componentTag, downloadID, moduleID, version); rejected {
-			return databroadcast.DataBroadcastModule{}, http.StatusInsufficientStorage, nil
+		if announced, rejected := announcedModuleVersion(bmlSession.DataBroadcastSnapshot(service.Key.ServiceID), componentTag, downloadID, moduleID, version); rejected {
+			return bml.Module{}, http.StatusInsufficientStorage, nil
 		} else if announced {
-			return databroadcast.DataBroadcastModule{}, http.StatusTooEarly, nil
+			return bml.Module{}, http.StatusTooEarly, nil
 		}
 	}
-	if store, ok := h.streamManager.(interface {
-		DataBroadcastCachedModule(string, string, uint16, byte, uint32, uint16, byte) (databroadcast.DataBroadcastModule, bool)
-	}); ok {
-		if module, found := store.DataBroadcastCachedModule(service.ChannelType, service.ChannelId, service.ServiceId, componentTag, downloadID, moduleID, version); found {
-			return module, 0, nil
+	// DataBroadcastCachedModule resolves a completed immutable module without
+	// allocating a tuner or requiring its original channel session to still
+	// exist.
+	if h.bmlStore != nil {
+		if cached, found := h.bmlStore.GetVersion(bml.ModuleVersionKey{
+			ChannelType: service.ChannelType, ChannelID: service.ChannelId, ServiceID: service.Key.ServiceID,
+			ComponentTag: componentTag, DownloadID: downloadID, ModuleID: moduleID, Version: version,
+		}); found {
+			return bml.CompletedModule(componentTag, cached), 0, nil
 		}
 	}
-	if store, ok := h.streamManager.(interface {
-		DataBroadcastModuleWasEvicted(string, string, uint16, byte, uint32, uint16, byte) bool
-	}); ok && store.DataBroadcastModuleWasEvicted(service.ChannelType, service.ChannelId, service.ServiceId, componentTag, downloadID, moduleID, version) {
-		return databroadcast.DataBroadcastModule{}, http.StatusGone, nil
+	if store, ok := h.bmlStore.(bml.EvictedModuleStore); ok && store.WasEvicted(bml.ModuleVersionKey{
+		ChannelType: service.ChannelType, ChannelID: service.ChannelId, ServiceID: service.Key.ServiceID,
+		ComponentTag: componentTag, DownloadID: downloadID, ModuleID: moduleID, Version: version,
+	}) {
+		return bml.Module{}, http.StatusGone, nil
 	}
-	return databroadcast.DataBroadcastModule{}, http.StatusNotFound, nil
+	return bml.Module{}, http.StatusNotFound, nil
 }
 
-func announcedModuleVersion(snapshot databroadcast.DataBroadcastSnapshot, componentTag byte, downloadID uint32, moduleID uint16, version byte) (bool, bool) {
+func announcedModuleVersion(snapshot bml.Snapshot, componentTag byte, downloadID uint32, moduleID uint16, version byte) (bool, bool) {
 	for _, component := range snapshot.Components {
 		if component.ComponentTag != componentTag {
 			continue

@@ -430,3 +430,47 @@ func packetizeSection(pid uint16, section Section, counter *byte) []Packet {
 	}
 	return packets
 }
+
+// tableSectionSet collects all sections belonging to one version of a PSI/SI
+// table. A table is ready only after every section through last_section_number
+// has arrived.
+type tableSectionSet struct {
+	initialized bool
+	extension   uint16
+	version     byte
+	last        byte
+	sections    map[byte]Section
+}
+
+func (s *tableSectionSet) add(section Section) (reset bool, ready bool) {
+	header, err := ParseSectionHeader(section)
+	if err != nil || !header.CurrentNextIndicator || header.SectionNumber > header.LastSectionNumber {
+		return false, false
+	}
+	if !s.initialized || s.extension != header.TransportStreamID || s.version != header.VersionNumber || s.last != header.LastSectionNumber {
+		s.initialized = true
+		s.extension = header.TransportStreamID
+		s.version = header.VersionNumber
+		s.last = header.LastSectionNumber
+		s.sections = make(map[byte]Section, int(s.last)+1)
+		reset = true
+	}
+	s.sections[header.SectionNumber] = section
+	if len(s.sections) != int(s.last)+1 {
+		return reset, false
+	}
+	for number := 0; number <= int(s.last); number++ {
+		if _, ok := s.sections[byte(number)]; !ok {
+			return reset, false
+		}
+	}
+	return reset, true
+}
+
+func (s *tableSectionSet) ordered() []Section {
+	sections := make([]Section, 0, int(s.last)+1)
+	for number := 0; number <= int(s.last); number++ {
+		sections = append(sections, s.sections[byte(number)])
+	}
+	return sections
+}

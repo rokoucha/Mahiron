@@ -19,7 +19,7 @@ func GetProgramStream(ctx context.Context, h *Handler, params apigen.GetProgramS
 	if !ok {
 		return &apigen.GetProgramStreamNotFound{}, nil
 	}
-	serviceItemID := int64(p.NetworkID)*100000 + int64(p.ServiceID)
+	serviceItemID := int64(p.Key.NetworkID)*100000 + int64(p.Key.ServiceID)
 	service, err := h.serviceManager.GetServiceById(ctx, strconv.FormatInt(serviceItemID, 10))
 	if err != nil {
 		return nil, err
@@ -29,8 +29,8 @@ func GetProgramStream(ctx context.Context, h *Handler, params apigen.GetProgramS
 	}
 
 	decode := shouldDecode(params.Decode)
-	networkID := p.NetworkID
-	serviceID := p.ServiceID
+	networkID := p.Key.NetworkID
+	serviceID := p.Key.ServiceID
 	ctx, userID := tunerUserContext(ctx, params.XMirakurunPriority, decode, h.serviceManager.GetChannel(service.ChannelType, service.ChannelId), &networkID, &serviceID)
 
 	session, err := h.streamManager.GetOrCreate(ctx, service.ChannelType, service.ChannelId)
@@ -48,7 +48,7 @@ func GetProgramStream(ctx context.Context, h *Handler, params apigen.GetProgramS
 	go func() {
 		defer func() { _ = fi.Close() }()
 		slog.Info("stream request started", "type", service.ChannelType, "channel", service.ChannelId, "kind", "program", "networkId", networkID, "serviceId", serviceID, "eventId", p.EventID, "decode", decode, "userId", userID)
-		if err := session.ProgramStream(ctx, p, decode, fi); err != nil && !errors.Is(err, io.ErrClosedPipe) && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+		if err := session.ProgramStream(ctx, p.Event, decode, fi); err != nil && !errors.Is(err, io.ErrClosedPipe) && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 			slog.Error("failed to stream program", "program", p.ID, "err", err)
 		}
 		slog.Debug("stream request finished", "type", service.ChannelType, "channel", service.ChannelId, "kind", "program", "networkId", networkID, "serviceId", serviceID, "eventId", p.EventID, "decode", decode, "userId", userID)
@@ -70,14 +70,14 @@ func ProgramsIDStreamHead(ctx context.Context, h *Handler, params apigen.Program
 	if !ok {
 		return &apigen.ProgramsIDStreamHeadNotFound{}, nil
 	}
-	serviceItemID := int64(p.NetworkID)*100000 + int64(p.ServiceID)
+	serviceItemID := int64(p.Key.NetworkID)*100000 + int64(p.Key.ServiceID)
 	service, err := h.serviceManager.GetServiceById(ctx, strconv.FormatInt(serviceItemID, 10))
 	if err != nil {
 		return nil, err
 	}
 	decode := shouldDecode(params.Decode)
-	networkID := p.NetworkID
-	serviceID := p.ServiceID
+	networkID := p.Key.NetworkID
+	serviceID := p.Key.ServiceID
 	var channelType, channelID string
 	if service != nil {
 		channelType = service.ChannelType

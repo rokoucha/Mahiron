@@ -85,16 +85,33 @@ func (h *Hub) PublishEvent(resource, typ string, data any) {
 	h.mu.Unlock()
 }
 
-func (h *Hub) PublishServiceEvent(typ string, data map[string]any) {
-	h.PublishEvent(ResourceService, typ, data)
+func (h *Hub) PublishEventRaw(resource, typ string, raw json.RawMessage) {
+	raw = append(json.RawMessage(nil), raw...)
+	observability.RecordEventPublished(context.Background(), resource, typ)
+	event := Event{
+		Resource: resource,
+		Type:     typ,
+		Data:     raw,
+		Time:     h.now().UnixMilli(),
+	}
+
+	h.mu.Lock()
+	h.log = append(h.log, event)
+	if overflow := len(h.log) - h.capacity; overflow > 0 {
+		h.log = append([]Event(nil), h.log[overflow:]...)
+	}
+	for ch := range h.subscribers {
+		select {
+		case ch <- cloneEvent(event):
+		default:
+			observability.RecordEventDropped(context.Background())
+		}
+	}
+	h.mu.Unlock()
 }
 
 func (h *Hub) PublishTunerStatusEvent(typ string, data map[string]any) {
 	h.PublishEvent(ResourceTuner, typ, data)
-}
-
-func (h *Hub) PublishProgramEvent(typ string, data map[string]any) {
-	h.PublishEvent(ResourceProgram, typ, data)
 }
 
 func (h *Hub) PublishJobEvent(typ string, data map[string]any) {

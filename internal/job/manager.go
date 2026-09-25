@@ -19,7 +19,7 @@ type eventPublisher interface {
 	PublishJobScheduleEvent(typ string, data map[string]any)
 }
 
-type JobManager struct {
+type Manager struct {
 	scheduler           gocron.Scheduler
 	definitions         map[string]*JobDefinition
 	gocronIDs           map[string]uuid.UUID
@@ -44,7 +44,7 @@ type Config struct {
 	MaxConcurrentJobs int
 }
 
-func NewManager(cfg Config, events ...eventPublisher) (*JobManager, error) {
+func NewManager(cfg Config, events ...eventPublisher) (*Manager, error) {
 	if cfg.MaxHistory <= 0 {
 		cfg.MaxHistory = 100
 	}
@@ -60,7 +60,7 @@ func NewManager(cfg Config, events ...eventPublisher) (*JobManager, error) {
 	if len(events) > 0 {
 		publisher = events[0]
 	}
-	return &JobManager{
+	return &Manager{
 		scheduler:           scheduler,
 		definitions:         make(map[string]*JobDefinition),
 		gocronIDs:           make(map[string]uuid.UUID),
@@ -76,13 +76,13 @@ func NewManager(cfg Config, events ...eventPublisher) (*JobManager, error) {
 	}, nil
 }
 
-func (m *JobManager) Register(definition JobDefinition) {
+func (m *Manager) Register(definition JobDefinition) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.definitions[definition.Key] = &definition
 }
 
-func (m *JobManager) AddSchedule(key, schedule string) error {
+func (m *Manager) AddSchedule(key, schedule string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	def, ok := m.definitions[key]
@@ -105,9 +105,9 @@ func (m *JobManager) AddSchedule(key, schedule string) error {
 	return nil
 }
 
-func (m *JobManager) Start() { m.scheduler.Start() }
+func (m *Manager) Start() { m.scheduler.Start() }
 
-func (m *JobManager) Shutdown(ctx context.Context) error {
+func (m *Manager) Shutdown(ctx context.Context) error {
 	m.shutdownCancel()
 	m.mu.Lock()
 	m.abortQueuedAndStandbyLocked()
@@ -129,7 +129,7 @@ func (m *JobManager) Shutdown(ctx context.Context) error {
 	}
 }
 
-func (m *JobManager) Enqueue(key string) (string, error) {
+func (m *Manager) Enqueue(key string) (string, error) {
 	m.mu.Lock()
 	def, ok := m.definitions[key]
 	if !ok {
@@ -141,14 +141,14 @@ func (m *JobManager) Enqueue(key string) (string, error) {
 	return id, err
 }
 
-func (m *JobManager) EnqueueDefinition(definition JobDefinition) (string, error) {
+func (m *Manager) EnqueueDefinition(definition JobDefinition) (string, error) {
 	m.mu.Lock()
 	id, err := m.enqueueLocked(&definition)
 	m.mu.Unlock()
 	return id, err
 }
 
-func (m *JobManager) enqueueLocked(def *JobDefinition) (string, error) {
+func (m *Manager) enqueueLocked(def *JobDefinition) (string, error) {
 	if m.shutdownCtx.Err() != nil {
 		return "", ErrManagerShutdown
 	}
@@ -173,7 +173,7 @@ func (m *JobManager) enqueueLocked(def *JobDefinition) (string, error) {
 	return item.ID, nil
 }
 
-func (m *JobManager) dispatchLocked() {
+func (m *Manager) dispatchLocked() {
 	for m.running < m.maxConcurrent && len(m.queue) > 0 && m.shutdownCtx.Err() == nil {
 		item := m.popRunnableQueueLocked()
 		if item == nil {
@@ -184,7 +184,7 @@ func (m *JobManager) dispatchLocked() {
 	}
 }
 
-func (m *JobManager) run(ctx context.Context, item *Job) {
+func (m *Manager) run(ctx context.Context, item *Job) {
 	defer m.wg.Done()
 	ctx, span := observability.StartSpan(ctx, observability.SpanJobRun,
 		observability.AttrJobID.String(item.ID),
@@ -207,14 +207,14 @@ func (m *JobManager) run(ctx context.Context, item *Job) {
 	m.mu.Unlock()
 }
 
-func (m *JobManager) shouldRetryLocked(item *Job, err error) bool {
+func (m *Manager) shouldRetryLocked(item *Job, err error) bool {
 	if err == nil || errors.Is(err, context.Canceled) || item.RetryCount >= len(item.definition.RetryDelays) || m.shutdownCtx.Err() != nil {
 		return false
 	}
 	return item.definition.RetryIf == nil || item.definition.RetryIf(err)
 }
 
-func (m *JobManager) standbyLocked(item *Job, err error) {
+func (m *Manager) standbyLocked(item *Job, err error) {
 	delay := item.definition.RetryDelays[item.RetryCount]
 	next := time.Now().Add(delay)
 	item.RetryCount++
@@ -245,7 +245,7 @@ func (m *JobManager) standbyLocked(item *Job, err error) {
 	}()
 }
 
-func (m *JobManager) finishLocked(item *Job, err error, aborted bool) {
+func (m *Manager) finishLocked(item *Job, err error, aborted bool) {
 	if item.Status == StatusFinished {
 		return
 	}
@@ -279,16 +279,16 @@ func (m *JobManager) finishLocked(item *Job, err error, aborted bool) {
 	}
 }
 
-func (m *JobManager) addHistoryLocked(item *Job) {
+func (m *Manager) addHistoryLocked(item *Job) {
 	m.history = append(m.history, item)
 	m.trimHistory()
 }
 
-func (m *JobManager) enqueueItemLocked(item *Job) {
+func (m *Manager) enqueueItemLocked(item *Job) {
 	m.queue = append(m.queue, item)
 }
 
-func (m *JobManager) popRunnableQueueLocked() *Job {
+func (m *Manager) popRunnableQueueLocked() *Job {
 	for i, item := range m.queue {
 		if !m.dependenciesSatisfiedLocked(item.definition.DependsOn, item.definition.ExclusiveKeys) {
 			continue
@@ -299,7 +299,7 @@ func (m *JobManager) popRunnableQueueLocked() *Job {
 	return nil
 }
 
-func (m *JobManager) dependenciesSatisfiedLocked(dependencies, exclusiveKeys []string) bool {
+func (m *Manager) dependenciesSatisfiedLocked(dependencies, exclusiveKeys []string) bool {
 	for _, key := range dependencies {
 		if m.activeKeys[key] {
 			return false
@@ -313,7 +313,7 @@ func (m *JobManager) dependenciesSatisfiedLocked(dependencies, exclusiveKeys []s
 	return true
 }
 
-func (m *JobManager) startJobLocked(item *Job) context.Context {
+func (m *Manager) startJobLocked(item *Job) context.Context {
 	now := time.Now()
 	item.Status = StatusRunning
 	item.StartedAt = &now
@@ -330,7 +330,7 @@ func (m *JobManager) startJobLocked(item *Job) context.Context {
 	return ctx
 }
 
-func (m *JobManager) completeActiveLocked(item *Job) {
+func (m *Manager) completeActiveLocked(item *Job) {
 	delete(m.active, item.ID)
 	for _, key := range item.definition.ExclusiveKeys {
 		delete(m.activeExclusiveKeys, key)
@@ -338,7 +338,7 @@ func (m *JobManager) completeActiveLocked(item *Job) {
 	m.running--
 }
 
-func (m *JobManager) retryToQueueLocked(item *Job) {
+func (m *Manager) retryToQueueLocked(item *Job) {
 	item.Status = StatusQueued
 	item.UpdatedAt = time.Now()
 	item.NextRunAt = nil
@@ -346,7 +346,7 @@ func (m *JobManager) retryToQueueLocked(item *Job) {
 	m.publishJobChangeLocked("update", item)
 }
 
-func (m *JobManager) abortQueuedAndStandbyLocked() {
+func (m *Manager) abortQueuedAndStandbyLocked() {
 	queued := append([]*Job(nil), m.queue...)
 	m.queue = nil
 	for _, item := range queued {
@@ -359,12 +359,12 @@ func (m *JobManager) abortQueuedAndStandbyLocked() {
 	}
 }
 
-func (m *JobManager) abortPendingLocked(item *Job) {
+func (m *Manager) abortPendingLocked(item *Job) {
 	item.IsAborting = true
 	m.finishLocked(item, context.Canceled, true)
 }
 
-func (m *JobManager) cancelActiveLocked() {
+func (m *Manager) cancelActiveLocked() {
 	for _, cancel := range m.active {
 		cancel()
 	}
@@ -372,30 +372,30 @@ func (m *JobManager) cancelActiveLocked() {
 
 // Changes returns a notification channel that is closed on the next job state
 // transition. Callers should take a fresh channel after every notification.
-func (m *JobManager) Changes() <-chan struct{} {
+func (m *Manager) Changes() <-chan struct{} {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.changed
 }
 
-func (m *JobManager) notifyLocked() {
+func (m *Manager) notifyLocked() {
 	close(m.changed)
 	m.changed = make(chan struct{})
 }
 
-func (m *JobManager) publishJobLocked(typ string, item *Job) {
+func (m *Manager) publishJobLocked(typ string, item *Job) {
 	if m.events == nil {
 		return
 	}
 	m.events.PublishJobEvent(typ, item.EventData())
 }
 
-func (m *JobManager) publishJobChangeLocked(typ string, item *Job) {
+func (m *Manager) publishJobChangeLocked(typ string, item *Job) {
 	m.notifyLocked()
 	m.publishJobLocked(typ, item)
 }
 
-func (m *JobManager) publishJobScheduleLocked(schedule ScheduleInfo) {
+func (m *Manager) publishJobScheduleLocked(schedule ScheduleInfo) {
 	if m.events == nil {
 		return
 	}
@@ -405,7 +405,7 @@ func (m *JobManager) publishJobScheduleLocked(schedule ScheduleInfo) {
 // Wait blocks until the identified execution reaches its terminal state.  It
 // is also the synchronization boundary for callers that need to observe a
 // completed Job without polling the manager's internal state.
-func (m *JobManager) Wait(ctx context.Context, id string) (*Job, error) {
+func (m *Manager) Wait(ctx context.Context, id string) (*Job, error) {
 	m.mu.Lock()
 	item := m.findJob(id)
 	if item == nil {
@@ -430,7 +430,7 @@ func (m *JobManager) Wait(ctx context.Context, id string) (*Job, error) {
 	return &copy, nil
 }
 
-func (m *JobManager) Abort(id string) error {
+func (m *Manager) Abort(id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.abortActiveLocked(id) {
@@ -446,7 +446,7 @@ func (m *JobManager) Abort(id string) error {
 	return ErrJobNotRunning
 }
 
-func (m *JobManager) abortActiveLocked(id string) bool {
+func (m *Manager) abortActiveLocked(id string) bool {
 	cancel, ok := m.active[id]
 	if !ok {
 		return false
@@ -462,7 +462,7 @@ func (m *JobManager) abortActiveLocked(id string) bool {
 	return true
 }
 
-func (m *JobManager) abortQueuedLocked(id string) bool {
+func (m *Manager) abortQueuedLocked(id string) bool {
 	for i, item := range m.queue {
 		if item.ID != id {
 			continue
@@ -475,7 +475,7 @@ func (m *JobManager) abortQueuedLocked(id string) bool {
 	return false
 }
 
-func (m *JobManager) abortStandbyLocked(id string) bool {
+func (m *Manager) abortStandbyLocked(id string) bool {
 	item := m.findJob(id)
 	if item == nil || item.Status != StatusStandby {
 		return false
@@ -486,7 +486,7 @@ func (m *JobManager) abortStandbyLocked(id string) bool {
 	return true
 }
 
-func (m *JobManager) Rerun(id string) error {
+func (m *Manager) Rerun(id string) error {
 	m.mu.Lock()
 	item := m.findJob(id)
 	if item == nil {
@@ -510,7 +510,7 @@ func (m *JobManager) Rerun(id string) error {
 	return err
 }
 
-func (m *JobManager) RunSchedule(key string) error {
+func (m *Manager) RunSchedule(key string) error {
 	m.mu.Lock()
 	gocronID, ok := m.gocronIDs[key]
 	m.mu.Unlock()
@@ -528,7 +528,7 @@ func (m *JobManager) RunSchedule(key string) error {
 	return ErrJobNotFound
 }
 
-func (m *JobManager) GetJobs() []*Job {
+func (m *Manager) GetJobs() []*Job {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	result := make([]*Job, len(m.history))
@@ -542,7 +542,7 @@ func (m *JobManager) GetJobs() []*Job {
 	return result
 }
 
-func (m *JobManager) GetActiveJobKeysByPrefix(prefix string) []string {
+func (m *Manager) GetActiveJobKeysByPrefix(prefix string) []string {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	seen := make(map[string]struct{})
@@ -563,7 +563,7 @@ func (m *JobManager) GetActiveJobKeysByPrefix(prefix string) []string {
 	return result
 }
 
-func (m *JobManager) GetJobSchedules() []ScheduleInfo {
+func (m *Manager) GetJobSchedules() []ScheduleInfo {
 	scheduled := m.scheduler.Jobs()
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -590,7 +590,7 @@ func (m *JobManager) GetJobSchedules() []ScheduleInfo {
 }
 
 type jobResultReporter struct {
-	manager *JobManager
+	manager *Manager
 	item    *Job
 }
 
@@ -601,7 +601,7 @@ func (r jobResultReporter) SetJobResult(result run.Result) {
 	r.manager.setJobResult(r.item, result)
 }
 
-func (m *JobManager) setJobResult(item *Job, result run.Result) {
+func (m *Manager) setJobResult(item *Job, result run.Result) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if item.Status == StatusFinished {
@@ -613,7 +613,7 @@ func (m *JobManager) setJobResult(item *Job, result run.Result) {
 	observability.RecordJobItems(context.Background(), item.Key, result)
 }
 
-func (m *JobManager) findJob(id string) *Job {
+func (m *Manager) findJob(id string) *Job {
 	for _, item := range m.history {
 		if item.ID == id {
 			return item
@@ -622,7 +622,7 @@ func (m *JobManager) findJob(id string) *Job {
 	return nil
 }
 
-func (m *JobManager) trimHistory() {
+func (m *Manager) trimHistory() {
 	for len(m.history) > m.maxHistory {
 		removed := false
 		for i, item := range m.history {
@@ -638,7 +638,7 @@ func (m *JobManager) trimHistory() {
 	}
 }
 
-func (m *JobManager) wrapHandler(def *JobDefinition) func(context.Context) error {
+func (m *Manager) wrapHandler(def *JobDefinition) func(context.Context) error {
 	return func(context.Context) error {
 		_, err := m.Enqueue(def.Key)
 		if errors.Is(err, ErrJobAlreadyRunning) {

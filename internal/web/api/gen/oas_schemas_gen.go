@@ -470,6 +470,1715 @@ type ConfigServer struct{}
 
 func (*ConfigServer) getServerConfigRes() {}
 
+// Ref: #/components/schemas/DataBroadcastAffiliatedBroadcaster
+type DataBroadcastAffiliatedBroadcaster struct {
+	OriginalNetworkId int `json:"originalNetworkId"`
+	BroadcasterId     int `json:"broadcasterId"`
+}
+
+// GetOriginalNetworkId returns the value of OriginalNetworkId.
+func (s *DataBroadcastAffiliatedBroadcaster) GetOriginalNetworkId() int {
+	return s.OriginalNetworkId
+}
+
+// GetBroadcasterId returns the value of BroadcasterId.
+func (s *DataBroadcastAffiliatedBroadcaster) GetBroadcasterId() int {
+	return s.BroadcasterId
+}
+
+// SetOriginalNetworkId sets the value of OriginalNetworkId.
+func (s *DataBroadcastAffiliatedBroadcaster) SetOriginalNetworkId(val int) {
+	s.OriginalNetworkId = val
+}
+
+// SetBroadcasterId sets the value of BroadcasterId.
+func (s *DataBroadcastAffiliatedBroadcaster) SetBroadcasterId(val int) {
+	s.BroadcasterId = val
+}
+
+// Ref: #/components/schemas/DataBroadcastBIT
+type DataBroadcastBIT struct {
+	OriginalNetworkId int                        `json:"originalNetworkId"`
+	Version           int                        `json:"version"`
+	Broadcasters      []DataBroadcastBroadcaster `json:"broadcasters"`
+	RawSectionHex     string                     `json:"rawSectionHex"`
+}
+
+// GetOriginalNetworkId returns the value of OriginalNetworkId.
+func (s *DataBroadcastBIT) GetOriginalNetworkId() int {
+	return s.OriginalNetworkId
+}
+
+// GetVersion returns the value of Version.
+func (s *DataBroadcastBIT) GetVersion() int {
+	return s.Version
+}
+
+// GetBroadcasters returns the value of Broadcasters.
+func (s *DataBroadcastBIT) GetBroadcasters() []DataBroadcastBroadcaster {
+	return s.Broadcasters
+}
+
+// GetRawSectionHex returns the value of RawSectionHex.
+func (s *DataBroadcastBIT) GetRawSectionHex() string {
+	return s.RawSectionHex
+}
+
+// SetOriginalNetworkId sets the value of OriginalNetworkId.
+func (s *DataBroadcastBIT) SetOriginalNetworkId(val int) {
+	s.OriginalNetworkId = val
+}
+
+// SetVersion sets the value of Version.
+func (s *DataBroadcastBIT) SetVersion(val int) {
+	s.Version = val
+}
+
+// SetBroadcasters sets the value of Broadcasters.
+func (s *DataBroadcastBIT) SetBroadcasters(val []DataBroadcastBroadcaster) {
+	s.Broadcasters = val
+}
+
+// SetRawSectionHex sets the value of RawSectionHex.
+func (s *DataBroadcastBIT) SetRawSectionHex(val string) {
+	s.RawSectionHex = val
+}
+
+// Ref: #/components/schemas/DataBroadcastBITService
+type DataBroadcastBITService struct {
+	ServiceId   int `json:"serviceId"`
+	ServiceType int `json:"serviceType"`
+}
+
+// GetServiceId returns the value of ServiceId.
+func (s *DataBroadcastBITService) GetServiceId() int {
+	return s.ServiceId
+}
+
+// GetServiceType returns the value of ServiceType.
+func (s *DataBroadcastBITService) GetServiceType() int {
+	return s.ServiceType
+}
+
+// SetServiceId sets the value of ServiceId.
+func (s *DataBroadcastBITService) SetServiceId(val int) {
+	s.ServiceId = val
+}
+
+// SetServiceType sets the value of ServiceType.
+func (s *DataBroadcastBITService) SetServiceType(val int) {
+	s.ServiceType = val
+}
+
+// Ref: #/components/schemas/DataBroadcastBXMLCarousel
+type DataBroadcastBXMLCarousel struct {
+	DataEventId           int  `json:"dataEventId"`
+	EventSectionFlag      bool `json:"eventSectionFlag"`
+	OndemandRetrievalFlag bool `json:"ondemandRetrievalFlag"`
+	FileStorableFlag      bool `json:"fileStorableFlag"`
+	StartPriority         int  `json:"startPriority"`
+}
+
+// GetDataEventId returns the value of DataEventId.
+func (s *DataBroadcastBXMLCarousel) GetDataEventId() int {
+	return s.DataEventId
+}
+
+// GetEventSectionFlag returns the value of EventSectionFlag.
+func (s *DataBroadcastBXMLCarousel) GetEventSectionFlag() bool {
+	return s.EventSectionFlag
+}
+
+// GetOndemandRetrievalFlag returns the value of OndemandRetrievalFlag.
+func (s *DataBroadcastBXMLCarousel) GetOndemandRetrievalFlag() bool {
+	return s.OndemandRetrievalFlag
+}
+
+// GetFileStorableFlag returns the value of FileStorableFlag.
+func (s *DataBroadcastBXMLCarousel) GetFileStorableFlag() bool {
+	return s.FileStorableFlag
+}
+
+// GetStartPriority returns the value of StartPriority.
+func (s *DataBroadcastBXMLCarousel) GetStartPriority() int {
+	return s.StartPriority
+}
+
+// SetDataEventId sets the value of DataEventId.
+func (s *DataBroadcastBXMLCarousel) SetDataEventId(val int) {
+	s.DataEventId = val
+}
+
+// SetEventSectionFlag sets the value of EventSectionFlag.
+func (s *DataBroadcastBXMLCarousel) SetEventSectionFlag(val bool) {
+	s.EventSectionFlag = val
+}
+
+// SetOndemandRetrievalFlag sets the value of OndemandRetrievalFlag.
+func (s *DataBroadcastBXMLCarousel) SetOndemandRetrievalFlag(val bool) {
+	s.OndemandRetrievalFlag = val
+}
+
+// SetFileStorableFlag sets the value of FileStorableFlag.
+func (s *DataBroadcastBXMLCarousel) SetFileStorableFlag(val bool) {
+	s.FileStorableFlag = val
+}
+
+// SetStartPriority sets the value of StartPriority.
+func (s *DataBroadcastBXMLCarousel) SetStartPriority(val int) {
+	s.StartPriority = val
+}
+
+// Ref: #/components/schemas/DataBroadcastBXMLEntryPoint
+type DataBroadcastBXMLEntryPoint struct {
+	AutoStartFlag      bool   `json:"autoStartFlag"`
+	DocumentResolution int    `json:"documentResolution"`
+	UseXML             bool   `json:"useXML"`
+	DefaultVersionFlag bool   `json:"defaultVersionFlag"`
+	IndependentFlag    bool   `json:"independentFlag"`
+	StyleForTVFlag     bool   `json:"styleForTVFlag"`
+	BmlMajorVersion    int    `json:"bmlMajorVersion"`
+	BmlMinorVersion    int    `json:"bmlMinorVersion"`
+	BxmlMajorVersion   NilInt `json:"bxmlMajorVersion"`
+	BxmlMinorVersion   NilInt `json:"bxmlMinorVersion"`
+}
+
+// GetAutoStartFlag returns the value of AutoStartFlag.
+func (s *DataBroadcastBXMLEntryPoint) GetAutoStartFlag() bool {
+	return s.AutoStartFlag
+}
+
+// GetDocumentResolution returns the value of DocumentResolution.
+func (s *DataBroadcastBXMLEntryPoint) GetDocumentResolution() int {
+	return s.DocumentResolution
+}
+
+// GetUseXML returns the value of UseXML.
+func (s *DataBroadcastBXMLEntryPoint) GetUseXML() bool {
+	return s.UseXML
+}
+
+// GetDefaultVersionFlag returns the value of DefaultVersionFlag.
+func (s *DataBroadcastBXMLEntryPoint) GetDefaultVersionFlag() bool {
+	return s.DefaultVersionFlag
+}
+
+// GetIndependentFlag returns the value of IndependentFlag.
+func (s *DataBroadcastBXMLEntryPoint) GetIndependentFlag() bool {
+	return s.IndependentFlag
+}
+
+// GetStyleForTVFlag returns the value of StyleForTVFlag.
+func (s *DataBroadcastBXMLEntryPoint) GetStyleForTVFlag() bool {
+	return s.StyleForTVFlag
+}
+
+// GetBmlMajorVersion returns the value of BmlMajorVersion.
+func (s *DataBroadcastBXMLEntryPoint) GetBmlMajorVersion() int {
+	return s.BmlMajorVersion
+}
+
+// GetBmlMinorVersion returns the value of BmlMinorVersion.
+func (s *DataBroadcastBXMLEntryPoint) GetBmlMinorVersion() int {
+	return s.BmlMinorVersion
+}
+
+// GetBxmlMajorVersion returns the value of BxmlMajorVersion.
+func (s *DataBroadcastBXMLEntryPoint) GetBxmlMajorVersion() NilInt {
+	return s.BxmlMajorVersion
+}
+
+// GetBxmlMinorVersion returns the value of BxmlMinorVersion.
+func (s *DataBroadcastBXMLEntryPoint) GetBxmlMinorVersion() NilInt {
+	return s.BxmlMinorVersion
+}
+
+// SetAutoStartFlag sets the value of AutoStartFlag.
+func (s *DataBroadcastBXMLEntryPoint) SetAutoStartFlag(val bool) {
+	s.AutoStartFlag = val
+}
+
+// SetDocumentResolution sets the value of DocumentResolution.
+func (s *DataBroadcastBXMLEntryPoint) SetDocumentResolution(val int) {
+	s.DocumentResolution = val
+}
+
+// SetUseXML sets the value of UseXML.
+func (s *DataBroadcastBXMLEntryPoint) SetUseXML(val bool) {
+	s.UseXML = val
+}
+
+// SetDefaultVersionFlag sets the value of DefaultVersionFlag.
+func (s *DataBroadcastBXMLEntryPoint) SetDefaultVersionFlag(val bool) {
+	s.DefaultVersionFlag = val
+}
+
+// SetIndependentFlag sets the value of IndependentFlag.
+func (s *DataBroadcastBXMLEntryPoint) SetIndependentFlag(val bool) {
+	s.IndependentFlag = val
+}
+
+// SetStyleForTVFlag sets the value of StyleForTVFlag.
+func (s *DataBroadcastBXMLEntryPoint) SetStyleForTVFlag(val bool) {
+	s.StyleForTVFlag = val
+}
+
+// SetBmlMajorVersion sets the value of BmlMajorVersion.
+func (s *DataBroadcastBXMLEntryPoint) SetBmlMajorVersion(val int) {
+	s.BmlMajorVersion = val
+}
+
+// SetBmlMinorVersion sets the value of BmlMinorVersion.
+func (s *DataBroadcastBXMLEntryPoint) SetBmlMinorVersion(val int) {
+	s.BmlMinorVersion = val
+}
+
+// SetBxmlMajorVersion sets the value of BxmlMajorVersion.
+func (s *DataBroadcastBXMLEntryPoint) SetBxmlMajorVersion(val NilInt) {
+	s.BxmlMajorVersion = val
+}
+
+// SetBxmlMinorVersion sets the value of BxmlMinorVersion.
+func (s *DataBroadcastBXMLEntryPoint) SetBxmlMinorVersion(val NilInt) {
+	s.BxmlMinorVersion = val
+}
+
+// Ref: #/components/schemas/DataBroadcastBXMLInfo
+type DataBroadcastBXMLInfo struct {
+	TransmissionFormat         int                            `json:"transmissionFormat"`
+	EntryPointFlag             bool                           `json:"entryPointFlag"`
+	EntryPointInfo             OptDataBroadcastBXMLEntryPoint `json:"entryPointInfo"`
+	AdditionalAribCarouselInfo OptDataBroadcastBXMLCarousel   `json:"additionalAribCarouselInfo"`
+}
+
+// GetTransmissionFormat returns the value of TransmissionFormat.
+func (s *DataBroadcastBXMLInfo) GetTransmissionFormat() int {
+	return s.TransmissionFormat
+}
+
+// GetEntryPointFlag returns the value of EntryPointFlag.
+func (s *DataBroadcastBXMLInfo) GetEntryPointFlag() bool {
+	return s.EntryPointFlag
+}
+
+// GetEntryPointInfo returns the value of EntryPointInfo.
+func (s *DataBroadcastBXMLInfo) GetEntryPointInfo() OptDataBroadcastBXMLEntryPoint {
+	return s.EntryPointInfo
+}
+
+// GetAdditionalAribCarouselInfo returns the value of AdditionalAribCarouselInfo.
+func (s *DataBroadcastBXMLInfo) GetAdditionalAribCarouselInfo() OptDataBroadcastBXMLCarousel {
+	return s.AdditionalAribCarouselInfo
+}
+
+// SetTransmissionFormat sets the value of TransmissionFormat.
+func (s *DataBroadcastBXMLInfo) SetTransmissionFormat(val int) {
+	s.TransmissionFormat = val
+}
+
+// SetEntryPointFlag sets the value of EntryPointFlag.
+func (s *DataBroadcastBXMLInfo) SetEntryPointFlag(val bool) {
+	s.EntryPointFlag = val
+}
+
+// SetEntryPointInfo sets the value of EntryPointInfo.
+func (s *DataBroadcastBXMLInfo) SetEntryPointInfo(val OptDataBroadcastBXMLEntryPoint) {
+	s.EntryPointInfo = val
+}
+
+// SetAdditionalAribCarouselInfo sets the value of AdditionalAribCarouselInfo.
+func (s *DataBroadcastBXMLInfo) SetAdditionalAribCarouselInfo(val OptDataBroadcastBXMLCarousel) {
+	s.AdditionalAribCarouselInfo = val
+}
+
+// Ref: #/components/schemas/DataBroadcastBroadcaster
+type DataBroadcastBroadcaster struct {
+	BroadcasterId            int                                  `json:"broadcasterId"`
+	BroadcasterName          NilString                            `json:"broadcasterName"`
+	Services                 []DataBroadcastBITService            `json:"services"`
+	Affiliations             []int                                `json:"affiliations"`
+	AffiliationBroadcasters  []DataBroadcastAffiliatedBroadcaster `json:"affiliationBroadcasters"`
+	TerrestrialBroadcasterId NilInt                               `json:"terrestrialBroadcasterId"`
+}
+
+// GetBroadcasterId returns the value of BroadcasterId.
+func (s *DataBroadcastBroadcaster) GetBroadcasterId() int {
+	return s.BroadcasterId
+}
+
+// GetBroadcasterName returns the value of BroadcasterName.
+func (s *DataBroadcastBroadcaster) GetBroadcasterName() NilString {
+	return s.BroadcasterName
+}
+
+// GetServices returns the value of Services.
+func (s *DataBroadcastBroadcaster) GetServices() []DataBroadcastBITService {
+	return s.Services
+}
+
+// GetAffiliations returns the value of Affiliations.
+func (s *DataBroadcastBroadcaster) GetAffiliations() []int {
+	return s.Affiliations
+}
+
+// GetAffiliationBroadcasters returns the value of AffiliationBroadcasters.
+func (s *DataBroadcastBroadcaster) GetAffiliationBroadcasters() []DataBroadcastAffiliatedBroadcaster {
+	return s.AffiliationBroadcasters
+}
+
+// GetTerrestrialBroadcasterId returns the value of TerrestrialBroadcasterId.
+func (s *DataBroadcastBroadcaster) GetTerrestrialBroadcasterId() NilInt {
+	return s.TerrestrialBroadcasterId
+}
+
+// SetBroadcasterId sets the value of BroadcasterId.
+func (s *DataBroadcastBroadcaster) SetBroadcasterId(val int) {
+	s.BroadcasterId = val
+}
+
+// SetBroadcasterName sets the value of BroadcasterName.
+func (s *DataBroadcastBroadcaster) SetBroadcasterName(val NilString) {
+	s.BroadcasterName = val
+}
+
+// SetServices sets the value of Services.
+func (s *DataBroadcastBroadcaster) SetServices(val []DataBroadcastBITService) {
+	s.Services = val
+}
+
+// SetAffiliations sets the value of Affiliations.
+func (s *DataBroadcastBroadcaster) SetAffiliations(val []int) {
+	s.Affiliations = val
+}
+
+// SetAffiliationBroadcasters sets the value of AffiliationBroadcasters.
+func (s *DataBroadcastBroadcaster) SetAffiliationBroadcasters(val []DataBroadcastAffiliatedBroadcaster) {
+	s.AffiliationBroadcasters = val
+}
+
+// SetTerrestrialBroadcasterId sets the value of TerrestrialBroadcasterId.
+func (s *DataBroadcastBroadcaster) SetTerrestrialBroadcasterId(val NilInt) {
+	s.TerrestrialBroadcasterId = val
+}
+
+// Ref: #/components/schemas/DataBroadcastCarousel
+type DataBroadcastCarousel struct {
+	Status     string   `json:"status"`
+	DownloadId NilInt64 `json:"downloadId"`
+	BlockSize  NilInt   `json:"blockSize"`
+}
+
+// GetStatus returns the value of Status.
+func (s *DataBroadcastCarousel) GetStatus() string {
+	return s.Status
+}
+
+// GetDownloadId returns the value of DownloadId.
+func (s *DataBroadcastCarousel) GetDownloadId() NilInt64 {
+	return s.DownloadId
+}
+
+// GetBlockSize returns the value of BlockSize.
+func (s *DataBroadcastCarousel) GetBlockSize() NilInt {
+	return s.BlockSize
+}
+
+// SetStatus sets the value of Status.
+func (s *DataBroadcastCarousel) SetStatus(val string) {
+	s.Status = val
+}
+
+// SetDownloadId sets the value of DownloadId.
+func (s *DataBroadcastCarousel) SetDownloadId(val NilInt64) {
+	s.DownloadId = val
+}
+
+// SetBlockSize sets the value of BlockSize.
+func (s *DataBroadcastCarousel) SetBlockSize(val NilInt) {
+	s.BlockSize = val
+}
+
+// Ref: #/components/schemas/DataBroadcastComponent
+type DataBroadcastComponent struct {
+	ComponentTag    int                           `json:"componentTag"`
+	Pid             int                           `json:"pid"`
+	StreamType      int                           `json:"streamType"`
+	DataComponentId NilInt                        `json:"dataComponentId"`
+	BxmlInfo        NilDataBroadcastBXMLInfo      `json:"bxmlInfo"`
+	DataEventId     int                           `json:"dataEventId"`
+	ReturnToEntry   NilDataBroadcastReturnToEntry `json:"returnToEntry"`
+	Carousel        DataBroadcastCarousel         `json:"carousel"`
+	Modules         []DataBroadcastModule         `json:"modules"`
+}
+
+// GetComponentTag returns the value of ComponentTag.
+func (s *DataBroadcastComponent) GetComponentTag() int {
+	return s.ComponentTag
+}
+
+// GetPid returns the value of Pid.
+func (s *DataBroadcastComponent) GetPid() int {
+	return s.Pid
+}
+
+// GetStreamType returns the value of StreamType.
+func (s *DataBroadcastComponent) GetStreamType() int {
+	return s.StreamType
+}
+
+// GetDataComponentId returns the value of DataComponentId.
+func (s *DataBroadcastComponent) GetDataComponentId() NilInt {
+	return s.DataComponentId
+}
+
+// GetBxmlInfo returns the value of BxmlInfo.
+func (s *DataBroadcastComponent) GetBxmlInfo() NilDataBroadcastBXMLInfo {
+	return s.BxmlInfo
+}
+
+// GetDataEventId returns the value of DataEventId.
+func (s *DataBroadcastComponent) GetDataEventId() int {
+	return s.DataEventId
+}
+
+// GetReturnToEntry returns the value of ReturnToEntry.
+func (s *DataBroadcastComponent) GetReturnToEntry() NilDataBroadcastReturnToEntry {
+	return s.ReturnToEntry
+}
+
+// GetCarousel returns the value of Carousel.
+func (s *DataBroadcastComponent) GetCarousel() DataBroadcastCarousel {
+	return s.Carousel
+}
+
+// GetModules returns the value of Modules.
+func (s *DataBroadcastComponent) GetModules() []DataBroadcastModule {
+	return s.Modules
+}
+
+// SetComponentTag sets the value of ComponentTag.
+func (s *DataBroadcastComponent) SetComponentTag(val int) {
+	s.ComponentTag = val
+}
+
+// SetPid sets the value of Pid.
+func (s *DataBroadcastComponent) SetPid(val int) {
+	s.Pid = val
+}
+
+// SetStreamType sets the value of StreamType.
+func (s *DataBroadcastComponent) SetStreamType(val int) {
+	s.StreamType = val
+}
+
+// SetDataComponentId sets the value of DataComponentId.
+func (s *DataBroadcastComponent) SetDataComponentId(val NilInt) {
+	s.DataComponentId = val
+}
+
+// SetBxmlInfo sets the value of BxmlInfo.
+func (s *DataBroadcastComponent) SetBxmlInfo(val NilDataBroadcastBXMLInfo) {
+	s.BxmlInfo = val
+}
+
+// SetDataEventId sets the value of DataEventId.
+func (s *DataBroadcastComponent) SetDataEventId(val int) {
+	s.DataEventId = val
+}
+
+// SetReturnToEntry sets the value of ReturnToEntry.
+func (s *DataBroadcastComponent) SetReturnToEntry(val NilDataBroadcastReturnToEntry) {
+	s.ReturnToEntry = val
+}
+
+// SetCarousel sets the value of Carousel.
+func (s *DataBroadcastComponent) SetCarousel(val DataBroadcastCarousel) {
+	s.Carousel = val
+}
+
+// SetModules sets the value of Modules.
+func (s *DataBroadcastComponent) SetModules(val []DataBroadcastModule) {
+	s.Modules = val
+}
+
+// Ref: #/components/schemas/DataBroadcastCurrentTime
+type DataBroadcastCurrentTime struct {
+	JstTimeUnixMilli int64 `json:"jstTimeUnixMilli"`
+}
+
+// GetJstTimeUnixMilli returns the value of JstTimeUnixMilli.
+func (s *DataBroadcastCurrentTime) GetJstTimeUnixMilli() int64 {
+	return s.JstTimeUnixMilli
+}
+
+// SetJstTimeUnixMilli sets the value of JstTimeUnixMilli.
+func (s *DataBroadcastCurrentTime) SetJstTimeUnixMilli(val int64) {
+	s.JstTimeUnixMilli = val
+}
+
+// Ref: #/components/schemas/DataBroadcastESEvent
+type DataBroadcastESEvent struct {
+	ComponentId int                         `json:"componentId"`
+	DataEventId int                         `json:"dataEventId"`
+	Events      []DataBroadcastGeneralEvent `json:"events"`
+}
+
+// GetComponentId returns the value of ComponentId.
+func (s *DataBroadcastESEvent) GetComponentId() int {
+	return s.ComponentId
+}
+
+// GetDataEventId returns the value of DataEventId.
+func (s *DataBroadcastESEvent) GetDataEventId() int {
+	return s.DataEventId
+}
+
+// GetEvents returns the value of Events.
+func (s *DataBroadcastESEvent) GetEvents() []DataBroadcastGeneralEvent {
+	return s.Events
+}
+
+// SetComponentId sets the value of ComponentId.
+func (s *DataBroadcastESEvent) SetComponentId(val int) {
+	s.ComponentId = val
+}
+
+// SetDataEventId sets the value of DataEventId.
+func (s *DataBroadcastESEvent) SetDataEventId(val int) {
+	s.DataEventId = val
+}
+
+// SetEvents sets the value of Events.
+func (s *DataBroadcastESEvent) SetEvents(val []DataBroadcastGeneralEvent) {
+	s.Events = val
+}
+
+// The data of one data-broadcast server-sent event. Only the field named by type is present (snapshot,
+// pmt, moduleList for moduleListUpdated, module for moduleUpdated, programInfo, currentTime, esEvent
+// for esEventUpdated, bit or pcr), and it may be null.
+// Ref: #/components/schemas/DataBroadcastEvent
+type DataBroadcastEvent struct {
+	Type        string                         `json:"type"`
+	Sequence    int64                          `json:"sequence"`
+	Revision    int64                          `json:"revision"`
+	Snapshot    OptDataBroadcastSnapshot       `json:"snapshot"`
+	Pmt         OptNilDataBroadcastPMT         `json:"pmt"`
+	ModuleList  OptNilDataBroadcastModuleList  `json:"moduleList"`
+	Module      OptNilDataBroadcastModule      `json:"module"`
+	ProgramInfo OptNilDataBroadcastProgramInfo `json:"programInfo"`
+	CurrentTime OptNilDataBroadcastCurrentTime `json:"currentTime"`
+	EsEvent     OptNilDataBroadcastESEvent     `json:"esEvent"`
+	Bit         OptNilDataBroadcastBIT         `json:"bit"`
+	Pcr         OptNilDataBroadcastPCR         `json:"pcr"`
+}
+
+// GetType returns the value of Type.
+func (s *DataBroadcastEvent) GetType() string {
+	return s.Type
+}
+
+// GetSequence returns the value of Sequence.
+func (s *DataBroadcastEvent) GetSequence() int64 {
+	return s.Sequence
+}
+
+// GetRevision returns the value of Revision.
+func (s *DataBroadcastEvent) GetRevision() int64 {
+	return s.Revision
+}
+
+// GetSnapshot returns the value of Snapshot.
+func (s *DataBroadcastEvent) GetSnapshot() OptDataBroadcastSnapshot {
+	return s.Snapshot
+}
+
+// GetPmt returns the value of Pmt.
+func (s *DataBroadcastEvent) GetPmt() OptNilDataBroadcastPMT {
+	return s.Pmt
+}
+
+// GetModuleList returns the value of ModuleList.
+func (s *DataBroadcastEvent) GetModuleList() OptNilDataBroadcastModuleList {
+	return s.ModuleList
+}
+
+// GetModule returns the value of Module.
+func (s *DataBroadcastEvent) GetModule() OptNilDataBroadcastModule {
+	return s.Module
+}
+
+// GetProgramInfo returns the value of ProgramInfo.
+func (s *DataBroadcastEvent) GetProgramInfo() OptNilDataBroadcastProgramInfo {
+	return s.ProgramInfo
+}
+
+// GetCurrentTime returns the value of CurrentTime.
+func (s *DataBroadcastEvent) GetCurrentTime() OptNilDataBroadcastCurrentTime {
+	return s.CurrentTime
+}
+
+// GetEsEvent returns the value of EsEvent.
+func (s *DataBroadcastEvent) GetEsEvent() OptNilDataBroadcastESEvent {
+	return s.EsEvent
+}
+
+// GetBit returns the value of Bit.
+func (s *DataBroadcastEvent) GetBit() OptNilDataBroadcastBIT {
+	return s.Bit
+}
+
+// GetPcr returns the value of Pcr.
+func (s *DataBroadcastEvent) GetPcr() OptNilDataBroadcastPCR {
+	return s.Pcr
+}
+
+// SetType sets the value of Type.
+func (s *DataBroadcastEvent) SetType(val string) {
+	s.Type = val
+}
+
+// SetSequence sets the value of Sequence.
+func (s *DataBroadcastEvent) SetSequence(val int64) {
+	s.Sequence = val
+}
+
+// SetRevision sets the value of Revision.
+func (s *DataBroadcastEvent) SetRevision(val int64) {
+	s.Revision = val
+}
+
+// SetSnapshot sets the value of Snapshot.
+func (s *DataBroadcastEvent) SetSnapshot(val OptDataBroadcastSnapshot) {
+	s.Snapshot = val
+}
+
+// SetPmt sets the value of Pmt.
+func (s *DataBroadcastEvent) SetPmt(val OptNilDataBroadcastPMT) {
+	s.Pmt = val
+}
+
+// SetModuleList sets the value of ModuleList.
+func (s *DataBroadcastEvent) SetModuleList(val OptNilDataBroadcastModuleList) {
+	s.ModuleList = val
+}
+
+// SetModule sets the value of Module.
+func (s *DataBroadcastEvent) SetModule(val OptNilDataBroadcastModule) {
+	s.Module = val
+}
+
+// SetProgramInfo sets the value of ProgramInfo.
+func (s *DataBroadcastEvent) SetProgramInfo(val OptNilDataBroadcastProgramInfo) {
+	s.ProgramInfo = val
+}
+
+// SetCurrentTime sets the value of CurrentTime.
+func (s *DataBroadcastEvent) SetCurrentTime(val OptNilDataBroadcastCurrentTime) {
+	s.CurrentTime = val
+}
+
+// SetEsEvent sets the value of EsEvent.
+func (s *DataBroadcastEvent) SetEsEvent(val OptNilDataBroadcastESEvent) {
+	s.EsEvent = val
+}
+
+// SetBit sets the value of Bit.
+func (s *DataBroadcastEvent) SetBit(val OptNilDataBroadcastBIT) {
+	s.Bit = val
+}
+
+// SetPcr sets the value of Pcr.
+func (s *DataBroadcastEvent) SetPcr(val OptNilDataBroadcastPCR) {
+	s.Pcr = val
+}
+
+// DataBroadcastEventHeaders wraps DataBroadcastEvent with response headers.
+type DataBroadcastEventHeaders struct {
+	XMirakurunTunerUserID OptString
+	Response              DataBroadcastEvent
+}
+
+// GetXMirakurunTunerUserID returns the value of XMirakurunTunerUserID.
+func (s *DataBroadcastEventHeaders) GetXMirakurunTunerUserID() OptString {
+	return s.XMirakurunTunerUserID
+}
+
+// GetResponse returns the value of Response.
+func (s *DataBroadcastEventHeaders) GetResponse() DataBroadcastEvent {
+	return s.Response
+}
+
+// SetXMirakurunTunerUserID sets the value of XMirakurunTunerUserID.
+func (s *DataBroadcastEventHeaders) SetXMirakurunTunerUserID(val OptString) {
+	s.XMirakurunTunerUserID = val
+}
+
+// SetResponse sets the value of Response.
+func (s *DataBroadcastEventHeaders) SetResponse(val DataBroadcastEvent) {
+	s.Response = val
+}
+
+// A general event descriptor. An NPT reference carries the NPT fields (postDiscontinuityIndicator
+// through scaleDenominator); any other event carries the event message fields (eventMessageGroupId
+// through eventMessageNPT, which is present only when the time mode has one).
+// Ref: #/components/schemas/DataBroadcastGeneralEvent
+type DataBroadcastGeneralEvent struct {
+	Type                       string   `json:"type"`
+	PostDiscontinuityIndicator OptBool  `json:"postDiscontinuityIndicator"`
+	DsmContentId               OptInt   `json:"dsmContentId"`
+	STCReference               OptInt64 `json:"STCReference"`
+	NPTReference               OptInt64 `json:"NPTReference"`
+	ScaleNumerator             OptInt   `json:"scaleNumerator"`
+	ScaleDenominator           OptInt   `json:"scaleDenominator"`
+	EventMessageGroupId        OptInt   `json:"eventMessageGroupId"`
+	TimeMode                   OptInt   `json:"timeMode"`
+	EventMessageType           OptInt   `json:"eventMessageType"`
+	EventMessageId             OptInt   `json:"eventMessageId"`
+	PrivateDataByte            []int    `json:"privateDataByte"`
+	EventMessageNPT            OptInt64 `json:"eventMessageNPT"`
+}
+
+// GetType returns the value of Type.
+func (s *DataBroadcastGeneralEvent) GetType() string {
+	return s.Type
+}
+
+// GetPostDiscontinuityIndicator returns the value of PostDiscontinuityIndicator.
+func (s *DataBroadcastGeneralEvent) GetPostDiscontinuityIndicator() OptBool {
+	return s.PostDiscontinuityIndicator
+}
+
+// GetDsmContentId returns the value of DsmContentId.
+func (s *DataBroadcastGeneralEvent) GetDsmContentId() OptInt {
+	return s.DsmContentId
+}
+
+// GetSTCReference returns the value of STCReference.
+func (s *DataBroadcastGeneralEvent) GetSTCReference() OptInt64 {
+	return s.STCReference
+}
+
+// GetNPTReference returns the value of NPTReference.
+func (s *DataBroadcastGeneralEvent) GetNPTReference() OptInt64 {
+	return s.NPTReference
+}
+
+// GetScaleNumerator returns the value of ScaleNumerator.
+func (s *DataBroadcastGeneralEvent) GetScaleNumerator() OptInt {
+	return s.ScaleNumerator
+}
+
+// GetScaleDenominator returns the value of ScaleDenominator.
+func (s *DataBroadcastGeneralEvent) GetScaleDenominator() OptInt {
+	return s.ScaleDenominator
+}
+
+// GetEventMessageGroupId returns the value of EventMessageGroupId.
+func (s *DataBroadcastGeneralEvent) GetEventMessageGroupId() OptInt {
+	return s.EventMessageGroupId
+}
+
+// GetTimeMode returns the value of TimeMode.
+func (s *DataBroadcastGeneralEvent) GetTimeMode() OptInt {
+	return s.TimeMode
+}
+
+// GetEventMessageType returns the value of EventMessageType.
+func (s *DataBroadcastGeneralEvent) GetEventMessageType() OptInt {
+	return s.EventMessageType
+}
+
+// GetEventMessageId returns the value of EventMessageId.
+func (s *DataBroadcastGeneralEvent) GetEventMessageId() OptInt {
+	return s.EventMessageId
+}
+
+// GetPrivateDataByte returns the value of PrivateDataByte.
+func (s *DataBroadcastGeneralEvent) GetPrivateDataByte() []int {
+	return s.PrivateDataByte
+}
+
+// GetEventMessageNPT returns the value of EventMessageNPT.
+func (s *DataBroadcastGeneralEvent) GetEventMessageNPT() OptInt64 {
+	return s.EventMessageNPT
+}
+
+// SetType sets the value of Type.
+func (s *DataBroadcastGeneralEvent) SetType(val string) {
+	s.Type = val
+}
+
+// SetPostDiscontinuityIndicator sets the value of PostDiscontinuityIndicator.
+func (s *DataBroadcastGeneralEvent) SetPostDiscontinuityIndicator(val OptBool) {
+	s.PostDiscontinuityIndicator = val
+}
+
+// SetDsmContentId sets the value of DsmContentId.
+func (s *DataBroadcastGeneralEvent) SetDsmContentId(val OptInt) {
+	s.DsmContentId = val
+}
+
+// SetSTCReference sets the value of STCReference.
+func (s *DataBroadcastGeneralEvent) SetSTCReference(val OptInt64) {
+	s.STCReference = val
+}
+
+// SetNPTReference sets the value of NPTReference.
+func (s *DataBroadcastGeneralEvent) SetNPTReference(val OptInt64) {
+	s.NPTReference = val
+}
+
+// SetScaleNumerator sets the value of ScaleNumerator.
+func (s *DataBroadcastGeneralEvent) SetScaleNumerator(val OptInt) {
+	s.ScaleNumerator = val
+}
+
+// SetScaleDenominator sets the value of ScaleDenominator.
+func (s *DataBroadcastGeneralEvent) SetScaleDenominator(val OptInt) {
+	s.ScaleDenominator = val
+}
+
+// SetEventMessageGroupId sets the value of EventMessageGroupId.
+func (s *DataBroadcastGeneralEvent) SetEventMessageGroupId(val OptInt) {
+	s.EventMessageGroupId = val
+}
+
+// SetTimeMode sets the value of TimeMode.
+func (s *DataBroadcastGeneralEvent) SetTimeMode(val OptInt) {
+	s.TimeMode = val
+}
+
+// SetEventMessageType sets the value of EventMessageType.
+func (s *DataBroadcastGeneralEvent) SetEventMessageType(val OptInt) {
+	s.EventMessageType = val
+}
+
+// SetEventMessageId sets the value of EventMessageId.
+func (s *DataBroadcastGeneralEvent) SetEventMessageId(val OptInt) {
+	s.EventMessageId = val
+}
+
+// SetPrivateDataByte sets the value of PrivateDataByte.
+func (s *DataBroadcastGeneralEvent) SetPrivateDataByte(val []int) {
+	s.PrivateDataByte = val
+}
+
+// SetEventMessageNPT sets the value of EventMessageNPT.
+func (s *DataBroadcastGeneralEvent) SetEventMessageNPT(val OptInt64) {
+	s.EventMessageNPT = val
+}
+
+// Ref: #/components/schemas/DataBroadcastModule
+type DataBroadcastModule struct {
+	ComponentTag int   `json:"componentTag"`
+	ModuleId     int   `json:"moduleId"`
+	DownloadId   int64 `json:"downloadId"`
+	Version      int   `json:"version"`
+	Size         int64 `json:"size"`
+	// The DII module info bytes in base64.
+	Info            []byte                         `json:"info"`
+	Metadata        NilDataBroadcastModuleMetadata `json:"metadata"`
+	Complete        bool                           `json:"complete"`
+	Status          string                         `json:"status"`
+	RejectionReason NilString                      `json:"rejectionReason"`
+	ReceivedBlocks  int                            `json:"receivedBlocks"`
+	TotalBlocks     int                            `json:"totalBlocks"`
+	Etag            string                         `json:"etag"`
+	URL             string                         `json:"url"`
+}
+
+// GetComponentTag returns the value of ComponentTag.
+func (s *DataBroadcastModule) GetComponentTag() int {
+	return s.ComponentTag
+}
+
+// GetModuleId returns the value of ModuleId.
+func (s *DataBroadcastModule) GetModuleId() int {
+	return s.ModuleId
+}
+
+// GetDownloadId returns the value of DownloadId.
+func (s *DataBroadcastModule) GetDownloadId() int64 {
+	return s.DownloadId
+}
+
+// GetVersion returns the value of Version.
+func (s *DataBroadcastModule) GetVersion() int {
+	return s.Version
+}
+
+// GetSize returns the value of Size.
+func (s *DataBroadcastModule) GetSize() int64 {
+	return s.Size
+}
+
+// GetInfo returns the value of Info.
+func (s *DataBroadcastModule) GetInfo() []byte {
+	return s.Info
+}
+
+// GetMetadata returns the value of Metadata.
+func (s *DataBroadcastModule) GetMetadata() NilDataBroadcastModuleMetadata {
+	return s.Metadata
+}
+
+// GetComplete returns the value of Complete.
+func (s *DataBroadcastModule) GetComplete() bool {
+	return s.Complete
+}
+
+// GetStatus returns the value of Status.
+func (s *DataBroadcastModule) GetStatus() string {
+	return s.Status
+}
+
+// GetRejectionReason returns the value of RejectionReason.
+func (s *DataBroadcastModule) GetRejectionReason() NilString {
+	return s.RejectionReason
+}
+
+// GetReceivedBlocks returns the value of ReceivedBlocks.
+func (s *DataBroadcastModule) GetReceivedBlocks() int {
+	return s.ReceivedBlocks
+}
+
+// GetTotalBlocks returns the value of TotalBlocks.
+func (s *DataBroadcastModule) GetTotalBlocks() int {
+	return s.TotalBlocks
+}
+
+// GetEtag returns the value of Etag.
+func (s *DataBroadcastModule) GetEtag() string {
+	return s.Etag
+}
+
+// GetURL returns the value of URL.
+func (s *DataBroadcastModule) GetURL() string {
+	return s.URL
+}
+
+// SetComponentTag sets the value of ComponentTag.
+func (s *DataBroadcastModule) SetComponentTag(val int) {
+	s.ComponentTag = val
+}
+
+// SetModuleId sets the value of ModuleId.
+func (s *DataBroadcastModule) SetModuleId(val int) {
+	s.ModuleId = val
+}
+
+// SetDownloadId sets the value of DownloadId.
+func (s *DataBroadcastModule) SetDownloadId(val int64) {
+	s.DownloadId = val
+}
+
+// SetVersion sets the value of Version.
+func (s *DataBroadcastModule) SetVersion(val int) {
+	s.Version = val
+}
+
+// SetSize sets the value of Size.
+func (s *DataBroadcastModule) SetSize(val int64) {
+	s.Size = val
+}
+
+// SetInfo sets the value of Info.
+func (s *DataBroadcastModule) SetInfo(val []byte) {
+	s.Info = val
+}
+
+// SetMetadata sets the value of Metadata.
+func (s *DataBroadcastModule) SetMetadata(val NilDataBroadcastModuleMetadata) {
+	s.Metadata = val
+}
+
+// SetComplete sets the value of Complete.
+func (s *DataBroadcastModule) SetComplete(val bool) {
+	s.Complete = val
+}
+
+// SetStatus sets the value of Status.
+func (s *DataBroadcastModule) SetStatus(val string) {
+	s.Status = val
+}
+
+// SetRejectionReason sets the value of RejectionReason.
+func (s *DataBroadcastModule) SetRejectionReason(val NilString) {
+	s.RejectionReason = val
+}
+
+// SetReceivedBlocks sets the value of ReceivedBlocks.
+func (s *DataBroadcastModule) SetReceivedBlocks(val int) {
+	s.ReceivedBlocks = val
+}
+
+// SetTotalBlocks sets the value of TotalBlocks.
+func (s *DataBroadcastModule) SetTotalBlocks(val int) {
+	s.TotalBlocks = val
+}
+
+// SetEtag sets the value of Etag.
+func (s *DataBroadcastModule) SetEtag(val string) {
+	s.Etag = val
+}
+
+// SetURL sets the value of URL.
+func (s *DataBroadcastModule) SetURL(val string) {
+	s.URL = val
+}
+
+// Ref: #/components/schemas/DataBroadcastModuleList
+type DataBroadcastModuleList struct {
+	ComponentTag  int                   `json:"componentTag"`
+	DownloadId    int64                 `json:"downloadId"`
+	BlockSize     int                   `json:"blockSize"`
+	DataEventId   int                   `json:"dataEventId"`
+	ReturnToEntry NilBool               `json:"returnToEntry"`
+	Modules       []DataBroadcastModule `json:"modules"`
+}
+
+// GetComponentTag returns the value of ComponentTag.
+func (s *DataBroadcastModuleList) GetComponentTag() int {
+	return s.ComponentTag
+}
+
+// GetDownloadId returns the value of DownloadId.
+func (s *DataBroadcastModuleList) GetDownloadId() int64 {
+	return s.DownloadId
+}
+
+// GetBlockSize returns the value of BlockSize.
+func (s *DataBroadcastModuleList) GetBlockSize() int {
+	return s.BlockSize
+}
+
+// GetDataEventId returns the value of DataEventId.
+func (s *DataBroadcastModuleList) GetDataEventId() int {
+	return s.DataEventId
+}
+
+// GetReturnToEntry returns the value of ReturnToEntry.
+func (s *DataBroadcastModuleList) GetReturnToEntry() NilBool {
+	return s.ReturnToEntry
+}
+
+// GetModules returns the value of Modules.
+func (s *DataBroadcastModuleList) GetModules() []DataBroadcastModule {
+	return s.Modules
+}
+
+// SetComponentTag sets the value of ComponentTag.
+func (s *DataBroadcastModuleList) SetComponentTag(val int) {
+	s.ComponentTag = val
+}
+
+// SetDownloadId sets the value of DownloadId.
+func (s *DataBroadcastModuleList) SetDownloadId(val int64) {
+	s.DownloadId = val
+}
+
+// SetBlockSize sets the value of BlockSize.
+func (s *DataBroadcastModuleList) SetBlockSize(val int) {
+	s.BlockSize = val
+}
+
+// SetDataEventId sets the value of DataEventId.
+func (s *DataBroadcastModuleList) SetDataEventId(val int) {
+	s.DataEventId = val
+}
+
+// SetReturnToEntry sets the value of ReturnToEntry.
+func (s *DataBroadcastModuleList) SetReturnToEntry(val NilBool) {
+	s.ReturnToEntry = val
+}
+
+// SetModules sets the value of Modules.
+func (s *DataBroadcastModuleList) SetModules(val []DataBroadcastModule) {
+	s.Modules = val
+}
+
+// Ref: #/components/schemas/DataBroadcastModuleManifest
+type DataBroadcastModuleManifest struct {
+	ComponentTag int                           `json:"componentTag"`
+	DownloadId   int64                         `json:"downloadId"`
+	ModuleId     int                           `json:"moduleId"`
+	Version      int                           `json:"version"`
+	Size         int64                         `json:"size"`
+	Etag         string                        `json:"etag"`
+	RawUrl       string                        `json:"rawUrl"`
+	Resources    []DataBroadcastModuleResource `json:"resources"`
+}
+
+// GetComponentTag returns the value of ComponentTag.
+func (s *DataBroadcastModuleManifest) GetComponentTag() int {
+	return s.ComponentTag
+}
+
+// GetDownloadId returns the value of DownloadId.
+func (s *DataBroadcastModuleManifest) GetDownloadId() int64 {
+	return s.DownloadId
+}
+
+// GetModuleId returns the value of ModuleId.
+func (s *DataBroadcastModuleManifest) GetModuleId() int {
+	return s.ModuleId
+}
+
+// GetVersion returns the value of Version.
+func (s *DataBroadcastModuleManifest) GetVersion() int {
+	return s.Version
+}
+
+// GetSize returns the value of Size.
+func (s *DataBroadcastModuleManifest) GetSize() int64 {
+	return s.Size
+}
+
+// GetEtag returns the value of Etag.
+func (s *DataBroadcastModuleManifest) GetEtag() string {
+	return s.Etag
+}
+
+// GetRawUrl returns the value of RawUrl.
+func (s *DataBroadcastModuleManifest) GetRawUrl() string {
+	return s.RawUrl
+}
+
+// GetResources returns the value of Resources.
+func (s *DataBroadcastModuleManifest) GetResources() []DataBroadcastModuleResource {
+	return s.Resources
+}
+
+// SetComponentTag sets the value of ComponentTag.
+func (s *DataBroadcastModuleManifest) SetComponentTag(val int) {
+	s.ComponentTag = val
+}
+
+// SetDownloadId sets the value of DownloadId.
+func (s *DataBroadcastModuleManifest) SetDownloadId(val int64) {
+	s.DownloadId = val
+}
+
+// SetModuleId sets the value of ModuleId.
+func (s *DataBroadcastModuleManifest) SetModuleId(val int) {
+	s.ModuleId = val
+}
+
+// SetVersion sets the value of Version.
+func (s *DataBroadcastModuleManifest) SetVersion(val int) {
+	s.Version = val
+}
+
+// SetSize sets the value of Size.
+func (s *DataBroadcastModuleManifest) SetSize(val int64) {
+	s.Size = val
+}
+
+// SetEtag sets the value of Etag.
+func (s *DataBroadcastModuleManifest) SetEtag(val string) {
+	s.Etag = val
+}
+
+// SetRawUrl sets the value of RawUrl.
+func (s *DataBroadcastModuleManifest) SetRawUrl(val string) {
+	s.RawUrl = val
+}
+
+// SetResources sets the value of Resources.
+func (s *DataBroadcastModuleManifest) SetResources(val []DataBroadcastModuleResource) {
+	s.Resources = val
+}
+
+// DataBroadcastModuleManifestHeaders wraps DataBroadcastModuleManifest with response headers.
+type DataBroadcastModuleManifestHeaders struct {
+	CacheControl OptString
+	ETag         OptString
+	Response     DataBroadcastModuleManifest
+}
+
+// GetCacheControl returns the value of CacheControl.
+func (s *DataBroadcastModuleManifestHeaders) GetCacheControl() OptString {
+	return s.CacheControl
+}
+
+// GetETag returns the value of ETag.
+func (s *DataBroadcastModuleManifestHeaders) GetETag() OptString {
+	return s.ETag
+}
+
+// GetResponse returns the value of Response.
+func (s *DataBroadcastModuleManifestHeaders) GetResponse() DataBroadcastModuleManifest {
+	return s.Response
+}
+
+// SetCacheControl sets the value of CacheControl.
+func (s *DataBroadcastModuleManifestHeaders) SetCacheControl(val OptString) {
+	s.CacheControl = val
+}
+
+// SetETag sets the value of ETag.
+func (s *DataBroadcastModuleManifestHeaders) SetETag(val OptString) {
+	s.ETag = val
+}
+
+// SetResponse sets the value of Response.
+func (s *DataBroadcastModuleManifestHeaders) SetResponse(val DataBroadcastModuleManifest) {
+	s.Response = val
+}
+
+// Ref: #/components/schemas/DataBroadcastModuleMetadata
+type DataBroadcastModuleMetadata struct {
+	Type                     string   `json:"type"`
+	Name                     string   `json:"name"`
+	Crc32                    NilInt64 `json:"crc32"`
+	EstimatedDownloadSeconds NilInt64 `json:"estimatedDownloadSeconds"`
+	CachingPriority          NilInt   `json:"cachingPriority"`
+	ExpireMode               NilInt   `json:"expireMode"`
+	ExpireDataByte           []int    `json:"expireDataByte"`
+	ActivationMode           NilInt   `json:"activationMode"`
+	ActivationDataByte       []int    `json:"activationDataByte"`
+	CompressionType          NilInt   `json:"compressionType"`
+	OriginalSize             NilInt64 `json:"originalSize"`
+}
+
+// GetType returns the value of Type.
+func (s *DataBroadcastModuleMetadata) GetType() string {
+	return s.Type
+}
+
+// GetName returns the value of Name.
+func (s *DataBroadcastModuleMetadata) GetName() string {
+	return s.Name
+}
+
+// GetCrc32 returns the value of Crc32.
+func (s *DataBroadcastModuleMetadata) GetCrc32() NilInt64 {
+	return s.Crc32
+}
+
+// GetEstimatedDownloadSeconds returns the value of EstimatedDownloadSeconds.
+func (s *DataBroadcastModuleMetadata) GetEstimatedDownloadSeconds() NilInt64 {
+	return s.EstimatedDownloadSeconds
+}
+
+// GetCachingPriority returns the value of CachingPriority.
+func (s *DataBroadcastModuleMetadata) GetCachingPriority() NilInt {
+	return s.CachingPriority
+}
+
+// GetExpireMode returns the value of ExpireMode.
+func (s *DataBroadcastModuleMetadata) GetExpireMode() NilInt {
+	return s.ExpireMode
+}
+
+// GetExpireDataByte returns the value of ExpireDataByte.
+func (s *DataBroadcastModuleMetadata) GetExpireDataByte() []int {
+	return s.ExpireDataByte
+}
+
+// GetActivationMode returns the value of ActivationMode.
+func (s *DataBroadcastModuleMetadata) GetActivationMode() NilInt {
+	return s.ActivationMode
+}
+
+// GetActivationDataByte returns the value of ActivationDataByte.
+func (s *DataBroadcastModuleMetadata) GetActivationDataByte() []int {
+	return s.ActivationDataByte
+}
+
+// GetCompressionType returns the value of CompressionType.
+func (s *DataBroadcastModuleMetadata) GetCompressionType() NilInt {
+	return s.CompressionType
+}
+
+// GetOriginalSize returns the value of OriginalSize.
+func (s *DataBroadcastModuleMetadata) GetOriginalSize() NilInt64 {
+	return s.OriginalSize
+}
+
+// SetType sets the value of Type.
+func (s *DataBroadcastModuleMetadata) SetType(val string) {
+	s.Type = val
+}
+
+// SetName sets the value of Name.
+func (s *DataBroadcastModuleMetadata) SetName(val string) {
+	s.Name = val
+}
+
+// SetCrc32 sets the value of Crc32.
+func (s *DataBroadcastModuleMetadata) SetCrc32(val NilInt64) {
+	s.Crc32 = val
+}
+
+// SetEstimatedDownloadSeconds sets the value of EstimatedDownloadSeconds.
+func (s *DataBroadcastModuleMetadata) SetEstimatedDownloadSeconds(val NilInt64) {
+	s.EstimatedDownloadSeconds = val
+}
+
+// SetCachingPriority sets the value of CachingPriority.
+func (s *DataBroadcastModuleMetadata) SetCachingPriority(val NilInt) {
+	s.CachingPriority = val
+}
+
+// SetExpireMode sets the value of ExpireMode.
+func (s *DataBroadcastModuleMetadata) SetExpireMode(val NilInt) {
+	s.ExpireMode = val
+}
+
+// SetExpireDataByte sets the value of ExpireDataByte.
+func (s *DataBroadcastModuleMetadata) SetExpireDataByte(val []int) {
+	s.ExpireDataByte = val
+}
+
+// SetActivationMode sets the value of ActivationMode.
+func (s *DataBroadcastModuleMetadata) SetActivationMode(val NilInt) {
+	s.ActivationMode = val
+}
+
+// SetActivationDataByte sets the value of ActivationDataByte.
+func (s *DataBroadcastModuleMetadata) SetActivationDataByte(val []int) {
+	s.ActivationDataByte = val
+}
+
+// SetCompressionType sets the value of CompressionType.
+func (s *DataBroadcastModuleMetadata) SetCompressionType(val NilInt) {
+	s.CompressionType = val
+}
+
+// SetOriginalSize sets the value of OriginalSize.
+func (s *DataBroadcastModuleMetadata) SetOriginalSize(val NilInt64) {
+	s.OriginalSize = val
+}
+
+// Ref: #/components/schemas/DataBroadcastModuleResource
+type DataBroadcastModuleResource struct {
+	ID              string    `json:"id"`
+	ContentLocation NilString `json:"contentLocation"`
+	ContentType     string    `json:"contentType"`
+	URL             string    `json:"url"`
+}
+
+// GetID returns the value of ID.
+func (s *DataBroadcastModuleResource) GetID() string {
+	return s.ID
+}
+
+// GetContentLocation returns the value of ContentLocation.
+func (s *DataBroadcastModuleResource) GetContentLocation() NilString {
+	return s.ContentLocation
+}
+
+// GetContentType returns the value of ContentType.
+func (s *DataBroadcastModuleResource) GetContentType() string {
+	return s.ContentType
+}
+
+// GetURL returns the value of URL.
+func (s *DataBroadcastModuleResource) GetURL() string {
+	return s.URL
+}
+
+// SetID sets the value of ID.
+func (s *DataBroadcastModuleResource) SetID(val string) {
+	s.ID = val
+}
+
+// SetContentLocation sets the value of ContentLocation.
+func (s *DataBroadcastModuleResource) SetContentLocation(val NilString) {
+	s.ContentLocation = val
+}
+
+// SetContentType sets the value of ContentType.
+func (s *DataBroadcastModuleResource) SetContentType(val string) {
+	s.ContentType = val
+}
+
+// SetURL sets the value of URL.
+func (s *DataBroadcastModuleResource) SetURL(val string) {
+	s.URL = val
+}
+
+// Ref: #/components/schemas/DataBroadcastPCR
+type DataBroadcastPCR struct {
+	PcrBase      int64 `json:"pcrBase"`
+	PcrExtension int   `json:"pcrExtension"`
+}
+
+// GetPcrBase returns the value of PcrBase.
+func (s *DataBroadcastPCR) GetPcrBase() int64 {
+	return s.PcrBase
+}
+
+// GetPcrExtension returns the value of PcrExtension.
+func (s *DataBroadcastPCR) GetPcrExtension() int {
+	return s.PcrExtension
+}
+
+// SetPcrBase sets the value of PcrBase.
+func (s *DataBroadcastPCR) SetPcrBase(val int64) {
+	s.PcrBase = val
+}
+
+// SetPcrExtension sets the value of PcrExtension.
+func (s *DataBroadcastPCR) SetPcrExtension(val int) {
+	s.PcrExtension = val
+}
+
+// Ref: #/components/schemas/DataBroadcastPMT
+type DataBroadcastPMT struct {
+	ServiceId     int                      `json:"serviceId"`
+	Version       int                      `json:"version"`
+	PcrPid        int                      `json:"pcrPid"`
+	Components    []DataBroadcastComponent `json:"components"`
+	RawSectionHex string                   `json:"rawSectionHex"`
+}
+
+// GetServiceId returns the value of ServiceId.
+func (s *DataBroadcastPMT) GetServiceId() int {
+	return s.ServiceId
+}
+
+// GetVersion returns the value of Version.
+func (s *DataBroadcastPMT) GetVersion() int {
+	return s.Version
+}
+
+// GetPcrPid returns the value of PcrPid.
+func (s *DataBroadcastPMT) GetPcrPid() int {
+	return s.PcrPid
+}
+
+// GetComponents returns the value of Components.
+func (s *DataBroadcastPMT) GetComponents() []DataBroadcastComponent {
+	return s.Components
+}
+
+// GetRawSectionHex returns the value of RawSectionHex.
+func (s *DataBroadcastPMT) GetRawSectionHex() string {
+	return s.RawSectionHex
+}
+
+// SetServiceId sets the value of ServiceId.
+func (s *DataBroadcastPMT) SetServiceId(val int) {
+	s.ServiceId = val
+}
+
+// SetVersion sets the value of Version.
+func (s *DataBroadcastPMT) SetVersion(val int) {
+	s.Version = val
+}
+
+// SetPcrPid sets the value of PcrPid.
+func (s *DataBroadcastPMT) SetPcrPid(val int) {
+	s.PcrPid = val
+}
+
+// SetComponents sets the value of Components.
+func (s *DataBroadcastPMT) SetComponents(val []DataBroadcastComponent) {
+	s.Components = val
+}
+
+// SetRawSectionHex sets the value of RawSectionHex.
+func (s *DataBroadcastPMT) SetRawSectionHex(val string) {
+	s.RawSectionHex = val
+}
+
+// Ref: #/components/schemas/DataBroadcastProgramInfo
+type DataBroadcastProgramInfo struct {
+	ServiceId     int    `json:"serviceId"`
+	EventIds      []int  `json:"eventIds"`
+	RawSectionHex string `json:"rawSectionHex"`
+}
+
+// GetServiceId returns the value of ServiceId.
+func (s *DataBroadcastProgramInfo) GetServiceId() int {
+	return s.ServiceId
+}
+
+// GetEventIds returns the value of EventIds.
+func (s *DataBroadcastProgramInfo) GetEventIds() []int {
+	return s.EventIds
+}
+
+// GetRawSectionHex returns the value of RawSectionHex.
+func (s *DataBroadcastProgramInfo) GetRawSectionHex() string {
+	return s.RawSectionHex
+}
+
+// SetServiceId sets the value of ServiceId.
+func (s *DataBroadcastProgramInfo) SetServiceId(val int) {
+	s.ServiceId = val
+}
+
+// SetEventIds sets the value of EventIds.
+func (s *DataBroadcastProgramInfo) SetEventIds(val []int) {
+	s.EventIds = val
+}
+
+// SetRawSectionHex sets the value of RawSectionHex.
+func (s *DataBroadcastProgramInfo) SetRawSectionHex(val string) {
+	s.RawSectionHex = val
+}
+
+type DataBroadcastReturnToEntry bool
+
+// Ref: #/components/schemas/DataBroadcastSnapshot
+type DataBroadcastSnapshot struct {
+	ServiceId int                         `json:"serviceId"`
+	Revision  int64                       `json:"revision"`
+	Origin    DataBroadcastSnapshotOrigin `json:"origin"`
+	// Unix milliseconds of the persisted state; null for a live snapshot.
+	StoredAt    NilInt64                    `json:"storedAt"`
+	Pmt         NilDataBroadcastPMT         `json:"pmt"`
+	Components  []DataBroadcastComponent    `json:"components"`
+	ProgramInfo NilDataBroadcastProgramInfo `json:"programInfo"`
+	CurrentTime NilDataBroadcastCurrentTime `json:"currentTime"`
+	Bit         NilDataBroadcastBIT         `json:"bit"`
+	Pcr         NilDataBroadcastPCR         `json:"pcr"`
+}
+
+// GetServiceId returns the value of ServiceId.
+func (s *DataBroadcastSnapshot) GetServiceId() int {
+	return s.ServiceId
+}
+
+// GetRevision returns the value of Revision.
+func (s *DataBroadcastSnapshot) GetRevision() int64 {
+	return s.Revision
+}
+
+// GetOrigin returns the value of Origin.
+func (s *DataBroadcastSnapshot) GetOrigin() DataBroadcastSnapshotOrigin {
+	return s.Origin
+}
+
+// GetStoredAt returns the value of StoredAt.
+func (s *DataBroadcastSnapshot) GetStoredAt() NilInt64 {
+	return s.StoredAt
+}
+
+// GetPmt returns the value of Pmt.
+func (s *DataBroadcastSnapshot) GetPmt() NilDataBroadcastPMT {
+	return s.Pmt
+}
+
+// GetComponents returns the value of Components.
+func (s *DataBroadcastSnapshot) GetComponents() []DataBroadcastComponent {
+	return s.Components
+}
+
+// GetProgramInfo returns the value of ProgramInfo.
+func (s *DataBroadcastSnapshot) GetProgramInfo() NilDataBroadcastProgramInfo {
+	return s.ProgramInfo
+}
+
+// GetCurrentTime returns the value of CurrentTime.
+func (s *DataBroadcastSnapshot) GetCurrentTime() NilDataBroadcastCurrentTime {
+	return s.CurrentTime
+}
+
+// GetBit returns the value of Bit.
+func (s *DataBroadcastSnapshot) GetBit() NilDataBroadcastBIT {
+	return s.Bit
+}
+
+// GetPcr returns the value of Pcr.
+func (s *DataBroadcastSnapshot) GetPcr() NilDataBroadcastPCR {
+	return s.Pcr
+}
+
+// SetServiceId sets the value of ServiceId.
+func (s *DataBroadcastSnapshot) SetServiceId(val int) {
+	s.ServiceId = val
+}
+
+// SetRevision sets the value of Revision.
+func (s *DataBroadcastSnapshot) SetRevision(val int64) {
+	s.Revision = val
+}
+
+// SetOrigin sets the value of Origin.
+func (s *DataBroadcastSnapshot) SetOrigin(val DataBroadcastSnapshotOrigin) {
+	s.Origin = val
+}
+
+// SetStoredAt sets the value of StoredAt.
+func (s *DataBroadcastSnapshot) SetStoredAt(val NilInt64) {
+	s.StoredAt = val
+}
+
+// SetPmt sets the value of Pmt.
+func (s *DataBroadcastSnapshot) SetPmt(val NilDataBroadcastPMT) {
+	s.Pmt = val
+}
+
+// SetComponents sets the value of Components.
+func (s *DataBroadcastSnapshot) SetComponents(val []DataBroadcastComponent) {
+	s.Components = val
+}
+
+// SetProgramInfo sets the value of ProgramInfo.
+func (s *DataBroadcastSnapshot) SetProgramInfo(val NilDataBroadcastProgramInfo) {
+	s.ProgramInfo = val
+}
+
+// SetCurrentTime sets the value of CurrentTime.
+func (s *DataBroadcastSnapshot) SetCurrentTime(val NilDataBroadcastCurrentTime) {
+	s.CurrentTime = val
+}
+
+// SetBit sets the value of Bit.
+func (s *DataBroadcastSnapshot) SetBit(val NilDataBroadcastBIT) {
+	s.Bit = val
+}
+
+// SetPcr sets the value of Pcr.
+func (s *DataBroadcastSnapshot) SetPcr(val NilDataBroadcastPCR) {
+	s.Pcr = val
+}
+
+type DataBroadcastSnapshotOrigin string
+
+const (
+	DataBroadcastSnapshotOriginLive  DataBroadcastSnapshotOrigin = "live"
+	DataBroadcastSnapshotOriginCache DataBroadcastSnapshotOrigin = "cache"
+)
+
+// AllValues returns all DataBroadcastSnapshotOrigin values.
+func (DataBroadcastSnapshotOrigin) AllValues() []DataBroadcastSnapshotOrigin {
+	return []DataBroadcastSnapshotOrigin{
+		DataBroadcastSnapshotOriginLive,
+		DataBroadcastSnapshotOriginCache,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s DataBroadcastSnapshotOrigin) MarshalText() ([]byte, error) {
+	switch s {
+	case DataBroadcastSnapshotOriginLive:
+		return []byte(s), nil
+	case DataBroadcastSnapshotOriginCache:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *DataBroadcastSnapshotOrigin) UnmarshalText(data []byte) error {
+	switch DataBroadcastSnapshotOrigin(data) {
+	case DataBroadcastSnapshotOriginLive:
+		*s = DataBroadcastSnapshotOriginLive
+		return nil
+	case DataBroadcastSnapshotOriginCache:
+		*s = DataBroadcastSnapshotOriginCache
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
 // Ref: #/components/schemas/Error
 type Error struct {
 	Code   OptInt           `json:"code"`
@@ -1273,46 +2982,6 @@ type GetServiceDataBroadcastEventsNotFound struct{}
 
 func (*GetServiceDataBroadcastEventsNotFound) getServiceDataBroadcastEventsRes() {}
 
-type GetServiceDataBroadcastEventsOK struct {
-	Data io.Reader
-}
-
-// Read reads data from the Data reader.
-//
-// Kept to satisfy the io.Reader interface.
-func (s GetServiceDataBroadcastEventsOK) Read(p []byte) (n int, err error) {
-	if s.Data == nil {
-		return 0, io.EOF
-	}
-	return s.Data.Read(p)
-}
-
-// GetServiceDataBroadcastEventsOKHeaders wraps GetServiceDataBroadcastEventsOK with response headers.
-type GetServiceDataBroadcastEventsOKHeaders struct {
-	XMirakurunTunerUserID OptString
-	Response              GetServiceDataBroadcastEventsOK
-}
-
-// GetXMirakurunTunerUserID returns the value of XMirakurunTunerUserID.
-func (s *GetServiceDataBroadcastEventsOKHeaders) GetXMirakurunTunerUserID() OptString {
-	return s.XMirakurunTunerUserID
-}
-
-// GetResponse returns the value of Response.
-func (s *GetServiceDataBroadcastEventsOKHeaders) GetResponse() GetServiceDataBroadcastEventsOK {
-	return s.Response
-}
-
-// SetXMirakurunTunerUserID sets the value of XMirakurunTunerUserID.
-func (s *GetServiceDataBroadcastEventsOKHeaders) SetXMirakurunTunerUserID(val OptString) {
-	s.XMirakurunTunerUserID = val
-}
-
-// SetResponse sets the value of Response.
-func (s *GetServiceDataBroadcastEventsOKHeaders) SetResponse(val GetServiceDataBroadcastEventsOK) {
-	s.Response = val
-}
-
 // GetServiceDataBroadcastEventsOKRawTextEventStream represents raw HTTP response for GetServiceDataBroadcastEvents text/event-stream.
 type GetServiceDataBroadcastEventsOKRawTextEventStream struct {
 	Response *http.Response `json:"-"`
@@ -1489,43 +3158,6 @@ type GetServiceDataBroadcastModuleVersionNotModified struct{}
 
 func (*GetServiceDataBroadcastModuleVersionNotModified) getServiceDataBroadcastModuleVersionRes() {}
 
-// GetServiceDataBroadcastModuleVersionOKHeaders wraps string with response headers.
-type GetServiceDataBroadcastModuleVersionOKHeaders struct {
-	CacheControl OptString
-	ETag         OptString
-	Response     string
-}
-
-// GetCacheControl returns the value of CacheControl.
-func (s *GetServiceDataBroadcastModuleVersionOKHeaders) GetCacheControl() OptString {
-	return s.CacheControl
-}
-
-// GetETag returns the value of ETag.
-func (s *GetServiceDataBroadcastModuleVersionOKHeaders) GetETag() OptString {
-	return s.ETag
-}
-
-// GetResponse returns the value of Response.
-func (s *GetServiceDataBroadcastModuleVersionOKHeaders) GetResponse() string {
-	return s.Response
-}
-
-// SetCacheControl sets the value of CacheControl.
-func (s *GetServiceDataBroadcastModuleVersionOKHeaders) SetCacheControl(val OptString) {
-	s.CacheControl = val
-}
-
-// SetETag sets the value of ETag.
-func (s *GetServiceDataBroadcastModuleVersionOKHeaders) SetETag(val OptString) {
-	s.ETag = val
-}
-
-// SetResponse sets the value of Response.
-func (s *GetServiceDataBroadcastModuleVersionOKHeaders) SetResponse(val string) {
-	s.Response = val
-}
-
 // GetServiceDataBroadcastModuleVersionOKRawApplicationJSON represents raw HTTP response for GetServiceDataBroadcastModuleVersion application/json.
 type GetServiceDataBroadcastModuleVersionOKRawApplicationJSON struct {
 	Response *http.Response `json:"-"`
@@ -1576,8 +3208,6 @@ func (*GetServiceDataBroadcastStateDef) getServiceDataBroadcastStateRes() {}
 type GetServiceDataBroadcastStateNotFound struct{}
 
 func (*GetServiceDataBroadcastStateNotFound) getServiceDataBroadcastStateRes() {}
-
-type GetServiceDataBroadcastStateOKApplicationJSON string
 
 // GetServiceDataBroadcastStateOKRawApplicationJSON represents raw HTTP response for GetServiceDataBroadcastState application/json.
 type GetServiceDataBroadcastStateOKRawApplicationJSON struct {
@@ -2477,6 +4107,546 @@ func (*KillTunerProcessNoContent) killTunerProcessRes() {}
 
 type NetworkId int
 
+// NewNilBool returns new NilBool with value set to v.
+func NewNilBool(v bool) NilBool {
+	return NilBool{
+		Value: v,
+	}
+}
+
+// NilBool is nullable bool.
+type NilBool struct {
+	Value bool
+	Null  bool
+}
+
+// SetTo sets value to v.
+func (o *NilBool) SetTo(v bool) {
+	o.Null = false
+	o.Value = v
+}
+
+// IsNull returns true if value is Null.
+func (o NilBool) IsNull() bool { return o.Null }
+
+// SetToNull sets value to null.
+func (o *NilBool) SetToNull() {
+	o.Null = true
+	var v bool
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o NilBool) Get() (v bool, ok bool) {
+	if o.Null {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o NilBool) Or(d bool) bool {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewNilDataBroadcastBIT returns new NilDataBroadcastBIT with value set to v.
+func NewNilDataBroadcastBIT(v DataBroadcastBIT) NilDataBroadcastBIT {
+	return NilDataBroadcastBIT{
+		Value: v,
+	}
+}
+
+// NilDataBroadcastBIT is nullable DataBroadcastBIT.
+type NilDataBroadcastBIT struct {
+	Value DataBroadcastBIT
+	Null  bool
+}
+
+// SetTo sets value to v.
+func (o *NilDataBroadcastBIT) SetTo(v DataBroadcastBIT) {
+	o.Null = false
+	o.Value = v
+}
+
+// IsNull returns true if value is Null.
+func (o NilDataBroadcastBIT) IsNull() bool { return o.Null }
+
+// SetToNull sets value to null.
+func (o *NilDataBroadcastBIT) SetToNull() {
+	o.Null = true
+	var v DataBroadcastBIT
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o NilDataBroadcastBIT) Get() (v DataBroadcastBIT, ok bool) {
+	if o.Null {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o NilDataBroadcastBIT) Or(d DataBroadcastBIT) DataBroadcastBIT {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewNilDataBroadcastBXMLInfo returns new NilDataBroadcastBXMLInfo with value set to v.
+func NewNilDataBroadcastBXMLInfo(v DataBroadcastBXMLInfo) NilDataBroadcastBXMLInfo {
+	return NilDataBroadcastBXMLInfo{
+		Value: v,
+	}
+}
+
+// NilDataBroadcastBXMLInfo is nullable DataBroadcastBXMLInfo.
+type NilDataBroadcastBXMLInfo struct {
+	Value DataBroadcastBXMLInfo
+	Null  bool
+}
+
+// SetTo sets value to v.
+func (o *NilDataBroadcastBXMLInfo) SetTo(v DataBroadcastBXMLInfo) {
+	o.Null = false
+	o.Value = v
+}
+
+// IsNull returns true if value is Null.
+func (o NilDataBroadcastBXMLInfo) IsNull() bool { return o.Null }
+
+// SetToNull sets value to null.
+func (o *NilDataBroadcastBXMLInfo) SetToNull() {
+	o.Null = true
+	var v DataBroadcastBXMLInfo
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o NilDataBroadcastBXMLInfo) Get() (v DataBroadcastBXMLInfo, ok bool) {
+	if o.Null {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o NilDataBroadcastBXMLInfo) Or(d DataBroadcastBXMLInfo) DataBroadcastBXMLInfo {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewNilDataBroadcastCurrentTime returns new NilDataBroadcastCurrentTime with value set to v.
+func NewNilDataBroadcastCurrentTime(v DataBroadcastCurrentTime) NilDataBroadcastCurrentTime {
+	return NilDataBroadcastCurrentTime{
+		Value: v,
+	}
+}
+
+// NilDataBroadcastCurrentTime is nullable DataBroadcastCurrentTime.
+type NilDataBroadcastCurrentTime struct {
+	Value DataBroadcastCurrentTime
+	Null  bool
+}
+
+// SetTo sets value to v.
+func (o *NilDataBroadcastCurrentTime) SetTo(v DataBroadcastCurrentTime) {
+	o.Null = false
+	o.Value = v
+}
+
+// IsNull returns true if value is Null.
+func (o NilDataBroadcastCurrentTime) IsNull() bool { return o.Null }
+
+// SetToNull sets value to null.
+func (o *NilDataBroadcastCurrentTime) SetToNull() {
+	o.Null = true
+	var v DataBroadcastCurrentTime
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o NilDataBroadcastCurrentTime) Get() (v DataBroadcastCurrentTime, ok bool) {
+	if o.Null {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o NilDataBroadcastCurrentTime) Or(d DataBroadcastCurrentTime) DataBroadcastCurrentTime {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewNilDataBroadcastModuleMetadata returns new NilDataBroadcastModuleMetadata with value set to v.
+func NewNilDataBroadcastModuleMetadata(v DataBroadcastModuleMetadata) NilDataBroadcastModuleMetadata {
+	return NilDataBroadcastModuleMetadata{
+		Value: v,
+	}
+}
+
+// NilDataBroadcastModuleMetadata is nullable DataBroadcastModuleMetadata.
+type NilDataBroadcastModuleMetadata struct {
+	Value DataBroadcastModuleMetadata
+	Null  bool
+}
+
+// SetTo sets value to v.
+func (o *NilDataBroadcastModuleMetadata) SetTo(v DataBroadcastModuleMetadata) {
+	o.Null = false
+	o.Value = v
+}
+
+// IsNull returns true if value is Null.
+func (o NilDataBroadcastModuleMetadata) IsNull() bool { return o.Null }
+
+// SetToNull sets value to null.
+func (o *NilDataBroadcastModuleMetadata) SetToNull() {
+	o.Null = true
+	var v DataBroadcastModuleMetadata
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o NilDataBroadcastModuleMetadata) Get() (v DataBroadcastModuleMetadata, ok bool) {
+	if o.Null {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o NilDataBroadcastModuleMetadata) Or(d DataBroadcastModuleMetadata) DataBroadcastModuleMetadata {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewNilDataBroadcastPCR returns new NilDataBroadcastPCR with value set to v.
+func NewNilDataBroadcastPCR(v DataBroadcastPCR) NilDataBroadcastPCR {
+	return NilDataBroadcastPCR{
+		Value: v,
+	}
+}
+
+// NilDataBroadcastPCR is nullable DataBroadcastPCR.
+type NilDataBroadcastPCR struct {
+	Value DataBroadcastPCR
+	Null  bool
+}
+
+// SetTo sets value to v.
+func (o *NilDataBroadcastPCR) SetTo(v DataBroadcastPCR) {
+	o.Null = false
+	o.Value = v
+}
+
+// IsNull returns true if value is Null.
+func (o NilDataBroadcastPCR) IsNull() bool { return o.Null }
+
+// SetToNull sets value to null.
+func (o *NilDataBroadcastPCR) SetToNull() {
+	o.Null = true
+	var v DataBroadcastPCR
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o NilDataBroadcastPCR) Get() (v DataBroadcastPCR, ok bool) {
+	if o.Null {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o NilDataBroadcastPCR) Or(d DataBroadcastPCR) DataBroadcastPCR {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewNilDataBroadcastPMT returns new NilDataBroadcastPMT with value set to v.
+func NewNilDataBroadcastPMT(v DataBroadcastPMT) NilDataBroadcastPMT {
+	return NilDataBroadcastPMT{
+		Value: v,
+	}
+}
+
+// NilDataBroadcastPMT is nullable DataBroadcastPMT.
+type NilDataBroadcastPMT struct {
+	Value DataBroadcastPMT
+	Null  bool
+}
+
+// SetTo sets value to v.
+func (o *NilDataBroadcastPMT) SetTo(v DataBroadcastPMT) {
+	o.Null = false
+	o.Value = v
+}
+
+// IsNull returns true if value is Null.
+func (o NilDataBroadcastPMT) IsNull() bool { return o.Null }
+
+// SetToNull sets value to null.
+func (o *NilDataBroadcastPMT) SetToNull() {
+	o.Null = true
+	var v DataBroadcastPMT
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o NilDataBroadcastPMT) Get() (v DataBroadcastPMT, ok bool) {
+	if o.Null {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o NilDataBroadcastPMT) Or(d DataBroadcastPMT) DataBroadcastPMT {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewNilDataBroadcastProgramInfo returns new NilDataBroadcastProgramInfo with value set to v.
+func NewNilDataBroadcastProgramInfo(v DataBroadcastProgramInfo) NilDataBroadcastProgramInfo {
+	return NilDataBroadcastProgramInfo{
+		Value: v,
+	}
+}
+
+// NilDataBroadcastProgramInfo is nullable DataBroadcastProgramInfo.
+type NilDataBroadcastProgramInfo struct {
+	Value DataBroadcastProgramInfo
+	Null  bool
+}
+
+// SetTo sets value to v.
+func (o *NilDataBroadcastProgramInfo) SetTo(v DataBroadcastProgramInfo) {
+	o.Null = false
+	o.Value = v
+}
+
+// IsNull returns true if value is Null.
+func (o NilDataBroadcastProgramInfo) IsNull() bool { return o.Null }
+
+// SetToNull sets value to null.
+func (o *NilDataBroadcastProgramInfo) SetToNull() {
+	o.Null = true
+	var v DataBroadcastProgramInfo
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o NilDataBroadcastProgramInfo) Get() (v DataBroadcastProgramInfo, ok bool) {
+	if o.Null {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o NilDataBroadcastProgramInfo) Or(d DataBroadcastProgramInfo) DataBroadcastProgramInfo {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewNilDataBroadcastReturnToEntry returns new NilDataBroadcastReturnToEntry with value set to v.
+func NewNilDataBroadcastReturnToEntry(v DataBroadcastReturnToEntry) NilDataBroadcastReturnToEntry {
+	return NilDataBroadcastReturnToEntry{
+		Value: v,
+	}
+}
+
+// NilDataBroadcastReturnToEntry is nullable DataBroadcastReturnToEntry.
+type NilDataBroadcastReturnToEntry struct {
+	Value DataBroadcastReturnToEntry
+	Null  bool
+}
+
+// SetTo sets value to v.
+func (o *NilDataBroadcastReturnToEntry) SetTo(v DataBroadcastReturnToEntry) {
+	o.Null = false
+	o.Value = v
+}
+
+// IsNull returns true if value is Null.
+func (o NilDataBroadcastReturnToEntry) IsNull() bool { return o.Null }
+
+// SetToNull sets value to null.
+func (o *NilDataBroadcastReturnToEntry) SetToNull() {
+	o.Null = true
+	var v DataBroadcastReturnToEntry
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o NilDataBroadcastReturnToEntry) Get() (v DataBroadcastReturnToEntry, ok bool) {
+	if o.Null {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o NilDataBroadcastReturnToEntry) Or(d DataBroadcastReturnToEntry) DataBroadcastReturnToEntry {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewNilInt returns new NilInt with value set to v.
+func NewNilInt(v int) NilInt {
+	return NilInt{
+		Value: v,
+	}
+}
+
+// NilInt is nullable int.
+type NilInt struct {
+	Value int
+	Null  bool
+}
+
+// SetTo sets value to v.
+func (o *NilInt) SetTo(v int) {
+	o.Null = false
+	o.Value = v
+}
+
+// IsNull returns true if value is Null.
+func (o NilInt) IsNull() bool { return o.Null }
+
+// SetToNull sets value to null.
+func (o *NilInt) SetToNull() {
+	o.Null = true
+	var v int
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o NilInt) Get() (v int, ok bool) {
+	if o.Null {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o NilInt) Or(d int) int {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewNilInt64 returns new NilInt64 with value set to v.
+func NewNilInt64(v int64) NilInt64 {
+	return NilInt64{
+		Value: v,
+	}
+}
+
+// NilInt64 is nullable int64.
+type NilInt64 struct {
+	Value int64
+	Null  bool
+}
+
+// SetTo sets value to v.
+func (o *NilInt64) SetTo(v int64) {
+	o.Null = false
+	o.Value = v
+}
+
+// IsNull returns true if value is Null.
+func (o NilInt64) IsNull() bool { return o.Null }
+
+// SetToNull sets value to null.
+func (o *NilInt64) SetToNull() {
+	o.Null = true
+	var v int64
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o NilInt64) Get() (v int64, ok bool) {
+	if o.Null {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o NilInt64) Or(d int64) int64 {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewNilString returns new NilString with value set to v.
+func NewNilString(v string) NilString {
+	return NilString{
+		Value: v,
+	}
+}
+
+// NilString is nullable string.
+type NilString struct {
+	Value string
+	Null  bool
+}
+
+// SetTo sets value to v.
+func (o *NilString) SetTo(v string) {
+	o.Null = false
+	o.Value = v
+}
+
+// IsNull returns true if value is Null.
+func (o NilString) IsNull() bool { return o.Null }
+
+// SetToNull sets value to null.
+func (o *NilString) SetToNull() {
+	o.Null = true
+	var v string
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o NilString) Get() (v string, ok bool) {
+	if o.Null {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o NilString) Or(d string) string {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
 // NewOptBool returns new OptBool with value set to v.
 func NewOptBool(v bool) OptBool {
 	return OptBool{
@@ -2655,6 +4825,144 @@ func (o OptConfigChannelsItemCommandVars) Get() (v ConfigChannelsItemCommandVars
 
 // Or returns value if set, or given parameter if does not.
 func (o OptConfigChannelsItemCommandVars) Or(d ConfigChannelsItemCommandVars) ConfigChannelsItemCommandVars {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptDataBroadcastBXMLCarousel returns new OptDataBroadcastBXMLCarousel with value set to v.
+func NewOptDataBroadcastBXMLCarousel(v DataBroadcastBXMLCarousel) OptDataBroadcastBXMLCarousel {
+	return OptDataBroadcastBXMLCarousel{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptDataBroadcastBXMLCarousel is optional DataBroadcastBXMLCarousel.
+type OptDataBroadcastBXMLCarousel struct {
+	Value DataBroadcastBXMLCarousel
+	Set   bool
+}
+
+// IsSet returns true if OptDataBroadcastBXMLCarousel was set.
+func (o OptDataBroadcastBXMLCarousel) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptDataBroadcastBXMLCarousel) Reset() {
+	var v DataBroadcastBXMLCarousel
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptDataBroadcastBXMLCarousel) SetTo(v DataBroadcastBXMLCarousel) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptDataBroadcastBXMLCarousel) Get() (v DataBroadcastBXMLCarousel, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptDataBroadcastBXMLCarousel) Or(d DataBroadcastBXMLCarousel) DataBroadcastBXMLCarousel {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptDataBroadcastBXMLEntryPoint returns new OptDataBroadcastBXMLEntryPoint with value set to v.
+func NewOptDataBroadcastBXMLEntryPoint(v DataBroadcastBXMLEntryPoint) OptDataBroadcastBXMLEntryPoint {
+	return OptDataBroadcastBXMLEntryPoint{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptDataBroadcastBXMLEntryPoint is optional DataBroadcastBXMLEntryPoint.
+type OptDataBroadcastBXMLEntryPoint struct {
+	Value DataBroadcastBXMLEntryPoint
+	Set   bool
+}
+
+// IsSet returns true if OptDataBroadcastBXMLEntryPoint was set.
+func (o OptDataBroadcastBXMLEntryPoint) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptDataBroadcastBXMLEntryPoint) Reset() {
+	var v DataBroadcastBXMLEntryPoint
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptDataBroadcastBXMLEntryPoint) SetTo(v DataBroadcastBXMLEntryPoint) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptDataBroadcastBXMLEntryPoint) Get() (v DataBroadcastBXMLEntryPoint, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptDataBroadcastBXMLEntryPoint) Or(d DataBroadcastBXMLEntryPoint) DataBroadcastBXMLEntryPoint {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptDataBroadcastSnapshot returns new OptDataBroadcastSnapshot with value set to v.
+func NewOptDataBroadcastSnapshot(v DataBroadcastSnapshot) OptDataBroadcastSnapshot {
+	return OptDataBroadcastSnapshot{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptDataBroadcastSnapshot is optional DataBroadcastSnapshot.
+type OptDataBroadcastSnapshot struct {
+	Value DataBroadcastSnapshot
+	Set   bool
+}
+
+// IsSet returns true if OptDataBroadcastSnapshot was set.
+func (o OptDataBroadcastSnapshot) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptDataBroadcastSnapshot) Reset() {
+	var v DataBroadcastSnapshot
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptDataBroadcastSnapshot) SetTo(v DataBroadcastSnapshot) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptDataBroadcastSnapshot) Get() (v DataBroadcastSnapshot, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptDataBroadcastSnapshot) Or(d DataBroadcastSnapshot) DataBroadcastSnapshot {
 	if v, ok := o.Get(); ok {
 		return v
 	}
@@ -3029,6 +5337,550 @@ func (o OptJobResultItemData) Or(d JobResultItemData) JobResultItemData {
 	return d
 }
 
+// NewOptNilDataBroadcastBIT returns new OptNilDataBroadcastBIT with value set to v.
+func NewOptNilDataBroadcastBIT(v DataBroadcastBIT) OptNilDataBroadcastBIT {
+	return OptNilDataBroadcastBIT{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptNilDataBroadcastBIT is optional nullable DataBroadcastBIT.
+type OptNilDataBroadcastBIT struct {
+	Value DataBroadcastBIT
+	Set   bool
+	Null  bool
+}
+
+// IsSet returns true if OptNilDataBroadcastBIT was set.
+func (o OptNilDataBroadcastBIT) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptNilDataBroadcastBIT) Reset() {
+	var v DataBroadcastBIT
+	o.Value = v
+	o.Set = false
+	o.Null = false
+}
+
+// SetTo sets value to v.
+func (o *OptNilDataBroadcastBIT) SetTo(v DataBroadcastBIT) {
+	o.Set = true
+	o.Null = false
+	o.Value = v
+}
+
+// IsNull returns true if value is Null.
+func (o OptNilDataBroadcastBIT) IsNull() bool { return o.Null }
+
+// SetToNull sets value to null.
+func (o *OptNilDataBroadcastBIT) SetToNull() {
+	o.Set = true
+	o.Null = true
+	var v DataBroadcastBIT
+	o.Value = v
+}
+
+// IsEmpty returns true if the field was omitted from the payload (not Set and not Null).
+func (o OptNilDataBroadcastBIT) IsEmpty() bool {
+	return !o.Set && !o.Null
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptNilDataBroadcastBIT) Get() (v DataBroadcastBIT, ok bool) {
+	if o.Null {
+		return v, false
+	}
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptNilDataBroadcastBIT) Or(d DataBroadcastBIT) DataBroadcastBIT {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptNilDataBroadcastCurrentTime returns new OptNilDataBroadcastCurrentTime with value set to v.
+func NewOptNilDataBroadcastCurrentTime(v DataBroadcastCurrentTime) OptNilDataBroadcastCurrentTime {
+	return OptNilDataBroadcastCurrentTime{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptNilDataBroadcastCurrentTime is optional nullable DataBroadcastCurrentTime.
+type OptNilDataBroadcastCurrentTime struct {
+	Value DataBroadcastCurrentTime
+	Set   bool
+	Null  bool
+}
+
+// IsSet returns true if OptNilDataBroadcastCurrentTime was set.
+func (o OptNilDataBroadcastCurrentTime) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptNilDataBroadcastCurrentTime) Reset() {
+	var v DataBroadcastCurrentTime
+	o.Value = v
+	o.Set = false
+	o.Null = false
+}
+
+// SetTo sets value to v.
+func (o *OptNilDataBroadcastCurrentTime) SetTo(v DataBroadcastCurrentTime) {
+	o.Set = true
+	o.Null = false
+	o.Value = v
+}
+
+// IsNull returns true if value is Null.
+func (o OptNilDataBroadcastCurrentTime) IsNull() bool { return o.Null }
+
+// SetToNull sets value to null.
+func (o *OptNilDataBroadcastCurrentTime) SetToNull() {
+	o.Set = true
+	o.Null = true
+	var v DataBroadcastCurrentTime
+	o.Value = v
+}
+
+// IsEmpty returns true if the field was omitted from the payload (not Set and not Null).
+func (o OptNilDataBroadcastCurrentTime) IsEmpty() bool {
+	return !o.Set && !o.Null
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptNilDataBroadcastCurrentTime) Get() (v DataBroadcastCurrentTime, ok bool) {
+	if o.Null {
+		return v, false
+	}
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptNilDataBroadcastCurrentTime) Or(d DataBroadcastCurrentTime) DataBroadcastCurrentTime {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptNilDataBroadcastESEvent returns new OptNilDataBroadcastESEvent with value set to v.
+func NewOptNilDataBroadcastESEvent(v DataBroadcastESEvent) OptNilDataBroadcastESEvent {
+	return OptNilDataBroadcastESEvent{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptNilDataBroadcastESEvent is optional nullable DataBroadcastESEvent.
+type OptNilDataBroadcastESEvent struct {
+	Value DataBroadcastESEvent
+	Set   bool
+	Null  bool
+}
+
+// IsSet returns true if OptNilDataBroadcastESEvent was set.
+func (o OptNilDataBroadcastESEvent) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptNilDataBroadcastESEvent) Reset() {
+	var v DataBroadcastESEvent
+	o.Value = v
+	o.Set = false
+	o.Null = false
+}
+
+// SetTo sets value to v.
+func (o *OptNilDataBroadcastESEvent) SetTo(v DataBroadcastESEvent) {
+	o.Set = true
+	o.Null = false
+	o.Value = v
+}
+
+// IsNull returns true if value is Null.
+func (o OptNilDataBroadcastESEvent) IsNull() bool { return o.Null }
+
+// SetToNull sets value to null.
+func (o *OptNilDataBroadcastESEvent) SetToNull() {
+	o.Set = true
+	o.Null = true
+	var v DataBroadcastESEvent
+	o.Value = v
+}
+
+// IsEmpty returns true if the field was omitted from the payload (not Set and not Null).
+func (o OptNilDataBroadcastESEvent) IsEmpty() bool {
+	return !o.Set && !o.Null
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptNilDataBroadcastESEvent) Get() (v DataBroadcastESEvent, ok bool) {
+	if o.Null {
+		return v, false
+	}
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptNilDataBroadcastESEvent) Or(d DataBroadcastESEvent) DataBroadcastESEvent {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptNilDataBroadcastModule returns new OptNilDataBroadcastModule with value set to v.
+func NewOptNilDataBroadcastModule(v DataBroadcastModule) OptNilDataBroadcastModule {
+	return OptNilDataBroadcastModule{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptNilDataBroadcastModule is optional nullable DataBroadcastModule.
+type OptNilDataBroadcastModule struct {
+	Value DataBroadcastModule
+	Set   bool
+	Null  bool
+}
+
+// IsSet returns true if OptNilDataBroadcastModule was set.
+func (o OptNilDataBroadcastModule) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptNilDataBroadcastModule) Reset() {
+	var v DataBroadcastModule
+	o.Value = v
+	o.Set = false
+	o.Null = false
+}
+
+// SetTo sets value to v.
+func (o *OptNilDataBroadcastModule) SetTo(v DataBroadcastModule) {
+	o.Set = true
+	o.Null = false
+	o.Value = v
+}
+
+// IsNull returns true if value is Null.
+func (o OptNilDataBroadcastModule) IsNull() bool { return o.Null }
+
+// SetToNull sets value to null.
+func (o *OptNilDataBroadcastModule) SetToNull() {
+	o.Set = true
+	o.Null = true
+	var v DataBroadcastModule
+	o.Value = v
+}
+
+// IsEmpty returns true if the field was omitted from the payload (not Set and not Null).
+func (o OptNilDataBroadcastModule) IsEmpty() bool {
+	return !o.Set && !o.Null
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptNilDataBroadcastModule) Get() (v DataBroadcastModule, ok bool) {
+	if o.Null {
+		return v, false
+	}
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptNilDataBroadcastModule) Or(d DataBroadcastModule) DataBroadcastModule {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptNilDataBroadcastModuleList returns new OptNilDataBroadcastModuleList with value set to v.
+func NewOptNilDataBroadcastModuleList(v DataBroadcastModuleList) OptNilDataBroadcastModuleList {
+	return OptNilDataBroadcastModuleList{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptNilDataBroadcastModuleList is optional nullable DataBroadcastModuleList.
+type OptNilDataBroadcastModuleList struct {
+	Value DataBroadcastModuleList
+	Set   bool
+	Null  bool
+}
+
+// IsSet returns true if OptNilDataBroadcastModuleList was set.
+func (o OptNilDataBroadcastModuleList) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptNilDataBroadcastModuleList) Reset() {
+	var v DataBroadcastModuleList
+	o.Value = v
+	o.Set = false
+	o.Null = false
+}
+
+// SetTo sets value to v.
+func (o *OptNilDataBroadcastModuleList) SetTo(v DataBroadcastModuleList) {
+	o.Set = true
+	o.Null = false
+	o.Value = v
+}
+
+// IsNull returns true if value is Null.
+func (o OptNilDataBroadcastModuleList) IsNull() bool { return o.Null }
+
+// SetToNull sets value to null.
+func (o *OptNilDataBroadcastModuleList) SetToNull() {
+	o.Set = true
+	o.Null = true
+	var v DataBroadcastModuleList
+	o.Value = v
+}
+
+// IsEmpty returns true if the field was omitted from the payload (not Set and not Null).
+func (o OptNilDataBroadcastModuleList) IsEmpty() bool {
+	return !o.Set && !o.Null
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptNilDataBroadcastModuleList) Get() (v DataBroadcastModuleList, ok bool) {
+	if o.Null {
+		return v, false
+	}
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptNilDataBroadcastModuleList) Or(d DataBroadcastModuleList) DataBroadcastModuleList {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptNilDataBroadcastPCR returns new OptNilDataBroadcastPCR with value set to v.
+func NewOptNilDataBroadcastPCR(v DataBroadcastPCR) OptNilDataBroadcastPCR {
+	return OptNilDataBroadcastPCR{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptNilDataBroadcastPCR is optional nullable DataBroadcastPCR.
+type OptNilDataBroadcastPCR struct {
+	Value DataBroadcastPCR
+	Set   bool
+	Null  bool
+}
+
+// IsSet returns true if OptNilDataBroadcastPCR was set.
+func (o OptNilDataBroadcastPCR) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptNilDataBroadcastPCR) Reset() {
+	var v DataBroadcastPCR
+	o.Value = v
+	o.Set = false
+	o.Null = false
+}
+
+// SetTo sets value to v.
+func (o *OptNilDataBroadcastPCR) SetTo(v DataBroadcastPCR) {
+	o.Set = true
+	o.Null = false
+	o.Value = v
+}
+
+// IsNull returns true if value is Null.
+func (o OptNilDataBroadcastPCR) IsNull() bool { return o.Null }
+
+// SetToNull sets value to null.
+func (o *OptNilDataBroadcastPCR) SetToNull() {
+	o.Set = true
+	o.Null = true
+	var v DataBroadcastPCR
+	o.Value = v
+}
+
+// IsEmpty returns true if the field was omitted from the payload (not Set and not Null).
+func (o OptNilDataBroadcastPCR) IsEmpty() bool {
+	return !o.Set && !o.Null
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptNilDataBroadcastPCR) Get() (v DataBroadcastPCR, ok bool) {
+	if o.Null {
+		return v, false
+	}
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptNilDataBroadcastPCR) Or(d DataBroadcastPCR) DataBroadcastPCR {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptNilDataBroadcastPMT returns new OptNilDataBroadcastPMT with value set to v.
+func NewOptNilDataBroadcastPMT(v DataBroadcastPMT) OptNilDataBroadcastPMT {
+	return OptNilDataBroadcastPMT{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptNilDataBroadcastPMT is optional nullable DataBroadcastPMT.
+type OptNilDataBroadcastPMT struct {
+	Value DataBroadcastPMT
+	Set   bool
+	Null  bool
+}
+
+// IsSet returns true if OptNilDataBroadcastPMT was set.
+func (o OptNilDataBroadcastPMT) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptNilDataBroadcastPMT) Reset() {
+	var v DataBroadcastPMT
+	o.Value = v
+	o.Set = false
+	o.Null = false
+}
+
+// SetTo sets value to v.
+func (o *OptNilDataBroadcastPMT) SetTo(v DataBroadcastPMT) {
+	o.Set = true
+	o.Null = false
+	o.Value = v
+}
+
+// IsNull returns true if value is Null.
+func (o OptNilDataBroadcastPMT) IsNull() bool { return o.Null }
+
+// SetToNull sets value to null.
+func (o *OptNilDataBroadcastPMT) SetToNull() {
+	o.Set = true
+	o.Null = true
+	var v DataBroadcastPMT
+	o.Value = v
+}
+
+// IsEmpty returns true if the field was omitted from the payload (not Set and not Null).
+func (o OptNilDataBroadcastPMT) IsEmpty() bool {
+	return !o.Set && !o.Null
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptNilDataBroadcastPMT) Get() (v DataBroadcastPMT, ok bool) {
+	if o.Null {
+		return v, false
+	}
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptNilDataBroadcastPMT) Or(d DataBroadcastPMT) DataBroadcastPMT {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptNilDataBroadcastProgramInfo returns new OptNilDataBroadcastProgramInfo with value set to v.
+func NewOptNilDataBroadcastProgramInfo(v DataBroadcastProgramInfo) OptNilDataBroadcastProgramInfo {
+	return OptNilDataBroadcastProgramInfo{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptNilDataBroadcastProgramInfo is optional nullable DataBroadcastProgramInfo.
+type OptNilDataBroadcastProgramInfo struct {
+	Value DataBroadcastProgramInfo
+	Set   bool
+	Null  bool
+}
+
+// IsSet returns true if OptNilDataBroadcastProgramInfo was set.
+func (o OptNilDataBroadcastProgramInfo) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptNilDataBroadcastProgramInfo) Reset() {
+	var v DataBroadcastProgramInfo
+	o.Value = v
+	o.Set = false
+	o.Null = false
+}
+
+// SetTo sets value to v.
+func (o *OptNilDataBroadcastProgramInfo) SetTo(v DataBroadcastProgramInfo) {
+	o.Set = true
+	o.Null = false
+	o.Value = v
+}
+
+// IsNull returns true if value is Null.
+func (o OptNilDataBroadcastProgramInfo) IsNull() bool { return o.Null }
+
+// SetToNull sets value to null.
+func (o *OptNilDataBroadcastProgramInfo) SetToNull() {
+	o.Set = true
+	o.Null = true
+	var v DataBroadcastProgramInfo
+	o.Value = v
+}
+
+// IsEmpty returns true if the field was omitted from the payload (not Set and not Null).
+func (o OptNilDataBroadcastProgramInfo) IsEmpty() bool {
+	return !o.Set && !o.Null
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptNilDataBroadcastProgramInfo) Get() (v DataBroadcastProgramInfo, ok bool) {
+	if o.Null {
+		return v, false
+	}
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptNilDataBroadcastProgramInfo) Or(d DataBroadcastProgramInfo) DataBroadcastProgramInfo {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
 // NewOptProgramAudioSamplingRate returns new OptProgramAudioSamplingRate with value set to v.
 func NewOptProgramAudioSamplingRate(v ProgramAudioSamplingRate) OptProgramAudioSamplingRate {
 	return OptProgramAudioSamplingRate{
@@ -3115,52 +5967,6 @@ func (o OptProgramEpisodeNumber) Get() (v ProgramEpisodeNumber, ok bool) {
 
 // Or returns value if set, or given parameter if does not.
 func (o OptProgramEpisodeNumber) Or(d ProgramEpisodeNumber) ProgramEpisodeNumber {
-	if v, ok := o.Get(); ok {
-		return v
-	}
-	return d
-}
-
-// NewOptProgramExtended returns new OptProgramExtended with value set to v.
-func NewOptProgramExtended(v ProgramExtended) OptProgramExtended {
-	return OptProgramExtended{
-		Value: v,
-		Set:   true,
-	}
-}
-
-// OptProgramExtended is optional ProgramExtended.
-type OptProgramExtended struct {
-	Value ProgramExtended
-	Set   bool
-}
-
-// IsSet returns true if OptProgramExtended was set.
-func (o OptProgramExtended) IsSet() bool { return o.Set }
-
-// Reset unsets value.
-func (o *OptProgramExtended) Reset() {
-	var v ProgramExtended
-	o.Value = v
-	o.Set = false
-}
-
-// SetTo sets value to v.
-func (o *OptProgramExtended) SetTo(v ProgramExtended) {
-	o.Set = true
-	o.Value = v
-}
-
-// Get returns value and boolean that denotes whether value was set.
-func (o OptProgramExtended) Get() (v ProgramExtended, ok bool) {
-	if !o.Set {
-		return v, false
-	}
-	return o.Value, true
-}
-
-// Or returns value if set, or given parameter if does not.
-func (o OptProgramExtended) Or(d ProgramExtended) ProgramExtended {
 	if v, ok := o.Get(); ok {
 		return v
 	}
@@ -4135,21 +6941,24 @@ func (o OptUnixtimeMS) Or(d UnixtimeMS) UnixtimeMS {
 
 // Ref: #/components/schemas/Program
 type Program struct {
-	ID           ProgramId           `json:"id"`
-	EventId      EventId             `json:"eventId"`
-	ServiceId    ServiceId           `json:"serviceId"`
-	NetworkId    NetworkId           `json:"networkId"`
-	StartAt      UnixtimeMS          `json:"startAt"`
-	Duration     int                 `json:"duration"`
-	IsFree       bool                `json:"isFree"`
-	Name         OptString           `json:"name"`
-	Description  OptString           `json:"description"`
-	Genres       []ProgramGenre      `json:"genres"`
-	Video        OptProgramVideo     `json:"video"`
-	Audios       []ProgramAudiosItem `json:"audios"`
-	Extended     OptProgramExtended  `json:"extended"`
-	RelatedItems []RelatedItem       `json:"relatedItems"`
-	Series       OptProgramSeries    `json:"series"`
+	ID          ProgramId           `json:"id"`
+	EventId     EventId             `json:"eventId"`
+	ServiceId   ServiceId           `json:"serviceId"`
+	NetworkId   NetworkId           `json:"networkId"`
+	StartAt     UnixtimeMS          `json:"startAt"`
+	Duration    int                 `json:"duration"`
+	IsFree      bool                `json:"isFree"`
+	Name        OptString           `json:"name"`
+	Description OptString           `json:"description"`
+	Genres      []ProgramGenre      `json:"genres"`
+	Video       OptProgramVideo     `json:"video"`
+	Audios      []ProgramAudiosItem `json:"audios"`
+	// The extended event description as an object of strings, whose keys are item headings in the order
+	// the broadcaster sends them. The schema leaves the type open so that the generated code keeps the
+	// order instead of decoding it into a map.
+	Extended     jx.Raw           `json:"extended"`
+	RelatedItems []RelatedItem    `json:"relatedItems"`
+	Series       OptProgramSeries `json:"series"`
 }
 
 // GetID returns the value of ID.
@@ -4213,7 +7022,7 @@ func (s *Program) GetAudios() []ProgramAudiosItem {
 }
 
 // GetExtended returns the value of Extended.
-func (s *Program) GetExtended() OptProgramExtended {
+func (s *Program) GetExtended() jx.Raw {
 	return s.Extended
 }
 
@@ -4288,7 +7097,7 @@ func (s *Program) SetAudios(val []ProgramAudiosItem) {
 }
 
 // SetExtended sets the value of Extended.
-func (s *Program) SetExtended(val OptProgramExtended) {
+func (s *Program) SetExtended(val jx.Raw) {
 	s.Extended = val
 }
 
@@ -4484,17 +7293,6 @@ func (s *ProgramAudiosItemLangsItem) UnmarshalText(data []byte) error {
 }
 
 type ProgramEpisodeNumber int
-
-type ProgramExtended map[string]string
-
-func (s *ProgramExtended) init() ProgramExtended {
-	m := *s
-	if m == nil {
-		m = map[string]string{}
-		*s = m
-	}
-	return m
-}
 
 // Ref: #/components/schemas/ProgramGenre
 type ProgramGenre struct {

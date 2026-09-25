@@ -6,10 +6,12 @@ import (
 	"encoding/binary"
 	"errors"
 	"hash/crc32"
+	"reflect"
 	"testing"
 
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/db"
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/ts"
 )
 
@@ -21,7 +23,7 @@ func TestServiceManagerGetChannelsExcludesDisabledChannels(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = database.Close() }()
-	manager := NewServiceManager(NewSQLiteStore(database), config.ChannelsConfig{
+	manager := NewManager(NewSQLiteStore(database), config.ChannelsConfig{
 		{Name: "NHK", Type: "GR", Channel: "27", IsDisabled: &no},
 		{Name: "Disabled", Type: "GR", Channel: "28", IsDisabled: &yes},
 	})
@@ -46,10 +48,10 @@ func TestServiceManagerGetServiceByIdPrefersExactIDOverItemID(t *testing.T) {
 	}
 	defer func() { _ = database.Close() }()
 	store := NewSQLiteStore(database)
-	manager := NewServiceManager(store, config.ChannelsConfig{})
+	manager := NewManager(store, config.ChannelsConfig{})
 	if err := store.ReplaceChannelServices(ctx, "GR", "27", []*Service{
-		{Id: "100101", ServiceId: 102, NetworkId: 1, Name: "exact", ChannelType: "GR", ChannelId: "27"},
-		{Id: "0000100101", ServiceId: 101, NetworkId: 1, Name: "item", ChannelType: "GR", ChannelId: "27"},
+		{Id: "100101", Service: model.Service{Key: model.ServiceKey{ServiceID: 102, NetworkID: 1}, Name: "exact"}, ChannelType: "GR", ChannelId: "27"},
+		{Id: "0000100101", Service: model.Service{Key: model.ServiceKey{ServiceID: 101, NetworkID: 1}, Name: "item"}, ChannelType: "GR", ChannelId: "27"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +81,7 @@ func TestSQLiteStoreMovesServiceBetweenChannels(t *testing.T) {
 	}
 	defer func() { _ = database.Close() }()
 	store := NewSQLiteStore(database)
-	service := &Service{Id: "0000100101", ServiceId: 101, NetworkId: 1, Name: "NHK"}
+	service := &Service{Id: "0000100101", Service: model.Service{Key: model.ServiceKey{ServiceID: 101, NetworkID: 1}, Name: "NHK"}}
 	if err := store.ReplaceChannelServices(ctx, "GR", "27", []*Service{service}); err != nil {
 		t.Fatal(err)
 	}
@@ -107,15 +109,15 @@ func TestServiceManagerGetServiceByChannelAndIdPrefersExactIDOverItemID(t *testi
 	}
 	defer func() { _ = database.Close() }()
 	store := NewSQLiteStore(database)
-	manager := NewServiceManager(store, config.ChannelsConfig{})
+	manager := NewManager(store, config.ChannelsConfig{})
 	if err := store.ReplaceChannelServices(ctx, "GR", "27", []*Service{
-		{Id: "100101", ServiceId: 102, NetworkId: 1, Name: "exact", ChannelType: "GR", ChannelId: "27"},
-		{Id: "0000100101", ServiceId: 101, NetworkId: 1, Name: "item", ChannelType: "GR", ChannelId: "27"},
+		{Id: "100101", Service: model.Service{Key: model.ServiceKey{ServiceID: 102, NetworkID: 1}, Name: "exact"}, ChannelType: "GR", ChannelId: "27"},
+		{Id: "0000100101", Service: model.Service{Key: model.ServiceKey{ServiceID: 101, NetworkID: 1}, Name: "item"}, ChannelType: "GR", ChannelId: "27"},
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.ReplaceChannelServices(ctx, "BS", "101", []*Service{
-		{Id: "bs", ServiceId: 101, NetworkId: 1, Name: "other channel", ChannelType: "BS", ChannelId: "101"},
+		{Id: "bs", Service: model.Service{Key: model.ServiceKey{ServiceID: 101, NetworkID: 1}, Name: "other channel"}, ChannelType: "BS", ChannelId: "101"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -146,13 +148,13 @@ func TestServiceManagerReconcileChannelsPrunesRemovedAndDisabled(t *testing.T) {
 	defer func() { _ = database.Close() }()
 	store := NewSQLiteStore(database)
 	for _, channel := range []ChannelKey{{Type: "GR", ID: "27"}, {Type: "GR", ID: "28"}, {Type: "BS", ID: "101"}} {
-		service := &Service{Id: channel.Type + channel.ID, Name: channel.ID}
+		service := &Service{Id: channel.Type + channel.ID, Service: model.Service{Name: channel.ID}}
 		if err := store.ReplaceChannelServices(ctx, channel.Type, channel.ID, []*Service{service}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	disabled := true
-	manager := NewServiceManager(store, config.ChannelsConfig{
+	manager := NewManager(store, config.ChannelsConfig{
 		{Type: "GR", Channel: "27"},
 		{Type: "GR", Channel: "28", IsDisabled: &disabled},
 	})
@@ -176,9 +178,9 @@ func TestServiceManagerEPGStatus(t *testing.T) {
 	}
 	defer func() { _ = database.Close() }()
 	store := NewSQLiteStore(database)
-	manager := NewServiceManager(store, config.ChannelsConfig{})
+	manager := NewManager(store, config.ChannelsConfig{})
 	if err := store.ReplaceChannelServices(ctx, "GR", "27", []*Service{
-		{Id: "0000100101", ServiceId: 101, NetworkId: 1, Name: "NHK", ChannelType: "GR", ChannelId: "27"},
+		{Id: "0000100101", Service: model.Service{Key: model.ServiceKey{ServiceID: 101, NetworkID: 1}, Name: "NHK"}, ChannelType: "GR", ChannelId: "27"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -228,11 +230,11 @@ func TestServiceManagerEPGSummary(t *testing.T) {
 	}
 	defer func() { _ = database.Close() }()
 	store := NewSQLiteStore(database)
-	manager := NewServiceManager(store, config.ChannelsConfig{})
+	manager := NewManager(store, config.ChannelsConfig{})
 	if err := store.ReplaceChannelServices(ctx, "GR", "27", []*Service{
-		{Id: "0000100101", ServiceId: 101, NetworkId: 1, ChannelType: "GR", ChannelId: "27"},
-		{Id: "0000100102", ServiceId: 102, NetworkId: 1, ChannelType: "GR", ChannelId: "27"},
-		{Id: "0000100103", ServiceId: 103, NetworkId: 1, ChannelType: "GR", ChannelId: "27"},
+		{Id: "0000100101", Service: model.Service{Key: model.ServiceKey{ServiceID: 101, NetworkID: 1}}, ChannelType: "GR", ChannelId: "27"},
+		{Id: "0000100102", Service: model.Service{Key: model.ServiceKey{ServiceID: 102, NetworkID: 1}}, ChannelType: "GR", ChannelId: "27"},
+		{Id: "0000100103", Service: model.Service{Key: model.ServiceKey{ServiceID: 103, NetworkID: 1}}, ChannelType: "GR", ChannelId: "27"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -267,7 +269,9 @@ func TestServiceManagerEPGSummary(t *testing.T) {
 	}
 }
 
-func TestServiceManagerUpsertLogoImageNormalizesARIBPNG(t *testing.T) {
+// TestServiceManagerUpsertLogoImageStoresSessionData stores the PNG as the
+// session delivered it: sessions complete the ARIB palette.
+func TestServiceManagerUpsertLogoImageStoresSessionData(t *testing.T) {
 	ctx := context.Background()
 	database, err := db.OpenInMemory()
 	if err != nil {
@@ -275,26 +279,31 @@ func TestServiceManagerUpsertLogoImageNormalizesARIBPNG(t *testing.T) {
 	}
 	defer func() { _ = database.Close() }()
 	store := NewSQLiteStore(database)
-	manager := NewServiceManager(store, config.ChannelsConfig{})
+	manager := NewManager(store, config.ChannelsConfig{})
 	logoID := int64(42)
 	logoVersion := int64(3)
 	downloadDataID := int64(0x1234)
 	if err := store.ReplaceChannelServices(ctx, "GR", "27", []*Service{{
-		Id: "0000100101", ServiceId: 101, NetworkId: 1, Name: "logo",
-		LogoId: &logoID, LogoVersion: &logoVersion, LogoDownloadDataId: &downloadDataID,
-		ChannelType: "GR", ChannelId: "27",
+		Id: "0000100101",
+		Service: model.Service{
+			Key:  model.ServiceKey{ServiceID: 101, NetworkID: 1},
+			Name: "logo",
+			Logo: &model.LogoRef{LogoID: uint16(logoID), Version: new(uint16(logoVersion)), DownloadDataID: new(uint16(downloadDataID))},
+		},
+		ChannelType: "GR",
+		ChannelId:   "27",
 	}}); err != nil {
 		t.Fatal(err)
 	}
 
-	raw := buildServiceTestPalettePNG(false)
-	if err := manager.UpsertLogoImage(ctx, &ts.LogoImage{
-		OriginalNetworkID: 1,
-		LogoID:            uint16(logoID),
-		LogoVersion:       uint16(logoVersion),
-		DownloadDataID:    uint16(downloadDataID),
-		LogoType:          5,
-		Data:              raw,
+	raw := buildServiceTestPalettePNG(true)
+	if err := manager.UpsertLogoImage(ctx, model.Logo{
+		NetworkID:      1,
+		LogoID:         uint16(logoID),
+		Version:        uint16(logoVersion),
+		DownloadDataID: uint16(downloadDataID),
+		LogoType:       5,
+		Data:           raw,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -303,14 +312,8 @@ func TestServiceManagerUpsertLogoImageNormalizesARIBPNG(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bytes.Equal(stored, raw) {
-		t.Fatal("stored logo data was not normalized")
-	}
-	if !serviceTestPNGHasChunk(stored, "PLTE") {
-		t.Fatal("stored logo data does not include PLTE")
-	}
-	if !serviceTestPNGHasChunk(stored, "tRNS") {
-		t.Fatal("stored logo data does not include tRNS")
+	if !bytes.Equal(stored, raw) {
+		t.Fatal("stored logo data differs from the delivered PNG")
 	}
 }
 
@@ -345,22 +348,6 @@ func appendServiceTestPNGChunk(dst []byte, chunkType string, chunkData []byte) [
 	return dst
 }
 
-func serviceTestPNGHasChunk(png []byte, wantType string) bool {
-	pos := 8
-	for pos+12 <= len(png) {
-		chunkLen := int(binary.BigEndian.Uint32(png[pos : pos+4]))
-		chunkEnd := pos + 8 + chunkLen + 4
-		if chunkEnd > len(png) {
-			return false
-		}
-		if string(png[pos+4:pos+8]) == wantType {
-			return true
-		}
-		pos = chunkEnd
-	}
-	return false
-}
-
 func TestServiceManagerUpsertLogoImageRequiresSDTConsistency(t *testing.T) {
 	ctx := context.Background()
 	database, err := db.OpenInMemory()
@@ -369,31 +356,30 @@ func TestServiceManagerUpsertLogoImageRequiresSDTConsistency(t *testing.T) {
 	}
 	defer func() { _ = database.Close() }()
 	store := NewSQLiteStore(database)
-	manager := NewServiceManager(store, config.ChannelsConfig{})
+	manager := NewManager(store, config.ChannelsConfig{})
 	logoID := int64(42)
 	logoVersion := int64(3)
 	downloadDataID := int64(0x1234)
 	if err := store.ReplaceChannelServices(ctx, "GR", "27", []*Service{{
-		Id:                 "0000100101",
-		ServiceId:          101,
-		NetworkId:          1,
-		LogoId:             &logoID,
-		LogoVersion:        &logoVersion,
-		LogoDownloadDataId: &downloadDataID,
-		ChannelType:        "GR",
-		ChannelId:          "27",
+		Id: "0000100101",
+		Service: model.Service{
+			Key:  model.ServiceKey{ServiceID: 101, NetworkID: 1},
+			Logo: &model.LogoRef{LogoID: uint16(logoID), Version: new(uint16(logoVersion)), DownloadDataID: new(uint16(downloadDataID))},
+		},
+		ChannelType: "GR",
+		ChannelId:   "27",
 	}}); err != nil {
 		t.Fatal(err)
 	}
 
 	data := buildServiceTestPalettePNG(true)
-	if err := manager.UpsertLogoImage(ctx, &ts.LogoImage{
-		OriginalNetworkID: 1,
-		LogoID:            42,
-		LogoVersion:       4,
-		DownloadDataID:    0x1234,
-		LogoType:          5,
-		Data:              data,
+	if err := manager.UpsertLogoImage(ctx, model.Logo{
+		NetworkID:      1,
+		LogoID:         42,
+		Version:        4,
+		DownloadDataID: 0x1234,
+		LogoType:       5,
+		Data:           data,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -405,13 +391,13 @@ func TestServiceManagerUpsertLogoImageRequiresSDTConsistency(t *testing.T) {
 		t.Fatal("HasLogoData = true for mismatched logo version")
 	}
 
-	if err := manager.UpsertLogoImage(ctx, &ts.LogoImage{
-		OriginalNetworkID: 1,
-		LogoID:            42,
-		LogoVersion:       3,
-		DownloadDataID:    0x1234,
-		LogoType:          5,
-		Data:              data,
+	if err := manager.UpsertLogoImage(ctx, model.Logo{
+		NetworkID:      1,
+		LogoID:         42,
+		Version:        3,
+		DownloadDataID: 0x1234,
+		LogoType:       5,
+		Data:           data,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -422,13 +408,13 @@ func TestServiceManagerUpsertLogoImageRequiresSDTConsistency(t *testing.T) {
 	if !svc.HasLogoData {
 		t.Fatal("HasLogoData = false for consistent logo metadata")
 	}
-	if err := manager.UpsertLogoImage(ctx, &ts.LogoImage{
-		OriginalNetworkID: 1,
-		LogoID:            42,
-		LogoVersion:       3,
-		DownloadDataID:    0x1234,
-		LogoType:          5,
-		IsDeleted:         true,
+	if err := manager.UpsertLogoImage(ctx, model.Logo{
+		NetworkID:      1,
+		LogoID:         42,
+		Version:        3,
+		DownloadDataID: 0x1234,
+		LogoType:       5,
+		Deleted:        true,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -454,22 +440,21 @@ func TestSQLiteStorePreservesLogoRowsWhenServiceLogoMetadataChanges(t *testing.T
 	newVersion := int64(4)
 	downloadDataID := int64(0x1234)
 	service := &Service{
-		Id:                 "0000100101",
-		ServiceId:          101,
-		NetworkId:          1,
-		LogoId:             &logoID,
-		LogoVersion:        &oldVersion,
-		LogoDownloadDataId: &downloadDataID,
-		ChannelType:        "GR",
-		ChannelId:          "27",
+		Id: "0000100101",
+		Service: model.Service{
+			Key:  model.ServiceKey{ServiceID: 101, NetworkID: 1},
+			Logo: &model.LogoRef{LogoID: uint16(logoID), Version: new(uint16(oldVersion)), DownloadDataID: new(uint16(downloadDataID))},
+		},
+		ChannelType: "GR",
+		ChannelId:   "27",
 	}
 	if err := store.ReplaceChannelServices(ctx, "GR", "27", []*Service{service}); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.UpsertLogo(ctx, 1, service.TransportStreamId, 101, logoID, 5, oldVersion, downloadDataID, []byte{0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a}, 1000); err != nil {
+	if err := store.UpsertLogo(ctx, 1, service.Key.StreamID, 101, logoID, 5, oldVersion, downloadDataID, []byte{0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a}, 1000); err != nil {
 		t.Fatal(err)
 	}
-	service.LogoVersion = &newVersion
+	service.Logo.Version = new(uint16(newVersion))
 	if err := store.ReplaceChannelServices(ctx, "GR", "27", []*Service{service}); err != nil {
 		t.Fatal(err)
 	}
@@ -480,7 +465,7 @@ func TestSQLiteStorePreservesLogoRowsWhenServiceLogoMetadataChanges(t *testing.T
 	if svc.HasLogoData {
 		t.Fatal("HasLogoData = true after service logo version changed")
 	}
-	service.LogoVersion = &oldVersion
+	service.Logo.Version = new(uint16(oldVersion))
 	if err := store.ReplaceChannelServices(ctx, "GR", "27", []*Service{service}); err != nil {
 		t.Fatal(err)
 	}
@@ -505,9 +490,13 @@ func TestSQLiteStorePreservesExistingLogoMetadataWhenScanOmitsLogo(t *testing.T)
 	logoVersion := int64(3)
 	downloadDataID := int64(0x1234)
 	if err := store.ReplaceChannelServices(ctx, "BS", "BS01", []*Service{{
-		Id: "0000400101", NetworkId: 4, TransportStreamId: 0x4010, ServiceId: 101,
-		LogoId: &logoID, LogoVersion: &logoVersion, LogoDownloadDataId: &downloadDataID,
-		ChannelType: "BS", ChannelId: "BS01",
+		Id: "0000400101",
+		Service: model.Service{
+			Key:  model.ServiceKey{NetworkID: 4, StreamID: 0x4010, ServiceID: 101},
+			Logo: &model.LogoRef{LogoID: uint16(logoID), Version: new(uint16(logoVersion)), DownloadDataID: new(uint16(downloadDataID))},
+		},
+		ChannelType: "BS",
+		ChannelId:   "BS01",
 	}}); err != nil {
 		t.Fatal(err)
 	}
@@ -515,8 +504,12 @@ func TestSQLiteStorePreservesExistingLogoMetadataWhenScanOmitsLogo(t *testing.T)
 		t.Fatal(err)
 	}
 	if err := store.ReplaceChannelServices(ctx, "BS", "BS01", []*Service{{
-		Id: "0000400101", NetworkId: 4, TransportStreamId: 0x4010, ServiceId: 101,
-		ChannelType: "BS", ChannelId: "BS01",
+		Id: "0000400101",
+		Service: model.Service{
+			Key: model.ServiceKey{NetworkID: 4, StreamID: 0x4010, ServiceID: 101},
+		},
+		ChannelType: "BS",
+		ChannelId:   "BS01",
 	}}); err != nil {
 		t.Fatal(err)
 	}
@@ -524,8 +517,7 @@ func TestSQLiteStorePreservesExistingLogoMetadataWhenScanOmitsLogo(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if svc.LogoId == nil || *svc.LogoId != logoID || svc.LogoVersion == nil || *svc.LogoVersion != logoVersion ||
-		svc.LogoDownloadDataId == nil || *svc.LogoDownloadDataId != downloadDataID || !svc.HasLogoData {
+	if !logoMatches(svc.Logo, logoID, logoVersion, downloadDataID) || !svc.HasLogoData {
 		t.Fatalf("service logo metadata = %#v, want preserved metadata and data", svc)
 	}
 }
@@ -540,8 +532,13 @@ func TestMissingLogoTargetsTracksExactStoredVersion(t *testing.T) {
 	store := NewSQLiteStore(database)
 	logoID, version, downloadID := int64(42), int64(3), int64(7)
 	service := &Service{
-		Id: "0000100101", NetworkId: 1, ServiceId: 101, TransportStreamId: 10,
-		ChannelType: "GR", ChannelId: "27", LogoId: &logoID, LogoVersion: &version, LogoDownloadDataId: &downloadID,
+		Id: "0000100101",
+		Service: model.Service{
+			Key:  model.ServiceKey{NetworkID: 1, ServiceID: 101, StreamID: 10},
+			Logo: &model.LogoRef{LogoID: uint16(logoID), Version: new(uint16(version)), DownloadDataID: new(uint16(downloadID))},
+		},
+		ChannelType: "GR",
+		ChannelId:   "27",
 	}
 	if err := store.ReplaceChannelServices(ctx, "GR", "27", []*Service{service}); err != nil {
 		t.Fatal(err)
@@ -550,7 +547,7 @@ func TestMissingLogoTargetsTracksExactStoredVersion(t *testing.T) {
 	if err != nil || len(missing) != 1 {
 		t.Fatalf("missing before upsert = %#v, err=%v", missing, err)
 	}
-	if err := store.UpsertLogo(ctx, 1, service.TransportStreamId, 101, logoID, 5, version, downloadID, []byte("png"), 1000); err != nil {
+	if err := store.UpsertLogo(ctx, 1, service.Key.StreamID, 101, logoID, 5, version, downloadID, []byte("png"), 1000); err != nil {
 		t.Fatal(err)
 	}
 	missing, err = store.MissingLogoTargets(ctx)
@@ -571,12 +568,12 @@ func TestLogoGatherTargetsRefreshesKnownLogos(t *testing.T) {
 	remoteLogoID, remoteVersion, remoteDownloadID := int64(12), int64(0), int64(101)
 	localLogoID, localVersion, localDownloadID := int64(13), int64(3), int64(7)
 	if err := store.ReplaceChannelServices(ctx, "GR", "27", []*Service{
-		{Id: "0000400101", NetworkId: 4, ServiceId: 101, ChannelType: "GR", ChannelId: "27", LogoId: &remoteLogoID, LogoVersion: &remoteVersion, LogoDownloadDataId: &remoteDownloadID},
+		{Id: "0000400101", Service: model.Service{Key: model.ServiceKey{NetworkID: 4, ServiceID: 101}, Logo: &model.LogoRef{LogoID: uint16(remoteLogoID), Version: new(uint16(remoteVersion)), DownloadDataID: new(uint16(remoteDownloadID))}}, ChannelType: "GR", ChannelId: "27"},
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.ReplaceChannelServices(ctx, "BS", "BS01", []*Service{
-		{Id: "0000400102", NetworkId: 4, ServiceId: 102, ChannelType: "BS", ChannelId: "BS01", LogoId: &localLogoID, LogoVersion: &localVersion, LogoDownloadDataId: &localDownloadID},
+		{Id: "0000400102", Service: model.Service{Key: model.ServiceKey{NetworkID: 4, ServiceID: 102}, Logo: &model.LogoRef{LogoID: uint16(localLogoID), Version: new(uint16(localVersion)), DownloadDataID: new(uint16(localDownloadID))}}, ChannelType: "BS", ChannelId: "BS01"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -588,7 +585,7 @@ func TestLogoGatherTargetsRefreshesKnownLogos(t *testing.T) {
 	}
 
 	no := false
-	manager := NewServiceManager(store, config.ChannelsConfig{
+	manager := NewManager(store, config.ChannelsConfig{
 		{Name: "Remote", Type: "GR", Channel: "27", IsDisabled: &no, Routes: []config.ChannelRouteConfig{{Remote: "mirakurun", Type: "GR", Channel: "27", IsDisabled: &no}}},
 		{Name: "Local", Type: "BS", Channel: "BS01", IsDisabled: &no},
 	})
@@ -624,18 +621,26 @@ func TestLogoGatherTargetsUsesONIDForCommonDataInsteadOfChannelType(t *testing.T
 	defer func() { _ = database.Close() }()
 	store := NewSQLiteStore(database)
 	if err := store.ReplaceChannelServices(ctx, "anything", "sat-a", []*Service{{
-		Id: "0000400101", NetworkId: 4, TransportStreamId: 0x4010, ServiceId: 101,
-		ChannelType: "anything", ChannelId: "sat-a",
+		Id: "0000400101",
+		Service: model.Service{
+			Key: model.ServiceKey{NetworkID: 4, StreamID: 0x4010, ServiceID: 101},
+		},
+		ChannelType: "anything",
+		ChannelId:   "sat-a",
 	}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.ReplaceChannelServices(ctx, "BS", "not-satellite", []*Service{{
-		Id: "1234500101", NetworkId: 12345, TransportStreamId: 0x2222, ServiceId: 101,
-		ChannelType: "BS", ChannelId: "not-satellite",
+		Id: "1234500101",
+		Service: model.Service{
+			Key: model.ServiceKey{NetworkID: 12345, StreamID: 0x2222, ServiceID: 101},
+		},
+		ChannelType: "BS",
+		ChannelId:   "not-satellite",
 	}}); err != nil {
 		t.Fatal(err)
 	}
-	manager := NewServiceManager(store, config.ChannelsConfig{})
+	manager := NewManager(store, config.ChannelsConfig{})
 	targets, err := manager.LogoGatherTargets(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -657,18 +662,26 @@ func TestLogoGatherTargetsUsesSDTTAnnouncementChannel(t *testing.T) {
 	defer func() { _ = database.Close() }()
 	store := NewSQLiteStore(database)
 	if err := store.ReplaceChannelServices(ctx, "sat", "target", []*Service{{
-		Id: "0000400101", NetworkId: 4, TransportStreamId: 0x4010, ServiceId: 101,
-		ChannelType: "sat", ChannelId: "target",
+		Id: "0000400101",
+		Service: model.Service{
+			Key: model.ServiceKey{NetworkID: 4, StreamID: 0x4010, ServiceID: 101},
+		},
+		ChannelType: "sat",
+		ChannelId:   "target",
 	}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.ReplaceChannelServices(ctx, "sat", "common", []*Service{{
-		Id: "0000492900", NetworkId: 4, TransportStreamId: 0x4031, ServiceId: 929,
-		ChannelType: "sat", ChannelId: "common",
+		Id: "0000492900",
+		Service: model.Service{
+			Key: model.ServiceKey{NetworkID: 4, StreamID: 0x4031, ServiceID: 929},
+		},
+		ChannelType: "sat",
+		ChannelId:   "common",
 	}}); err != nil {
 		t.Fatal(err)
 	}
-	manager := NewServiceManager(store, config.ChannelsConfig{})
+	manager := NewManager(store, config.ChannelsConfig{})
 	if err := manager.UpsertCommonDataAnnouncement(ctx, ts.CommonDataAnnouncement{
 		OriginalNetworkID: 4, TransportStreamID: 0x4031, ServiceID: 929, DownloadID: 0x12345678, VersionID: 7,
 	}, "sat", "target"); err != nil {
@@ -696,9 +709,13 @@ func TestLogoGatherTargetsRefreshesCommonDataWhenLogosArePresent(t *testing.T) {
 	store := NewSQLiteStore(database)
 	logoID, logoVersion, downloadID := int64(12), int64(3), int64(7)
 	if err := store.ReplaceChannelServices(ctx, "sat", "service", []*Service{{
-		Id: "0000400101", NetworkId: 4, TransportStreamId: 0x4010, ServiceId: 101,
-		LogoId: &logoID, LogoVersion: &logoVersion, LogoDownloadDataId: &downloadID,
-		ChannelType: "sat", ChannelId: "service",
+		Id: "0000400101",
+		Service: model.Service{
+			Key:  model.ServiceKey{NetworkID: 4, StreamID: 0x4010, ServiceID: 101},
+			Logo: &model.LogoRef{LogoID: uint16(logoID), Version: new(uint16(logoVersion)), DownloadDataID: new(uint16(downloadID))},
+		},
+		ChannelType: "sat",
+		ChannelId:   "service",
 	}}); err != nil {
 		t.Fatal(err)
 	}
@@ -706,12 +723,16 @@ func TestLogoGatherTargetsRefreshesCommonDataWhenLogosArePresent(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := store.ReplaceChannelServices(ctx, "sat", "common", []*Service{{
-		Id: "0000492900", NetworkId: 4, TransportStreamId: 0x40f1, ServiceId: 929,
-		ChannelType: "sat", ChannelId: "common",
+		Id: "0000492900",
+		Service: model.Service{
+			Key: model.ServiceKey{NetworkID: 4, StreamID: 0x40f1, ServiceID: 929},
+		},
+		ChannelType: "sat",
+		ChannelId:   "common",
 	}}); err != nil {
 		t.Fatal(err)
 	}
-	manager := NewServiceManager(store, config.ChannelsConfig{})
+	manager := NewManager(store, config.ChannelsConfig{})
 
 	missing, err := manager.MissingLogoTargets(ctx)
 	if err != nil {
@@ -752,7 +773,7 @@ func TestCommonDataAnnouncementUpsertReplacesOlderRoute(t *testing.T) {
 	}
 	defer func() { _ = database.Close() }()
 	store := NewSQLiteStore(database)
-	manager := NewServiceManager(store, config.ChannelsConfig{})
+	manager := NewManager(store, config.ChannelsConfig{})
 	announcement := ts.CommonDataAnnouncement{OriginalNetworkID: 4, TransportStreamID: 0x4031, ServiceID: 929, DownloadID: 1, VersionID: 1}
 	if err := manager.UpsertCommonDataAnnouncement(ctx, announcement, "sat", "old"); err != nil {
 		t.Fatal(err)
@@ -779,10 +800,10 @@ func TestServiceManagerUpsertCommonLogoImageUpdatesServiceByTSID(t *testing.T) {
 	}
 	defer func() { _ = database.Close() }()
 	store := NewSQLiteStore(database)
-	manager := NewServiceManager(store, config.ChannelsConfig{})
+	manager := NewManager(store, config.ChannelsConfig{})
 	if err := store.ReplaceChannelServices(ctx, "sat", "a", []*Service{
-		{Id: "0000400101", NetworkId: 4, TransportStreamId: 0x4010, ServiceId: 101, ChannelType: "sat", ChannelId: "a"},
-		{Id: "0000400102", NetworkId: 4, TransportStreamId: 0x4020, ServiceId: 102, ChannelType: "sat", ChannelId: "a"},
+		{Id: "0000400101", Service: model.Service{Key: model.ServiceKey{NetworkID: 4, StreamID: 0x4010, ServiceID: 101}}, ChannelType: "sat", ChannelId: "a"},
+		{Id: "0000400102", Service: model.Service{Key: model.ServiceKey{NetworkID: 4, StreamID: 0x4020, ServiceID: 102}}, ChannelType: "sat", ChannelId: "a"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -797,14 +818,14 @@ func TestServiceManagerUpsertCommonLogoImageUpdatesServiceByTSID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if matched.LogoId == nil || *matched.LogoId != 12 || !matched.HasLogoData {
+	if matched.Logo == nil || matched.Logo.LogoID != 12 || !matched.HasLogoData {
 		t.Fatalf("matched service = %#v, want common logo metadata and data", matched)
 	}
 	unmatched, err := store.GetByItemID(ctx, 400102)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if unmatched.HasLogoData || unmatched.LogoId != nil {
+	if unmatched.HasLogoData || unmatched.Logo != nil {
 		t.Fatalf("unmatched service = %#v, want no logo", unmatched)
 	}
 }
@@ -819,16 +840,20 @@ func TestServiceManagerUpsertCommonLogoImageKeepsOldMetadataWhenLogoStoreFails(t
 	store := NewSQLiteStore(database)
 	oldLogoID, oldVersion, oldDownloadID := int64(11), int64(1), int64(0x1111)
 	if err := store.ReplaceChannelServices(ctx, "sat", "a", []*Service{{
-		Id: "0000400101", NetworkId: 4, TransportStreamId: 0x4010, ServiceId: 101,
-		LogoId: &oldLogoID, LogoVersion: &oldVersion, LogoDownloadDataId: &oldDownloadID,
-		ChannelType: "sat", ChannelId: "a",
+		Id: "0000400101",
+		Service: model.Service{
+			Key:  model.ServiceKey{NetworkID: 4, StreamID: 0x4010, ServiceID: 101},
+			Logo: &model.LogoRef{LogoID: uint16(oldLogoID), Version: new(uint16(oldVersion)), DownloadDataID: new(uint16(oldDownloadID))},
+		},
+		ChannelType: "sat",
+		ChannelId:   "a",
 	}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.UpsertLogo(ctx, 4, 0x4010, 101, oldLogoID, 5, oldVersion, oldDownloadID, buildServiceTestPalettePNG(true), 1000); err != nil {
 		t.Fatal(err)
 	}
-	manager := NewServiceManager(failingLogoStore{Store: store, err: errors.New("store failed")}, config.ChannelsConfig{})
+	manager := NewManager(failingLogoStore{Store: store, err: errors.New("store failed")}, config.ChannelsConfig{})
 
 	err = manager.UpsertCommonLogoImage(ctx, ts.CommonLogoImage{
 		LogoID: 12, LogoType: 5, LogoVersion: 2, DownloadID: 0x2222, Data: buildServiceTestPalettePNG(true),
@@ -841,8 +866,7 @@ func TestServiceManagerUpsertCommonLogoImageKeepsOldMetadataWhenLogoStoreFails(t
 	if err != nil {
 		t.Fatal(err)
 	}
-	if svc.LogoId == nil || *svc.LogoId != oldLogoID || svc.LogoVersion == nil || *svc.LogoVersion != oldVersion ||
-		svc.LogoDownloadDataId == nil || *svc.LogoDownloadDataId != oldDownloadID || !svc.HasLogoData {
+	if !logoMatches(svc.Logo, oldLogoID, oldVersion, oldDownloadID) || !svc.HasLogoData {
 		t.Fatalf("service logo metadata = %#v, want old metadata and logo data preserved", svc)
 	}
 }
@@ -854,4 +878,54 @@ type failingLogoStore struct {
 
 func (s failingLogoStore) UpsertLogo(context.Context, uint16, uint16, uint16, int64, int64, int64, int64, []byte, int64) error {
 	return s.err
+}
+
+func logoMatches(logo *model.LogoRef, logoID, version, downloadDataID int64) bool {
+	return logo != nil && int64(logo.LogoID) == logoID &&
+		logo.Version != nil && int64(*logo.Version) == version &&
+		logo.DownloadDataID != nil && int64(*logo.DownloadDataID) == downloadDataID
+}
+
+func TestSQLiteStoreRoundTripsBroadcastService(t *testing.T) {
+	ctx := context.Background()
+	database, err := db.OpenInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = database.Close() }()
+	store := NewSQLiteStore(database)
+	withKey := &Service{
+		Id: "0000100101",
+		Service: model.Service{
+			Key:              model.ServiceKey{NetworkID: 1, StreamID: 10, ServiceID: 101},
+			Name:             "NHK",
+			ProviderName:     "provider",
+			Type:             1,
+			RunningStatus:    4,
+			FreeCA:           true,
+			EITSchedule:      true,
+			RemoteControlKey: new(uint8(1)),
+			Logo:             &model.LogoRef{LogoID: 3, SimpleLogo: "NHK", HasSimpleLogo: true},
+		},
+		ChannelType: "GR",
+		ChannelId:   "27",
+	}
+	withoutKey := &Service{
+		Id:          "0000100102",
+		Service:     model.Service{Key: model.ServiceKey{NetworkID: 1, StreamID: 10, ServiceID: 102}, Name: "no key"},
+		ChannelType: "GR",
+		ChannelId:   "27",
+	}
+	if err := store.ReplaceChannelServices(ctx, "GR", "27", []*Service{withKey, withoutKey}); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []*Service{withKey, withoutKey} {
+		got, err := store.GetByID(ctx, want.Id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(got.Service, want.Service) {
+			t.Errorf("service %s = %#v, want %#v", want.Id, got.Service, want.Service)
+		}
+	}
 }

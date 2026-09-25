@@ -16,22 +16,25 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/21S1298001/mahiron/internal/bml"
+	"github.com/21S1298001/mahiron/internal/bml/cache"
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/db"
 	"github.com/21S1298001/mahiron/internal/db/gen"
-	"github.com/21S1298001/mahiron/internal/epg"
+	"github.com/21S1298001/mahiron/internal/epggather"
 	"github.com/21S1298001/mahiron/internal/event"
 	"github.com/21S1298001/mahiron/internal/job"
 	"github.com/21S1298001/mahiron/internal/job/defs"
+	"github.com/21S1298001/mahiron/internal/mirakurun"
 	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/server"
 	"github.com/21S1298001/mahiron/internal/service"
 	"github.com/21S1298001/mahiron/internal/servicescan"
 	"github.com/21S1298001/mahiron/internal/stream"
-	"github.com/21S1298001/mahiron/internal/stream/databroadcast"
 	"github.com/21S1298001/mahiron/internal/tuner"
 	"github.com/21S1298001/mahiron/internal/web"
+	"github.com/21S1298001/mahiron/internal/web/api"
 )
 
 type runOptions struct {
@@ -111,7 +114,7 @@ func Run(ctx context.Context, args []string) int {
 	runtime.jobs.Start()
 	runtime.streams.StartRemoteProgramEventSync(signalCtx)
 
-	if err := runStartupTasks(signalCtx, runtime.services, runtime.programs, runtime.jobs, runtime.scanner, runtime.epgScan, runtime.database, cfg); err != nil {
+	if err := runStartupTasks(signalCtx, runtime.services, runtime.programs, runtime.jobs, runtime.serviceScanner, runtime.epgGatherer, runtime.database, cfg); err != nil {
 		slog.Error("startup tasks failed", "err", err)
 	}
 	if err := runtime.services.SeedEventLog(signalCtx); err != nil {
@@ -130,17 +133,17 @@ func Run(ctx context.Context, args []string) int {
 }
 
 type applicationRuntime struct {
-	dataBroadcastStore *databroadcast.SQLiteModuleStore
+	dataBroadcastStore *cache.SQLiteModuleStore
 	database           *db.DB
-	jobs               *job.JobManager
+	jobs               *job.Manager
 	obs                observability.SetupResult
-	epgScan            *epg.Service
-	programs           *program.ProgramManager
+	epgGatherer        *epggather.Gatherer
+	programs           *program.Manager
 	server             *server.Server
-	scanner            *servicescan.Service
-	services           *service.ServiceManager
-	streams            *stream.StreamManager
-	tuners             *tuner.TunerManager
+	serviceScanner     *servicescan.Scanner
+	services           *service.Manager
+	streams            *stream.Manager
+	tuners             *tuner.Manager
 	stopCheckpointer   func()
 }
 
@@ -149,19 +152,19 @@ func buildRuntime(cfg *config.Config, database *db.DB, obs observability.SetupRe
 	programStore := program.NewSQLiteStore(database)
 	events := event.New()
 
-	tuners := tuner.NewTunerManager(&tuner.TunerManagerConfig{
+	tuners := tuner.NewManager(&tuner.ManagerConfig{
 		TunersConfig: cfg.Tuners,
 		EventHub:     events,
 	})
 
-	services := service.NewServiceManager(serviceStore, cfg.Channels, events)
+	apiEvents := mirakurun.NewEventPublisher(events)
+	services := service.NewManager(serviceStore, cfg.Channels, api.NewServiceEventPublisher(apiEvents))
 
-	programs := program.NewProgramManager(programStore, events)
-	epgUpdater := epg.NewUpdater(programs)
+	programs := program.NewManager(programStore, apiEvents)
 
-	var dataBroadcastStore *databroadcast.SQLiteModuleStore
-	var moduleStore databroadcast.ModuleStore
-	var snapshotStore databroadcast.SnapshotStore
+	var dataBroadcastStore *cache.SQLiteModuleStore
+	var moduleStore bml.ModuleStore
+	var snapshotStore bml.SnapshotStore
 	dataBroadcastEnabled := config.IsDataBroadcastEnabled(*cfg.System)
 	if dataBroadcastEnabled {
 		// Opening the cache migrates and prunes it, the only startup step whose
@@ -171,7 +174,7 @@ func buildRuntime(cfg *config.Config, database *db.DB, obs observability.SetupRe
 		slog.Info("opening data broadcast cache", "path", cachePath)
 		cacheOpenedAt := time.Now()
 		var err error
-		dataBroadcastStore, err = databroadcast.NewSQLiteModuleStoreWithOptions(cachePath, databroadcast.SQLiteModuleStoreOptions{
+		dataBroadcastStore, err = cache.NewSQLiteModuleStoreWithOptions(cachePath, cache.SQLiteModuleStoreOptions{
 			MaxBytes:       cfg.System.DataBroadcastCacheBytes,
 			MaxAge:         time.Duration(cfg.System.DataBroadcastCacheMaxAgeDays) * 24 * time.Hour,
 			SnapshotMaxAge: time.Duration(cfg.System.DataBroadcastSnapshotMaxAgeHours) * time.Hour,
@@ -188,30 +191,36 @@ func buildRuntime(cfg *config.Config, database *db.DB, obs observability.SetupRe
 	} else {
 		slog.Info("data broadcast API disabled")
 	}
-	streams := stream.NewStreamManager(stream.StreamManagerConfig{
+	if dataBroadcastEnabled && moduleStore == nil {
+		// The SQLite cache failed to open (warned above). Sessions and the
+		// BML API share this in-memory fallback so retained modules stay
+		// readable without a tuner, matching the previous stream-manager
+		// default.
+		moduleStore = cache.NewModuleCache(0)
+	}
+	streams := stream.NewManager(stream.ManagerConfig{
 		Channels:       cfg.Channels,
 		Remotes:        cfg.Remotes,
-		EITUpdater:     epgUpdater,
+		EITUpdater:     programs,
 		SnapshotStore:  snapshotStore,
 		LogoUpdater:    services,
-		ProgramUpdater: programs,
-		ServiceLister:  services,
+		ProgramUpdater: epggather.NewKnownServiceProgramUpdater(programs, services),
 		TunerManager:   tuners,
 		ModuleStore:    moduleStore,
 	})
-	serviceScanner := stream.NewServiceScannerAdapter(streams)
-	logoCollector := stream.NewLogoCollectorAdapter(streams)
-	scanService := servicescan.NewService(services, serviceScanner, cfg.Channels, time.Duration(cfg.System.ServiceScanTimeout)*time.Millisecond)
-	epgService := epg.NewService(programs, services, streams, cfg.Channels, cfg.System.EpgRetentionDays, time.Duration(cfg.System.EpgRetrievalTime)*time.Millisecond)
+	scanAdapter := stream.NewServiceScanAdapter(streams)
+	logoAdapter := stream.NewLogoGatherAdapter(streams)
+	serviceScanner := servicescan.NewScanner(services, scanAdapter, cfg.Channels, time.Duration(cfg.System.ServiceScanTimeout)*time.Millisecond)
+	epgGatherer := epggather.NewGatherer(programs, programs, services, stream.NewEPGGatherAdapter(streams), cfg.Channels, time.Duration(cfg.System.EpgRetrievalTime)*time.Millisecond)
 
 	jobs, err := job.NewManager(job.Config{MaxHistory: 100, MaxConcurrentJobs: cfg.System.MaxConcurrentJobs}, events)
 	if err != nil {
 		return nil, "failed to create job manager", err
 	}
 
-	defs.RegisterServiceUpdater(jobs, scanService, epgService)
-	defs.RegisterEPGGathererService(jobs, epgService)
-	defs.RegisterLogoGatherer(jobs, logoCollector, services, time.Duration(cfg.System.LogoGatherTimeout)*time.Millisecond)
+	defs.RegisterServiceUpdater(jobs, serviceScanner, epgGatherer)
+	defs.RegisterEPGGatherer(jobs, epgGatherer, programs, cfg.System.EpgRetentionDays)
+	defs.RegisterLogoGatherer(jobs, logoAdapter, services, time.Duration(cfg.System.LogoGatherTimeout)*time.Millisecond)
 
 	schedules := cfg.System.Jobs
 	if len(schedules) == 0 {
@@ -239,6 +248,8 @@ func buildRuntime(cfg *config.Config, database *db.DB, obs observability.SetupRe
 		EventHub:              events,
 		EpgStaleAfter:         int64(cfg.System.EpgStaleAfter),
 		DataBroadcastDisabled: !dataBroadcastEnabled,
+		BMLStore:              moduleStore,
+		BMLSnapshotStore:      snapshotStore,
 		MeterProvider:         obs.MeterProvider,
 		TracerProvider:        obs.TracerProvider,
 		Pprof:                 cfg.System.Observability.Pprof.Enabled,
@@ -254,10 +265,10 @@ func buildRuntime(cfg *config.Config, database *db.DB, obs observability.SetupRe
 		database:           database,
 		jobs:               jobs,
 		obs:                obs,
-		epgScan:            epgService,
+		epgGatherer:        epgGatherer,
 		programs:           programs,
 		server:             server.NewServer(listenAddresses(cfg), handler),
-		scanner:            scanService,
+		serviceScanner:     serviceScanner,
 		services:           services,
 		streams:            streams,
 		tuners:             tuners,
@@ -335,7 +346,7 @@ func (r *applicationRuntime) shutdown() {
 	slog.Info("observability shut down")
 }
 
-func runStartupTasks(ctx context.Context, services *service.ServiceManager, programs *program.ProgramManager, jobs *job.JobManager, scanner *servicescan.Service, epgScan *epg.Service, database *db.DB, cfg *config.Config) error {
+func runStartupTasks(ctx context.Context, services *service.Manager, programs *program.Manager, jobs *job.Manager, serviceScanner *servicescan.Scanner, epgGatherer *epggather.Gatherer, database *db.DB, cfg *config.Config) error {
 	if err := services.ReconcileChannels(ctx); err != nil {
 		return fmt.Errorf("reconcile service channels: %w", err)
 	}
@@ -348,11 +359,11 @@ func runStartupTasks(ctx context.Context, services *service.ServiceManager, prog
 
 	enqueuedFullUpdate := enqueueStartupServiceUpdate(jobs, count, channelState)
 	if !enqueuedFullUpdate {
-		missing, err := missingScannedChannels(ctx, services, scanner.Channels())
+		missing, err := missingScannedChannels(ctx, services, serviceScanner.Channels())
 		if err != nil {
 			return fmt.Errorf("find unscanned channels: %w", err)
 		}
-		enqueueStartupServiceScans(ctx, jobs, scanner, epgScan, missing)
+		enqueueStartupServiceScans(ctx, jobs, serviceScanner, epgGatherer, missing)
 	}
 
 	stale, _, _, err := services.EPGSummary(ctx, int64(cfg.System.EpgStaleAfter), time.Now().UnixMilli())
@@ -394,7 +405,7 @@ func loadChannelConfigState(ctx context.Context, database *db.DB, channels confi
 	return state
 }
 
-func enqueueStartupServiceUpdate(jobs *job.JobManager, serviceCount int, channelState channelConfigState) bool {
+func enqueueStartupServiceUpdate(jobs *job.Manager, serviceCount int, channelState channelConfigState) bool {
 	if serviceCount == 0 {
 		slog.Info("no services cached, running initial service update")
 		if _, err := jobs.Enqueue(defs.ServiceUpdaterKey); err != nil {
@@ -414,7 +425,7 @@ func enqueueStartupServiceUpdate(jobs *job.JobManager, serviceCount int, channel
 	return false
 }
 
-func missingScannedChannels(ctx context.Context, services *service.ServiceManager, channels []servicescan.Channel) ([]servicescan.Channel, error) {
+func missingScannedChannels(ctx context.Context, services *service.Manager, channels []servicescan.Channel) ([]servicescan.Channel, error) {
 	missing := make([]servicescan.Channel, 0)
 	for _, channel := range channels {
 		stored, err := services.GetServicesByChannel(ctx, channel.Type, channel.ID)
@@ -428,7 +439,7 @@ func missingScannedChannels(ctx context.Context, services *service.ServiceManage
 	return missing, nil
 }
 
-func enqueueStartupServiceScans(ctx context.Context, jobs *job.JobManager, scanner defs.ServiceScanner, epgScan defs.EPGGatherer, channels []servicescan.Channel) {
+func enqueueStartupServiceScans(ctx context.Context, jobs *job.Manager, scanner defs.ServiceScanner, epgScan defs.EPGGatherer, channels []servicescan.Channel) {
 	if len(channels) == 0 {
 		return
 	}
@@ -440,7 +451,7 @@ func enqueueStartupServiceScans(ctx context.Context, jobs *job.JobManager, scann
 	slog.Info("unscanned channels found, enqueued service scans", "queued", queued, "channels", len(channels))
 }
 
-func enqueueStartupEPGGather(jobs *job.JobManager, serviceCount int, staleServices int) {
+func enqueueStartupEPGGather(jobs *job.Manager, serviceCount int, staleServices int) {
 	// EPG gathering requires a non-empty service list. If we don't have one
 	// yet, the service updater above is responsible for populating it; each
 	// scan that discovers a new network will immediately enqueue an EPG
@@ -455,15 +466,9 @@ func enqueueStartupEPGGather(jobs *job.JobManager, serviceCount int, staleServic
 	}
 }
 
-func cleanupOldEPG(ctx context.Context, programs *program.ProgramManager, retentionDays int) {
-	if retentionDays <= 0 {
-		return
-	}
-	cutoff := time.Now().Add(-time.Duration(retentionDays) * 24 * time.Hour).UnixMilli()
-	if err := programs.DeleteEndedBefore(ctx, cutoff); err != nil {
+func cleanupOldEPG(ctx context.Context, programs *program.Manager, retentionDays int) {
+	if err := programs.DeleteExpired(ctx, time.Now(), retentionDays); err != nil {
 		slog.Warn("failed to clean up old EPG data", "err", err)
-	} else {
-		slog.Info("cleaned up EPG data", "cutoffDays", retentionDays)
 	}
 }
 

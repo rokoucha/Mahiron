@@ -7,9 +7,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/21S1298001/mahiron/internal/program"
-	"github.com/21S1298001/mahiron/internal/stream/databroadcast"
+	"github.com/21S1298001/mahiron/internal/bml"
+	"github.com/21S1298001/mahiron/internal/bml/cache"
+	"github.com/21S1298001/mahiron/internal/isdb"
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/stream/demux"
+	"github.com/21S1298001/mahiron/internal/stream/schedule"
 	"github.com/21S1298001/mahiron/internal/stream/source"
 	"github.com/21S1298001/mahiron/internal/tuner"
 	"github.com/21S1298001/mahiron/internal/util"
@@ -17,32 +20,25 @@ import (
 )
 
 type Session struct {
-	input                      source.ChannelInput
-	handle                     source.InputHandle
-	channel                    string
-	descrambler                source.Descrambler
-	mu                         sync.Mutex
-	stopped                    bool
-	typ                        string
-	rawDemuxer                 *demux.Demuxer
-	decodedDemuxer             *demux.Demuxer
-	eitUpdater                 EITSectionUpdater
-	logoUpdater                LogoUpdater
-	logoCarousel               *ts.DSMCCLogoCarousel
-	dataBroadcast              *databroadcast.DataBroadcastHub
-	sectionCancel              context.CancelFunc
-	sectionDone                chan struct{}
-	sectionQueue               chan ts.Section
-	carouselQueue              chan ts.Section
-	dataBroadcastQueue         chan ts.PIDSection
-	dataBroadcastPriorityQueue chan ts.PIDSection
-	dataBroadcastDone          chan struct{}
-	dataBroadcastWG            sync.WaitGroup
-	sectionUpdateMu            sync.Mutex
-	eitPFFingerprints          map[eitPFSectionKey]uint32
-	snapshotStore              databroadcast.SnapshotStore
-	snapshotPersistDone        chan struct{}
-	lastPersistedSnapshots     map[uint16]databroadcast.PersistedService
+	input             source.ChannelInput
+	handle            source.InputHandle
+	channel           string
+	descrambler       source.Descrambler
+	mu                sync.Mutex
+	stopped           bool
+	typ               string
+	rawDemuxer        *demux.Demuxer
+	decodedDemuxer    *demux.Demuxer
+	eitUpdater        EventUpdater
+	logoUpdater       LogoUpdater
+	logoCarousel      *ts.DSMCCLogoCarousel
+	bml               *bmlWorker
+	sectionCancel     context.CancelFunc
+	sectionDone       chan struct{}
+	sectionQueue      chan ts.Section
+	carouselQueue     chan ts.Section
+	sectionUpdateMu   sync.Mutex
+	eitPFFingerprints map[eitPFSectionKey]uint32
 }
 
 // ChannelSession is the shared TS streaming, demux, and data-broadcast
@@ -54,16 +50,16 @@ type Config struct {
 	Broadcast   *source.Broadcast
 	Handle      source.InputHandle
 	Descrambler source.Descrambler
-	EITUpdater  EITSectionUpdater
+	EITUpdater  EventUpdater
 	LogoUpdater LogoUpdater
 	OnStop      func()
 	Type        string
-	ModuleCache *databroadcast.ModuleCache
-	ModuleStore databroadcast.ModuleStore
+	ModuleCache *cache.ModuleCache
+	ModuleStore bml.ModuleStore
 	// SnapshotStore persists raw PMT/DII sections so a provisional snapshot
 	// can be served before a tuner is acquired for this channel again. A nil
 	// store disables the persistence worker.
-	SnapshotStore databroadcast.SnapshotStore
+	SnapshotStore bml.SnapshotStore
 }
 
 func NewSession(config Config) *Session {
@@ -74,35 +70,32 @@ func NewSession(config Config) *Session {
 	} else if config.Broadcast != nil {
 		input = localBroadcastInput{config.Broadcast}
 	}
+	hub := bml.NewHub().WithMetricLabels(config.Type, config.Channel).WithModuleStore(moduleStore(config))
 	session := &Session{
-		input:                  input,
-		handle:                 config.Handle,
-		channel:                config.Channel,
-		descrambler:            config.Descrambler,
-		typ:                    config.Type,
-		eitUpdater:             config.EITUpdater,
-		logoUpdater:            config.LogoUpdater,
-		logoCarousel:           ts.NewDSMCCLogoCarousel(),
-		dataBroadcast:          databroadcast.NewDataBroadcastHub().WithMetricLabels(config.Type, config.Channel).WithModuleStore(moduleStore(config)),
-		snapshotStore:          config.SnapshotStore,
-		lastPersistedSnapshots: map[uint16]databroadcast.PersistedService{},
+		input:        input,
+		handle:       config.Handle,
+		channel:      config.Channel,
+		descrambler:  config.Descrambler,
+		typ:          config.Type,
+		eitUpdater:   config.EITUpdater,
+		logoUpdater:  config.LogoUpdater,
+		logoCarousel: ts.NewDSMCCLogoCarousel(),
+		bml:          newBMLWorker(config.Type, config.Channel, hub, config.SnapshotStore),
 	}
 	session.sectionQueue = make(chan ts.Section, sectionQueueSize)
 	session.carouselQueue = make(chan ts.Section, carouselQueueSize)
-	session.dataBroadcastQueue = make(chan ts.PIDSection, dataBroadcastQueueSize)
-	session.dataBroadcastPriorityQueue = make(chan ts.PIDSection, dataBroadcastPriorityQueueSize)
 	session.startUpdateWorkersLocked()
 	session.rawDemuxer = demux.New(func(ctx context.Context, dst io.Writer) error { return input.Subscribe(ctx, source.StreamRaw, dst) }, func() {
 		session.stopSectionUpdates()
 		if config.OnStop != nil {
 			config.OnStop()
 		}
-	}, session.observeSection).WithPIDSections(session.observePIDSection).WithPackets(session.dataBroadcast.ObservePacket).WithMetricLabels(config.Type, config.Channel)
+	}, session.observeSection).WithPIDSections(session.observePIDSection).WithPackets(hub.ObservePacket).WithMetricLabels(config.Type, config.Channel)
 	session.decodedDemuxer = demux.New(session.subscribeDecodedMux, nil).WithMetricLabels(config.Type, config.Channel)
 	return session
 }
 
-func moduleStore(config Config) databroadcast.ModuleStore {
+func moduleStore(config Config) bml.ModuleStore {
 	if config.ModuleStore != nil {
 		return config.ModuleStore
 	}
@@ -135,12 +128,14 @@ func (s *Session) ServiceStream(ctx context.Context, serviceID uint16, decode bo
 	return s.attachDemuxer(ctx, decode, serviceID, true, dst)
 }
 
-func (s *Session) ProgramStream(ctx context.Context, p *program.Program, decode bool, dst io.Writer) error {
-	return s.programStream(ctx, p, decode, dst)
+// ProgramStream streams the service while event is on air, following EIT
+// p/f; the event's start time and duration bound the wait.
+func (s *Session) ProgramStream(ctx context.Context, event model.Event, decode bool, dst io.Writer) error {
+	return s.programStream(ctx, event, decode, dst)
 }
 
-func (s *Session) ScanServices(ctx context.Context) ([]ts.ServiceInfo, error) {
-	scan := ts.NewServiceScan()
+func (s *Session) ScanServices(ctx context.Context) ([]model.Service, error) {
+	scan := newServiceScan()
 	err := s.input.WithUser(ctx, func(ctx context.Context) error {
 		return s.rawDemuxer.ObserveSections(ctx, func(section ts.Section) bool {
 			switch section.TableID() {
@@ -163,17 +158,24 @@ func (s *Session) ScanServices(ctx context.Context) ([]ts.ServiceInfo, error) {
 	return scan.Services(), err
 }
 
-func (s *Session) CollectEIT(ctx context.Context, observe func(*ts.EIT) error) error {
-	return s.CollectEITWithClock(ctx, func(eit *ts.EIT, _ time.Time) error {
-		return observe(eit)
+// CollectSchedule reports EIT schedule and present/following progress until
+// ctx ends. The schedule's reception state lives in this call, and the
+// broadcast clock from TOT decides which of today's segments have elapsed.
+func (s *Session) CollectSchedule(ctx context.Context, onSchedule func(model.ScheduleUpdate) error, onPresentFollowing func(model.PresentFollowing) error) error {
+	collector := schedule.NewCollector(isdb.ScheduleTS)
+	return s.input.WithUser(ctx, func(ctx context.Context) error {
+		return s.observeEIT(ctx, func(eit *ts.EIT, clock time.Time) error {
+			if clock.IsZero() {
+				clock = time.Now()
+			}
+			return collector.Observe(ScheduleSection(eit), clock, onSchedule, onPresentFollowing)
+		})
 	})
 }
 
-func (s *Session) CollectEITWithClock(ctx context.Context, observe func(*ts.EIT, time.Time) error) error {
-	return s.input.WithUser(ctx, func(ctx context.Context) error { return s.observeEIT(ctx, observe) })
-}
-
-func (s *Session) ObserveLogos(ctx context.Context, observe func(*ts.LogoImage) error) error {
+// ObserveLogos reports the CDT logos, with 2K logos completed with the
+// common fixed palette.
+func (s *Session) ObserveLogos(ctx context.Context, observe func(model.Logo) error) error {
 	return s.input.WithUser(ctx, func(ctx context.Context) error {
 		return s.rawDemuxer.ObserveSections(ctx, func(section ts.Section) bool {
 			return section.TableID() == ts.TableIDCDT
@@ -186,13 +188,31 @@ func (s *Session) ObserveLogos(ctx context.Context, observe func(*ts.LogoImage) 
 			if err != nil {
 				return nil
 			}
-			return observe(image)
+			logo, err := LogoFromImage(image)
+			if err != nil {
+				return err
+			}
+			return observe(logo)
 		})
 	})
 }
 
-func (s *Session) ObserveDataBroadcast(ctx context.Context, serviceID uint16, decode bool, observe func(databroadcast.DataBroadcastEvent) error) error {
-	if s.dataBroadcast == nil {
+func (s *Session) observePIDSection(section ts.PIDSection) {
+	if s.bml == nil {
+		return
+	}
+	s.bml.observePIDSection(section)
+}
+
+func (s *Session) observePacket(packet ts.Packet) {
+	if s.bml == nil {
+		return
+	}
+	s.bml.observePacket(packet)
+}
+
+func (s *Session) ObserveDataBroadcast(ctx context.Context, serviceID uint16, decode bool, observe func(bml.Event) error) error {
+	if s.bml == nil || s.bml.hub == nil {
 		return waitContext(ctx)
 	}
 	return s.input.WithUser(ctx, func(ctx context.Context) error {
@@ -200,9 +220,9 @@ func (s *Session) ObserveDataBroadcast(ctx context.Context, serviceID uint16, de
 		if err != nil {
 			return err
 		}
-		snapshot, events, unsubscribe := s.dataBroadcast.Subscribe(ctx, serviceID)
+		snapshot, events, unsubscribe := s.bml.hub.Subscribe(ctx, serviceID)
 		defer unsubscribe()
-		if err := observe(databroadcast.DataBroadcastEvent{Type: "snapshot", Revision: snapshot.Revision, Snapshot: snapshot}); err != nil {
+		if err := observe(bml.Event{Type: "snapshot", Revision: snapshot.Revision, Snapshot: snapshot}); err != nil {
 			return err
 		}
 		observeCtx, cancel := context.WithCancel(ctx)
@@ -222,7 +242,7 @@ func (s *Session) ObserveDataBroadcast(ctx context.Context, serviceID uint16, de
 				<-done
 				return nil
 			case err := <-done:
-				s.dataBroadcastWG.Wait()
+				s.bml.wg.Wait()
 				// PID-section observers may have queued the final carousel event
 				// immediately before the finite/disconnected input completed. Drain
 				// those events so a completed module notification is not lost.
@@ -255,25 +275,25 @@ func (s *Session) ObserveDataBroadcast(ctx context.Context, serviceID uint16, de
 	})
 }
 
-func (s *Session) DataBroadcastModule(serviceID uint16, componentTag byte, moduleID uint16) (databroadcast.DataBroadcastModule, bool) {
-	if s.dataBroadcast == nil {
-		return databroadcast.DataBroadcastModule{}, false
+func (s *Session) DataBroadcastModule(serviceID uint16, componentTag byte, moduleID uint16) (bml.Module, bool) {
+	if s.bml == nil || s.bml.hub == nil {
+		return bml.Module{}, false
 	}
-	return s.dataBroadcast.Module(serviceID, componentTag, moduleID)
+	return s.bml.hub.Module(serviceID, componentTag, moduleID)
 }
 
-func (s *Session) DataBroadcastSnapshot(serviceID uint16) databroadcast.DataBroadcastSnapshot {
-	if s.dataBroadcast == nil {
-		return databroadcast.DataBroadcastSnapshot{ServiceID: serviceID}
+func (s *Session) DataBroadcastSnapshot(serviceID uint16) bml.Snapshot {
+	if s.bml == nil || s.bml.hub == nil {
+		return bml.Snapshot{ServiceID: serviceID}
 	}
-	return s.dataBroadcast.Snapshot(serviceID)
+	return s.bml.hub.Snapshot(serviceID)
 }
 
-func (s *Session) DataBroadcastModuleVersion(serviceID uint16, componentTag byte, downloadID uint32, moduleID uint16, version byte) (databroadcast.DataBroadcastModule, bool) {
-	if s.dataBroadcast == nil {
-		return databroadcast.DataBroadcastModule{}, false
+func (s *Session) DataBroadcastModuleVersion(serviceID uint16, componentTag byte, downloadID uint32, moduleID uint16, version byte) (bml.Module, bool) {
+	if s.bml == nil || s.bml.hub == nil {
+		return bml.Module{}, false
 	}
-	return s.dataBroadcast.ModuleVersion(serviceID, componentTag, downloadID, moduleID, version)
+	return s.bml.hub.ModuleVersion(serviceID, componentTag, downloadID, moduleID, version)
 }
 
 func (s *Session) Stop(ctx context.Context) error {
@@ -310,8 +330,7 @@ func (s *Session) stopSectionUpdates() {
 	s.mu.Lock()
 	cancel := s.sectionCancel
 	done := s.sectionDone
-	dataBroadcastDone := s.dataBroadcastDone
-	snapshotPersistDone := s.snapshotPersistDone
+	worker := s.bml
 	s.sectionCancel = nil
 	s.mu.Unlock()
 	if cancel != nil {
@@ -320,11 +339,8 @@ func (s *Session) stopSectionUpdates() {
 	if done != nil {
 		<-done
 	}
-	if dataBroadcastDone != nil {
-		<-dataBroadcastDone
-	}
-	if snapshotPersistDone != nil {
-		<-snapshotPersistDone
+	if worker != nil {
+		worker.stop()
 	}
 }
 
@@ -335,14 +351,11 @@ func (s *Session) startUpdateWorkersLocked() {
 	ctx, cancel := context.WithCancel(context.Background())
 	s.sectionCancel = cancel
 	sectionDone := make(chan struct{})
-	dataBroadcastDone := make(chan struct{})
-	snapshotPersistDone := make(chan struct{})
 	s.sectionDone = sectionDone
-	s.dataBroadcastDone = dataBroadcastDone
-	s.snapshotPersistDone = snapshotPersistDone
 	go s.runSectionUpdates(ctx, sectionDone)
-	go s.runDataBroadcastUpdates(ctx, dataBroadcastDone)
-	go s.runDataBroadcastSnapshotPersist(ctx, snapshotPersistDone)
+	if s.bml != nil {
+		s.bml.start(ctx)
+	}
 }
 
 var (
@@ -387,7 +400,7 @@ func (s *Session) streamDemuxer(decode bool) (*demux.Demuxer, error) {
 		s.startUpdateWorkersLocked()
 		demuxer = demux.New(func(ctx context.Context, dst io.Writer) error {
 			return s.input.Subscribe(ctx, source.StreamRaw, dst)
-		}, nil, s.observeSection).WithPIDSections(s.observePIDSection).WithPackets(s.dataBroadcast.ObservePacket).WithMetricLabels(s.typ, s.channel)
+		}, nil, s.observeSection).WithPIDSections(s.observePIDSection).WithPackets(s.observePacket).WithMetricLabels(s.typ, s.channel)
 		s.rawDemuxer = demuxer
 	}
 	if decode && (s.descrambler != nil || nativeDecode) {

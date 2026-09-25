@@ -18,7 +18,7 @@ import (
 )
 
 func TestGetTunersAndGetTuner(t *testing.T) {
-	handler := NewHandler(HandlerConfig{TunerManager: tuner.NewTunerManager(&tuner.TunerManagerConfig{
+	handler := NewHandler(HandlerConfig{TunerManager: tuner.NewManager(&tuner.ManagerConfig{
 		TunersConfig: config.TunersConfig{{Name: "first", Types: []string{"GR"}, Command: "sleep 1"}},
 	})})
 	res, err := handler.GetTuners(context.Background(), apigen.GetTunersParams{IncludeRemote: apigen.NewOptBool(true)})
@@ -50,10 +50,10 @@ func TestGetTunersAndGetTuner(t *testing.T) {
 }
 
 func TestGetTunersIncludesRemoteTuners(t *testing.T) {
-	localTuners := tuner.NewTunerManager(&tuner.TunerManagerConfig{TunersConfig: config.TunersConfig{
+	localTuners := tuner.NewManager(&tuner.ManagerConfig{TunersConfig: config.TunersConfig{
 		{Name: "local-first", Types: []string{"BS"}, Command: "sleep 1"},
 	}})
-	streamManager := remoteTunerStatusProvider{StreamManager: stream.NewStreamManager(stream.StreamManagerConfig{TunerManager: localTuners})}
+	streamManager := remoteTunerStatusProvider{Manager: stream.NewManager(stream.ManagerConfig{TunerManager: localTuners})}
 	handler := NewHandler(HandlerConfig{TunerManager: localTuners, StreamManager: streamManager})
 
 	res, err := handler.GetTuners(context.Background(), apigen.GetTunersParams{IncludeRemote: apigen.NewOptBool(true)})
@@ -73,7 +73,7 @@ func TestGetTunersIncludesRemoteTuners(t *testing.T) {
 	}
 }
 
-type remoteTunerStatusProvider struct{ *stream.StreamManager }
+type remoteTunerStatusProvider struct{ *stream.Manager }
 
 func (remoteTunerStatusProvider) RemoteTunerStatuses(context.Context) []stream.RemoteTunerStatus {
 	return []stream.RemoteTunerStatus{{
@@ -87,7 +87,7 @@ func (remoteTunerStatusProvider) RemoteTunerStatuses(context.Context) []stream.R
 }
 
 func TestGetTunerProcess(t *testing.T) {
-	handler := NewHandler(HandlerConfig{TunerManager: tuner.NewTunerManager(&tuner.TunerManagerConfig{
+	handler := NewHandler(HandlerConfig{TunerManager: tuner.NewManager(&tuner.ManagerConfig{
 		TunersConfig: config.TunersConfig{{Name: "first", Types: []string{"GR"}, Command: "sleep 1"}},
 	})})
 	res, err := handler.GetTunerProcess(context.Background(), apigen.GetTunerProcessParams{Index: 0})
@@ -112,7 +112,7 @@ func TestGetTunerProcess(t *testing.T) {
 }
 
 func TestKillTunerProcess(t *testing.T) {
-	handler := NewHandler(HandlerConfig{TunerManager: tuner.NewTunerManager(&tuner.TunerManagerConfig{
+	handler := NewHandler(HandlerConfig{TunerManager: tuner.NewManager(&tuner.ManagerConfig{
 		TunersConfig: config.TunersConfig{{Name: "first", Types: []string{"GR"}, Command: "sleep 1"}},
 	})})
 	res, err := handler.KillTunerProcess(context.Background(), apigen.KillTunerProcessParams{Index: 0})
@@ -220,13 +220,13 @@ func TestChannelStreamReturnsTrackedTunerUserID(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = database.Close() }()
-	tunerManager := tuner.NewTunerManager(&tuner.TunerManagerConfig{TunersConfig: config.TunersConfig{
+	tunerManager := tuner.NewManager(&tuner.ManagerConfig{TunersConfig: config.TunersConfig{
 		{Name: "first", Types: []string{"GR"}, Command: "sleep 10"},
 	}})
 	handler := NewHandler(HandlerConfig{
 		TunerManager:   tunerManager,
-		ServiceManager: service.NewServiceManager(service.NewSQLiteStore(database), channels),
-		StreamManager: stream.NewStreamManager(stream.StreamManagerConfig{
+		ServiceManager: service.NewManager(service.NewSQLiteStore(database), channels),
+		StreamManager: stream.NewManager(stream.ManagerConfig{
 			Channels: channels, TunerManager: tunerManager,
 		}),
 	})

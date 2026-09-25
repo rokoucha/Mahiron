@@ -11,21 +11,21 @@ import (
 	"sync"
 	"time"
 
+	"github.com/21S1298001/mahiron/internal/bml"
+	"github.com/21S1298001/mahiron/internal/bml/cache"
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/job/run"
+	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/observability"
-	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/stream/channel"
-	"github.com/21S1298001/mahiron/internal/stream/databroadcast"
 	"github.com/21S1298001/mahiron/internal/stream/remote"
 	"github.com/21S1298001/mahiron/internal/stream/source"
 	"github.com/21S1298001/mahiron/internal/tuner"
-	"github.com/21S1298001/mahiron/ts"
 	"github.com/google/uuid"
 )
 
-type StreamManager struct {
-	eitUpdater            channel.EITSectionUpdater
+type Manager struct {
+	eitUpdater            channel.EventUpdater
 	logoUpdater           channel.LogoUpdater
 	programUpdater        ProgramUpdater
 	remoteEventSyncCancel context.CancelFunc
@@ -35,11 +35,10 @@ type StreamManager struct {
 	remoteTunerTypes      map[string]map[string]struct{}
 	remoteTunersMu        sync.RWMutex
 	remoteTuners          map[string]map[int]tuner.Status
-	serviceLister         ServiceLister
 	registry              *sessionRegistry
 	sources               *source.Pool
-	dataBroadcastStore    databroadcast.ModuleStore
-	snapshotStore         databroadcast.SnapshotStore
+	dataBroadcastStore    bml.ModuleStore
+	snapshotStore         bml.SnapshotStore
 }
 
 // RemoteTunerStatus identifies a tuner that belongs to a configured remote
@@ -49,37 +48,46 @@ type RemoteTunerStatus struct {
 	Status tuner.Status
 }
 
-type StreamManagerConfig struct {
+type ManagerConfig struct {
 	Channels           config.ChannelsConfig
 	DescramblerFactory source.DescramblerFactory
-	EITUpdater         channel.EITSectionUpdater
+	EITUpdater         channel.EventUpdater
 	Remotes            config.RemotesConfig
 	LogoUpdater        channel.LogoUpdater
 	ProgramUpdater     ProgramUpdater
-	ServiceLister      ServiceLister
 	TunerManager       source.TunerManager
-	ModuleStore        databroadcast.ModuleStore
+	ModuleStore        bml.ModuleStore
 	// SnapshotStore persists raw PMT/DII sections for provisional /state
 	// responses. A nil store disables the feature entirely, independent of
 	// whether ModuleStore supports the SnapshotStore interface.
-	SnapshotStore databroadcast.SnapshotStore
+	SnapshotStore bml.SnapshotStore
 }
 
 type Session interface {
 	ChannelStream(context.Context, bool, io.Writer) error
-	ProgramStream(context.Context, *program.Program, bool, io.Writer) error
+	ProgramStream(context.Context, model.Event, bool, io.Writer) error
 	ServiceStream(context.Context, uint16, bool, io.Writer) error
-	ScanServices(context.Context) ([]ts.ServiceInfo, error)
-	CollectEIT(context.Context, func(*ts.EIT) error) error
-	ObserveLogos(context.Context, func(*ts.LogoImage) error) error
-	ObserveDataBroadcast(context.Context, uint16, bool, func(databroadcast.DataBroadcastEvent) error) error
-	DataBroadcastSnapshot(uint16) databroadcast.DataBroadcastSnapshot
-	DataBroadcastModule(uint16, byte, uint16) (databroadcast.DataBroadcastModule, bool)
-	DataBroadcastModuleVersion(uint16, byte, uint32, uint16, byte) (databroadcast.DataBroadcastModule, bool)
+	ScanServices(context.Context) ([]model.Service, error)
+	CollectSchedule(context.Context, func(model.ScheduleUpdate) error, func(model.PresentFollowing) error) error
+	ObserveLogos(context.Context, func(model.Logo) error) error
 	Stop(context.Context) error
 }
 
-func NewStreamManager(cfg StreamManagerConfig) *StreamManager {
+// BMLSource is the BML (TS data-broadcast) slice of a channel session.
+// channel.Session and the remote.Session embedding it implement it.
+type BMLSource interface {
+	ObserveDataBroadcast(context.Context, uint16, bool, func(bml.Event) error) error
+	DataBroadcastSnapshot(uint16) bml.Snapshot
+	DataBroadcastModule(uint16, byte, uint16) (bml.Module, bool)
+	DataBroadcastModuleVersion(uint16, byte, uint32, uint16, byte) (bml.Module, bool)
+}
+
+var (
+	_ BMLSource = (*channel.Session)(nil)
+	_ BMLSource = (*remote.Session)(nil)
+)
+
+func NewManager(cfg ManagerConfig) *Manager {
 	descramblerFactory := cfg.DescramblerFactory
 	if descramblerFactory == nil {
 		descramblerFactory = source.NewCommandDescrambler
@@ -103,14 +111,13 @@ func NewStreamManager(cfg StreamManagerConfig) *StreamManager {
 			remoteTunerTypes[route.Remote][route.Type] = struct{}{}
 		}
 	}
-	return &StreamManager{
+	return &Manager{
 		eitUpdater:         cfg.EITUpdater,
 		logoUpdater:        cfg.LogoUpdater,
 		programUpdater:     cfg.ProgramUpdater,
 		remotes:            remotes,
 		remoteTunerTypes:   remoteTunerTypes,
 		remoteTuners:       make(map[string]map[int]tuner.Status, len(remotes)),
-		serviceLister:      cfg.ServiceLister,
 		registry:           newSessionRegistry(),
 		sources:            source.NewPool(cfg.Channels, cfg.TunerManager, descramblerFactory, remoteClients(remotes)),
 		dataBroadcastStore: moduleStoreOrDefault(cfg.ModuleStore),
@@ -118,11 +125,11 @@ func NewStreamManager(cfg StreamManagerConfig) *StreamManager {
 	}
 }
 
-func moduleStoreOrDefault(store databroadcast.ModuleStore) databroadcast.ModuleStore {
+func moduleStoreOrDefault(store bml.ModuleStore) bml.ModuleStore {
 	if store != nil {
 		return store
 	}
-	return databroadcast.NewModuleCache(0)
+	return cache.NewModuleCache(0)
 }
 
 func remoteClients(clients map[string]*remote.Client) map[string]source.RemoteClient {
@@ -133,17 +140,14 @@ func remoteClients(clients map[string]*remote.Client) map[string]source.RemoteCl
 	return result
 }
 
-func (m *StreamManager) StartRemoteProgramEventSync(ctx context.Context) {
+func (m *Manager) StartRemoteProgramEventSync(ctx context.Context) {
 	if len(m.remotes) == 0 {
 		return
 	}
 	m.remoteEventSyncOnce.Do(func() {
 		syncCtx, cancel := context.WithCancel(ctx)
 		m.remoteEventSyncCancel = cancel
-		var updater ProgramUpdater
-		if m.programUpdater != nil {
-			updater = m.remoteProgramUpdater()
-		}
+		updater := m.programUpdater
 		for name, client := range m.remotes {
 			name, client := name, client
 			m.remoteEventSyncWG.Add(1)
@@ -157,7 +161,7 @@ func (m *StreamManager) StartRemoteProgramEventSync(ctx context.Context) {
 
 const remoteTunerRefreshInterval = 5 * time.Minute
 
-func (m *StreamManager) runRemoteEventSync(ctx context.Context, name string, client *remote.Client, updater ProgramUpdater) {
+func (m *Manager) runRemoteEventSync(ctx context.Context, name string, client *remote.Client, updater ProgramUpdater) {
 	refresh := func() {
 		statuses, err := client.TunerStatuses(ctx)
 		if err != nil {
@@ -213,7 +217,7 @@ func waitRemoteSync(ctx context.Context, duration time.Duration) bool {
 	}
 }
 
-func (m *StreamManager) replaceRemoteTuners(name string, statuses []tuner.Status) {
+func (m *Manager) replaceRemoteTuners(name string, statuses []tuner.Status) {
 	items := make(map[int]tuner.Status, len(statuses))
 	for _, status := range statuses {
 		items[status.Index] = status
@@ -223,7 +227,7 @@ func (m *StreamManager) replaceRemoteTuners(name string, statuses []tuner.Status
 	m.remoteTunersMu.Unlock()
 }
 
-func (m *StreamManager) applyRemoteTunerEvent(name, typ string, status tuner.Status) {
+func (m *Manager) applyRemoteTunerEvent(name, typ string, status tuner.Status) {
 	m.remoteTunersMu.Lock()
 	defer m.remoteTunersMu.Unlock()
 	if m.remoteTuners[name] == nil {
@@ -236,28 +240,21 @@ func (m *StreamManager) applyRemoteTunerEvent(name, typ string, status tuner.Sta
 	m.remoteTuners[name][status.Index] = status
 }
 
-func (m *StreamManager) remoteProgramUpdater() ProgramUpdater {
-	if m.serviceLister == nil {
-		return m.programUpdater
-	}
-	return remote.NewKnownServiceProgramUpdater(m.programUpdater, m.serviceLister)
-}
-
-func (m *StreamManager) GetOrCreate(ctx context.Context, channelType, channel string) (Session, error) {
+func (m *Manager) GetOrCreate(ctx context.Context, channelType, channel string) (Session, error) {
 	return m.getOrCreate(ctx, channelType, channel, false)
 }
 
-func (m *StreamManager) GetOrCreateWait(ctx context.Context, channelType, channel string) (Session, error) {
+func (m *Manager) GetOrCreateWait(ctx context.Context, channelType, channel string) (Session, error) {
 	return m.getOrCreate(ctx, channelType, channel, true)
 }
 
 // CheckAvailable checks route availability without creating a session or
 // reserving a tuner.
-func (m *StreamManager) CheckAvailable(ctx context.Context, channelType, channel string) error {
+func (m *Manager) CheckAvailable(ctx context.Context, channelType, channel string) error {
 	return m.sources.CheckAvailable(ctx, channelType, channel)
 }
 
-func (m *StreamManager) scanRemoteServices(ctx context.Context, channelType, channel string) ([]ts.ServiceInfo, bool, error) {
+func (m *Manager) scanRemoteServices(ctx context.Context, channelType, channel string) ([]model.Service, bool, error) {
 	return m.sources.ScanRemoteServices(ctx, channelType, channel)
 }
 
@@ -279,7 +276,7 @@ func ensureUserContext(ctx context.Context, channelType, channel string) context
 	})
 }
 
-func (m *StreamManager) getOrCreate(ctx context.Context, channelType, channel string, wait bool) (session Session, err error) {
+func (m *Manager) getOrCreate(ctx context.Context, channelType, channel string, wait bool) (session Session, err error) {
 	ctx = ensureUserContext(ctx, channelType, channel)
 	ctx, span := observability.StartSpan(ctx, observability.SpanStreamGetOrCreate,
 		observability.AttrChannelType.String(channelType),
@@ -363,11 +360,11 @@ func sessionAlive(session Session) bool {
 	return true
 }
 
-func (m *StreamManager) HasSession(channelType, channel string) bool {
+func (m *Manager) HasSession(channelType, channel string) bool {
 	return m.registry.has(sessionKey{typ: channelType, channel: channel})
 }
 
-func (m *StreamManager) GetExisting(channelType, channel string) (Session, bool) {
+func (m *Manager) GetExisting(channelType, channel string) (Session, bool) {
 	session, ok := m.registry.get(sessionKey{typ: channelType, channel: channel})
 	if !ok || !sessionAlive(session) {
 		return nil, false
@@ -375,66 +372,12 @@ func (m *StreamManager) GetExisting(channelType, channel string) (Session, bool)
 	return session, true
 }
 
-// DataBroadcastCachedModule resolves a completed immutable module without
-// allocating a tuner or requiring its original channel session to still exist.
-func (m *StreamManager) DataBroadcastCachedModule(channelType, channelID string, serviceID uint16, componentTag byte, downloadID uint32, moduleID uint16, version byte) (databroadcast.DataBroadcastModule, bool) {
-	if m == nil || m.dataBroadcastStore == nil {
-		return databroadcast.DataBroadcastModule{}, false
-	}
-	module, ok := m.dataBroadcastStore.GetVersion(databroadcast.ModuleVersionKey{
-		ChannelType: channelType, ChannelID: channelID, ServiceID: serviceID,
-		ComponentTag: componentTag, DownloadID: downloadID, ModuleID: moduleID, Version: version,
-	})
-	if !ok {
-		return databroadcast.DataBroadcastModule{}, false
-	}
-	return databroadcast.CompletedModule(componentTag, module), true
-}
-
-// DataBroadcastProvisionalSnapshot reconstructs a data-broadcast snapshot from
-// persisted PMT/DII sections without allocating a tuner. It is used by the
-// /state endpoint when no live channel session exists, so a client can render
-// a service's last-known carousel state while a session is (re)acquired.
-// storedAt is the unix time (seconds) the underlying PMT/DII sections were
-// last observed live.
-func (m *StreamManager) DataBroadcastProvisionalSnapshot(channelType, channelID string, serviceID uint16) (snapshot databroadcast.DataBroadcastSnapshot, storedAt int64, found bool) {
-	if m == nil || m.snapshotStore == nil {
-		return databroadcast.DataBroadcastSnapshot{}, 0, false
-	}
-	persisted, ok := m.snapshotStore.GetSnapshot(channelType, channelID, serviceID)
-	if !ok {
-		return databroadcast.DataBroadcastSnapshot{}, 0, false
-	}
-	existence, _ := m.dataBroadcastStore.(databroadcast.ModuleExistenceStore)
-	return databroadcast.RestoreSnapshot(channelType, channelID, persisted, existence), persisted.StoredAt, true
-}
-
-// DataBroadcastModuleWasEvicted reports whether the cache previously held the
-// immutable identity but pruned it due to its configured capacity.
-func (m *StreamManager) DataBroadcastModuleWasEvicted(channelType, channelID string, serviceID uint16, componentTag byte, downloadID uint32, moduleID uint16, version byte) bool {
-	store, ok := m.dataBroadcastStore.(databroadcast.EvictedModuleStore)
-	if !ok {
-		return false
-	}
-	return store.WasEvicted(databroadcast.ModuleVersionKey{ChannelType: channelType, ChannelID: channelID, ServiceID: serviceID, ComponentTag: componentTag, DownloadID: downloadID, ModuleID: moduleID, Version: version})
-}
-
-// DataBroadcastCachedResources returns MIME resources retained with a completed
-// immutable module, without needing a live channel session.
-func (m *StreamManager) DataBroadcastCachedResources(channelType, channelID string, serviceID uint16, componentTag byte, downloadID uint32, moduleID uint16, version byte) ([]databroadcast.ModuleResource, bool) {
-	store, ok := m.dataBroadcastStore.(databroadcast.DecodedModuleStore)
-	if !ok {
-		return nil, false
-	}
-	return store.GetDecodedResources(databroadcast.ModuleVersionKey{ChannelType: channelType, ChannelID: channelID, ServiceID: serviceID, ComponentTag: componentTag, DownloadID: downloadID, ModuleID: moduleID, Version: version})
-}
-
-func (m *StreamManager) ActiveSessionCount() int {
+func (m *Manager) ActiveSessionCount() int {
 	return m.registry.count()
 }
 
 // RemoteTunerStatuses returns the latest event-maintained remote tuner cache.
-func (m *StreamManager) RemoteTunerStatuses(_ context.Context) []RemoteTunerStatus {
+func (m *Manager) RemoteTunerStatuses(_ context.Context) []RemoteTunerStatus {
 	m.remoteTunersMu.RLock()
 	var collected []RemoteTunerStatus
 	for name, items := range m.remoteTuners {
@@ -457,7 +400,7 @@ func (m *StreamManager) RemoteTunerStatuses(_ context.Context) []RemoteTunerStat
 	return collected
 }
 
-func (m *StreamManager) remoteSessionUsers(remoteName string, status tuner.Status) []tuner.User {
+func (m *Manager) remoteSessionUsers(remoteName string, status tuner.Status) []tuner.User {
 	var users []tuner.User
 	for _, session := range m.registry.activeSessions() {
 		remoteSession, ok := session.(interface {
@@ -473,7 +416,7 @@ func (m *StreamManager) remoteSessionUsers(remoteName string, status tuner.Statu
 	return users
 }
 
-func (m *StreamManager) configuredRemoteTuners(remoteName string, statuses []tuner.Status) []tuner.Status {
+func (m *Manager) configuredRemoteTuners(remoteName string, statuses []tuner.Status) []tuner.Status {
 	types := m.remoteTunerTypes[remoteName]
 	result := make([]tuner.Status, 0, len(statuses))
 	for _, status := range statuses {
@@ -487,7 +430,7 @@ func (m *StreamManager) configuredRemoteTuners(remoteName string, statuses []tun
 	return result
 }
 
-func (m *StreamManager) Shutdown(ctx context.Context) error {
+func (m *Manager) Shutdown(ctx context.Context) error {
 	var result error
 	if m.remoteEventSyncCancel != nil {
 		m.remoteEventSyncCancel()
@@ -522,7 +465,7 @@ func (m *StreamManager) Shutdown(ctx context.Context) error {
 	return result
 }
 
-func (m *StreamManager) remove(key sessionKey) {
+func (m *Manager) remove(key sessionKey) {
 	m.registry.remove(key)
 	slog.Debug("stream session removed", "type", key.typ, "channel", key.channel)
 }
@@ -563,7 +506,5 @@ var (
 var newRemoteClient = func(cfg config.RemoteConfig) *remote.Client {
 	return remote.NewClient(cfg)
 }
-
-type ServiceLister = remote.ServiceLister
 
 type ProgramUpdater = remote.ProgramUpdater
