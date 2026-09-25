@@ -692,11 +692,10 @@ func (s *collectEITClockSession) CollectSchedule(ctx context.Context, onSchedule
 }
 
 type collectProgramStore struct {
-	calls        [][]*program.Program
-	failEventID  uint16
-	failErr      error
-	sources      []string
-	deleteSource string
+	calls       [][]*program.Program
+	failEventID uint16
+	failErr     error
+	sources     []string
 }
 
 type staticEPGServiceStore struct {

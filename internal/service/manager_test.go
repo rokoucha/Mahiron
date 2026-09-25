@@ -348,22 +348,6 @@ func appendServiceTestPNGChunk(dst []byte, chunkType string, chunkData []byte) [
 	return dst
 }
 
-func serviceTestPNGHasChunk(png []byte, wantType string) bool {
-	pos := 8
-	for pos+12 <= len(png) {
-		chunkLen := int(binary.BigEndian.Uint32(png[pos : pos+4]))
-		chunkEnd := pos + 8 + chunkLen + 4
-		if chunkEnd > len(png) {
-			return false
-		}
-		if string(png[pos+4:pos+8]) == wantType {
-			return true
-		}
-		pos = chunkEnd
-	}
-	return false
-}
-
 func TestServiceManagerUpsertLogoImageRequiresSDTConsistency(t *testing.T) {
 	ctx := context.Background()
 	database, err := db.OpenInMemory()
