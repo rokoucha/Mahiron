@@ -1,5 +1,11 @@
 # Changelog
 
+## [v5.1.7](https://github.com/rokoucha/Mahiron/compare/v5.1.6...v5.1.7) - 2026-09-25
+
+- 番組とサービスを内部の型で扱うようにする by @rokoucha in https://github.com/rokoucha/Mahiron/pull/188
+- TSの簡易ロゴを読む by @rokoucha in https://github.com/rokoucha/Mahiron/pull/190
+- サンプルチューナーコマンドのMustache風プレースホルダーを修正 by @rokoucha in https://github.com/rokoucha/Mahiron/pull/191
+
 ## [v5.1.6](https://github.com/rokoucha/Mahiron/compare/v5.1.5...v5.1.6) - 2026-09-24
 
 - Update docker/setup-buildx-action action to v4.4.1 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/180
