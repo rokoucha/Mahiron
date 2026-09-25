@@ -1,7 +1,7 @@
 - name: px4-gr-0
   types:
     - GR
-  command: recpt1 --device /dev/px4video0 --b25 --strip {{channel}} - -
+  command: recpt1 --device /dev/px4video0 --b25 --strip <channel> - -
   dvbDevicePath: /dev/dvb/adapter0
   decoder: arib-b25-stream-test
   isDisabled: false
@@ -14,7 +14,7 @@
     - BS
     - CS
     - SKY
-  command: recpt1 --device /dev/px4video1 --b25 --strip {{channel}} - -
+  command: recpt1 --device /dev/px4video1 --b25 --strip <channel> - -
   decoder: arib-b25-stream-test
   isDisabled: false
   startupRetryMax: 3
@@ -25,7 +25,7 @@
   types:
     - CATV
     - CATV_BS
-  command: curl -fsSL http://living.local:40772/api/channels/{{type}}/{{channel}}/stream
+  command: curl -fsSL http://living.local:40772/api/channels/<type>/<channel>/stream
   decoder: arib-b25-stream-test
   isDisabled: true
   startupRetryMax: 1
