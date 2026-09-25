@@ -1,5 +1,16 @@
 # Changelog
 
+## [v5.1.6](https://github.com/rokoucha/Mahiron/compare/v5.1.5...v5.1.6) - 2026-09-24
+
+- Update docker/setup-buildx-action action to v4.4.1 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/180
+- Update docker/build-push-action action to v7.4.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/179
+- Update dependency eslint to v10.11.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/183
+- Update dependency prettier to v3.9.8 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/182
+- Update dependency @types/node to v24.13.6 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/184
+- Update docker/setup-qemu-action action to v4.4.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/185
+- Update dependency typescript-eslint to v8.70.1 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/186
+- Update module modernc.org/sqlite to v1.59.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/187
+
 ## [v5.1.5](https://github.com/rokoucha/Mahiron/compare/v5.1.4...v5.1.5) - 2026-09-18
 
 - Update dependency @types/node to v24.13.4 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/168
