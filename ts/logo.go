@@ -8,6 +8,7 @@ import (
 const (
 	LogoTransmissionTypeCDTDirect   = 0x01
 	LogoTransmissionTypeCDTIndirect = 0x02
+	LogoTransmissionTypeSimple      = 0x03
 )
 
 var pngSignature = []byte{0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a}
@@ -17,6 +18,9 @@ type LogoDescriptor struct {
 	LogoID           uint16
 	LogoVersion      uint16
 	DownloadDataID   uint16
+	// SimpleLogo is the simple logo's character string, set only for
+	// LogoTransmissionTypeSimple.
+	SimpleLogo string
 }
 
 func ParseLogoTransmissionDescriptor(d Descriptor) (*LogoDescriptor, error) {
@@ -41,6 +45,13 @@ func ParseLogoTransmissionDescriptor(d Descriptor) (*LogoDescriptor, error) {
 			return nil, ErrInvalidSection
 		}
 		result.LogoID = uint16(data[1]&0x01)<<8 | uint16(data[2])
+	case LogoTransmissionTypeSimple:
+		// logo_char is an 8-unit code character string (STD-B10 6.2.44).
+		simpleLogo, err := DecodeARIBString(data[1:])
+		if err != nil {
+			return nil, err
+		}
+		result.SimpleLogo = simpleLogo
 	default:
 		return nil, ErrInvalidSection
 	}
