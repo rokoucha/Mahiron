@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -85,12 +84,14 @@ func GetServiceDataBroadcastState(ctx context.Context, h *Handler, params apigen
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
-		return json.NewEncoder(w).Encode(apiDataBroadcastSnapshot(params.ID, bmlSession.DataBroadcastSnapshot(service.Key.ServiceID), "live", nil))
+		snapshot := apiDataBroadcastSnapshot(params.ID, bmlSession.DataBroadcastSnapshot(service.Key.ServiceID), apigen.DataBroadcastSnapshotOriginLive, nil)
+		return writeDataBroadcastJSON(w, &snapshot)
 	}
 	if snapshot, storedAtUnixMilli, found := provisionalDataBroadcastSnapshot(h, params.AllowCache, service.ChannelType, service.ChannelId, service.Key.ServiceID); found {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
-		return json.NewEncoder(w).Encode(apiDataBroadcastSnapshot(params.ID, snapshot, "cache", &storedAtUnixMilli))
+		api := apiDataBroadcastSnapshot(params.ID, snapshot, apigen.DataBroadcastSnapshotOriginCache, &storedAtUnixMilli)
+		return writeDataBroadcastJSON(w, &api)
 	}
 	w.WriteHeader(http.StatusNotFound)
 	return nil
@@ -138,7 +139,8 @@ func GetServiceDataBroadcastModuleVersion(ctx context.Context, h *Handler, param
 		return writeModuleDecodeError(w, err)
 	}
 	w.Header().Set("Content-Type", "application/json")
-	return json.NewEncoder(w).Encode(apiDataBroadcastModuleManifest(params.ID, module, resources))
+	manifest := apiDataBroadcastModuleManifest(params.ID, module, resources)
+	return writeDataBroadcastJSON(w, &manifest)
 }
 
 func GetServiceDataBroadcastModuleRaw(ctx context.Context, h *Handler, params apigen.GetServiceDataBroadcastModuleRawParams, w http.ResponseWriter) error {

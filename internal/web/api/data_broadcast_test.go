@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -19,100 +20,114 @@ import (
 	"github.com/21S1298001/mahiron/ts"
 )
 
+// dataBroadcastEventJSON writes a notification as the event stream does and
+// decodes its data.
+func dataBroadcastEventJSON(t *testing.T, event bml.Event) map[string]any {
+	t.Helper()
+	var buf strings.Builder
+	if err := writeDataBroadcastSSE(&buf, 1, event); err != nil {
+		t.Fatal(err)
+	}
+	_, data, ok := strings.Cut(buf.String(), "data: ")
+	if !ok {
+		t.Fatalf("event = %q", buf.String())
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal([]byte(data), &decoded); err != nil {
+		t.Fatalf("decode %s: %v", data, err)
+	}
+	return decoded
+}
+
 func TestAPIDataBroadcastBITUsesWebBMLFieldNames(t *testing.T) {
 	name := "局"
-	payload := apiDataBroadcastEvent(1, bml.Event{Type: "bit", BIT: &bml.BIT{OriginalNetworkID: 0x7fe0, Broadcasters: []bml.Broadcaster{{BroadcasterID: 0xff, BroadcasterName: &name, Affiliations: []byte{1, 2}, Services: []bml.Service{{ServiceID: 101, ServiceType: 1}}}}}})
+	payload := dataBroadcastEventJSON(t, bml.Event{Type: "bit", BIT: &bml.BIT{OriginalNetworkID: 0x7fe0, Broadcasters: []bml.Broadcaster{{BroadcasterID: 0xff, BroadcasterName: &name, Affiliations: []byte{1, 2}, Services: []bml.Service{{ServiceID: 101, ServiceType: 1}}}}}})
 	bit, ok := payload["bit"].(map[string]any)
-	if !ok || bit["originalNetworkId"] != uint16(0x7fe0) {
+	if !ok || bit["originalNetworkId"] != float64(0x7fe0) {
 		t.Fatalf("bit = %#v", payload["bit"])
 	}
-	broadcasters := bit["broadcasters"].([]map[string]any)
-	if len(broadcasters) != 1 || broadcasters[0]["broadcasterId"] != byte(0xff) || broadcasters[0]["affiliations"] == nil {
+	broadcasters := bit["broadcasters"].([]any)
+	broadcaster := broadcasters[0].(map[string]any)
+	if len(broadcasters) != 1 || broadcaster["broadcasterId"] != float64(0xff) || broadcaster["broadcasterName"] != name || broadcaster["affiliations"] == nil {
 		t.Fatalf("broadcasters = %#v", broadcasters)
 	}
 }
 
 func TestAPIDataBroadcastPCRAndNPTUseWebBMLFieldNames(t *testing.T) {
 	npt := uint64(0x112345678)
-	event := apiDataBroadcastEvent(1, bml.Event{Type: "esEventUpdated", ESEvent: &bml.ESEvent{ComponentTag: 0x40, DataEventID: 3, Events: []bml.GeneralEvent{{Type: "nptEvent", TimeMode: 2, EventMessageNPT: &npt}}}})
+	event := dataBroadcastEventJSON(t, bml.Event{Type: "esEventUpdated", ESEvent: &bml.ESEvent{ComponentTag: 0x40, DataEventID: 3, Events: []bml.GeneralEvent{{Type: "nptEvent", TimeMode: 2, EventMessageNPT: &npt}}}})
 	es := event["esEvent"].(map[string]any)
-	if es["componentId"] != byte(0x40) || es["dataEventId"] != byte(3) {
+	if es["componentId"] != float64(0x40) || es["dataEventId"] != float64(3) {
 		t.Fatalf("esEvent = %#v", es)
 	}
-	events := es["events"].([]map[string]any)
-	if len(events) != 1 || events[0]["eventMessageNPT"] != npt {
+	events := es["events"].([]any)
+	if len(events) != 1 || events[0].(map[string]any)["eventMessageNPT"] != float64(npt) {
 		t.Fatalf("events = %#v", events)
 	}
-	pcr := apiDataBroadcastEvent(1, bml.Event{Type: "pcr", PCR: &bml.PCR{PCRBase: 10, PCRExtension: 20}})["pcr"].(map[string]any)
-	if pcr["pcrBase"] != uint64(10) || pcr["pcrExtension"] != uint16(20) {
+	pcr := dataBroadcastEventJSON(t, bml.Event{Type: "pcr", PCR: &bml.PCR{PCRBase: 10, PCRExtension: 20}})["pcr"].(map[string]any)
+	if pcr["pcrBase"] != float64(10) || pcr["pcrExtension"] != float64(20) {
 		t.Fatalf("pcr = %#v", pcr)
 	}
 }
 
 func TestAPIDataBroadcastProgramInfoAndCurrentTimeUseLowerCamelCase(t *testing.T) {
-	programPayload, err := json.Marshal(apiDataBroadcastEvent(1, bml.Event{Type: "programInfo", ProgramInfo: &bml.ProgramInfo{ServiceID: 101, EventIDs: []uint16{1}, RawSectionHex: "00"}}))
-	if err != nil {
-		t.Fatal(err)
+	programInfo := dataBroadcastEventJSON(t, bml.Event{Type: "programInfo", ProgramInfo: &bml.ProgramInfo{ServiceID: 101, EventIDs: []uint16{1}, RawSectionHex: "00"}})["programInfo"]
+	if got, want := programInfo, map[string]any{"serviceId": float64(101), "eventIds": []any{float64(1)}, "rawSectionHex": "00"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("programInfo = %#v, want %#v", got, want)
 	}
-	currentPayload, err := json.Marshal(apiDataBroadcastEvent(1, bml.Event{Type: "currentTime", CurrentTime: &bml.CurrentTime{JSTTimeUnixMilli: 123}}))
-	if err != nil {
-		t.Fatal(err)
+	currentTime := dataBroadcastEventJSON(t, bml.Event{Type: "currentTime", CurrentTime: &bml.CurrentTime{JSTTimeUnixMilli: 123}})["currentTime"]
+	if got, want := currentTime, map[string]any{"jstTimeUnixMilli": float64(123)}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("currentTime = %#v, want %#v", got, want)
 	}
-	if got := string(programPayload); !strings.Contains(got, `"serviceId":101`) || !strings.Contains(got, `"eventIds":[1]`) || !strings.Contains(got, `"rawSectionHex":"00"`) || strings.Contains(got, "ServiceID") {
-		t.Fatalf("programInfo = %s", got)
+}
+
+// TestAPIDataBroadcastEventCarriesOnlyItsField checks that an event has only
+// the field its type names, written as null when the notification carries
+// nothing.
+func TestAPIDataBroadcastEventCarriesOnlyItsField(t *testing.T) {
+	payload := dataBroadcastEventJSON(t, bml.Event{Type: "moduleUpdated", Sequence: 3, Revision: 4})
+	if got, want := payload, map[string]any{"type": "moduleUpdated", "sequence": float64(3), "revision": float64(4), "module": nil}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("payload = %#v, want %#v", got, want)
 	}
-	if got := string(currentPayload); !strings.Contains(got, `"jstTimeUnixMilli":123`) || strings.Contains(got, "JSTTimeUnixMilli") {
-		t.Fatalf("currentTime = %s", got)
+	returnToEntry := false
+	list := dataBroadcastEventJSON(t, bml.Event{Type: "moduleListUpdated", ModuleList: &bml.ModuleList{ComponentTag: 0x40, ReturnToEntry: &returnToEntry, Modules: []bml.Module{{ModuleID: 1}}}})
+	moduleList := list["moduleList"].(map[string]any)
+	if moduleList["returnToEntry"] != false || len(moduleList["modules"].([]any)) != 1 {
+		t.Fatalf("moduleList = %#v", moduleList)
 	}
 }
 
 func TestAPIDataBroadcastDirectModuleHasNullContentLocation(t *testing.T) {
 	manifest := apiDataBroadcastModuleManifest(1, bml.Module{}, []resource.ModuleResource{{ID: "0", ContentType: "text/bml"}})
-	encoded, err := json.Marshal(manifest)
-	if err != nil {
+	var encoded strings.Builder
+	if err := writeDataBroadcastJSON(&encoded, &manifest); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(encoded), `"contentLocation":null`) {
-		t.Fatalf("manifest = %s", encoded)
+	if !strings.Contains(encoded.String(), `"contentLocation":null`) {
+		t.Fatalf("manifest = %s", encoded.String())
 	}
 }
 
 func TestAPIDataBroadcastByteFieldsEncodeAsNumberArrays(t *testing.T) {
-	payloads := []map[string]any{
-		apiDataBroadcastEvent(1, bml.Event{Type: "bit", BIT: &bml.BIT{Broadcasters: []bml.Broadcaster{{Affiliations: []byte{1, 128, 255}}}}}),
-		apiDataBroadcastEvent(1, bml.Event{Type: "esEventUpdated", ESEvent: &bml.ESEvent{Events: []bml.GeneralEvent{{Type: "immediateEvent", PrivateData: []byte{0, 127, 255}}}}}),
+	bit := dataBroadcastEventJSON(t, bml.Event{Type: "bit", BIT: &bml.BIT{Broadcasters: []bml.Broadcaster{{Affiliations: []byte{1, 128, 255}}}}})["bit"].(map[string]any)
+	affiliations := bit["broadcasters"].([]any)[0].(map[string]any)["affiliations"]
+	if !reflect.DeepEqual(affiliations, []any{float64(1), float64(128), float64(255)}) {
+		t.Fatalf("affiliations = %#v", affiliations)
 	}
-	for _, payload := range payloads {
-		encoded, err := json.Marshal(payload)
-		if err != nil {
-			t.Fatal(err)
-		}
-		var decoded map[string]any
-		if err := json.Unmarshal(encoded, &decoded); err != nil {
-			t.Fatal(err)
-		}
-		if bit, ok := decoded["bit"].(map[string]any); ok {
-			affiliations := bit["broadcasters"].([]any)[0].(map[string]any)["affiliations"]
-			if _, ok := affiliations.([]any); !ok {
-				t.Fatalf("affiliations encoded as %T: %s", affiliations, encoded)
-			}
-		}
-		if es, ok := decoded["esEvent"].(map[string]any); ok {
-			privateData := es["events"].([]any)[0].(map[string]any)["privateDataByte"]
-			if _, ok := privateData.([]any); !ok {
-				t.Fatalf("privateDataByte encoded as %T: %s", privateData, encoded)
-			}
-		}
+	es := dataBroadcastEventJSON(t, bml.Event{Type: "esEventUpdated", ESEvent: &bml.ESEvent{Events: []bml.GeneralEvent{{Type: "immediateEvent", PrivateData: []byte{0, 127, 255}}}}})["esEvent"].(map[string]any)
+	privateData := es["events"].([]any)[0].(map[string]any)["privateDataByte"]
+	if !reflect.DeepEqual(privateData, []any{float64(0), float64(127), float64(255)}) {
+		t.Fatalf("privateDataByte = %#v", privateData)
 	}
 }
 
 func TestAPIDataBroadcastModuleExposesParsedMetadata(t *testing.T) {
 	priority := byte(80)
-	payload := apiDataBroadcastModule(100101, &bml.Module{
+	payload := dataBroadcastEventJSON(t, bml.Event{Type: "moduleUpdated", Module: &bml.Module{
 		Metadata: &bml.ModuleMetadata{Name: "index.bml", Type: "text/bml", CachingPriority: &priority},
-	})
-	metadata := payload["metadata"].(map[string]any)
-	if metadata["name"] != "index.bml" || metadata["type"] != "text/bml" || metadata["cachingPriority"] != &priority {
+	}})
+	metadata := payload["module"].(map[string]any)["metadata"].(map[string]any)
+	if metadata["name"] != "index.bml" || metadata["type"] != "text/bml" || metadata["cachingPriority"] != float64(priority) || metadata["crc32"] != nil {
 		t.Fatalf("metadata = %#v", metadata)
 	}
 }

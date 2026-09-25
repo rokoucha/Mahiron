@@ -3080,7 +3080,8 @@ func (s *Server) handleGetServiceByChannelRequest(args [3]string, argsEscaped bo
 // Streams data-broadcast state changes. Modules whose status is "rejected" are announced for
 // diagnostics but must be excluded from a receiver's DII download list because no resource will become
 // available. URL fields in event payloads are absolute paths rooted at the API mount; clients deployed
-// through a subpath proxy should construct request URLs from the endpoint paths instead.
+// through a subpath proxy should construct request URLs from the endpoint paths instead. The data of
+// each event is a DataBroadcastEvent.
 //
 // GET /services/{id}/data-broadcast/bml/events
 func (s *Server) handleGetServiceDataBroadcastEventsRequest(args [1]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {

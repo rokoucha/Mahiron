@@ -712,7 +712,7 @@ paths:
             application/json:
               x-ogen-raw-response: true
               schema:
-                type: string
+                $ref: "#/components/schemas/DataBroadcastSnapshot"
         "404":
           description: Not Found
           content: {}
@@ -729,6 +729,7 @@ paths:
         URL fields in event payloads are absolute paths rooted at the API mount;
         clients deployed through a subpath proxy should construct request URLs
         from the endpoint paths instead.
+        The data of each event is a DataBroadcastEvent.
       tags:
         - services
         - stream
@@ -762,8 +763,9 @@ paths:
           content:
             text/event-stream:
               x-ogen-raw-response: true
+              x-ogen-sse-event-shape: data-only
               schema:
-                type: string
+                $ref: "#/components/schemas/DataBroadcastEvent"
         "404":
           description: Not Found
           content: {}
@@ -837,7 +839,7 @@ paths:
             application/json:
               x-ogen-raw-response: true
               schema:
-                type: string
+                $ref: "#/components/schemas/DataBroadcastModuleManifest"
         "404":
           description: Unknown or superseded module generation
           content: {}
@@ -1602,6 +1604,500 @@ components:
       in: header
       schema: {type: string}
   schemas:
+    DataBroadcastEvent:
+      description: >-
+        The data of one data-broadcast server-sent event. Only the field named
+        by type is present (snapshot, pmt, moduleList for moduleListUpdated,
+        module for moduleUpdated, programInfo, currentTime, esEvent for
+        esEventUpdated, bit or pcr), and it may be null.
+      type: object
+      required: [type, sequence, revision]
+      properties:
+        type:
+          type: string
+        sequence:
+          type: integer
+          format: int64
+        revision:
+          type: integer
+          format: int64
+        snapshot:
+          $ref: "#/components/schemas/DataBroadcastSnapshot"
+        pmt:
+          oneOf:
+            - $ref: "#/components/schemas/DataBroadcastPMT"
+            - type: "null"
+        moduleList:
+          oneOf:
+            - $ref: "#/components/schemas/DataBroadcastModuleList"
+            - type: "null"
+        module:
+          oneOf:
+            - $ref: "#/components/schemas/DataBroadcastModule"
+            - type: "null"
+        programInfo:
+          oneOf:
+            - $ref: "#/components/schemas/DataBroadcastProgramInfo"
+            - type: "null"
+        currentTime:
+          oneOf:
+            - $ref: "#/components/schemas/DataBroadcastCurrentTime"
+            - type: "null"
+        esEvent:
+          oneOf:
+            - $ref: "#/components/schemas/DataBroadcastESEvent"
+            - type: "null"
+        bit:
+          oneOf:
+            - $ref: "#/components/schemas/DataBroadcastBIT"
+            - type: "null"
+        pcr:
+          oneOf:
+            - $ref: "#/components/schemas/DataBroadcastPCR"
+            - type: "null"
+    DataBroadcastSnapshot:
+      type: object
+      required: [serviceId, revision, origin, storedAt, pmt, components, programInfo, currentTime, bit, pcr]
+      properties:
+        serviceId:
+          type: integer
+        revision:
+          type: integer
+          format: int64
+        origin:
+          type: string
+          enum: [live, cache]
+        storedAt:
+          description: Unix milliseconds of the persisted state; null for a live snapshot.
+          type: [integer, "null"]
+          format: int64
+        pmt:
+          oneOf:
+            - $ref: "#/components/schemas/DataBroadcastPMT"
+            - type: "null"
+        components:
+          type: array
+          items:
+            $ref: "#/components/schemas/DataBroadcastComponent"
+        programInfo:
+          oneOf:
+            - $ref: "#/components/schemas/DataBroadcastProgramInfo"
+            - type: "null"
+        currentTime:
+          oneOf:
+            - $ref: "#/components/schemas/DataBroadcastCurrentTime"
+            - type: "null"
+        bit:
+          oneOf:
+            - $ref: "#/components/schemas/DataBroadcastBIT"
+            - type: "null"
+        pcr:
+          oneOf:
+            - $ref: "#/components/schemas/DataBroadcastPCR"
+            - type: "null"
+    DataBroadcastPMT:
+      type: object
+      required: [serviceId, version, pcrPid, components, rawSectionHex]
+      properties:
+        serviceId:
+          type: integer
+        version:
+          type: integer
+        pcrPid:
+          type: integer
+        components:
+          type: array
+          items:
+            $ref: "#/components/schemas/DataBroadcastComponent"
+        rawSectionHex:
+          type: string
+    DataBroadcastComponent:
+      type: object
+      required: [componentTag, pid, streamType, dataComponentId, bxmlInfo, dataEventId, returnToEntry, carousel, modules]
+      properties:
+        componentTag:
+          type: integer
+        pid:
+          type: integer
+        streamType:
+          type: integer
+        dataComponentId:
+          type: [integer, "null"]
+        bxmlInfo:
+          oneOf:
+            - $ref: "#/components/schemas/DataBroadcastBXMLInfo"
+            - type: "null"
+        dataEventId:
+          type: integer
+        returnToEntry:
+          $ref: "#/components/schemas/DataBroadcastReturnToEntry"
+        carousel:
+          $ref: "#/components/schemas/DataBroadcastCarousel"
+        modules:
+          type: array
+          items:
+            $ref: "#/components/schemas/DataBroadcastModule"
+    DataBroadcastReturnToEntry:
+      description: >-
+        A nullable boolean named only for DataBroadcastComponent. ogen boxes
+        an inline nullable boolean again for the event stream and loses the
+        JSON encoder of the component's copy, so the component and
+        DataBroadcastModuleList must not share one.
+      type: [boolean, "null"]
+    DataBroadcastCarousel:
+      type: object
+      required: [status, downloadId, blockSize]
+      properties:
+        status:
+          type: string
+        downloadId:
+          type: [integer, "null"]
+          format: int64
+        blockSize:
+          type: [integer, "null"]
+    DataBroadcastBXMLInfo:
+      type: object
+      required: [transmissionFormat, entryPointFlag]
+      properties:
+        transmissionFormat:
+          type: integer
+        entryPointFlag:
+          type: boolean
+        entryPointInfo:
+          $ref: "#/components/schemas/DataBroadcastBXMLEntryPoint"
+        additionalAribCarouselInfo:
+          $ref: "#/components/schemas/DataBroadcastBXMLCarousel"
+    DataBroadcastBXMLEntryPoint:
+      type: object
+      required:
+        - autoStartFlag
+        - documentResolution
+        - useXML
+        - defaultVersionFlag
+        - independentFlag
+        - styleForTVFlag
+        - bmlMajorVersion
+        - bmlMinorVersion
+        - bxmlMajorVersion
+        - bxmlMinorVersion
+      properties:
+        autoStartFlag:
+          type: boolean
+        documentResolution:
+          type: integer
+        useXML:
+          type: boolean
+        defaultVersionFlag:
+          type: boolean
+        independentFlag:
+          type: boolean
+        styleForTVFlag:
+          type: boolean
+        bmlMajorVersion:
+          type: integer
+        bmlMinorVersion:
+          type: integer
+        bxmlMajorVersion:
+          type: [integer, "null"]
+        bxmlMinorVersion:
+          type: [integer, "null"]
+    DataBroadcastBXMLCarousel:
+      type: object
+      required: [dataEventId, eventSectionFlag, ondemandRetrievalFlag, fileStorableFlag, startPriority]
+      properties:
+        dataEventId:
+          type: integer
+        eventSectionFlag:
+          type: boolean
+        ondemandRetrievalFlag:
+          type: boolean
+        fileStorableFlag:
+          type: boolean
+        startPriority:
+          type: integer
+    DataBroadcastModuleList:
+      type: object
+      required: [componentTag, downloadId, blockSize, dataEventId, returnToEntry, modules]
+      properties:
+        componentTag:
+          type: integer
+        downloadId:
+          type: integer
+          format: int64
+        blockSize:
+          type: integer
+        dataEventId:
+          type: integer
+        returnToEntry:
+          type: [boolean, "null"]
+        modules:
+          type: array
+          items:
+            $ref: "#/components/schemas/DataBroadcastModule"
+    DataBroadcastModule:
+      type: object
+      required:
+        - componentTag
+        - moduleId
+        - downloadId
+        - version
+        - size
+        - info
+        - metadata
+        - complete
+        - status
+        - rejectionReason
+        - receivedBlocks
+        - totalBlocks
+        - etag
+        - url
+      properties:
+        componentTag:
+          type: integer
+        moduleId:
+          type: integer
+        downloadId:
+          type: integer
+          format: int64
+        version:
+          type: integer
+        size:
+          type: integer
+          format: int64
+        info:
+          description: The DII module info bytes in base64.
+          type: [string, "null"]
+          format: byte
+        metadata:
+          oneOf:
+            - $ref: "#/components/schemas/DataBroadcastModuleMetadata"
+            - type: "null"
+        complete:
+          type: boolean
+        status:
+          type: string
+        rejectionReason:
+          type: [string, "null"]
+        receivedBlocks:
+          type: integer
+        totalBlocks:
+          type: integer
+        etag:
+          type: string
+        url:
+          type: string
+    DataBroadcastModuleMetadata:
+      type: object
+      required:
+        - type
+        - name
+        - crc32
+        - estimatedDownloadSeconds
+        - cachingPriority
+        - expireMode
+        - expireDataByte
+        - activationMode
+        - activationDataByte
+        - compressionType
+        - originalSize
+      properties:
+        type:
+          type: string
+        name:
+          type: string
+        crc32:
+          type: [integer, "null"]
+          format: int64
+        estimatedDownloadSeconds:
+          type: [integer, "null"]
+          format: int64
+        cachingPriority:
+          type: [integer, "null"]
+        expireMode:
+          type: [integer, "null"]
+        expireDataByte:
+          type: array
+          items:
+            type: integer
+        activationMode:
+          type: [integer, "null"]
+        activationDataByte:
+          type: array
+          items:
+            type: integer
+        compressionType:
+          type: [integer, "null"]
+        originalSize:
+          type: [integer, "null"]
+          format: int64
+    DataBroadcastModuleManifest:
+      type: object
+      required: [componentTag, downloadId, moduleId, version, size, etag, rawUrl, resources]
+      properties:
+        componentTag:
+          type: integer
+        downloadId:
+          type: integer
+          format: int64
+        moduleId:
+          type: integer
+        version:
+          type: integer
+        size:
+          type: integer
+          format: int64
+        etag:
+          type: string
+        rawUrl:
+          type: string
+        resources:
+          type: array
+          items:
+            $ref: "#/components/schemas/DataBroadcastModuleResource"
+    DataBroadcastModuleResource:
+      type: object
+      required: [id, contentLocation, contentType, url]
+      properties:
+        id:
+          type: string
+        contentLocation:
+          type: [string, "null"]
+        contentType:
+          type: string
+        url:
+          type: string
+    DataBroadcastProgramInfo:
+      type: object
+      required: [serviceId, eventIds, rawSectionHex]
+      properties:
+        serviceId:
+          type: integer
+        eventIds:
+          type: [array, "null"]
+          items:
+            type: integer
+        rawSectionHex:
+          type: string
+    DataBroadcastCurrentTime:
+      type: object
+      required: [jstTimeUnixMilli]
+      properties:
+        jstTimeUnixMilli:
+          type: integer
+          format: int64
+    DataBroadcastPCR:
+      type: object
+      required: [pcrBase, pcrExtension]
+      properties:
+        pcrBase:
+          type: integer
+          format: int64
+        pcrExtension:
+          type: integer
+    DataBroadcastESEvent:
+      type: object
+      required: [componentId, dataEventId, events]
+      properties:
+        componentId:
+          type: integer
+        dataEventId:
+          type: integer
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/DataBroadcastGeneralEvent"
+    DataBroadcastGeneralEvent:
+      description: >-
+        A general event descriptor. An NPT reference carries the NPT fields
+        (postDiscontinuityIndicator through scaleDenominator); any other event
+        carries the event message fields (eventMessageGroupId through
+        eventMessageNPT, which is present only when the time mode has one).
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+        postDiscontinuityIndicator:
+          type: boolean
+        dsmContentId:
+          type: integer
+        STCReference:
+          type: integer
+          format: int64
+        NPTReference:
+          type: integer
+          format: int64
+        scaleNumerator:
+          type: integer
+        scaleDenominator:
+          type: integer
+        eventMessageGroupId:
+          type: integer
+        timeMode:
+          type: integer
+        eventMessageType:
+          type: integer
+        eventMessageId:
+          type: integer
+        privateDataByte:
+          type: array
+          items:
+            type: integer
+        eventMessageNPT:
+          type: integer
+          format: int64
+    DataBroadcastBIT:
+      type: object
+      required: [originalNetworkId, version, broadcasters, rawSectionHex]
+      properties:
+        originalNetworkId:
+          type: integer
+        version:
+          type: integer
+        broadcasters:
+          type: array
+          items:
+            $ref: "#/components/schemas/DataBroadcastBroadcaster"
+        rawSectionHex:
+          type: string
+    DataBroadcastBroadcaster:
+      type: object
+      required: [broadcasterId, broadcasterName, services, affiliations, affiliationBroadcasters, terrestrialBroadcasterId]
+      properties:
+        broadcasterId:
+          type: integer
+        broadcasterName:
+          type: [string, "null"]
+        services:
+          type: array
+          items:
+            $ref: "#/components/schemas/DataBroadcastBITService"
+        affiliations:
+          type: array
+          items:
+            type: integer
+        affiliationBroadcasters:
+          type: array
+          items:
+            $ref: "#/components/schemas/DataBroadcastAffiliatedBroadcaster"
+        terrestrialBroadcasterId:
+          type: [integer, "null"]
+    DataBroadcastBITService:
+      type: object
+      required: [serviceId, serviceType]
+      properties:
+        serviceId:
+          type: integer
+        serviceType:
+          type: integer
+    DataBroadcastAffiliatedBroadcaster:
+      type: object
+      required: [originalNetworkId, broadcasterId]
+      properties:
+        originalNetworkId:
+          type: integer
+        broadcasterId:
+          type: integer
     ConfigServer:
       type: object
       description: An empty response. Mahiron does not expose its server configuration through the API.

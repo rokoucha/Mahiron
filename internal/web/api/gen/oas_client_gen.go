@@ -125,7 +125,8 @@ type Invoker interface {
 	// Streams data-broadcast state changes. Modules whose status is "rejected" are announced for
 	// diagnostics but must be excluded from a receiver's DII download list because no resource will become
 	// available. URL fields in event payloads are absolute paths rooted at the API mount; clients deployed
-	// through a subpath proxy should construct request URLs from the endpoint paths instead.
+	// through a subpath proxy should construct request URLs from the endpoint paths instead. The data of
+	// each event is a DataBroadcastEvent.
 	//
 	// GET /services/{id}/data-broadcast/bml/events
 	GetServiceDataBroadcastEvents(ctx context.Context, params GetServiceDataBroadcastEventsParams) (GetServiceDataBroadcastEventsRes, error)
@@ -2737,7 +2738,8 @@ func (c *Client) sendGetServiceByChannel(ctx context.Context, params GetServiceB
 // Streams data-broadcast state changes. Modules whose status is "rejected" are announced for
 // diagnostics but must be excluded from a receiver's DII download list because no resource will become
 // available. URL fields in event payloads are absolute paths rooted at the API mount; clients deployed
-// through a subpath proxy should construct request URLs from the endpoint paths instead.
+// through a subpath proxy should construct request URLs from the endpoint paths instead. The data of
+// each event is a DataBroadcastEvent.
 //
 // GET /services/{id}/data-broadcast/bml/events
 func (c *Client) GetServiceDataBroadcastEvents(ctx context.Context, params GetServiceDataBroadcastEventsParams) (GetServiceDataBroadcastEventsRes, error) {
