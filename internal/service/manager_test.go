@@ -929,3 +929,36 @@ func TestSQLiteStoreRoundTripsBroadcastService(t *testing.T) {
 		}
 	}
 }
+
+func TestSQLiteStoreDoesNotAttachOldCDTLogoToSimpleLogo(t *testing.T) {
+	ctx := context.Background()
+	database, err := db.OpenInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = database.Close() }()
+	store := NewSQLiteStore(database)
+	svc := &Service{
+		Id: "0000100101",
+		Service: model.Service{
+			Key:  model.ServiceKey{NetworkID: 1, StreamID: 10, ServiceID: 101},
+			Logo: &model.LogoRef{LogoID: 3, Version: new(uint16(2)), DownloadDataID: new(uint16(7))},
+		},
+		ChannelType: "GR",
+		ChannelId:   "27",
+	}
+	if err := store.ReplaceChannelServices(ctx, "GR", "27", []*Service{svc}); err != nil {
+		t.Fatal(err)
+	}
+	svc.Logo = &model.LogoRef{SimpleLogo: "ＮＨＫ", HasSimpleLogo: true}
+	if err := store.ReplaceChannelServices(ctx, "GR", "27", []*Service{svc}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.GetByID(ctx, svc.Id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got.Logo, svc.Logo) {
+		t.Fatalf("logo = %#v, want %#v", got.Logo, svc.Logo)
+	}
+}

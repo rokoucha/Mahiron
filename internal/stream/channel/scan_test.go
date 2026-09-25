@@ -301,6 +301,24 @@ func TestScanUsesLogoTransmissionDescriptor(t *testing.T) {
 	}
 }
 
+func TestScanReadsSimpleLogo(t *testing.T) {
+	section := testBuildSDT(t, 0x1234, 0x5678, []testSDTService{{
+		serviceID: 100,
+		descriptors: append(
+			testServiceDescriptor(1, nil, []byte{0x0e, 'L', 'O', 'G', 'O'}),
+			ts.DescriptorTagLogoTransmission, 5, 0x03, 0x0e, 'N', 'H', 'K',
+		),
+	}})
+	scan := newServiceScan()
+	scan.Observe(testBuildPAT(t, map[uint16]uint16{100: 0x0100}))
+	scan.Observe(section)
+	got := scan.Services()
+	if len(got) != 1 || got[0].Logo == nil || !got[0].Logo.HasSimpleLogo || got[0].Logo.SimpleLogo != "ＮＨＫ" ||
+		got[0].Logo.Version != nil || got[0].Logo.DownloadDataID != nil {
+		t.Fatalf("services = %#v", got)
+	}
+}
+
 func TestScanResolvesIndirectLogoTransmissionDescriptor(t *testing.T) {
 	section := testBuildSDT(t, 0x1234, 0x5678, []testSDTService{
 		{

@@ -22,6 +22,18 @@ func TestParseLogoTransmissionDescriptorType1(t *testing.T) {
 	}
 }
 
+func TestParseLogoTransmissionDescriptorSimpleLogo(t *testing.T) {
+	desc := Descriptor{DescriptorTagLogoTransmission, 5, 0x03, 0x0e, 'N', 'H', 'K'}
+
+	logo, err := ParseLogoTransmissionDescriptor(desc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if logo.TransmissionType != LogoTransmissionTypeSimple || logo.SimpleLogo != "ＮＨＫ" {
+		t.Fatalf("logo descriptor = %#v", logo)
+	}
+}
+
 func TestParseCDTLogoImage(t *testing.T) {
 	png := append([]byte(nil), pngSignature...)
 	png = append(png, 0, 1, 2, 3)

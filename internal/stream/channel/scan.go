@@ -181,6 +181,8 @@ func (s *serviceScan) handleSDT() {
 					directLogos[logo.LogoID] = directLogo{version: logo.LogoVersion, downloadDataID: logo.DownloadDataID}
 				case ts.LogoTransmissionTypeCDTIndirect:
 					indirectServices[svc.ServiceID] = logo.LogoID
+				case ts.LogoTransmissionTypeSimple:
+					ref.SimpleLogo, ref.HasSimpleLogo = logo.SimpleLogo, true
 				}
 				info.Logo = ref
 			}

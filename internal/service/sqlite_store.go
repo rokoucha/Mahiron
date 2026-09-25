@@ -422,6 +422,10 @@ func upsertServiceParams(svc *Service, channelType, channelId string) gen.Upsert
 // this scan could not resolve it, e.g. when the SDT carried only an
 // indirect reference.
 func preserveServiceLogoMetadata(svc *Service, existing map[model.ServiceKey]model.LogoRef) {
+	// A simple logo is complete in the SDT and has no CDT logo to keep.
+	if svc.Logo != nil && svc.Logo.HasSimpleLogo {
+		return
+	}
 	previous, ok := existing[svc.Key]
 	if !ok {
 		return
