@@ -350,10 +350,7 @@ func (failingEITUpdater) UpsertEvents(context.Context, []model.Event) error {
 type noopLogoUpdater struct{}
 
 func (noopLogoUpdater) UpsertLogoImage(context.Context, model.Logo) error { return nil }
-func (noopLogoUpdater) UpsertCommonLogoImage(context.Context, ts.CommonLogoImage) error {
-	return nil
-}
-func (noopLogoUpdater) UpsertCommonDataAnnouncement(context.Context, ts.CommonDataAnnouncement, string, string) error {
+func (noopLogoUpdater) UpsertCommonDataAnnouncement(context.Context, model.CommonDataAnnouncement, string, string) error {
 	return nil
 }
 

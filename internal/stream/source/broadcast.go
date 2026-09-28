@@ -115,6 +115,14 @@ func (b *Broadcast) SubscriberCount() int {
 	return b.hub.Count()
 }
 
+// Stopped reports whether the broadcast has been stopped and can no longer
+// accept subscribers.
+func (b *Broadcast) Stopped() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.stopped
+}
+
 func (b *Broadcast) attach(ctx context.Context, dst io.Writer) error {
 	b.mu.Lock()
 	if b.stopped {

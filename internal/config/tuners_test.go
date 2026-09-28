@@ -114,3 +114,19 @@ func TestLoadAndParseTunersConfig(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadAndParseTunersConfigB61Decoder(t *testing.T) {
+	got, err := LoadAndParseTunersConfig("testdata/tuners-b61.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("tuners = %d, want 1", len(got))
+	}
+	if got[0].Decoder != "arib-b25-stream-test" {
+		t.Fatalf("decoder = %q", got[0].Decoder)
+	}
+	if got[0].B61Decoder != "arib-b61-stream-test" {
+		t.Fatalf("b61Decoder = %q", got[0].B61Decoder)
+	}
+}

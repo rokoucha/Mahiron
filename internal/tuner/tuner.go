@@ -75,6 +75,12 @@ func (t *Tuner) DecoderCommand() string {
 	return t.config.Decoder
 }
 
+// B61DecoderCommand returns the external ACAS (STD-B61) descrambler command
+// used for TLV channels. Empty means descrambled TLV is unavailable.
+func (t *Tuner) B61DecoderCommand() string {
+	return t.config.B61Decoder
+}
+
 func (t *Tuner) NewDevice(channel *config.ChannelConfig) Device {
 	startupRetry := StartupRetryConfig{
 		Max:     t.config.StartupRetryMax,

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"hash/crc32"
+	"reflect"
 	"testing"
 	"time"
 
@@ -285,4 +286,29 @@ func paletteOnlyPNG() []byte {
 	out = chunk(out, "IHDR", append(ihdr, 8, 3, 0, 0, 0))
 	out = chunk(out, "IDAT", []byte{0x78, 0x9c, 0x63, 0x60, 0x00, 0x00, 0x00, 0x02, 0x00, 0x01})
 	return chunk(out, "IEND", nil)
+}
+
+func TestCommonLogoNamesServicesAndCompletesPalette(t *testing.T) {
+	png := append([]byte{0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a}, 0, 0, 0, 13, 'I', 'H', 'D', 'R', 0, 0, 0, 1, 0, 0, 0, 1, 8, 3, 0, 0, 0, 0, 0, 0, 0)
+	png = append(png, 0, 0, 0, 0, 'I', 'E', 'N', 'D', 0xae, 0x42, 0x60, 0x82)
+	logo, ok, err := CommonLogo(ts.CommonLogoImage{
+		LogoID: 12, LogoType: 5, LogoVersion: 2, DownloadID: 0x1234, Data: png,
+		Services: []ts.CommonLogoService{
+			{OriginalNetworkID: 4, TransportStreamID: 0x4010, ServiceID: 101},
+			{OriginalNetworkID: 4, TransportStreamID: ts.NetworkLogoTransportStreamWildcard, ServiceID: 102},
+		},
+	})
+	if err != nil || !ok {
+		t.Fatalf("CommonLogo = %v, %v", ok, err)
+	}
+	if want := []model.ServiceKey{{NetworkID: 4, StreamID: 0x4010, ServiceID: 101}}; !reflect.DeepEqual(logo.Services, want) {
+		t.Fatalf("services = %+v, want %+v without the wildcard entry", logo.Services, want)
+	}
+	if logo.LogoID != 12 || logo.Version != 2 || logo.DownloadDataID != 0x1234 || logo.LogoType != 5 || !bytes.Contains(logo.Data, []byte("PLTE")) {
+		t.Fatalf("logo = %+v, want the reference and a PNG completed with PLTE", logo)
+	}
+
+	if _, ok, err := CommonLogo(ts.CommonLogoImage{IsNetwork: true, Services: []ts.CommonLogoService{{OriginalNetworkID: 4, TransportStreamID: 0xffff, ServiceID: 0xffff}}}); ok || err != nil {
+		t.Fatalf("network logo = %v, %v, want skipped", ok, err)
+	}
 }

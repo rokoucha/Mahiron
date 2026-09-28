@@ -187,6 +187,22 @@ func TestCollectServiceSnapshotsRequiresMatchingTransportStreamID(t *testing.T) 
 	}
 }
 
+// A remote that omits transportStreamId leaves the expected stream ID at
+// zero; the stream's real ID must still count as the expected service.
+func TestCollectServiceSnapshotsMatchesObservedStreamToUnknownExpectedStream(t *testing.T) {
+	key := model.ServiceKey{NetworkID: 4, ServiceID: 101}
+	observed := model.ServiceKey{NetworkID: key.NetworkID, ServiceID: key.ServiceID, StreamID: 200}
+	session := &collectEITSession{sections: []*ts.EIT{testEIT(ts.TableIDEITSStart, observed, 10)}}
+
+	result, err := CollectServiceSnapshots(context.Background(), &collectProgramStore{}, newRemoteSyncServiceStore(), session.CollectSchedule, []model.ServiceKey{key}, 20*time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !equalServiceKeys(result.Observed, []model.ServiceKey{key}) || len(result.Unobserved) != 0 {
+		t.Fatalf("observed = %v, unobserved = %v, want [%v] and none", result.Observed, result.Unobserved, key)
+	}
+}
+
 func TestCollectServiceSnapshotsToleratesLateConcurrentObserve(t *testing.T) {
 	key := model.ServiceKey{NetworkID: 4, ServiceID: 101}
 	session := &lateObserveEITSession{section: testEIT(ts.TableIDEITSStart, key, 10), done: make(chan struct{})}
@@ -568,7 +584,9 @@ type blockingEPGStreams struct{}
 
 func (blockingEPGStreams) HasSession(string, string) bool { return false }
 
-func (blockingEPGStreams) NetworkWideEIT(uint16) bool { return false }
+func (blockingEPGStreams) NetworkWideEIT(networkID uint16) bool {
+	return isdb.IsSatelliteOriginalNetworkID(networkID)
+}
 
 func (blockingEPGStreams) OpenSchedule(ctx context.Context, _, _ string) (CollectSchedule, ListStoredPrograms, error) {
 	<-ctx.Done()
@@ -581,7 +599,9 @@ type staticEPGStreams struct {
 
 func (staticEPGStreams) HasSession(string, string) bool { return false }
 
-func (staticEPGStreams) NetworkWideEIT(uint16) bool { return false }
+func (staticEPGStreams) NetworkWideEIT(networkID uint16) bool {
+	return isdb.IsSatelliteOriginalNetworkID(networkID)
+}
 
 func (s staticEPGStreams) OpenSchedule(ctx context.Context, _, _ string) (CollectSchedule, ListStoredPrograms, error) {
 	if err := ctx.Err(); err != nil {
@@ -596,7 +616,9 @@ type keyedEPGStreams struct {
 
 func (keyedEPGStreams) HasSession(string, string) bool { return false }
 
-func (keyedEPGStreams) NetworkWideEIT(uint16) bool { return false }
+func (keyedEPGStreams) NetworkWideEIT(networkID uint16) bool {
+	return isdb.IsSatelliteOriginalNetworkID(networkID)
+}
 
 func (s keyedEPGStreams) OpenSchedule(ctx context.Context, typ, ch string) (CollectSchedule, ListStoredPrograms, error) {
 	if err := ctx.Err(); err != nil {
@@ -859,4 +881,75 @@ func equalServiceKeys(a, b []model.ServiceKey) bool {
 		}
 	}
 	return true
+}
+
+func TestBuildNetworkInputsIncludesTLVChannels(t *testing.T) {
+	store := &staticEPGServiceStore{services: []*servicepkg.Service{
+		{Service: model.Service{Key: model.ServiceKey{NetworkID: 0x000B, StreamID: 0xB110, ServiceID: 101}, EITSchedule: true}, ChannelType: "BS4K", ChannelId: "BS1_0"},
+		{Service: model.Service{Key: model.ServiceKey{NetworkID: 0x000B, StreamID: 0xB0E0, ServiceID: 102}, EITSchedule: true}, ChannelType: "BS4K", ChannelId: "BS3_2"},
+	}}
+	channels := []config.ChannelConfig{
+		{Type: "BS4K", Channel: "BS1_0", Transport: config.TransportTLV},
+		{Type: "BS4K", Channel: "BS3_2", Transport: config.TransportTLV},
+	}
+
+	candidates, services, err := buildNetworkInputs(context.Background(), store, channels, 0x000B, isdb.IsSatelliteOriginalNetworkID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(candidates) != 2 || len(services) != 2 {
+		t.Fatalf("candidates = %v, services = %v, want both TLV channels and services", candidates, services)
+	}
+}
+
+// channelServiceStore lists services on channels, as scans store them.
+type channelServiceStore struct {
+	*remoteSyncServiceStore
+	services []*servicepkg.Service
+}
+
+func (s channelServiceStore) GetServices(context.Context) ([]*servicepkg.Service, error) {
+	return s.services, nil
+}
+
+// TestGatherNetworkWaitsOnlyForCandidateChannelServices covers networks
+// whose streams carry only their own EIT schedule, as ISDB-S3 MH-EIT does:
+// each candidate waits for its own channel's services instead of the whole
+// network, and a channel without remaining services is not tuned.
+func TestGatherNetworkWaitsOnlyForCandidateChannelServices(t *testing.T) {
+	bs4k := model.ServiceKey{NetworkID: 0x000B, StreamID: 0xB110, ServiceID: 101}
+	bs8k := model.ServiceKey{NetworkID: 0x000B, StreamID: 0xB0E0, ServiceID: 102}
+	sessionA := &collectEITSession{sections: []*ts.EIT{testEIT(ts.TableIDEITSStart, bs4k, 10)}}
+	sessionB := &collectEITSession{sections: []*ts.EIT{testEIT(ts.TableIDEITSStart, bs8k, 20)}}
+	unused := &collectEITSession{}
+	store := channelServiceStore{remoteSyncServiceStore: newRemoteSyncServiceStore(), services: []*servicepkg.Service{
+		{Service: model.Service{Key: bs4k, EITSchedule: true}, ChannelType: "BS4K", ChannelId: "BS1_0"},
+		{Service: model.Service{Key: bs8k, EITSchedule: true}, ChannelType: "BS4K", ChannelId: "BS3_2"},
+	}}
+	streams := keyedEPGStreams{sessions: map[Candidate]scheduleSession{
+		{Type: "BS4K", Channel: "BS1_0"}: sessionA,
+		{Type: "BS4K", Channel: "BS3_2"}: sessionB,
+		{Type: "BS4K", Channel: "BS5_0"}: unused,
+	}}
+
+	err := gatherNetwork(
+		context.Background(),
+		&collectProgramStore{},
+		&collectProgramStore{},
+		store,
+		streams,
+		bs4k.NetworkID,
+		[]Candidate{{Type: "BS4K", Channel: "BS5_0"}, {Type: "BS4K", Channel: "BS1_0"}, {Type: "BS4K", Channel: "BS3_2"}},
+		[]model.ServiceKey{bs4k, bs8k},
+		50*time.Millisecond,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unused.collectCalls != 0 {
+		t.Fatalf("channel without services was collected %d times", unused.collectCalls)
+	}
+	if sessionA.collectCalls != 1 || sessionB.collectCalls != 1 {
+		t.Fatalf("CollectSchedule calls = %d/%d, want 1/1", sessionA.collectCalls, sessionB.collectCalls)
+	}
 }

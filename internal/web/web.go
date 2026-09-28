@@ -72,7 +72,7 @@ func NewWeb(config WebConfig) (http.Handler, error) {
 		BMLStore:              config.BMLStore,
 		BMLSnapshotStore:      config.BMLSnapshotStore,
 	})
-	api, err := apigen.NewServer(apiHandler, apiHandler,
+	apiServer, err := apigen.NewServer(apiHandler, apiHandler,
 		apigen.WithMeterProvider(config.MeterProvider),
 		apigen.WithTracerProvider(observability.NewFilteringTracerProvider(config.TracerProvider, untracedOperationNames)),
 	)
@@ -90,7 +90,9 @@ func NewWeb(config WebConfig) (http.Handler, error) {
 	// stays stable; the generated server would re-encode EventData maps with
 	// jx in iteration order. Same ServeMux precedence as above.
 	mux.HandleFunc("GET /api/events", apiHandler.WriteEventsJSON)
-	mux.Handle("/api/", http.StripPrefix("/api", api))
+	// TLV (ISDB-S3) channel streams use application/octet-stream instead of
+	// the generated video/mp2t; see api.TLVStreamContentType.
+	mux.Handle("/api/", http.StripPrefix("/api", api.TLVStreamContentType(apiServer, config.ServiceManager, config.ProgramManager)))
 	if config.Pprof {
 		registerPprof(mux)
 	}

@@ -10,9 +10,18 @@ import (
 	"github.com/21S1298001/mahiron/internal/bml"
 	"github.com/21S1298001/mahiron/internal/bml/cache"
 	"github.com/21S1298001/mahiron/internal/bml/resource"
+	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/stream"
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 )
+
+// bmlUnsupportedChannel reports whether a BML data-broadcast request must be
+// rejected before allocating a tuner: TLV (ISDB-S3) services carry no BML
+// carousel, so they get the same 404 as a disabled data-broadcast API.
+func bmlUnsupportedChannel(h *Handler, channelType, channelID string) bool {
+	channel := h.serviceManager.GetChannel(channelType, channelID)
+	return channel != nil && config.IsTLVTransport(*channel)
+}
 
 func GetServiceDataBroadcastEvents(ctx context.Context, h *Handler, params apigen.GetServiceDataBroadcastEventsParams, w http.ResponseWriter) error {
 	if h.dataBroadcastDisabled {
@@ -24,6 +33,10 @@ func GetServiceDataBroadcastEvents(ctx context.Context, h *Handler, params apige
 		return err
 	}
 	if service == nil {
+		w.WriteHeader(http.StatusNotFound)
+		return nil
+	}
+	if bmlUnsupportedChannel(h, service.ChannelType, service.ChannelId) {
 		w.WriteHeader(http.StatusNotFound)
 		return nil
 	}
@@ -73,6 +86,10 @@ func GetServiceDataBroadcastState(ctx context.Context, h *Handler, params apigen
 		return err
 	}
 	if service == nil {
+		w.WriteHeader(http.StatusNotFound)
+		return nil
+	}
+	if bmlUnsupportedChannel(h, service.ChannelType, service.ChannelId) {
 		w.WriteHeader(http.StatusNotFound)
 		return nil
 	}
@@ -236,6 +253,9 @@ func dataBroadcastVersionModule(ctx context.Context, h *Handler, serviceItemID i
 		return bml.Module{}, 0, err
 	}
 	if service == nil {
+		return bml.Module{}, http.StatusNotFound, nil
+	}
+	if bmlUnsupportedChannel(h, service.ChannelType, service.ChannelId) {
 		return bml.Module{}, http.StatusNotFound, nil
 	}
 	if session, ok := h.streamManager.GetExisting(service.ChannelType, service.ChannelId); ok {

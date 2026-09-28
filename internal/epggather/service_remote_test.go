@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/21S1298001/mahiron/internal/isdb"
 	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/internal/program"
@@ -160,7 +161,9 @@ type remoteEPGStreams struct {
 
 func (remoteEPGStreams) HasSession(string, string) bool { return false }
 
-func (remoteEPGStreams) NetworkWideEIT(uint16) bool { return false }
+func (remoteEPGStreams) NetworkWideEIT(networkID uint16) bool {
+	return isdb.IsSatelliteOriginalNetworkID(networkID)
+}
 
 func (s remoteEPGStreams) OpenSchedule(context.Context, string, string) (CollectSchedule, ListStoredPrograms, error) {
 	return s.session.CollectSchedule, s.session.ListServicePrograms, nil

@@ -16,6 +16,7 @@ type TunerConfig struct {
 	Command           string   `json:"command,omitempty"`
 	DvbDevicePath     string   `json:"dvbDevicePath,omitempty"`
 	Decoder           string   `json:"decoder,omitempty"`
+	B61Decoder        string   `json:"b61Decoder,omitempty"`
 	IsDisabled        bool     `json:"isDisabled,omitempty"`
 	StartupRetryMax   int      `json:"startupRetryMax,omitempty"`
 	StartupTimeout    int      `json:"startupTimeout,omitempty"`

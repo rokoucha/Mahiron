@@ -1,0 +1,8 @@
+- name: NHK BSP4K
+  type: BS4K
+  channel: "101"
+  transport: tlv
+
+- name: NHK BS
+  type: BS
+  channel: "101"

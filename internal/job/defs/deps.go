@@ -9,8 +9,8 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/epggather"
 	"github.com/21S1298001/mahiron/internal/job"
+	"github.com/21S1298001/mahiron/internal/logogather"
 	"github.com/21S1298001/mahiron/internal/model"
-	"github.com/21S1298001/mahiron/internal/service"
 	"github.com/21S1298001/mahiron/internal/servicescan"
 )
 
@@ -24,17 +24,9 @@ type ServiceScanner interface {
 	ScanChannel(context.Context, string, string, bool) ([]uint16, error)
 }
 
-type LogoCollector interface {
-	ObserveLogos(context.Context, string, string, func(model.Logo) error) error
-}
-
-type LogoStore interface {
-	MissingLogoTargets(context.Context) ([]service.LogoTarget, error)
-	UpsertLogoImage(context.Context, model.Logo) error
-}
-
-type LogoGatherTargetStore interface {
-	LogoGatherTargets(context.Context) ([]service.LogoTarget, error)
+type LogoGatherer interface {
+	Targets(context.Context) ([]logogather.Target, error)
+	GatherChannel(ctx context.Context, channelType, channelID string, targets []logogather.Target) error
 }
 
 type EPGGatherer interface {

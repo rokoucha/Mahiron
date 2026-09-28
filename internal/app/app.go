@@ -25,6 +25,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/event"
 	"github.com/21S1298001/mahiron/internal/job"
 	"github.com/21S1298001/mahiron/internal/job/defs"
+	"github.com/21S1298001/mahiron/internal/logogather"
 	"github.com/21S1298001/mahiron/internal/mirakurun"
 	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/internal/program"
@@ -209,7 +210,7 @@ func buildRuntime(cfg *config.Config, database *db.DB, obs observability.SetupRe
 		ModuleStore:    moduleStore,
 	})
 	scanAdapter := stream.NewServiceScanAdapter(streams)
-	logoAdapter := stream.NewLogoGatherAdapter(streams)
+	logoGatherer := logogather.NewGatherer(services, stream.NewLogoGatherAdapter(streams), time.Duration(cfg.System.LogoGatherTimeout)*time.Millisecond)
 	serviceScanner := servicescan.NewScanner(services, scanAdapter, cfg.Channels, time.Duration(cfg.System.ServiceScanTimeout)*time.Millisecond)
 	epgGatherer := epggather.NewGatherer(programs, programs, services, stream.NewEPGGatherAdapter(streams), cfg.Channels, time.Duration(cfg.System.EpgRetrievalTime)*time.Millisecond)
 
@@ -220,7 +221,7 @@ func buildRuntime(cfg *config.Config, database *db.DB, obs observability.SetupRe
 
 	defs.RegisterServiceUpdater(jobs, serviceScanner, epgGatherer)
 	defs.RegisterEPGGatherer(jobs, epgGatherer, programs, cfg.System.EpgRetentionDays)
-	defs.RegisterLogoGatherer(jobs, logoAdapter, services, time.Duration(cfg.System.LogoGatherTimeout)*time.Millisecond)
+	defs.RegisterLogoGatherer(jobs, logoGatherer)
 
 	schedules := cfg.System.Jobs
 	if len(schedules) == 0 {

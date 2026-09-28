@@ -3,7 +3,7 @@ package defs
 import (
 	"context"
 	"errors"
-	"reflect"
+	"sync"
 	"testing"
 	"time"
 
@@ -11,6 +11,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/db"
 	"github.com/21S1298001/mahiron/internal/epggather"
 	"github.com/21S1298001/mahiron/internal/job"
+	"github.com/21S1298001/mahiron/internal/logogather"
 	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/service"
@@ -251,17 +252,65 @@ func TestEnqueueEPGGatherForNetworkIgnoresMissingNetwork(t *testing.T) {
 	}
 }
 
-func TestLogoGathererDispatchesOnlyMissingChannelsAndCompletesWhenSatisfied(t *testing.T) {
+func TestLogoGathererDispatchesOneJobPerChannel(t *testing.T) {
 	mgr := newTestManager(t)
-	target := service.LogoTarget{
-		NetworkId: 4, ServiceId: 101, ChannelType: "BS", ChannelId: "BS01",
-		LogoId: 12, LogoVersion: 3, LogoDownloadDataId: 7,
+	bs := logogather.Target{Service: model.ServiceKey{NetworkID: 4, ServiceID: 101}, ChannelType: "BS", ChannelID: "BS01", LogoID: 12, Version: 3, DownloadDataID: 7}
+	bs2 := bs
+	bs2.Service.ServiceID = 102
+	tlv := logogather.Target{Service: model.ServiceKey{NetworkID: 0x000B, ServiceID: 101}, ChannelType: "BS4K", ChannelID: "BS1_0", LogoID: 101, Version: 1, DownloadDataID: 1}
+	gatherer := &fakeLogoGatherer{targets: []logogather.Target{bs, tlv, bs2}}
+	RegisterLogoGatherer(mgr, gatherer)
+
+	parentID, err := mgr.Enqueue(LogoGathererKey)
+	if err != nil {
+		t.Fatal(err)
 	}
-	collector := &fakeLogoObserver{image: model.Logo{
-		NetworkID: 4, LogoID: 12, Version: 3, DownloadDataID: 7,
-	}}
-	store := &fakeLogoTargetStore{targets: []service.LogoTarget{target}}
-	RegisterLogoGatherer(mgr, collector, store, 20*time.Minute)
+	waitJob(t, mgr, parentID)
+	waitForJobKeys(t, mgr, map[string]bool{
+		LogoGathererKey:          true,
+		"logo-gather:BS:BS01":    true,
+		"logo-gather:BS4K:BS1_0": true,
+	})
+	for _, item := range mgr.GetJobs() {
+		if item.Key != LogoGathererKey {
+			waitJob(t, mgr, item.ID)
+		}
+	}
+	got := gatherer.gathered()
+	if len(got["BS/BS01"]) != 2 || len(got["BS4K/BS1_0"]) != 1 {
+		t.Fatalf("gathered = %v, want both BS targets on one job and the TLV target on another", got)
+	}
+}
+
+func TestLogoGathererSkipsWithoutTargets(t *testing.T) {
+	mgr := newTestManager(t)
+	gatherer := &fakeLogoGatherer{}
+	RegisterLogoGatherer(mgr, gatherer)
+	id, err := mgr.Enqueue(LogoGathererKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitJob(t, mgr, id)
+	if len(gatherer.gathered()) != 0 {
+		t.Fatalf("gathered = %v, want nothing", gatherer.gathered())
+	}
+	for _, item := range mgr.GetJobs() {
+		if item.Key != LogoGathererKey {
+			t.Fatalf("unexpected logo child job: %#v", item)
+		}
+	}
+}
+
+// TestLogoGathererRegathersCommonDataAfterProbe covers the SDTT probe: a
+// channel gathered for an unresolved common data target may observe the
+// announcement, after which the common data is gathered from the channel it
+// names.
+func TestLogoGathererRegathersCommonDataAfterProbe(t *testing.T) {
+	mgr := newTestManager(t)
+	probe := logogather.Target{Service: model.ServiceKey{NetworkID: 4, ServiceID: 101}, ChannelType: "BS", ChannelID: "BS01", CommonData: true, Probe: true}
+	resolved := logogather.Target{Service: model.ServiceKey{NetworkID: 4, ServiceID: 101}, ChannelType: "BS", ChannelID: "BS15", CommonData: true}
+	gatherer := &fakeLogoGatherer{targets: []logogather.Target{probe}, afterGather: []logogather.Target{resolved}}
+	RegisterLogoGatherer(mgr, gatherer)
 
 	parentID, err := mgr.Enqueue(LogoGathererKey)
 	if err != nil {
@@ -271,67 +320,8 @@ func TestLogoGathererDispatchesOnlyMissingChannelsAndCompletesWhenSatisfied(t *t
 	waitForJobKeys(t, mgr, map[string]bool{
 		LogoGathererKey:       true,
 		"logo-gather:BS:BS01": true,
+		"logo-gather:BS:BS15": true,
 	})
-	for _, item := range mgr.GetJobs() {
-		if item.Key == "logo-gather:BS:BS01" {
-			waitJob(t, mgr, item.ID)
-		}
-	}
-	if collector.calls != 1 {
-		t.Fatalf("ObserveLogos calls = %d, want 1", collector.calls)
-	}
-	if len(store.images) != 1 || !reflect.DeepEqual(store.images[0], collector.image) {
-		t.Fatalf("persisted images = %#v, want observed image", store.images)
-	}
-}
-
-func TestLogoGathererSkipsChannelsWithoutMissingTargets(t *testing.T) {
-	mgr := newTestManager(t)
-	collector := &fakeLogoObserver{}
-	RegisterLogoGatherer(mgr, collector, &fakeLogoTargetStore{}, 20*time.Minute)
-	id, err := mgr.Enqueue(LogoGathererKey)
-	if err != nil {
-		t.Fatal(err)
-	}
-	waitJob(t, mgr, id)
-	if collector.calls != 0 {
-		t.Fatalf("ObserveLogos calls = %d, want 0", collector.calls)
-	}
-	for _, item := range mgr.GetJobs() {
-		if item.Key != LogoGathererKey {
-			t.Fatalf("unexpected logo child job: %#v", item)
-		}
-	}
-}
-
-func TestLogoGatherTimeoutIsSuccessful(t *testing.T) {
-	mgr := newTestManager(t)
-	target := service.LogoTarget{NetworkId: 4, ServiceId: 101, ChannelType: "BS", ChannelId: "BS01", LogoId: 12, LogoVersion: 3, LogoDownloadDataId: 7}
-	collector := &fakeLogoObserver{waitForContext: true}
-	RegisterLogoGatherer(mgr, collector, &fakeLogoTargetStore{targets: []service.LogoTarget{target}}, time.Millisecond)
-	parentID, err := mgr.Enqueue(LogoGathererKey)
-	if err != nil {
-		t.Fatal(err)
-	}
-	waitJob(t, mgr, parentID)
-	var child *job.Job
-	deadline := time.Now().Add(time.Second)
-	for child == nil && time.Now().Before(deadline) {
-		for _, item := range mgr.GetJobs() {
-			if item.Key == "logo-gather:BS:BS01" {
-				child = item
-				break
-			}
-		}
-		time.Sleep(time.Millisecond)
-	}
-	if child == nil {
-		t.Fatal("logo child job was not created")
-	}
-	finished := waitJob(t, mgr, child.ID)
-	if finished.HasFailed {
-		t.Fatalf("timed out logo job failed: %#v", finished)
-	}
 }
 
 func TestServiceUpdaterStartsEPGGatherAfterServiceScans(t *testing.T) {
@@ -411,33 +401,36 @@ func (fakeEPGGatherer) GatherNetwork(context.Context, uint16, []epggather.Candid
 	return nil
 }
 
-type fakeLogoTargetStore struct {
-	targets []service.LogoTarget
-	images  []model.Logo
+type fakeLogoGatherer struct {
+	mu          sync.Mutex
+	targets     []logogather.Target
+	afterGather []logogather.Target
+	channels    map[string][]logogather.Target
 }
 
-func (s fakeLogoTargetStore) MissingLogoTargets(context.Context) ([]service.LogoTarget, error) {
-	return append([]service.LogoTarget(nil), s.targets...), nil
+func (f *fakeLogoGatherer) Targets(context.Context) ([]logogather.Target, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]logogather.Target(nil), f.targets...), nil
 }
 
-func (s *fakeLogoTargetStore) UpsertLogoImage(_ context.Context, image model.Logo) error {
-	s.images = append(s.images, image)
+func (f *fakeLogoGatherer) GatherChannel(_ context.Context, channelType, channelID string, targets []logogather.Target) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.channels == nil {
+		f.channels = map[string][]logogather.Target{}
+	}
+	f.channels[channelType+"/"+channelID] = append(f.channels[channelType+"/"+channelID], targets...)
+	if f.afterGather != nil {
+		f.targets = f.afterGather
+	}
 	return nil
 }
 
-type fakeLogoObserver struct {
-	calls          int
-	image          model.Logo
-	waitForContext bool
-}
-
-func (f *fakeLogoObserver) ObserveLogos(ctx context.Context, _, _ string, observe func(model.Logo) error) error {
-	f.calls++
-	if f.waitForContext {
-		<-ctx.Done()
-		return ctx.Err()
-	}
-	return observe(f.image)
+func (f *fakeLogoGatherer) gathered() map[string][]logogather.Target {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.channels
 }
 
 func waitForJobKeys(t *testing.T, mgr *job.Manager, expected map[string]bool) {

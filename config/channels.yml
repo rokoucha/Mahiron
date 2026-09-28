@@ -67,3 +67,9 @@
   commandVars:
     network: sample-cable
   isDisabled: false
+
+- name: NHK BSP4K サンプル
+  type: BS4K
+  channel: "101"
+  transport: tlv
+  isDisabled: true

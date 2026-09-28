@@ -3,6 +3,7 @@ package source
 import (
 	"context"
 	"errors"
+	"io"
 	"sync"
 	"testing"
 
@@ -110,3 +111,111 @@ func TestFindChannelReturnsNotFoundWhenAllMatchesDisabled(t *testing.T) {
 }
 
 func uint32Ptr(v uint32) *uint32 { return &v }
+
+type fakeAllocatorDevice struct {
+	done chan struct{}
+}
+
+func (d *fakeAllocatorDevice) Start(context.Context, io.Writer) error { return nil }
+
+func (d *fakeAllocatorDevice) Stop(context.Context) error { return nil }
+
+func (d *fakeAllocatorDevice) Done() <-chan struct{} { return d.done }
+
+func (d *fakeAllocatorDevice) Err() error { return nil }
+
+type fakeAllocatorManager struct {
+	device   tuner.Device
+	decoders tuner.DecoderCommands
+}
+
+func (m *fakeAllocatorManager) NewDeviceByType(string, *config.ChannelConfig) (tuner.Device, error) {
+	return m.device, nil
+}
+
+func (m *fakeAllocatorManager) AcquireDevice(context.Context, string, *config.ChannelConfig, *config.ChannelConfig, bool) (tuner.Device, tuner.DecoderCommands, error) {
+	return m.device, m.decoders, nil
+}
+
+type captureDescramblerFactory struct {
+	mu       sync.Mutex
+	commands []string
+}
+
+func (f *captureDescramblerFactory) New(command string) Descrambler {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.commands = append(f.commands, command)
+	return CommandDescrambler{}
+}
+
+func (f *captureDescramblerFactory) last() string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.commands[len(f.commands)-1]
+}
+
+func TestPoolSelectsB61DecoderForTLVChannel(t *testing.T) {
+	done := make(chan struct{})
+	close(done)
+	channels := config.ChannelsConfig{
+		{Type: "GR", Channel: "27", Transport: config.TransportTS},
+		{Type: "BS4K", Channel: "101", Transport: config.TransportTLV},
+	}
+	manager := &fakeAllocatorManager{
+		device:   &fakeAllocatorDevice{done: done},
+		decoders: tuner.DecoderCommands{Decoder: "b25", B61Decoder: "b61"},
+	}
+	factory := &captureDescramblerFactory{}
+	pool := NewPool(channels, manager, factory.New, nil)
+
+	tsHandle, err := pool.Acquire(context.Background(), "GR", "27", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := factory.last(); got != "b25" {
+		t.Fatalf("TS descrambler = %q, want b25", got)
+	}
+	if tsHandle.Descrambler() == nil {
+		t.Fatal("TS descrambler is nil")
+	}
+
+	tlvHandle, err := pool.Acquire(context.Background(), "BS4K", "101", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := factory.last(); got != "b61" {
+		t.Fatalf("TLV descrambler = %q, want b61", got)
+	}
+	if tlvHandle.Descrambler() == nil {
+		t.Fatal("TLV descrambler is nil")
+	}
+}
+
+func TestPoolTLVWithoutB61DecoderHasNoDescrambler(t *testing.T) {
+	done := make(chan struct{})
+	close(done)
+	channels := config.ChannelsConfig{
+		{Type: "BS4K", Channel: "101", Transport: config.TransportTLV},
+	}
+	manager := &fakeAllocatorManager{
+		device:   &fakeAllocatorDevice{done: done},
+		decoders: tuner.DecoderCommands{Decoder: "b25"},
+	}
+	factory := &captureDescramblerFactory{}
+	pool := NewPool(channels, manager, factory.New, nil)
+
+	handle, err := pool.Acquire(context.Background(), "BS4K", "101", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if handle.Descrambler() != nil {
+		t.Fatal("TLV descrambler without b61Decoder should be nil (decode=1 falls back to raw)")
+	}
+	if !pool.IsTLVChannel("BS4K", "101") {
+		t.Fatal("IsTLVChannel(BS4K/101) = false, want true")
+	}
+	if pool.IsTLVChannel("GR", "27") {
+		t.Fatal("IsTLVChannel(unknown) = true, want false")
+	}
+}

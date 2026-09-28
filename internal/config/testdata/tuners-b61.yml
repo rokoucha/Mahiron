@@ -1,0 +1,7 @@
+- name: PT4K
+  types:
+    - BS4K
+    - BS
+  command: recpt1 --device /dev/pt4k0 {{channel}} - -
+  decoder: arib-b25-stream-test
+  b61Decoder: arib-b61-stream-test

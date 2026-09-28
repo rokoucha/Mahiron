@@ -5,6 +5,7 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/isdb"
 	"github.com/21S1298001/mahiron/internal/model"
+	"github.com/21S1298001/mahiron/internal/stream/channel"
 	"github.com/21S1298001/mahiron/internal/stream/remote"
 )
 
@@ -22,6 +23,18 @@ func (a *LogoGatherAdapter) ObserveLogos(ctx context.Context, channelType, chann
 		return err
 	}
 	return session.ObserveLogos(ctx, observe)
+}
+
+// CommonDataNetwork reports whether the network's services take their logos
+// from the ISDB-S all-receivers common data (BS and CS do; the rest don't).
+func (a *LogoGatherAdapter) CommonDataNetwork(networkID uint16) bool {
+	return isdb.IsSatelliteOriginalNetworkID(networkID)
+}
+
+// DefaultCommonDataService is the service carrying the all-receivers common
+// data until an SDTT announcement names another.
+func (a *LogoGatherAdapter) DefaultCommonDataService() model.ServiceKey {
+	return channel.DefaultCommonDataService()
 }
 
 type ServiceScanAdapter struct {
