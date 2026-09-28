@@ -12,6 +12,7 @@ Yet another DVR Tuner Server for Japanese TV.
 - リアルタイム番組表更新
 - ケーブルテレビの再送信など複数経路のTSを統合
 - OpenTelemetryによる高い可観測性
+- データ放送API
 - ISDB-S3の実験的サポート
 
 ## セットアップ
@@ -25,15 +26,13 @@ mainブランチの最新ビルドを試す場合は、[CIの実行履歴](https
 起動すると、自動的に放送サービスをスキャンし、EPGやロゴを取得します。
 実行状態はダッシュボードで確認してください。
 
-トレースを有効にしても、映像・ログ・イベント・データ放送のストリーミングAPI（HEADを含む）とヘルスチェック用の `/api/version` はトレースを送信しません。Web UIのHTML・静的ファイルも対象外です。Web UIから呼び出す通常のAPIはトレースを記録し、除外したAPIでもメトリクスは収集します。
-
 ## Mirakurunとの差分
 
 代表的な差分です。これ以外にも非互換な部分があります。
 
 ### API
 
-- 設定・管理操作には対応していません
+- 設定の変更などには対応していません
   - APIによる設定の参照・変更
   - `PUT /restart`
 - ChannelTypeは好きな文字列を指定できます
@@ -50,13 +49,13 @@ mainブランチの最新ビルドを試す場合は、[CIの実行履歴](https
   - tunedChannel*
 - `/api/version` にserverフィールドを追加しています
   - 値は常に `mahiron` です
-- レスポンスの `Server` ヘッダは `Mahiron/<バージョン>` です
-  - Mirakurun互換サーバーの判定にこのヘッダを使うクライアント向け
 - JobItemに以下のフィールドを追加しています
   - nextRunAt
   - result
 - RelatedItemに以下のフィールドを追加しています
   - transportStreamId
+- `/api/services/{id}/data-broadcast/bml` でデータ放送(ARIB STD-B24)用のAPIを実装しています
+  - 詳細はAPIドキュメントを参照してください
 
 ### 設定
 
