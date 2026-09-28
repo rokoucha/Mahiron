@@ -63,6 +63,22 @@ func TestLoadAndParseChannelsConfigRoutes(t *testing.T) {
 	}
 }
 
+func TestLoadAndParseChannelsConfigTransport(t *testing.T) {
+	got, err := LoadAndParseChannelsConfig("testdata/channels-transport.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("channels = %d, want 2", len(got))
+	}
+	if got[0].Transport != TransportTLV || !IsTLVTransport(got[0]) {
+		t.Fatalf("tlv channel transport = %q, want %q", got[0].Transport, TransportTLV)
+	}
+	if got[1].Transport != TransportTS || IsTLVTransport(got[1]) {
+		t.Fatalf("default channel transport = %q, want %q", got[1].Transport, TransportTS)
+	}
+}
+
 func TestLoadAndParseChannelsConfigRejectsInvalidInputs(t *testing.T) {
 	tests := []struct {
 		name string
@@ -75,6 +91,7 @@ func TestLoadAndParseChannelsConfigRejectsInvalidInputs(t *testing.T) {
 		{name: "tsmfRelTs without serviceId", path: "testdata/channels-tsmfrelts.yml"},
 		{name: "invalid tsmfRelTs", path: "testdata/channels-invalid-tsmfrelts.yml"},
 		{name: "legacy fields with commandVars", path: "testdata/channels-duplicate-commandvars.yml"},
+		{name: "invalid transport", path: "testdata/channels-invalid-transport.yml"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

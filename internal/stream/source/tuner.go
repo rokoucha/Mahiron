@@ -18,9 +18,9 @@ type TunerManager interface {
 }
 
 // TunerAllocator is an optional TunerManager extension that allocates a
-// device together with its decoder command, honoring priorities and waiting.
+// device together with its decoder commands, honoring priorities and waiting.
 type TunerAllocator interface {
-	AcquireDevice(context.Context, string, *config.ChannelConfig, *config.ChannelConfig, bool) (TunerDevice, string, error)
+	AcquireDevice(context.Context, string, *config.ChannelConfig, *config.ChannelConfig, bool) (TunerDevice, tuner.DecoderCommands, error)
 }
 
 // TunerAvailabilityChecker reports whether a tuner could be acquired without
@@ -33,4 +33,10 @@ type TunerAvailabilityChecker interface {
 // the descrambler command for a channel type.
 type DecoderCommandProvider interface {
 	DecoderCommandByType(string) string
+}
+
+// B61DecoderCommandProvider is an optional TunerManager extension that
+// resolves the ACAS (STD-B61) descrambler command for a channel type.
+type B61DecoderCommandProvider interface {
+	B61DecoderCommandByType(string) string
 }

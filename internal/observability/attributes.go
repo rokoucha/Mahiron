@@ -42,6 +42,7 @@ const (
 	AttrStartupRetryTimeoutMS attribute.Key = "startup_retry.timeout_ms"
 	AttrState                 attribute.Key = "state"
 	AttrStreamActiveSession   attribute.Key = "stream.active_session"
+	AttrTransport             attribute.Key = "transport"
 	AttrTunedChannelID        attribute.Key = "tuned.channel.id"
 	AttrTunedChannelType      attribute.Key = "tuned.channel.type"
 	AttrTunerIndex            attribute.Key = "tuner.index"

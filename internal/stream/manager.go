@@ -73,8 +73,9 @@ type Session interface {
 	Stop(context.Context) error
 }
 
-// BMLSource is the BML (TS data-broadcast) slice of a channel session.
-// channel.Session and the remote.Session embedding it implement it.
+// BMLSource is the BML (TS data-broadcast) slice of a channel session. TLV
+// sessions don't implement it; BML API handlers return 404 for TLV services
+// before allocating a tuner.
 type BMLSource interface {
 	ObserveDataBroadcast(context.Context, uint16, bool, func(bml.Event) error) error
 	DataBroadcastSnapshot(uint16) bml.Snapshot

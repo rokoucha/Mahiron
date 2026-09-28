@@ -259,7 +259,12 @@ func (c *Client) ListChannelServices(ctx context.Context, channelType, channel s
 	if err := c.doJSON(req, &services); err != nil {
 		return nil, err
 	}
-	return services, nil
+	// Some Mirakurun-compatible servers ignore the filter and return every
+	// service, which would register other channels' services on this one.
+	return slices.DeleteFunc(services, func(svc apigen.Service) bool {
+		ch, ok := svc.Channel.Get()
+		return ok && (ch.Type != channelType || ch.Channel != channel)
+	}), nil
 }
 
 func (c *Client) channelServiceItemID(ctx context.Context, channelType, channel string, serviceID uint16) (int64, error) {

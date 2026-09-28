@@ -12,8 +12,6 @@ type Store interface {
 	GetByChannelAndID(ctx context.Context, channelType, channelId string, id string, itemID int64) (*Service, error)
 	GetByTriplet(ctx context.Context, networkID, transportStreamID, serviceID uint16) (*Service, error)
 	GetLogoByServiceItemID(ctx context.Context, itemID int64) ([]byte, error)
-	KnownLogoTargets(ctx context.Context) ([]LogoTarget, error)
-	MissingLogoTargets(ctx context.Context) ([]LogoTarget, error)
 	ListCommonDataAnnouncements(ctx context.Context) ([]CommonDataAnnouncement, error)
 	UpsertCommonDataAnnouncement(ctx context.Context, announcement CommonDataAnnouncement) error
 	EPGSummary(ctx context.Context, staleAfter int64, now int64) (stale, failed int, lastSuccess *int64, err error)

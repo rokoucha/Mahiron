@@ -512,6 +512,23 @@ func TestRemoteSessionScanServicesUsesRemoteAPI(t *testing.T) {
 	}
 }
 
+func TestRemoteClientScanServicesDropsOtherChannelsFromUnfilteredResponse(t *testing.T) {
+	client := NewClient(config.RemoteConfig{URL: "http://remote.local/api"})
+	client.httpClient = &http.Client{Transport: streamtest.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
+		return streamtest.StringResponse(http.StatusOK, `[
+			{"id": 3216337912, "serviceId": 37912, "networkId": 32163, "name": "other", "type": 1, "channel": {"type": "GR", "channel": "18"}},
+			{"id": 1100101, "serviceId": 101, "networkId": 11, "name": "wanted", "type": 1, "channel": {"type": "BS4K", "channel": "45328"}}
+		]`), nil
+	})}
+	got, err := client.ScanServices(context.Background(), "BS4K", "45328")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Name != "wanted" {
+		t.Fatalf("services = %#v, want only the requested channel's", got)
+	}
+}
+
 func TestRemoteClientScanServicesReturnsStatusError(t *testing.T) {
 	client := NewClient(config.RemoteConfig{URL: "http://remote.local/api"})
 	client.httpClient = &http.Client{Transport: streamtest.RoundTripFunc(func(r *http.Request) (*http.Response, error) {

@@ -114,7 +114,15 @@ func (tm *Manager) CheckAvailable(ctx context.Context, channelType string) error
 	return ErrTunerUnavailable
 }
 
-func (tm *Manager) AcquireDevice(ctx context.Context, channelType string, requestedChannel, tunedChannel *config.ChannelConfig, wait bool) (device Device, decoder string, err error) {
+// DecoderCommands carries an acquired tuner's external descrambler commands:
+// Decoder for TS (B-CAS), B61Decoder for TLV (ACAS/STD-B61). Either may be
+// empty.
+type DecoderCommands struct {
+	Decoder    string
+	B61Decoder string
+}
+
+func (tm *Manager) AcquireDevice(ctx context.Context, channelType string, requestedChannel, tunedChannel *config.ChannelConfig, wait bool) (device Device, decoders DecoderCommands, err error) {
 	start := time.Now()
 	ctx, span := observability.StartSpan(ctx, observability.SpanTunerAcquireDevice,
 		observability.AttrChannelType.String(channelType),
@@ -136,15 +144,15 @@ func (tm *Manager) AcquireDevice(ctx context.Context, channelType string, reques
 
 		if attempt.device != nil {
 			tm.publishStatus(eventTypeUpdate, attempt.status)
-			return attempt.device, attempt.decoder, nil
+			return attempt.device, attempt.decoders, nil
 		}
 		if !attempt.found {
 			slog.Warn("tuner not found", "type", channelType, "channel", channelID(requestedChannel))
-			return nil, "", ErrTunerNotFound
+			return nil, DecoderCommands{}, ErrTunerNotFound
 		}
 		if !attempt.usable {
 			slog.Warn("tuner unsupported", "type", channelType, "channel", channelID(requestedChannel))
-			return nil, "", ErrUnsupportedTuner
+			return nil, DecoderCommands{}, ErrUnsupportedTuner
 		}
 		if attempt.grab.device != nil {
 			slog.Info("grabbing tuner",
@@ -155,24 +163,24 @@ func (tm *Manager) AcquireDevice(ctx context.Context, channelType string, reques
 				"victimPriority", attempt.grab.priority,
 			)
 			if err := attempt.grab.device.Stop(ctx); err != nil {
-				return nil, "", err
+				return nil, DecoderCommands{}, err
 			}
 			select {
 			case <-ctx.Done():
-				return nil, "", ctx.Err()
+				return nil, DecoderCommands{}, ctx.Err()
 			case <-attempt.changed:
 			}
 			continue
 		}
 		if !wait {
 			slog.Debug("tuner unavailable", "type", channelType, "channel", channelID(requestedChannel))
-			return nil, "", ErrTunerUnavailable
+			return nil, DecoderCommands{}, ErrTunerUnavailable
 		}
 		slog.Debug("waiting for tuner", "type", channelType, "channel", channelID(requestedChannel))
 		select {
 		case <-ctx.Done():
 			slog.Debug("tuner wait canceled", "type", channelType, "channel", channelID(requestedChannel), "err", ctx.Err())
-			return nil, "", ctx.Err()
+			return nil, DecoderCommands{}, ctx.Err()
 		case <-attempt.changed:
 		}
 	}
@@ -196,13 +204,13 @@ func tunerAcquireResult(err error) string {
 }
 
 type acquireAttempt struct {
-	device  Device
-	decoder string
-	found   bool
-	usable  bool
-	grab    grabCandidate
-	changed <-chan struct{}
-	status  Status
+	device   Device
+	decoders DecoderCommands
+	found    bool
+	usable   bool
+	grab     grabCandidate
+	changed  <-chan struct{}
+	status   Status
 }
 
 type grabCandidate struct {
@@ -240,13 +248,13 @@ func (tm *Manager) tryAcquireLocked(channelType string, requestPriority int, req
 			result.grab = betterGrabCandidate(result.grab, item, runtime, requestPriority)
 			continue
 		}
-		managed, decoder, ok := tm.reserveLocked(item, requestPriority, requestedChannel, tunedChannel)
+		managed, decoders, ok := tm.reserveLocked(item, requestPriority, requestedChannel, tunedChannel)
 		if !ok {
 			continue
 		}
 		tm.nextByType[channelType] = (index + 1) % len(tm.tuners)
 		result.device = managed
-		result.decoder = decoder
+		result.decoders = decoders
 		result.status = tm.statusLocked(index)
 		slog.Info("tuner acquired",
 			"name", item.Name(),
@@ -254,7 +262,8 @@ func (tm *Manager) tryAcquireLocked(channelType string, requestPriority int, req
 			"channel", channelID(requestedChannel),
 			"tunedType", channelTypeOf(tunedChannel),
 			"tunedChannel", channelID(tunedChannel),
-			"decoder", decoder != "",
+			"decoder", decoders.Decoder != "",
+			"b61Decoder", decoders.B61Decoder != "",
 		)
 		return result
 	}
@@ -279,10 +288,10 @@ func betterGrabCandidate(current grabCandidate, item *Tuner, runtime *tunerRunti
 	}
 }
 
-func (tm *Manager) reserveLocked(item *Tuner, priority int, requestedChannel, tunedChannel *config.ChannelConfig) (Device, string, bool) {
+func (tm *Manager) reserveLocked(item *Tuner, priority int, requestedChannel, tunedChannel *config.ChannelConfig) (Device, DecoderCommands, bool) {
 	base := item.NewDevice(tunedChannel)
 	if base == nil {
-		return nil, "", false
+		return nil, DecoderCommands{}, false
 	}
 	runtime := tm.runtime[item]
 	tm.inUse[item] = true
@@ -294,7 +303,7 @@ func (tm *Manager) reserveLocked(item *Tuner, priority int, requestedChannel, tu
 	runtime.tuned = tunedChannel
 	managed := &managedDevice{Device: base, manager: tm, tuner: item}
 	runtime.device = managed
-	return managed, item.DecoderCommand(), true
+	return managed, DecoderCommands{Decoder: item.DecoderCommand(), B61Decoder: item.B61DecoderCommand()}, true
 }
 
 func (tm *Manager) KillProcess(ctx context.Context, index int) error {
@@ -338,6 +347,16 @@ func (tm *Manager) DecoderCommandByType(channelType string) string {
 		return ""
 	}
 	return item.DecoderCommand()
+}
+
+// B61DecoderCommandByType returns the ACAS descrambler command of the first
+// available tuner for the channel type, or empty when none has one.
+func (tm *Manager) B61DecoderCommandByType(channelType string) string {
+	item := tm.GetTunerByType(channelType)
+	if item == nil {
+		return ""
+	}
+	return item.B61DecoderCommand()
 }
 
 type managedDevice struct {

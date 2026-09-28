@@ -19,19 +19,8 @@ type EPGStatus struct {
 	LastError     string
 }
 
-type LogoTarget struct {
-	NetworkId          uint16
-	ServiceId          uint16
-	TransportStreamId  uint16
-	ChannelType        string
-	ChannelId          string
-	LogoId             int64
-	LogoVersion        int64
-	LogoDownloadDataId int64
-	IsCommonData       bool
-	IsSDTTProbe        bool
-}
-
+// CommonDataAnnouncement is a stored announcement of the all-receivers
+// common data, with the channel it was observed on.
 type CommonDataAnnouncement struct {
 	OriginalNetworkID   uint16
 	TransportStreamID   uint16

@@ -14,7 +14,10 @@ import (
 	"github.com/21S1298001/mahiron/internal/bml"
 	"github.com/21S1298001/mahiron/internal/bml/cache"
 	"github.com/21S1298001/mahiron/internal/bml/resource"
+	"github.com/21S1298001/mahiron/internal/config"
+	"github.com/21S1298001/mahiron/internal/db"
 	"github.com/21S1298001/mahiron/internal/model"
+	"github.com/21S1298001/mahiron/internal/service"
 	"github.com/21S1298001/mahiron/internal/stream"
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 	"github.com/21S1298001/mahiron/ts"
@@ -274,6 +277,63 @@ func TestGetServiceDataBroadcastStateLiveSessionTakesPriorityOverCache(t *testin
 	body := rec.Body.String()
 	if rec.Code != http.StatusOK || !strings.Contains(body, `"origin":"live"`) || strings.Contains(body, `"origin":"cache"`) {
 		t.Fatalf("status = %d, body = %s, want live origin when a session exists", rec.Code, body)
+	}
+}
+
+// TestBMLAPIRejectsTLVServicesWithoutAllocatingTuner pins the TLV boundary:
+// BML requests for TLV (ISDB-S3) services fail with 404 from the channel
+// transport before any session or tuner is touched, so the dead tuner
+// allocation below must never run.
+func TestBMLAPIRejectsTLVServicesWithoutAllocatingTuner(t *testing.T) {
+	ctx := context.Background()
+	database, err := db.OpenInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	serviceStore := service.NewSQLiteStore(database)
+	if err := serviceStore.ReplaceChannelServices(ctx, "BS4K", "101", []*service.Service{
+		{Id: "001101102", Service: model.Service{Key: model.ServiceKey{ServiceID: 1102, NetworkID: 0x000b}, Name: "NHK BS4K"}, ChannelType: "BS4K", ChannelId: "101"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	handler := NewHandler(HandlerConfig{
+		ServiceManager: service.NewManager(serviceStore, config.ChannelsConfig{
+			{Name: "NHK BS4K", Type: "BS4K", Channel: "101", Transport: config.TransportTLV},
+		}),
+		StreamManager: fakeDataBroadcastStreamManager{err: errors.New("tuner must not be allocated for TLV BML requests")},
+	})
+	const itemID = int64(0x000b)*100000 + 1102
+	calls := []struct {
+		name string
+		call func(http.ResponseWriter) error
+	}{
+		{"events", func(w http.ResponseWriter) error {
+			return handler.GetServiceDataBroadcastEvents(ctx, apigen.GetServiceDataBroadcastEventsParams{ID: itemID}, w)
+		}},
+		{"state", func(w http.ResponseWriter) error {
+			return handler.GetServiceDataBroadcastState(ctx, apigen.GetServiceDataBroadcastStateParams{ID: itemID}, w)
+		}},
+		{"module version", func(w http.ResponseWriter) error {
+			return handler.GetServiceDataBroadcastModuleVersion(ctx, apigen.GetServiceDataBroadcastModuleVersionParams{ID: itemID}, w)
+		}},
+		{"module raw", func(w http.ResponseWriter) error {
+			return handler.GetServiceDataBroadcastModuleRaw(ctx, apigen.GetServiceDataBroadcastModuleRawParams{ID: itemID}, w)
+		}},
+		{"module resource", func(w http.ResponseWriter) error {
+			return handler.GetServiceDataBroadcastModuleResource(ctx, apigen.GetServiceDataBroadcastModuleResourceParams{ID: itemID}, w)
+		}},
+	}
+	for _, tt := range calls {
+		t.Run(tt.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			if err := tt.call(recorder); err != nil {
+				t.Fatal(err)
+			}
+			if recorder.Code != http.StatusNotFound {
+				t.Fatalf("status = %d, want %d", recorder.Code, http.StatusNotFound)
+			}
+		})
 	}
 }
 

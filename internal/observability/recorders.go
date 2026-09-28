@@ -118,15 +118,15 @@ func RecordTunerAcquire(ctx context.Context, channelType, result string, wait bo
 	}
 }
 
-func RecordStreamPacket(ctx context.Context, channelType, channelID string, bytes int64) {
-	RecordStreamPackets(ctx, channelType, channelID, 1, bytes)
+func RecordStreamPacket(ctx context.Context, transport, channelType, channelID string, bytes int64) {
+	RecordStreamPackets(ctx, transport, channelType, channelID, 1, bytes)
 }
 
-func RecordStreamPackets(ctx context.Context, channelType, channelID string, packets, bytes int64) {
+func RecordStreamPackets(ctx context.Context, transport, channelType, channelID string, packets, bytes int64) {
 	if packets <= 0 && bytes <= 0 {
 		return
 	}
-	attrs := metric.WithAttributes(AttrChannelType.String(channelType), AttrChannelID.String(channelID))
+	attrs := metric.WithAttributes(AttrTransport.String(transport), AttrChannelType.String(channelType), AttrChannelID.String(channelID))
 	if instruments.streamPackets != nil && packets > 0 {
 		instruments.streamPackets.Add(ctx, packets, attrs)
 	}
@@ -135,43 +135,50 @@ func RecordStreamPackets(ctx context.Context, channelType, channelID string, pac
 	}
 }
 
-func RecordStreamPacketError(ctx context.Context, channelType, channelID, result string) {
+func RecordStreamPacketError(ctx context.Context, transport, channelType, channelID, result string) {
 	if instruments.streamPacketErrors == nil {
 		return
 	}
 	instruments.streamPacketErrors.Add(ctx, 1, metric.WithAttributes(
+		AttrTransport.String(transport),
 		AttrChannelType.String(channelType),
 		AttrChannelID.String(channelID),
 		AttrResult.String(result),
 	))
 }
 
-func RecordStreamContinuityCounterError(ctx context.Context, channelType, channelID string) {
+// RecordStreamDrop counts a gap in a packet sequence (TS continuity counter
+// or TLV packet_sequence_number), under the historical continuity_counter
+// metric name; the transport label tells the systems apart.
+func RecordStreamDrop(ctx context.Context, transport, channelType, channelID string) {
 	if instruments.streamContinuityErrors == nil {
 		return
 	}
 	instruments.streamContinuityErrors.Add(ctx, 1, metric.WithAttributes(
+		AttrTransport.String(transport),
 		AttrChannelType.String(channelType),
 		AttrChannelID.String(channelID),
 	))
 }
 
-func RecordStreamSubscriberError(ctx context.Context, channelType, result string) {
+func RecordStreamSubscriberError(ctx context.Context, transport, channelType, result string) {
 	if instruments.streamSubscriberErrors == nil {
 		return
 	}
 	instruments.streamSubscriberErrors.Add(ctx, 1, metric.WithAttributes(
+		AttrTransport.String(transport),
 		AttrChannelType.String(channelType),
 		AttrResult.String(result),
 	))
 }
 
-func RecordStreamSubscriberOverflow(ctx context.Context, channelType, result string) {
-	RecordStreamSubscriberError(ctx, channelType, result)
+func RecordStreamSubscriberOverflow(ctx context.Context, transport, channelType, result string) {
+	RecordStreamSubscriberError(ctx, transport, channelType, result)
 	if instruments.streamSubscriberOverflow == nil {
 		return
 	}
 	instruments.streamSubscriberOverflow.Add(ctx, 1, metric.WithAttributes(
+		AttrTransport.String(transport),
 		AttrChannelType.String(channelType),
 		AttrResult.String(result),
 	))

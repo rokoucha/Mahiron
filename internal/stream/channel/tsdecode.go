@@ -438,10 +438,62 @@ func LogoFromImage(image *ts.LogoImage) (model.Logo, error) {
 	if image.IsDeleted {
 		return logo, nil
 	}
-	data, err := ts.NormalizeARIBLogoPNG(image.Data)
+	data, err := isdb.NormalizeARIBLogoPNG(image.Data)
 	if err != nil {
 		return model.Logo{}, err
 	}
 	logo.Data = data
 	return logo, nil
+}
+
+// CommonLogo converts a logo of the all-receivers common data to the model,
+// naming its services (network-wide and wildcard entries excluded, since no
+// service stores them). It reports false when none are left.
+func CommonLogo(image ts.CommonLogoImage) (model.Logo, bool, error) {
+	if image.IsNetwork {
+		return model.Logo{}, false, nil
+	}
+	logo := model.Logo{
+		LogoID:         image.LogoID,
+		Version:        image.LogoVersion,
+		DownloadDataID: image.DownloadID,
+		LogoType:       image.LogoType,
+		Deleted:        image.IsDeleted,
+	}
+	for _, service := range image.Services {
+		if service.TransportStreamID == ts.NetworkLogoTransportStreamWildcard || service.ServiceID == ts.NetworkLogoServiceWildcard {
+			continue
+		}
+		logo.Services = append(logo.Services, model.ServiceKey{NetworkID: service.OriginalNetworkID, StreamID: service.TransportStreamID, ServiceID: service.ServiceID})
+	}
+	if len(logo.Services) == 0 {
+		return model.Logo{}, false, nil
+	}
+	logo.NetworkID = logo.Services[0].NetworkID
+	if image.IsDeleted {
+		return logo, true, nil
+	}
+	data, err := isdb.NormalizeARIBLogoPNG(image.Data)
+	if err != nil {
+		return model.Logo{}, false, err
+	}
+	logo.Data = data
+	return logo, true, nil
+}
+
+// CommonDataAnnouncement converts an SDTT announcement of the all-receivers
+// common data.
+func CommonDataAnnouncement(announcement ts.CommonDataAnnouncement) model.CommonDataAnnouncement {
+	return model.CommonDataAnnouncement{
+		Service:    model.ServiceKey{NetworkID: announcement.OriginalNetworkID, StreamID: announcement.TransportStreamID, ServiceID: announcement.ServiceID},
+		DownloadID: announcement.DownloadID,
+		VersionID:  announcement.VersionID,
+	}
+}
+
+// DefaultCommonDataService is the service that carries the all-receivers
+// common data when no SDTT announcement has been observed yet.
+func DefaultCommonDataService() model.ServiceKey {
+	announcement := ts.DefaultCommonDataAnnouncement()
+	return model.ServiceKey{NetworkID: announcement.OriginalNetworkID, StreamID: announcement.TransportStreamID, ServiceID: announcement.ServiceID}
 }

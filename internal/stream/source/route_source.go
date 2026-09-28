@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/21S1298001/mahiron/internal/config"
+	"github.com/21S1298001/mahiron/internal/tuner"
 )
 
 type routeSourceKey struct {
@@ -20,8 +21,9 @@ type routeSourceKey struct {
 }
 
 type sharedRouteSource struct {
-	broadcast      *Broadcast
-	decoderCommand string
+	broadcast         *Broadcast
+	decoderCommand    string
+	b61DecoderCommand string
 }
 
 func newRouteSourceKey(route config.ChannelRouteConfig) routeSourceKey {
@@ -75,14 +77,14 @@ func (p *Pool) beginRouteSourceCreate(ctx context.Context, key routeSourceKey) (
 	}
 }
 
-func (p *Pool) commitRouteSource(key routeSourceKey, source LiveSource, decoderCommand string) *Broadcast {
+func (p *Pool) commitRouteSource(key routeSourceKey, source LiveSource, decoders tuner.DecoderCommands) *Broadcast {
 	p.mu.Lock()
 	if shared := p.routeSources[key]; shared != nil {
 		p.mu.Unlock()
 		return shared.broadcast
 	}
 	broadcast := NewBroadcast(source, func() { p.removeRouteSource(key) })
-	p.routeSources[key] = &sharedRouteSource{broadcast: broadcast, decoderCommand: decoderCommand}
+	p.routeSources[key] = &sharedRouteSource{broadcast: broadcast, decoderCommand: decoders.Decoder, b61DecoderCommand: decoders.B61Decoder}
 	p.mu.Unlock()
 	return broadcast
 }

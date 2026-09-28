@@ -1,344 +1,138 @@
+// Package demux is the MPEG-2 TS side of stream fan-out: it splits the
+// source into 188-byte packets, demuxes PSI/SI sections, extracts services by
+// rewriting PAT/PMT and watches continuity counters, while fanout.Engine
+// owns the subscribers.
 package demux
 
 import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
-	"log/slog"
-	"sync"
 
-	"github.com/21S1298001/mahiron/internal/observability"
+	"github.com/21S1298001/mahiron/internal/stream/fanout"
+	"github.com/21S1298001/mahiron/mmt"
+	"github.com/21S1298001/mahiron/packet"
 	"github.com/21S1298001/mahiron/ts"
 )
 
-const (
-	// A consumer that stalls is given this much room before anything is lost.
-	// Eight mebibytes matches the budget Mirakurun keeps for a backed up
-	// client; at the ~8 Mbps of a single service it absorbs roughly seven
-	// seconds, and at the ~17 Mbps of a whole channel roughly four.
-	packetSubscriberBufferBytes = 8 << 20
-	packetSubscriberBuffer      = packetSubscriberBufferBytes / ts.PacketSize
-	sectionSubscriberBuffer     = 512
-)
+type SourceSubscriber = fanout.SourceSubscriber
 
 var (
-	ErrSubscriberOverflow = errors.New("ts subscriber buffer overflow")
-	ErrDemuxerStopped     = errors.New("ts demuxer stopped")
+	ErrSubscriberOverflow = fanout.ErrSubscriberOverflow
+	ErrDemuxerStopped     = fanout.ErrStopped
 )
 
-type SourceSubscriber func(context.Context, io.Writer) error
+// ErrNotTSStream is returned when the bytes delivered for a TS channel do
+// not start with the TS sync byte, e.g. a misconfigured channel or a remote
+// that converts to another format.
+var ErrNotTSStream = errors.New("demux: stream is not MPEG-2 TS")
 
+// Demuxer fans a TS source out to packet and section subscribers.
 type Demuxer struct {
-	cancel        context.CancelFunc
-	channelID     string
-	channelType   string
-	continuity    *continuityMonitor
-	demux         *ts.Demuxer
-	done          chan struct{}
-	err           error
-	mu            sync.Mutex
-	nextID        uint64
-	onEmpty       func()
-	onPIDSections []func(ts.PIDSection)
-	onPackets     []func(ts.Packet)
-	onSections    []func(ts.Section)
-	packets       map[uint64]*packetSubscription
-	packetSubs    []packetSubscriptionEntry
-	sections      map[uint64]*sectionSubscription
-	sectionSubs   []sectionSubscriptionEntry
-	source        SourceSubscriber
-	started       bool
-	stopped       bool
-	stopOnce      sync.Once
-}
-
-func (e *Demuxer) WithPackets(onPackets ...func(ts.Packet)) *Demuxer {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	e.onPackets = append(e.onPackets, onPackets...)
-	return e
-}
-
-type packetSubscriptionEntry struct {
-	id  uint64
-	sub *packetSubscription
-}
-
-func (e *Demuxer) WithPIDSections(onSections ...func(ts.PIDSection)) *Demuxer {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	e.onPIDSections = append(e.onPIDSections, onSections...)
-	return e
-}
-
-type sectionSubscriptionEntry struct {
-	id  uint64
-	sub *sectionSubscription
+	*fanout.Engine[ts.PIDSection]
 }
 
 func New(source SourceSubscriber, onEmpty func(), onSections ...func(ts.Section)) *Demuxer {
-	return &Demuxer{
-		continuity: &continuityMonitor{},
-		demux:      ts.NewDemuxer(),
-		done:       make(chan struct{}),
-		onEmpty:    onEmpty,
-		onSections: onSections,
-		packets:    map[uint64]*packetSubscription{},
-		sections:   map[uint64]*sectionSubscription{},
-		source:     source,
+	engine := fanout.New[ts.PIDSection](&tsTransport{demux: ts.NewDemuxer()}, source, onEmpty)
+	for _, hook := range onSections {
+		engine.WithSections(func(section ts.PIDSection) { hook(section.Section) })
 	}
+	return &Demuxer{Engine: engine}
 }
 
-func (e *Demuxer) WithMetricLabels(channelType, channelID string) *Demuxer {
-	e.channelType = channelType
-	e.channelID = channelID
+func (e *Demuxer) WithPackets(onPackets ...func(ts.Packet)) *Demuxer {
+	for _, hook := range onPackets {
+		e.Engine.WithPackets(func(packet []byte) { hook(ts.Packet(packet)) })
+	}
 	return e
 }
 
-func (e *Demuxer) SubscribeChannel(ctx context.Context, dst io.Writer) error {
-	return e.subscribePackets(ctx, nil, dst)
+func (e *Demuxer) WithPIDSections(onSections ...func(ts.PIDSection)) *Demuxer {
+	e.WithSections(onSections...)
+	return e
 }
 
-func (e *Demuxer) SubscribeService(ctx context.Context, serviceID uint16, dst io.Writer) error {
-	return e.subscribePackets(ctx, &serviceID, dst)
+func (e *Demuxer) WithMetricLabels(channelType, channelID string) *Demuxer {
+	e.Engine.WithMetricLabels(channelType, channelID)
+	return e
 }
 
 func (e *Demuxer) ObserveSections(ctx context.Context, accept func(ts.Section) bool, observe func(ts.Section) error) error {
-	return e.observeSections(ctx, accept, observe, nil, true)
+	return e.Engine.ObserveSections(ctx, acceptPIDSection(accept), observePIDSection(observe))
 }
 
 func (e *Demuxer) ObserveSectionsPassive(ctx context.Context, accept func(ts.Section) bool, observe func(ts.Section) error, attached chan<- struct{}) error {
-	return e.observeSections(ctx, accept, observe, attached, false)
+	return e.Engine.ObserveSectionsPassive(ctx, acceptPIDSection(accept), observePIDSection(observe), attached)
 }
 
-// KeepAlive starts the demuxer, if necessary, and keeps it running until ctx is
-// canceled without queueing sections for the caller. It is intended for users
-// that consume state produced by the demuxer's hooks rather than observing
-// sections directly.
-func (e *Demuxer) KeepAlive(ctx context.Context) error {
-	return e.observeSections(ctx, func(ts.Section) bool {
-		return false
-	}, func(ts.Section) error {
+func acceptPIDSection(accept func(ts.Section) bool) func(ts.PIDSection) bool {
+	if accept == nil {
 		return nil
-	}, nil, true)
+	}
+	return func(section ts.PIDSection) bool { return accept(section.Section) }
 }
 
-func (e *Demuxer) observeSections(ctx context.Context, accept func(ts.Section) bool, observe func(ts.Section) error, attached chan<- struct{}, start bool) error {
-	sub := &sectionSubscription{
-		accept:     accept,
-		done:       make(chan struct{}),
-		observe:    observe,
-		queue:      make(chan ts.Section, sectionSubscriberBuffer),
-		writerDone: make(chan struct{}),
-	}
-	id, err := e.attachSection(ctx, sub, start)
-	if err != nil {
-		return err
-	}
-	go e.writeSections(id, sub)
-	if attached != nil {
-		close(attached)
-	}
-	select {
-	case <-ctx.Done():
-		e.finishSection(id, ctx.Err())
-		<-sub.done
-		<-sub.writerDone
-		return ctx.Err()
-	case <-sub.done:
-		if sub.err == nil {
-			<-sub.writerDone
-		}
-		return sub.err
-	case <-e.done:
-		e.finishSection(id, e.Err())
-		<-sub.done
-		<-sub.writerDone
-		return sub.err
-	}
+func observePIDSection(observe func(ts.Section) error) func(ts.PIDSection) error {
+	return func(section ts.PIDSection) error { return observe(section.Section) }
 }
 
-func (e *Demuxer) Stop() {
-	e.mu.Lock()
-	if e.stopped {
-		started := e.started
-		done := e.done
-		e.mu.Unlock()
-		if started {
-			<-done
-		}
-		return
-	}
-	e.stopped = true
-	cancel := e.cancel
-	started := e.started
-	e.mu.Unlock()
-	if !started {
-		e.close(nil)
-		return
-	}
-	if cancel != nil {
-		cancel()
-	}
-	<-e.done
+// tsTransport plugs TS into fanout.Engine. The engine serializes Feed and
+// the filters, so the shared ts.Demuxer needs no lock of its own.
+type tsTransport struct {
+	demux *ts.Demuxer
 }
 
-func (e *Demuxer) Err() error {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	return e.err
+func (t *tsTransport) Name() string { return "ts" }
+
+// NewReader checks the stream is TS before any packet is delivered, which
+// catches a route configured as TS that actually carries another format.
+func (t *tsTransport) NewReader(r io.Reader) fanout.PacketReader {
+	return &packetReader{reader: ts.NewPacketReader(packet.NewCheckReader(r, ts.Detector, mmt.Detector)), buf: make([]byte, ts.PacketSize)}
 }
 
-// PacketSubscriberCount reports the number of attached packet subscribers.
-// It exists so tests can wait for subscribers without reaching into the
-// demuxer's internals.
-func (e *Demuxer) PacketSubscriberCount() int {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	return len(e.packets)
+func (t *tsTransport) Feed(packet []byte) ([]ts.PIDSection, error) {
+	return t.demux.FeedWithPID(ts.Packet(packet))
 }
 
-// Stopped reports whether the demuxer has permanently stopped and will
-// reject any new subscription attempts.
-func (e *Demuxer) Stopped() bool {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	return e.stopped
+func (t *tsTransport) NewFilter(serviceID uint16) fanout.Filter {
+	return &serviceFilter{demux: t.demux, serviceID: serviceID, service: t.demux.Service(serviceID)}
 }
 
-func (e *Demuxer) subscribePackets(ctx context.Context, serviceID *uint16, dst io.Writer) error {
-	sub := &packetSubscription{
-		ctx:        ctx,
-		continuity: &continuityMonitor{},
-		done:       make(chan struct{}),
-		queue:      make(chan ts.Packet, packetSubscriberBuffer),
-		serviceID:  serviceID,
-		statsKey:   e.streamInfoKey(serviceID),
-		writerDone: make(chan struct{}),
-	}
-	id, err := e.attachPacket(ctx, sub)
-	if err != nil {
-		return err
-	}
-	go e.writePackets(id, sub, dst)
-	select {
-	case <-ctx.Done():
-		e.finishPacket(id, ctx.Err())
-		<-sub.done
-		<-sub.writerDone
-		return nil
-	case <-sub.done:
-		if sub.err == nil {
-			<-sub.writerDone
-		}
-		return sub.err
-	case <-e.done:
-		e.finishPacket(id, e.Err())
-		<-sub.done
-		if sub.err == nil {
-			<-sub.writerDone
-		}
-		return sub.err
-	}
+func (t *tsTransport) NewDropDetector() fanout.DropDetector { return &continuityMonitor{} }
+
+type packetReader struct {
+	reader *ts.PacketReader
+	buf    []byte
 }
 
-func (e *Demuxer) attachPacket(ctx context.Context, sub *packetSubscription) (uint64, error) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if e.stopped {
-		return 0, ErrDemuxerStopped
+func (r *packetReader) Next() ([]byte, error) {
+	pkt, err := r.reader.NextInto(r.buf)
+	var mismatch *packet.MismatchError
+	var unknown *packet.UnknownError
+	switch {
+	case errors.As(err, &mismatch):
+		return nil, fmt.Errorf("%w: %s", ErrNotTSStream, mismatch)
+	case errors.As(err, &unknown):
+		return nil, fmt.Errorf("%w: %s", ErrNotTSStream, unknown)
 	}
-	id := e.nextID
-	e.nextID++
-	if sub.serviceID != nil {
-		sub.service = e.demux.Service(*sub.serviceID)
-	}
-	e.packets[id] = sub
-	e.packetSubs = append(e.packetSubs, packetSubscriptionEntry{id: id, sub: sub})
-	e.startLocked(ctx)
-	return id, nil
+	return pkt, err
 }
 
-func (e *Demuxer) attachSection(ctx context.Context, sub *sectionSubscription, start bool) (uint64, error) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if e.stopped {
-		return 0, ErrDemuxerStopped
-	}
-	id := e.nextID
-	e.nextID++
-	e.sections[id] = sub
-	e.sectionSubs = append(e.sectionSubs, sectionSubscriptionEntry{id: id, sub: sub})
-	if start {
-		e.startLocked(ctx)
-	}
-	return id, nil
+// serviceFilter extracts one service by rewriting PAT/PMT. It ends the
+// subscription once a complete PAT no longer lists the service.
+type serviceFilter struct {
+	demux     *ts.Demuxer
+	serviceID uint16
+	service   *ts.ServiceDemux
 }
 
-func (e *Demuxer) startLocked(sourceCtx context.Context) {
-	if e.started {
-		return
+func (f *serviceFilter) Packet(packet []byte) ([]byte, error) {
+	if f.demux.PATReady() && !f.demux.HasService(f.serviceID) {
+		return nil, ts.ErrServiceNotFound
 	}
-	ctx, cancel := context.WithCancel(context.WithoutCancel(sourceCtx))
-	e.cancel = cancel
-	e.started = true
-	go e.run(ctx)
-}
-
-func (e *Demuxer) run(ctx context.Context) {
-	r, w := io.Pipe()
-	sourceDone := make(chan error, 1)
-	go func() {
-		sourceDone <- e.source(ctx, w)
-		_ = w.Close()
-	}()
-
-	reader := ts.NewPacketReader(r)
-	packetBuf := make([]byte, ts.PacketSize)
-	var runErr error
-	var packetCount int64
-	var byteCount int64
-	flushPackets := func() {
-		if packetCount == 0 && byteCount == 0 {
-			return
-		}
-		observability.RecordStreamPackets(ctx, e.channelType, e.channelID, packetCount, byteCount)
-		packetCount = 0
-		byteCount = 0
-	}
-	for {
-		packet, err := reader.NextInto(packetBuf)
-		if err != nil {
-			if !errors.Is(err, io.EOF) && ctx.Err() == nil {
-				runErr = err
-				observability.RecordStreamPacketError(ctx, e.channelType, e.channelID, "read")
-			}
-			break
-		}
-		packetCount++
-		byteCount += int64(len(packet))
-		if packetCount >= 256 {
-			flushPackets()
-		}
-		if drop := e.continuity.observe(packet); drop != nil {
-			observability.RecordStreamContinuityCounterError(ctx, e.channelType, e.channelID)
-			logStreamDrop(e.channelType, e.channelID, "", *drop)
-		}
-		sections, err := e.demux.FeedWithPID(packet)
-		if err != nil {
-			runErr = err
-			observability.RecordStreamPacketError(ctx, e.channelType, e.channelID, "demux")
-			break
-		}
-		e.dispatch(packet, sections)
-	}
-	flushPackets()
-	_ = r.Close()
-	if err := <-sourceDone; err != nil && ctx.Err() == nil && !errors.Is(err, io.ErrClosedPipe) {
-		runErr = errors.Join(runErr, err)
-	}
-	e.close(runErr)
+	return f.service.Packet(ts.Packet(packet)), nil
 }
 
 type continuityMonitor struct {
@@ -346,6 +140,24 @@ type continuityMonitor struct {
 	last          [ts.PIDNull + 1]byte
 	duplicateSeen [ts.PIDNull + 1]bool
 	lastPacket    map[uint16]ts.Packet
+}
+
+type continuityDrop struct {
+	PID             uint16
+	ExpectedCounter byte
+	ActualCounter   byte
+}
+
+func (m *continuityMonitor) Observe(packet []byte) *fanout.Drop {
+	drop := m.observe(ts.Packet(packet))
+	if drop == nil {
+		return nil
+	}
+	return &fanout.Drop{
+		Sequence: fmt.Sprintf("pid=0x%04X", drop.PID),
+		Expected: uint64(drop.ExpectedCounter),
+		Actual:   uint64(drop.ActualCounter),
+	}
 }
 
 func (m *continuityMonitor) observe(packet ts.Packet) *continuityDrop {
@@ -402,94 +214,4 @@ func (m *continuityMonitor) remember(pid uint16, packet ts.Packet) {
 	}
 	copy(previous, packet)
 	m.lastPacket[pid] = previous
-}
-
-func (e *Demuxer) dispatch(packet ts.Packet, sections []ts.PIDSection) {
-	e.mu.Lock()
-	for _, hook := range e.onPackets {
-		hook(packet)
-	}
-	var rawPacket ts.Packet
-	for i := 0; i < len(e.packetSubs); {
-		entry := e.packetSubs[i]
-		id := entry.id
-		sub := entry.sub
-		out := packet
-		if sub.serviceID != nil {
-			if e.demux.PATReady() && !e.demux.HasService(*sub.serviceID) {
-				e.finishPacketLocked(id, ts.ErrServiceNotFound)
-				continue
-			}
-			out = sub.service.Packet(packet)
-		}
-		if out == nil {
-			i++
-			continue
-		}
-		if sub.serviceID == nil {
-			if rawPacket == nil {
-				rawPacket = append(ts.Packet(nil), packet...)
-			}
-			out = rawPacket
-		} else {
-			out = append(ts.Packet(nil), out...)
-		}
-		select {
-		case sub.queue <- out:
-			if sub.dropping {
-				slog.Warn("ts subscriber caught up", "type", e.channelType, "channel", e.channelID, "stream", sub.statsKey, "droppedBytes", sub.droppedBytes)
-				sub.dropping = false
-				sub.droppedBytes = 0
-			}
-		default:
-			// A consumer slower than the broadcast cannot be waited for: the
-			// source is live, and blocking here would stall the demuxer, and
-			// through it every other subscriber and the tuner feeding them.
-			// Drop the oldest packet instead and keep the stream running, as
-			// both Mirakurun and mirakc do. The lost packets leave a
-			// continuity gap that writePackets reports as drops.
-			if !sub.dropping {
-				slog.Warn("ts subscriber buffer full, dropping packets", "type", e.channelType, "channel", e.channelID, "stream", sub.statsKey, "bufferBytes", packetSubscriberBufferBytes)
-				sub.dropping = true
-			}
-			observability.RecordStreamSubscriberOverflow(context.Background(), e.channelType, "packet_overflow")
-			select {
-			case dropped := <-sub.queue:
-				sub.droppedBytes += len(dropped)
-			default:
-			}
-			select {
-			case sub.queue <- out:
-			default:
-				sub.droppedBytes += len(out)
-			}
-		}
-		i++
-	}
-	for _, pidSection := range sections {
-		section := pidSection.Section
-		for _, hook := range e.onPIDSections {
-			hook(pidSection)
-		}
-		for _, hook := range e.onSections {
-			hook(section)
-		}
-		for i := 0; i < len(e.sectionSubs); {
-			entry := e.sectionSubs[i]
-			id := entry.id
-			sub := entry.sub
-			if sub.accept != nil && !sub.accept(section) {
-				i++
-				continue
-			}
-			select {
-			case sub.queue <- section:
-				i++
-			default:
-				observability.RecordStreamSubscriberOverflow(context.Background(), e.channelType, "section_overflow")
-				e.finishSectionLocked(id, ErrSubscriberOverflow)
-			}
-		}
-	}
-	e.mu.Unlock()
 }

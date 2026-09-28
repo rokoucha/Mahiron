@@ -5,12 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"time"
 
 	"github.com/21S1298001/mahiron/internal/job"
 	"github.com/21S1298001/mahiron/internal/job/run"
-	"github.com/21S1298001/mahiron/internal/model"
-	"github.com/21S1298001/mahiron/internal/service"
+	"github.com/21S1298001/mahiron/internal/logogather"
 )
 
 const (
@@ -19,20 +17,15 @@ const (
 	LogoGathererDefaultSchedule = "5 3 * * *"
 )
 
-var errLogoTargetsComplete = errors.New("logo targets complete")
-
-func RegisterLogoGatherer(registry Registry, collector LogoCollector, store LogoStore, timeout time.Duration) {
-	if timeout <= 0 {
-		timeout = 20 * time.Minute
-	}
+func RegisterLogoGatherer(registry Registry, gatherer LogoGatherer) {
 	registry.Register(job.JobDefinition{
 		Key: LogoGathererKey, Name: LogoGathererName, IsRerunnable: true,
 		Handler: func(ctx context.Context) error {
-			targets, err := logoGatherTargets(ctx, store)
+			targets, err := gatherer.Targets(ctx)
 			if err != nil {
 				return err
 			}
-			queued, err := enqueueLogoGatherTargets(ctx, registry, collector, store, timeout, targets, true)
+			queued, err := enqueueLogoGatherTargets(ctx, registry, gatherer, targets, true)
 			if err != nil {
 				return err
 			}
@@ -50,75 +43,46 @@ func RegisterLogoGatherer(registry Registry, collector LogoCollector, store Logo
 	})
 }
 
-func enqueueLogoGatherTargets(ctx context.Context, registry Registry, collector LogoCollector, store LogoStore, timeout time.Duration, targets []service.LogoTarget, allowProbeRefresh bool) (int, error) {
-	grouped := make(map[string][]service.LogoTarget)
+// enqueueLogoGatherTargets queues one gather job per channel, re-gathering
+// common data targets from the channel a probe's announcement named.
+func enqueueLogoGatherTargets(ctx context.Context, registry Registry, gatherer LogoGatherer, targets []logogather.Target, allowProbeRefresh bool) (int, error) {
+	grouped := make(map[string][]logogather.Target)
+	var order []string
 	for _, target := range targets {
-		key := target.ChannelType + "\x00" + target.ChannelId
+		key := target.ChannelType + "\x00" + target.ChannelID
+		if _, ok := grouped[key]; !ok {
+			order = append(order, key)
+		}
 		grouped[key] = append(grouped[key], target)
 	}
 	queued := 0
-	for _, channelTargets := range grouped {
+	for _, key := range order {
 		if err := ctx.Err(); err != nil {
 			return queued, err
 		}
-		channelTargets := append([]service.LogoTarget(nil), channelTargets...)
-		channelType, channelID := channelTargets[0].ChannelType, channelTargets[0].ChannelId
+		channelTargets := grouped[key]
+		channelType, channelID := channelTargets[0].ChannelType, channelTargets[0].ChannelID
 		hasProbe := false
 		for _, target := range channelTargets {
-			hasProbe = hasProbe || target.IsSDTTProbe
+			hasProbe = hasProbe || target.Probe
 		}
 		definition := job.JobDefinition{
 			Key:          fmt.Sprintf("logo-gather:%s:%s", channelType, channelID),
 			Name:         fmt.Sprintf("Logo Gather %s/%s", channelType, channelID),
 			IsRerunnable: true,
 			Handler: func(childCtx context.Context) error {
-				gatherCtx, cancel := context.WithTimeout(childCtx, timeout)
-				defer cancel()
-				remaining := make(map[logoTargetKey]struct{}, len(channelTargets))
-				for _, target := range channelTargets {
-					if target.IsCommonData {
-						continue
-					}
-					remaining[newLogoTargetKey(target)] = struct{}{}
+				if err := gatherer.GatherChannel(childCtx, channelType, channelID, channelTargets); err != nil {
+					return err
 				}
-				count := 0
-				hasRemainingTargets := len(remaining) > 0
-				err := collector.ObserveLogos(gatherCtx, channelType, channelID, func(image model.Logo) error {
-					// Local sessions persist CDT logos as they are decoded. Remote
-					// sessions obtain the same images through the API, so persist here
-					// as well to keep both acquisition paths equivalent.
-					if err := store.UpsertLogoImage(gatherCtx, image); err != nil {
-						return err
-					}
-					if image.Deleted {
-						return nil
-					}
-					count++
-					delete(remaining, logoTargetKey{int64(image.NetworkID), int64(image.LogoID), int64(image.Version), int64(image.DownloadDataID)})
-					if hasRemainingTargets && len(remaining) == 0 {
-						return errLogoTargetsComplete
-					}
+				if !hasProbe || !allowProbeRefresh {
 					return nil
-				})
-				timedOut := errors.Is(err, context.DeadlineExceeded) || (errors.Is(err, context.Canceled) && childCtx.Err() == nil)
-				if errors.Is(err, errLogoTargetsComplete) || timedOut {
-					err = nil
 				}
+				refreshed, err := gatherer.Targets(childCtx)
 				if err != nil {
 					return err
 				}
-				if hasProbe && allowProbeRefresh {
-					refreshed, err := logoGatherTargets(childCtx, store)
-					if err != nil {
-						return err
-					}
-					if _, err := enqueueLogoGatherTargets(childCtx, registry, collector, store, timeout, resolvedCommonLogoTargets(refreshed), false); err != nil {
-						return err
-					}
-				}
-				run.Set(childCtx, logoGatherResult(channelType, channelID, channelTargets, count, len(remaining), timedOut))
-				slog.Info("logo gather completed", "channel", fmt.Sprintf("%s/%s", channelType, channelID), "logos", count, "remaining", len(remaining), "timeout", timeout)
-				return nil
+				_, err = enqueueLogoGatherTargets(childCtx, registry, gatherer, logogather.ResolvedCommonData(refreshed), false)
+				return err
 			},
 		}
 		if _, err := registry.EnqueueDefinition(definition); err != nil {
@@ -130,74 +94,4 @@ func enqueueLogoGatherTargets(ctx context.Context, registry Registry, collector 
 		queued++
 	}
 	return queued, nil
-}
-
-func logoGatherResult(channelType, channelID string, targets []service.LogoTarget, logos, remaining int, timedOut bool) run.Result {
-	items := make([]run.Item, 0, len(targets))
-	for _, target := range targets {
-		items = append(items, run.Item{
-			Kind:    "logo_target",
-			Summary: fmt.Sprintf("service %d logo %d", target.ServiceId, target.LogoId),
-			Data: map[string]any{
-				"networkId":      target.NetworkId,
-				"serviceId":      target.ServiceId,
-				"logoId":         target.LogoId,
-				"logoVersion":    target.LogoVersion,
-				"downloadDataId": target.LogoDownloadDataId,
-				"isCommonData":   target.IsCommonData,
-				"isSDTTProbe":    target.IsSDTTProbe,
-			},
-		})
-	}
-	warnings := []string(nil)
-	if timedOut && remaining > 0 {
-		warnings = append(warnings, "logo gathering reached timeout before all targets were observed")
-	}
-	return run.Result{
-		Kind:    "logo_gather",
-		Summary: fmt.Sprintf("%s/%s: %d logos observed, %d remaining", channelType, channelID, logos, remaining),
-		Counts: map[string]int{
-			"targets":   len(targets),
-			"logos":     logos,
-			"remaining": remaining,
-			"timedOut":  boolCount(timedOut),
-		},
-		Items:    items,
-		Warnings: warnings,
-	}
-}
-
-func boolCount(v bool) int {
-	if v {
-		return 1
-	}
-	return 0
-}
-
-func resolvedCommonLogoTargets(targets []service.LogoTarget) []service.LogoTarget {
-	result := make([]service.LogoTarget, 0, len(targets))
-	for _, target := range targets {
-		if target.IsCommonData && target.IsSDTTProbe {
-			continue
-		}
-		if target.IsCommonData {
-			result = append(result, target)
-		}
-	}
-	return result
-}
-
-func logoGatherTargets(ctx context.Context, store LogoStore) ([]service.LogoTarget, error) {
-	if gatherStore, ok := store.(LogoGatherTargetStore); ok {
-		return gatherStore.LogoGatherTargets(ctx)
-	}
-	return store.MissingLogoTargets(ctx)
-}
-
-type logoTargetKey struct {
-	networkID, logoID, logoVersion, downloadDataID int64
-}
-
-func newLogoTargetKey(target service.LogoTarget) logoTargetKey {
-	return logoTargetKey{int64(target.NetworkId), target.LogoId, target.LogoVersion, target.LogoDownloadDataId}
 }

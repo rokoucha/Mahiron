@@ -12,7 +12,6 @@ import (
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/db"
 	"github.com/21S1298001/mahiron/internal/model"
-	"github.com/21S1298001/mahiron/ts"
 )
 
 func TestServiceManagerGetChannelsExcludesDisabledChannels(t *testing.T) {
@@ -522,7 +521,7 @@ func TestSQLiteStorePreservesExistingLogoMetadataWhenScanOmitsLogo(t *testing.T)
 	}
 }
 
-func TestMissingLogoTargetsTracksExactStoredVersion(t *testing.T) {
+func TestHasLogoDataTracksExactStoredVersion(t *testing.T) {
 	ctx := context.Background()
 	database, err := db.OpenInMemory()
 	if err != nil {
@@ -543,226 +542,21 @@ func TestMissingLogoTargetsTracksExactStoredVersion(t *testing.T) {
 	if err := store.ReplaceChannelServices(ctx, "GR", "27", []*Service{service}); err != nil {
 		t.Fatal(err)
 	}
-	missing, err := store.MissingLogoTargets(ctx)
-	if err != nil || len(missing) != 1 {
-		t.Fatalf("missing before upsert = %#v, err=%v", missing, err)
+	if got, err := store.GetByItemID(ctx, 100101); err != nil || got.HasLogoData {
+		t.Fatalf("service before upsert = %#v, err=%v, want no logo data", got, err)
+	}
+	if err := store.UpsertLogo(ctx, 1, service.Key.StreamID, 101, logoID, 5, version-1, downloadID, []byte("old"), 1000); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := store.GetByItemID(ctx, 100101); err != nil || got.HasLogoData {
+		t.Fatalf("service with another version stored = %#v, err=%v, want no logo data", got, err)
 	}
 	if err := store.UpsertLogo(ctx, 1, service.Key.StreamID, 101, logoID, 5, version, downloadID, []byte("png"), 1000); err != nil {
 		t.Fatal(err)
 	}
-	missing, err = store.MissingLogoTargets(ctx)
-	if err != nil || len(missing) != 0 {
-		t.Fatalf("missing after upsert = %#v, err=%v", missing, err)
+	if got, err := store.GetByItemID(ctx, 100101); err != nil || !got.HasLogoData {
+		t.Fatalf("service after upsert = %#v, err=%v, want logo data", got, err)
 	}
-}
-
-func TestLogoGatherTargetsRefreshesKnownLogos(t *testing.T) {
-	ctx := context.Background()
-	database, err := db.OpenInMemory()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = database.Close() }()
-	store := NewSQLiteStore(database)
-
-	remoteLogoID, remoteVersion, remoteDownloadID := int64(12), int64(0), int64(101)
-	localLogoID, localVersion, localDownloadID := int64(13), int64(3), int64(7)
-	if err := store.ReplaceChannelServices(ctx, "GR", "27", []*Service{
-		{Id: "0000400101", Service: model.Service{Key: model.ServiceKey{NetworkID: 4, ServiceID: 101}, Logo: &model.LogoRef{LogoID: uint16(remoteLogoID), Version: new(uint16(remoteVersion)), DownloadDataID: new(uint16(remoteDownloadID))}}, ChannelType: "GR", ChannelId: "27"},
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.ReplaceChannelServices(ctx, "BS", "BS01", []*Service{
-		{Id: "0000400102", Service: model.Service{Key: model.ServiceKey{NetworkID: 4, ServiceID: 102}, Logo: &model.LogoRef{LogoID: uint16(localLogoID), Version: new(uint16(localVersion)), DownloadDataID: new(uint16(localDownloadID))}}, ChannelType: "BS", ChannelId: "BS01"},
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.UpsertLogo(ctx, 4, 0, 101, remoteLogoID, 5, remoteVersion, remoteDownloadID, []byte("remote"), 1000); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.UpsertLogo(ctx, 4, 0, 102, localLogoID, 5, localVersion, localDownloadID, []byte("local"), 1000); err != nil {
-		t.Fatal(err)
-	}
-
-	no := false
-	manager := NewManager(store, config.ChannelsConfig{
-		{Name: "Remote", Type: "GR", Channel: "27", IsDisabled: &no, Routes: []config.ChannelRouteConfig{{Remote: "mirakurun", Type: "GR", Channel: "27", IsDisabled: &no}}},
-		{Name: "Local", Type: "BS", Channel: "BS01", IsDisabled: &no},
-	})
-
-	missing, err := manager.MissingLogoTargets(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(missing) != 0 {
-		t.Fatalf("missing targets = %#v, want none", missing)
-	}
-	targets, err := manager.LogoGatherTargets(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(targets) != 2 {
-		t.Fatalf("logo gather targets = %#v, want known logo targets", targets)
-	}
-	if !hasLogoTarget(targets, "GR", "27", remoteLogoID, false) {
-		t.Fatalf("logo gather target = %#v, want remote synthetic target", targets[0])
-	}
-	if !hasLogoTarget(targets, "BS", "BS01", localLogoID, false) {
-		t.Fatalf("logo gather targets = %#v, want local known target", targets)
-	}
-}
-
-func TestLogoGatherTargetsUsesONIDForCommonDataInsteadOfChannelType(t *testing.T) {
-	ctx := context.Background()
-	database, err := db.OpenInMemory()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = database.Close() }()
-	store := NewSQLiteStore(database)
-	if err := store.ReplaceChannelServices(ctx, "anything", "sat-a", []*Service{{
-		Id: "0000400101",
-		Service: model.Service{
-			Key: model.ServiceKey{NetworkID: 4, StreamID: 0x4010, ServiceID: 101},
-		},
-		ChannelType: "anything",
-		ChannelId:   "sat-a",
-	}}); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.ReplaceChannelServices(ctx, "BS", "not-satellite", []*Service{{
-		Id: "1234500101",
-		Service: model.Service{
-			Key: model.ServiceKey{NetworkID: 12345, StreamID: 0x2222, ServiceID: 101},
-		},
-		ChannelType: "BS",
-		ChannelId:   "not-satellite",
-	}}); err != nil {
-		t.Fatal(err)
-	}
-	manager := NewManager(store, config.ChannelsConfig{})
-	targets, err := manager.LogoGatherTargets(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(targets) != 1 {
-		t.Fatalf("targets = %#v, want one satellite common-data target", targets)
-	}
-	if !targets[0].IsCommonData || !targets[0].IsSDTTProbe || targets[0].ChannelType != "anything" || targets[0].NetworkId != 4 {
-		t.Fatalf("target = %#v, want ONID-based common-data target", targets[0])
-	}
-}
-
-func TestLogoGatherTargetsUsesSDTTAnnouncementChannel(t *testing.T) {
-	ctx := context.Background()
-	database, err := db.OpenInMemory()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = database.Close() }()
-	store := NewSQLiteStore(database)
-	if err := store.ReplaceChannelServices(ctx, "sat", "target", []*Service{{
-		Id: "0000400101",
-		Service: model.Service{
-			Key: model.ServiceKey{NetworkID: 4, StreamID: 0x4010, ServiceID: 101},
-		},
-		ChannelType: "sat",
-		ChannelId:   "target",
-	}}); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.ReplaceChannelServices(ctx, "sat", "common", []*Service{{
-		Id: "0000492900",
-		Service: model.Service{
-			Key: model.ServiceKey{NetworkID: 4, StreamID: 0x4031, ServiceID: 929},
-		},
-		ChannelType: "sat",
-		ChannelId:   "common",
-	}}); err != nil {
-		t.Fatal(err)
-	}
-	manager := NewManager(store, config.ChannelsConfig{})
-	if err := manager.UpsertCommonDataAnnouncement(ctx, ts.CommonDataAnnouncement{
-		OriginalNetworkID: 4, TransportStreamID: 0x4031, ServiceID: 929, DownloadID: 0x12345678, VersionID: 7,
-	}, "sat", "target"); err != nil {
-		t.Fatal(err)
-	}
-	targets, err := manager.LogoGatherTargets(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(targets) != 1 {
-		t.Fatalf("targets = %#v, want one common-data target", targets)
-	}
-	if !targets[0].IsCommonData || targets[0].IsSDTTProbe || targets[0].ChannelType != "sat" || targets[0].ChannelId != "common" {
-		t.Fatalf("target = %#v, want SDTT common-data channel", targets[0])
-	}
-}
-
-func TestLogoGatherTargetsRefreshesCommonDataWhenLogosArePresent(t *testing.T) {
-	ctx := context.Background()
-	database, err := db.OpenInMemory()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = database.Close() }()
-	store := NewSQLiteStore(database)
-	logoID, logoVersion, downloadID := int64(12), int64(3), int64(7)
-	if err := store.ReplaceChannelServices(ctx, "sat", "service", []*Service{{
-		Id: "0000400101",
-		Service: model.Service{
-			Key:  model.ServiceKey{NetworkID: 4, StreamID: 0x4010, ServiceID: 101},
-			Logo: &model.LogoRef{LogoID: uint16(logoID), Version: new(uint16(logoVersion)), DownloadDataID: new(uint16(downloadID))},
-		},
-		ChannelType: "sat",
-		ChannelId:   "service",
-	}}); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.UpsertLogo(ctx, 4, 0x4010, 101, logoID, 5, logoVersion, downloadID, []byte("png"), 1000); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.ReplaceChannelServices(ctx, "sat", "common", []*Service{{
-		Id: "0000492900",
-		Service: model.Service{
-			Key: model.ServiceKey{NetworkID: 4, StreamID: 0x40f1, ServiceID: 929},
-		},
-		ChannelType: "sat",
-		ChannelId:   "common",
-	}}); err != nil {
-		t.Fatal(err)
-	}
-	manager := NewManager(store, config.ChannelsConfig{})
-
-	missing, err := manager.MissingLogoTargets(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(missing) != 0 {
-		t.Fatalf("missing targets = %#v, want none", missing)
-	}
-	targets, err := manager.LogoGatherTargets(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(targets) != 2 {
-		t.Fatalf("targets = %#v, want known logo and common-data refresh targets", targets)
-	}
-	if !hasLogoTarget(targets, "sat", "service", logoID, false) {
-		t.Fatalf("targets = %#v, want known service logo refresh target", targets)
-	}
-	if !hasLogoTarget(targets, "sat", "common", 0, true) {
-		t.Fatalf("target = %#v, want common-data refresh target", targets[0])
-	}
-}
-
-func hasLogoTarget(targets []LogoTarget, channelType, channelID string, logoID int64, common bool) bool {
-	for _, target := range targets {
-		if target.ChannelType == channelType && target.ChannelId == channelID && target.LogoId == logoID && target.IsCommonData == common {
-			return true
-		}
-	}
-	return false
 }
 
 func TestCommonDataAnnouncementUpsertReplacesOlderRoute(t *testing.T) {
@@ -774,7 +568,7 @@ func TestCommonDataAnnouncementUpsertReplacesOlderRoute(t *testing.T) {
 	defer func() { _ = database.Close() }()
 	store := NewSQLiteStore(database)
 	manager := NewManager(store, config.ChannelsConfig{})
-	announcement := ts.CommonDataAnnouncement{OriginalNetworkID: 4, TransportStreamID: 0x4031, ServiceID: 929, DownloadID: 1, VersionID: 1}
+	announcement := model.CommonDataAnnouncement{Service: model.ServiceKey{NetworkID: 4, StreamID: 0x4031, ServiceID: 929}, DownloadID: 1, VersionID: 1}
 	if err := manager.UpsertCommonDataAnnouncement(ctx, announcement, "sat", "old"); err != nil {
 		t.Fatal(err)
 	}
@@ -792,7 +586,7 @@ func TestCommonDataAnnouncementUpsertReplacesOlderRoute(t *testing.T) {
 	}
 }
 
-func TestServiceManagerUpsertCommonLogoImageUpdatesServiceByTSID(t *testing.T) {
+func TestServiceManagerUpsertLogoImageAssignsNamedServicesByTSID(t *testing.T) {
 	ctx := context.Background()
 	database, err := db.OpenInMemory()
 	if err != nil {
@@ -807,10 +601,9 @@ func TestServiceManagerUpsertCommonLogoImageUpdatesServiceByTSID(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	raw := buildServiceTestPalettePNG(false)
-	if err := manager.UpsertCommonLogoImage(ctx, ts.CommonLogoImage{
-		LogoID: 12, LogoType: 5, LogoVersion: 2, DownloadID: 0x1234, Data: raw,
-		Services: []ts.CommonLogoService{{OriginalNetworkID: 4, TransportStreamID: 0x4010, ServiceID: 101}},
+	if err := manager.UpsertLogoImage(ctx, model.Logo{
+		NetworkID: 4, LogoID: 12, LogoType: 5, Version: 2, DownloadDataID: 0x1234, Data: buildServiceTestPalettePNG(true),
+		Services: []model.ServiceKey{{NetworkID: 4, StreamID: 0x4010, ServiceID: 101}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -830,7 +623,7 @@ func TestServiceManagerUpsertCommonLogoImageUpdatesServiceByTSID(t *testing.T) {
 	}
 }
 
-func TestServiceManagerUpsertCommonLogoImageKeepsOldMetadataWhenLogoStoreFails(t *testing.T) {
+func TestServiceManagerUpsertAssignedLogoKeepsOldMetadataWhenLogoStoreFails(t *testing.T) {
 	ctx := context.Background()
 	database, err := db.OpenInMemory()
 	if err != nil {
@@ -855,12 +648,12 @@ func TestServiceManagerUpsertCommonLogoImageKeepsOldMetadataWhenLogoStoreFails(t
 	}
 	manager := NewManager(failingLogoStore{Store: store, err: errors.New("store failed")}, config.ChannelsConfig{})
 
-	err = manager.UpsertCommonLogoImage(ctx, ts.CommonLogoImage{
-		LogoID: 12, LogoType: 5, LogoVersion: 2, DownloadID: 0x2222, Data: buildServiceTestPalettePNG(true),
-		Services: []ts.CommonLogoService{{OriginalNetworkID: 4, TransportStreamID: 0x4010, ServiceID: 101}},
+	err = manager.UpsertLogoImage(ctx, model.Logo{
+		NetworkID: 4, LogoID: 12, LogoType: 5, Version: 2, DownloadDataID: 0x2222, Data: buildServiceTestPalettePNG(true),
+		Services: []model.ServiceKey{{NetworkID: 4, StreamID: 0x4010, ServiceID: 101}},
 	})
 	if err == nil {
-		t.Fatal("UpsertCommonLogoImage error = nil, want store failure")
+		t.Fatal("UpsertLogoImage error = nil, want store failure")
 	}
 	svc, err := store.GetByItemID(ctx, 400101)
 	if err != nil {

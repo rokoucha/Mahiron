@@ -31,3 +31,12 @@
   startupRetryMax: 1
   startupTimeout: 3000
   startupRetryDelay: 500
+
+- name: pt4k-bs4k-sample
+  types:
+    - BS4K
+  command: recpt1 --device /dev/pt4k0 <channel> - -
+  # ACAS descrambler for TLV channels (e.g. arib-b61-stream-test).
+  # decode=1 without b61Decoder falls back to the raw stream.
+  b61Decoder: cat
+  isDisabled: true

@@ -61,8 +61,8 @@ func (idx *expectedServiceIndex) matchesExpected(key model.ServiceKey) bool {
 	}
 	ids, ok := byTSID[key.StreamID]
 	if !ok {
-		// A zero TSID is only used by older tests and in-memory fakes. Real
-		// scanned services always carry the ARIB transport_stream_id.
+		// A zero stream ID means the scan did not learn it, as with a remote
+		// that omits transportStreamId.
 		ids, ok = byTSID[0]
 	}
 	if !ok {
@@ -82,18 +82,40 @@ func (idx *expectedServiceIndex) matchesCollectionNetwork(key model.ServiceKey) 
 // only remembers what it last reported.
 type collectionSchedule struct {
 	updates map[model.ServiceKey]model.ScheduleUpdate
+	// unknownStream maps services whose expected key has no stream ID (a
+	// remote that omits transportStreamId) to that key, so the real stream
+	// ID the session reports is filed under it.
+	unknownStream map[serviceIdentity]model.ServiceKey
 	// lastProgress is when the session last reported progress.
 	lastProgress time.Time
 	// clock is the latest broadcast clock the session reported.
 	clock int64
 }
 
-func newCollectionSchedule() *collectionSchedule {
-	return &collectionSchedule{updates: make(map[model.ServiceKey]model.ScheduleUpdate)}
+type serviceIdentity struct {
+	networkID uint16
+	serviceID uint16
+}
+
+func newCollectionSchedule(expected []model.ServiceKey) *collectionSchedule {
+	c := &collectionSchedule{updates: make(map[model.ServiceKey]model.ScheduleUpdate)}
+	for _, key := range expected {
+		if key.StreamID != 0 {
+			continue
+		}
+		if c.unknownStream == nil {
+			c.unknownStream = make(map[serviceIdentity]model.ServiceKey)
+		}
+		c.unknownStream[serviceIdentity{networkID: key.NetworkID, serviceID: key.ServiceID}] = key
+	}
+	return c
 }
 
 func (c *collectionSchedule) observe(update model.ScheduleUpdate) model.ServiceKey {
 	key := update.Service
+	if expected, ok := c.unknownStream[serviceIdentity{networkID: key.NetworkID, serviceID: key.ServiceID}]; ok {
+		key = expected
+	}
 	c.updates[key] = update
 	c.lastProgress = time.Now()
 	c.clock = max(c.clock, update.ObservedAt)
@@ -191,7 +213,7 @@ func CollectServiceSnapshots(ctx context.Context, events EventWriter, serviceSto
 		collectDone <- collectionResult{collectErr: collect(collectCtx, onSchedule, onPresentFollowing)}
 	}()
 
-	schedule := newCollectionSchedule()
+	schedule := newCollectionSchedule(expected)
 	pfUpserts := newEITPFUpserter(collectCtx, events)
 	defer pfUpserts.wait()
 	defer pfUpserts.stop()
@@ -315,10 +337,6 @@ func persistObservedSnapshots(ctx context.Context, writer EventWriter, serviceSt
 	observedEvents := make(map[model.ServiceKey][]model.Event)
 	mergeKeys := append([]model.ServiceKey(nil), expected...)
 	expectedSeen := make(map[model.ServiceKey]struct{}, len(expected))
-	type serviceIdentity struct {
-		networkID uint16
-		serviceID uint16
-	}
 	expectedTransportStreams := make(map[serviceIdentity]uint16, len(expected))
 	for _, key := range expected {
 		expectedSeen[key] = struct{}{}

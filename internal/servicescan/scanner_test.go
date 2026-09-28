@@ -458,3 +458,14 @@ func idFor(nid, sid uint16) string {
 func uint8Ptr(v uint8) *uint8 { return &v }
 
 func uint32Ptr(v uint32) *uint32 { return &v }
+
+func TestServiceChannelsIncludesTLVChannels(t *testing.T) {
+	channels := NewScanner(nil, nil, config.ChannelsConfig{
+		{Type: "GR", Channel: "27", Transport: config.TransportTS},
+		{Type: "BS4K", Channel: "101", Transport: config.TransportTLV},
+	}, time.Second).Channels()
+
+	if len(channels) != 2 || channels[1] != (Channel{Type: "BS4K", ID: "101"}) {
+		t.Fatalf("channels = %#v, want GR/27 and BS4K/101", channels)
+	}
+}

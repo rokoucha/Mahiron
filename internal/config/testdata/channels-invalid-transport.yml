@@ -1,0 +1,4 @@
+- name: NHK BSP4K
+  type: BS4K
+  channel: "101"
+  transport: mmts

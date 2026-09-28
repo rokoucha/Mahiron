@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/21S1298001/mahiron/internal/stream/fanout"
 	"github.com/21S1298001/mahiron/internal/stream/internal/streamtest"
 	"github.com/21S1298001/mahiron/internal/tuner"
 	"github.com/21S1298001/mahiron/ts"
@@ -17,6 +18,10 @@ import (
 
 func TestPacketDemuxerNormalizesInputFrames(t *testing.T) {
 	packet := streamtest.TestPacket(0x0100, 3)
+	// The engine's reader now checks the stream is TS before delivering a
+	// packet (see framing.NewCheckReader), which needs five packets in a
+	// row of one stride to be convinced; six gives it margin.
+	const repeats = 6
 	for _, tc := range []struct {
 		name  string
 		frame []byte
@@ -26,7 +31,7 @@ func TestPacketDemuxerNormalizesInputFrames(t *testing.T) {
 		{name: "204", frame: append(append([]byte{}, packet...), bytes.Repeat([]byte{0xee}, 16)...)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			input := bytes.Repeat(tc.frame, 4)
+			input := bytes.Repeat(tc.frame, repeats)
 			var starts atomic.Int32
 			engine := New(func(_ context.Context, dst io.Writer) error {
 				starts.Add(1)
@@ -40,7 +45,7 @@ func TestPacketDemuxerNormalizesInputFrames(t *testing.T) {
 			if starts.Load() != 1 {
 				t.Fatalf("source starts = %d, want 1", starts.Load())
 			}
-			if got, want := out.Len(), 4*ts.PacketSize; got != want {
+			if got, want := out.Len(), repeats*ts.PacketSize; got != want {
 				t.Fatalf("output bytes = %d, want %d", got, want)
 			}
 			for off := 0; off < out.Len(); off += ts.PacketSize {
@@ -198,17 +203,15 @@ func TestKeepAliveDoesNotQueueSections(t *testing.T) {
 	}()
 
 	if !streamtest.Eventually(time.Second, func() bool {
-		engine.mu.Lock()
-		defer engine.mu.Unlock()
-		return len(engine.sections) == 1
+		return engine.SectionSubscriberCount() == 1
 	}) {
 		t.Fatal("keep-alive subscription did not attach")
 	}
 
 	packet := ts.Packet(make([]byte, ts.PacketSize))
 	section := ts.PIDSection{Section: ts.Section{ts.TableIDTOT}}
-	for range sectionSubscriberBuffer * 2 {
-		engine.dispatch(packet, []ts.PIDSection{section})
+	for range 1024 {
+		engine.Dispatch(packet, []ts.PIDSection{section})
 	}
 	select {
 	case err := <-returned:
@@ -291,7 +294,7 @@ func TestPacketDemuxerObserveSectionsWaitsForObserverOnCancel(t *testing.T) {
 	}()
 	<-attached
 
-	engine.dispatch(nil, []ts.PIDSection{{PID: ts.PIDEIT, Section: ts.Section{ts.TableIDEITSStart, 0, 0}}})
+	engine.Dispatch(nil, []ts.PIDSection{{PID: ts.PIDEIT, Section: ts.Section{ts.TableIDEITSStart, 0, 0}}})
 	<-entered
 	cancel()
 
@@ -432,14 +435,15 @@ func (w *countingWriter) Write(p []byte) (int, error) {
 
 func (w *countingWriter) Len() int { return int(w.written.Load()) }
 
+// packetSubscriberBuffer is how many TS packets fit in a subscriber's byte
+// budget.
+const packetSubscriberBuffer = fanout.SubscriberBufferBytes / ts.PacketSize
+
 func waitForDemuxerSubscribers(t *testing.T, engine *Demuxer, want int) {
 	t.Helper()
 	deadline := time.Now().Add(time.Second)
 	for time.Now().Before(deadline) {
-		engine.mu.Lock()
-		got := len(engine.packets)
-		engine.mu.Unlock()
-		if got == want {
+		if engine.PacketSubscriberCount() == want {
 			return
 		}
 		time.Sleep(time.Millisecond)
@@ -498,5 +502,41 @@ func TestPacketDemuxerResumesDeliveryAfterOverflow(t *testing.T) {
 	}
 	if got := blocked.Len(); got <= drained {
 		t.Fatalf("subscriber received %d bytes, want more than the %d it had before recovering", got, drained)
+	}
+}
+
+// TestPacketDemuxerRejectsTLV pins the reverse of TLV's own guard: a route
+// configured as TS that actually carries ISDB-S3 TLV (a misconfigured
+// channel, or a remote/decoder that converts the other way) is caught
+// before any packet is delivered, instead of PacketReader's lenient resync
+// picking out coincidental sync bytes from the TLV bytes.
+func TestPacketDemuxerRejectsTLV(t *testing.T) {
+	tlvPacket := append([]byte{0x7F, 0xFF, 0x00, byte(ts.PacketSize - 4)}, bytes.Repeat([]byte{0xAA}, ts.PacketSize-4)...)
+	input := bytes.Repeat(tlvPacket, 2000)
+	engine := New(func(_ context.Context, dst io.Writer) error {
+		_, err := dst.Write(input)
+		return err
+	}, nil)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := engine.SubscribeChannel(ctx, io.Discard); !errors.Is(err, ErrNotTSStream) {
+		t.Fatalf("SubscribeChannel over TLV bytes error = %v, want ErrNotTSStream", err)
+	}
+	if ctx.Err() != nil {
+		t.Fatal("SubscribeChannel over TLV bytes hung instead of rejecting")
+	}
+}
+
+// TestPacketDemuxerRejectsGarbage is the demux-side counterpart of TLV's
+// own garbage rejection test.
+func TestPacketDemuxerRejectsGarbage(t *testing.T) {
+	engine := New(func(_ context.Context, dst io.Writer) error {
+		_, err := dst.Write([]byte{0x00, 0x01, 0x02})
+		return err
+	}, nil)
+
+	if err := engine.SubscribeChannel(context.Background(), io.Discard); !errors.Is(err, ErrNotTSStream) {
+		t.Fatalf("SubscribeChannel over garbage error = %v, want ErrNotTSStream", err)
 	}
 }

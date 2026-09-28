@@ -16,16 +16,16 @@ func TestTunerManagerReservesIndividualTuners(t *testing.T) {
 		{Name: "second", Types: []string{"GR"}, Command: "second", Decoder: "decode-second"},
 	}})
 	channel := &config.ChannelConfig{Type: "GR", Channel: "27"}
-	first, firstDecoder, err := mgr.AcquireDevice(context.Background(), "GR", channel, channel, false)
+	first, firstDecoders, err := mgr.AcquireDevice(context.Background(), "GR", channel, channel, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, secondDecoder, err := mgr.AcquireDevice(context.Background(), "GR", channel, channel, false)
+	second, secondDecoders, err := mgr.AcquireDevice(context.Background(), "GR", channel, channel, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if firstDecoder != "decode-first" || secondDecoder != "decode-second" {
-		t.Fatalf("decoders = %q, %q", firstDecoder, secondDecoder)
+	if firstDecoders.Decoder != "decode-first" || secondDecoders.Decoder != "decode-second" {
+		t.Fatalf("decoders = %q, %q", firstDecoders.Decoder, secondDecoders.Decoder)
 	}
 	if _, _, err := mgr.AcquireDevice(context.Background(), "GR", channel, channel, false); !errors.Is(err, ErrTunerUnavailable) {
 		t.Fatalf("third acquire error = %v", err)
@@ -33,9 +33,9 @@ func TestTunerManagerReservesIndividualTuners(t *testing.T) {
 	if err := first.Stop(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	reused, decoder, err := mgr.AcquireDevice(context.Background(), "GR", channel, channel, false)
-	if err != nil || decoder != "decode-first" {
-		t.Fatalf("reused decoder = %q, err = %v", decoder, err)
+	reused, decoders, err := mgr.AcquireDevice(context.Background(), "GR", channel, channel, false)
+	if err != nil || decoders.Decoder != "decode-first" {
+		t.Fatalf("reused decoder = %q, err = %v", decoders.Decoder, err)
 	}
 	_ = reused.Stop(context.Background())
 	_ = second.Stop(context.Background())
@@ -120,12 +120,12 @@ func TestTunerManagerSelectsTunersRoundRobin(t *testing.T) {
 	channel := &config.ChannelConfig{Type: "GR", Channel: "27"}
 	want := []string{"decode-first", "decode-second", "decode-first", "decode-second"}
 	for i, expected := range want {
-		device, decoder, err := mgr.AcquireDevice(context.Background(), "GR", channel, channel, false)
+		device, decoders, err := mgr.AcquireDevice(context.Background(), "GR", channel, channel, false)
 		if err != nil {
 			t.Fatalf("acquire %d: %v", i, err)
 		}
-		if decoder != expected {
-			t.Fatalf("acquire %d decoder = %q, want %q", i, decoder, expected)
+		if decoders.Decoder != expected {
+			t.Fatalf("acquire %d decoder = %q, want %q", i, decoders.Decoder, expected)
 		}
 		if err := device.Stop(context.Background()); err != nil {
 			t.Fatalf("stop %d: %v", i, err)
@@ -146,12 +146,12 @@ func TestTunerManagerHighPriorityGrabsLowPriorityTuner(t *testing.T) {
 	low.(interface{ AddUser(User) }).AddUser(User{ID: "low", Priority: 1})
 
 	highCtx := WithUser(context.Background(), User{ID: "high", Priority: 2})
-	high, decoder, err := mgr.AcquireDevice(highCtx, "GR", channel, channel, false)
+	high, decoders, err := mgr.AcquireDevice(highCtx, "GR", channel, channel, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if decoder != "decode-only" {
-		t.Fatalf("decoder = %q, want decode-only", decoder)
+	if decoders.Decoder != "decode-only" {
+		t.Fatalf("decoder = %q, want decode-only", decoders.Decoder)
 	}
 	if low == high {
 		t.Fatal("grabbed acquire should return a new managed device")
@@ -277,12 +277,12 @@ func TestTunerManagerGrabsLowestPriorityCandidate(t *testing.T) {
 	}
 	second.(interface{ AddUser(User) }).AddUser(User{ID: "second", Priority: 1})
 
-	grabber, decoder, err := mgr.AcquireDevice(WithUser(context.Background(), User{ID: "grabber", Priority: 5}), "GR", channel, channel, false)
+	grabber, decoders, err := mgr.AcquireDevice(WithUser(context.Background(), User{ID: "grabber", Priority: 5}), "GR", channel, channel, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if decoder != "decode-second" {
-		t.Fatalf("grabbed decoder = %q, want decode-second", decoder)
+	if decoders.Decoder != "decode-second" {
+		t.Fatalf("grabbed decoder = %q, want decode-second", decoders.Decoder)
 	}
 	_ = grabber.Stop(context.Background())
 	_ = first.Stop(context.Background())
@@ -293,12 +293,12 @@ func TestTunerManagerReservesDVBCommandTuner(t *testing.T) {
 		{Name: "dvb", Types: []string{"SKY"}, Command: "true", DvbDevicePath: "/dev/null", Decoder: "decode-dvb"},
 	}})
 	channel := &config.ChannelConfig{Type: "SKY", Channel: "JCSAT3A"}
-	device, decoder, err := mgr.AcquireDevice(context.Background(), "SKY", channel, channel, false)
+	device, decoders, err := mgr.AcquireDevice(context.Background(), "SKY", channel, channel, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if decoder != "decode-dvb" {
-		t.Fatalf("decoder = %q, want decode-dvb", decoder)
+	if decoders.Decoder != "decode-dvb" {
+		t.Fatalf("decoder = %q, want decode-dvb", decoders.Decoder)
 	}
 	if err := device.Stop(context.Background()); err != nil {
 		t.Fatal(err)
@@ -354,5 +354,27 @@ func TestTunerManagerKillProcessIdleAndMissing(t *testing.T) {
 	}
 	if err := mgr.KillProcess(context.Background(), 1); !errors.Is(err, ErrTunerNotFound) {
 		t.Fatalf("missing kill error = %v", err)
+	}
+}
+
+func TestTunerManagerReturnsB61DecoderCommand(t *testing.T) {
+	mgr := NewManager(&ManagerConfig{TunersConfig: config.TunersConfig{
+		{Name: "pt4k", Types: []string{"BS4K", "BS"}, Command: "true", Decoder: "b25", B61Decoder: "b61"},
+		{Name: "plain", Types: []string{"BS4K"}, Command: "true"},
+	}})
+	channel := &config.ChannelConfig{Type: "BS4K", Channel: "101"}
+	device, decoders, err := mgr.AcquireDevice(context.Background(), "BS4K", channel, channel, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = device.Stop(context.Background()) }()
+	if decoders.Decoder != "b25" || decoders.B61Decoder != "b61" {
+		t.Fatalf("decoders = %+v, want {b25 b61}", decoders)
+	}
+	if got := mgr.B61DecoderCommandByType("BS4K"); got != "b61" {
+		t.Fatalf("B61DecoderCommandByType = %q, want b61", got)
+	}
+	if got := mgr.B61DecoderCommandByType("GR"); got != "" {
+		t.Fatalf("B61DecoderCommandByType(GR) = %q, want empty", got)
 	}
 }

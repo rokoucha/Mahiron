@@ -1055,11 +1055,11 @@ func (m *priorityCapturingTunerManager) NewDeviceByType(string, *config.ChannelC
 	return &fakeTunerDevice{done: make(chan struct{})}, nil
 }
 
-func (m *priorityCapturingTunerManager) AcquireDevice(ctx context.Context, _ string, _, _ *config.ChannelConfig, wait bool) (tuner.Device, string, error) {
+func (m *priorityCapturingTunerManager) AcquireDevice(ctx context.Context, _ string, _, _ *config.ChannelConfig, wait bool) (tuner.Device, tuner.DecoderCommands, error) {
 	user, _ := tuner.UserFromContext(ctx)
 	m.priority = user.Priority
 	m.wait = wait
-	return &fakeTunerDevice{done: make(chan struct{})}, "", nil
+	return &fakeTunerDevice{done: make(chan struct{})}, tuner.DecoderCommands{}, nil
 }
 
 type blockingTunerManager struct {
@@ -1084,7 +1084,7 @@ func (m *blockingTunerManager) NewDeviceByType(string, *config.ChannelConfig) (t
 	return &fakeTunerDevice{done: make(chan struct{})}, nil
 }
 
-func (m *blockingTunerManager) AcquireDevice(ctx context.Context, _ string, requested, _ *config.ChannelConfig, _ bool) (tuner.Device, string, error) {
+func (m *blockingTunerManager) AcquireDevice(ctx context.Context, _ string, requested, _ *config.ChannelConfig, _ bool) (tuner.Device, tuner.DecoderCommands, error) {
 	m.mu.Lock()
 	m.count++
 	m.mu.Unlock()
@@ -1093,13 +1093,13 @@ func (m *blockingTunerManager) AcquireDevice(ctx context.Context, _ string, requ
 		select {
 		case <-m.release:
 		case <-ctx.Done():
-			return nil, "", ctx.Err()
+			return nil, tuner.DecoderCommands{}, ctx.Err()
 		}
 	}
 	if device := m.devices[requested.Channel]; device != nil {
-		return device, "", nil
+		return device, tuner.DecoderCommands{}, nil
 	}
-	return &fakeTunerDevice{done: make(chan struct{})}, "", nil
+	return &fakeTunerDevice{done: make(chan struct{})}, tuner.DecoderCommands{}, nil
 }
 
 func (m *blockingTunerManager) waitEntered(t *testing.T, channel string) {

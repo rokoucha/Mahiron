@@ -1,10 +1,16 @@
-package ts
+package isdb
 
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"hash/crc32"
 )
+
+// ErrInvalidLogoPNG is returned for logo data that is not a well-formed PNG.
+var ErrInvalidLogoPNG = errors.New("isdb: invalid logo PNG")
+
+var pngSignature = []byte{0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a}
 
 var (
 	pngChunkIHDR = [4]byte{'I', 'H', 'D', 'R'}
@@ -18,9 +24,12 @@ var (
 // materializing the receiver common fixed colors from ARIB TR-B14 Appendix-1.
 var aribCommonFixedColorPLTE, aribCommonFixedColortRNS = buildARIBCommonFixedColorChunks()
 
+// NormalizeARIBLogoPNG completes a logo that relies on the receiver common
+// fixed colors with PLTE and tRNS chunks. The TS HD large logo and the
+// ISDB-S3 2K logo are sent this way; a PNG that has PLTE is returned as is.
 func NormalizeARIBLogoPNG(data []byte) ([]byte, error) {
 	if !bytes.HasPrefix(data, pngSignature) {
-		return nil, ErrInvalidSection
+		return nil, ErrInvalidLogoPNG
 	}
 
 	pos := len(pngSignature)
@@ -31,7 +40,7 @@ func NormalizeARIBLogoPNG(data []byte) ([]byte, error) {
 
 	for {
 		if pos+12 > len(data) {
-			return nil, ErrInvalidSection
+			return nil, ErrInvalidLogoPNG
 		}
 		chunkLen := int(binary.BigEndian.Uint32(data[pos : pos+4]))
 		chunkTypeStart := pos + 4
@@ -39,7 +48,7 @@ func NormalizeARIBLogoPNG(data []byte) ([]byte, error) {
 		chunkDataEnd := chunkDataStart + chunkLen
 		chunkEnd := chunkDataEnd + 4
 		if chunkLen < 0 || chunkDataEnd < chunkDataStart || chunkEnd > len(data) {
-			return nil, ErrInvalidSection
+			return nil, ErrInvalidLogoPNG
 		}
 
 		var chunkType [4]byte
@@ -47,7 +56,7 @@ func NormalizeARIBLogoPNG(data []byte) ([]byte, error) {
 		switch chunkType {
 		case pngChunkIHDR:
 			if chunkLen != 13 || ihdrEnd != -1 {
-				return nil, ErrInvalidSection
+				return nil, ErrInvalidLogoPNG
 			}
 			colorType = data[chunkDataStart+9]
 			ihdrEnd = chunkEnd
@@ -60,14 +69,14 @@ func NormalizeARIBLogoPNG(data []byte) ([]byte, error) {
 		pos = chunkEnd
 		if hasIEND {
 			if pos != len(data) {
-				return nil, ErrInvalidSection
+				return nil, ErrInvalidLogoPNG
 			}
 			break
 		}
 	}
 
 	if ihdrEnd == -1 {
-		return nil, ErrInvalidSection
+		return nil, ErrInvalidLogoPNG
 	}
 	if colorType != 3 || hasPLTE {
 		return data, nil

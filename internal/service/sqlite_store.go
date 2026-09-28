@@ -143,49 +143,6 @@ func (s *sqliteStore) GetLogoByServiceItemID(ctx context.Context, itemID int64) 
 	return data, nil
 }
 
-func (s *sqliteStore) KnownLogoTargets(ctx context.Context) ([]LogoTarget, error) {
-	rows, err := s.rq.KnownLogoTargets(ctx)
-	if err != nil {
-		return nil, err
-	}
-	result := make([]LogoTarget, 0, len(rows))
-	for _, row := range rows {
-		if row.LogoID == nil || row.LogoVersion == nil || row.LogoDownloadDataID == nil {
-			continue
-		}
-		result = append(result, LogoTarget{
-			NetworkId:          uint16(row.NetworkID),
-			ServiceId:          uint16(row.ServiceID),
-			TransportStreamId:  uint16(row.TransportStreamID),
-			ChannelType:        row.ChannelType,
-			ChannelId:          row.ChannelID,
-			LogoId:             *row.LogoID,
-			LogoVersion:        *row.LogoVersion,
-			LogoDownloadDataId: *row.LogoDownloadDataID,
-		})
-	}
-	return result, nil
-}
-
-func (s *sqliteStore) MissingLogoTargets(ctx context.Context) ([]LogoTarget, error) {
-	rows, err := s.rq.MissingLogoTargets(ctx)
-	if err != nil {
-		return nil, err
-	}
-	result := make([]LogoTarget, 0, len(rows))
-	for _, row := range rows {
-		if row.LogoID == nil || row.LogoVersion == nil || row.LogoDownloadDataID == nil {
-			continue
-		}
-		result = append(result, LogoTarget{
-			NetworkId: uint16(row.NetworkID), ServiceId: uint16(row.ServiceID), TransportStreamId: uint16(row.TransportStreamID),
-			ChannelType: row.ChannelType, ChannelId: row.ChannelID, LogoId: *row.LogoID,
-			LogoVersion: *row.LogoVersion, LogoDownloadDataId: *row.LogoDownloadDataID,
-		})
-	}
-	return result, nil
-}
-
 func (s *sqliteStore) ListCommonDataAnnouncements(ctx context.Context) ([]CommonDataAnnouncement, error) {
 	rows, err := s.rq.ListCommonDataAnnouncements(ctx)
 	if err != nil {

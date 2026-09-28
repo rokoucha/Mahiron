@@ -9,6 +9,13 @@ import (
 
 type ChannelsConfig []ChannelConfig
 
+const (
+	// TransportTS is a MPEG-2 TS channel (ISDB-T/S).
+	TransportTS = "ts"
+	// TransportTLV is an ISDB-S3 (MMT/TLV) channel.
+	TransportTLV = "tlv"
+)
+
 type ChannelConfig struct {
 	// https://github.com/Chinachu/Mirakurun/blob/61c4155d2535c56fbf6fd379c5e8aba779fd642b/api.d.ts#L320
 	Name        string         `json:"name"`
@@ -17,6 +24,7 @@ type ChannelConfig struct {
 	ServiceId   *uint32        `json:"serviceId,omitempty"`
 	TsmfRelTs   *uint8         `json:"tsmfRelTs,omitempty"`
 	CommandVars map[string]any `json:"commandVars,omitempty"`
+	Transport   string         `json:"transport,omitempty"`
 	IsDisabled  *bool          `json:"isDisabled,omitempty"`
 	Satelite    *string        `json:"satelite,omitempty"`  // deprecated
 	Satellite   *string        `json:"satellite,omitempty"` // deprecated
@@ -42,6 +50,12 @@ type ChannelRouteConfig struct {
 
 func IsChannelDisabled(channel ChannelConfig) bool {
 	return channel.IsDisabled != nil && *channel.IsDisabled
+}
+
+// IsTLVTransport reports whether the channel carries ISDB-S3 (MMT/TLV).
+// Transport is a channel attribute, so every route of the channel shares it.
+func IsTLVTransport(channel ChannelConfig) bool {
+	return channel.Transport == TransportTLV
 }
 
 func LoadAndParseChannelsConfig(filePath string) (ChannelsConfig, error) {
@@ -76,6 +90,11 @@ func LoadAndParseChannelsConfig(filePath string) (ChannelsConfig, error) {
 		}
 		if channel.TsmfRelTs != nil && *channel.TsmfRelTs > 0x0F {
 			return nil, errors.New("tsmfRelTs must be between 0 and 15")
+		}
+		if channel.Transport == "" {
+			config[i].Transport = TransportTS
+		} else if channel.Transport != TransportTS && channel.Transport != TransportTLV {
+			return nil, errors.New("transport must be ts or tlv")
 		}
 		if channel.CommandVars != nil && (channel.Satelite != nil ||
 			channel.Satellite != nil ||

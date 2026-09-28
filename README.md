@@ -12,6 +12,7 @@ Yet another DVR Tuner Server for Japanese TV.
 - リアルタイム番組表更新
 - ケーブルテレビの再送信など複数経路のTSを統合
 - OpenTelemetryによる高い可観測性
+- ISDB-S3の実験的サポート
 
 ## セットアップ
 

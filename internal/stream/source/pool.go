@@ -226,20 +226,22 @@ func (p *Pool) remoteLease(channelType, channel string, selected routeSelection)
 	return NewRemoteInputHandle(client, config.ChannelConfig{Type: channelType, Channel: channel}, selected.channel, selected.route.Remote, selected.route.Type), nil
 }
 
+// IsTLVChannel reports whether the channel carries ISDB-S3 (MMT/TLV).
+// Unknown channels report false; not-found is handled via Acquire instead.
+func (p *Pool) IsTLVChannel(channelType, channel string) bool {
+	channelConfig := p.findChannel(channelType, channel)
+	return channelConfig != nil && config.IsTLVTransport(*channelConfig)
+}
+
 func (p *Pool) localLease(channelType, channel string, selected routeSelection) InputHandle {
-	decoderCommand := selected.decoder
-	if decoderCommand == "" {
-		if provider, ok := p.tunerManager.(DecoderCommandProvider); ok {
-			decoderCommand = provider.DecoderCommandByType(selected.route.Type)
-		}
-	}
+	decoderCommand := p.descramblerCommand(channelType, channel, selected)
 
 	var descrambler Descrambler
 	if decoderCommand != "" && p.descramblerFactory != nil {
 		descrambler = p.descramblerFactory(decoderCommand)
 	}
 
-	slog.Debug("selected local stream route", "type", channelType, "channel", channel, "routeType", selected.route.Type, "decoder", decoderCommand != "")
+	slog.Debug("selected local stream route", "type", channelType, "channel", channel, "routeType", selected.route.Type, "decoder", decoderCommand != "", "tlv", p.IsTLVChannel(channelType, channel))
 	broadcast := selected.broadcast
 	if broadcast == nil {
 		broadcast = NewBroadcast(&tunerLiveSource{
@@ -264,6 +266,12 @@ type broadcastInput struct{ *Broadcast }
 func (i broadcastInput) Subscribe(ctx context.Context, _ StreamVariant, dst io.Writer) error {
 	return i.SubscribeRaw(ctx, dst)
 }
+
+// Stopped and Err expose the shared broadcast lifecycle so sessions can
+// detect a dead input and let the manager evict them.
+func (i broadcastInput) Stopped() bool { return i.Broadcast.Stopped() }
+
+func (i broadcastInput) Err() error { return i.Broadcast.Err() }
 
 type remoteInputHandle struct {
 	inputHandle
@@ -331,8 +339,29 @@ type routeSelection struct {
 	route     config.ChannelRouteConfig
 	channel   config.ChannelConfig
 	device    TunerDevice
-	decoder   string
+	decoders  tuner.DecoderCommands
 	broadcast *Broadcast
+}
+
+// descramblerCommand selects the external descramble command for the route.
+// TLV channels use the ACAS (STD-B61) command, TS channels the B-CAS command.
+func (p *Pool) descramblerCommand(channelType, channel string, selected routeSelection) string {
+	if p.IsTLVChannel(channelType, channel) {
+		if selected.decoders.B61Decoder != "" {
+			return selected.decoders.B61Decoder
+		}
+		if provider, ok := p.tunerManager.(B61DecoderCommandProvider); ok {
+			return provider.B61DecoderCommandByType(selected.route.Type)
+		}
+		return ""
+	}
+	if selected.decoders.Decoder != "" {
+		return selected.decoders.Decoder
+	}
+	if provider, ok := p.tunerManager.(DecoderCommandProvider); ok {
+		return provider.DecoderCommandByType(selected.route.Type)
+	}
+	return ""
 }
 
 func (p *Pool) tryRoute(ctx context.Context, channel *config.ChannelConfig, route config.ChannelRouteConfig, wait bool) (selected routeSelection, err error) {
@@ -378,14 +407,14 @@ func (p *Pool) tryLocalRoute(ctx context.Context, channel *config.ChannelConfig,
 	}
 	if source != nil {
 		slog.Debug("reusing local stream route", "type", channel.Type, "channel", channel.Channel, "routeType", route.Type)
-		return routeSelection{route: route, channel: routeChannel, decoder: source.decoderCommand, broadcast: source.broadcast}, nil
+		return routeSelection{route: route, channel: routeChannel, decoders: tuner.DecoderCommands{Decoder: source.decoderCommand, B61Decoder: source.b61DecoderCommand}, broadcast: source.broadcast}, nil
 	}
 	defer finishCreate()
 
 	var device TunerDevice
-	var decoder string
+	var decoders tuner.DecoderCommands
 	if allocator, ok := p.tunerManager.(TunerAllocator); ok {
-		device, decoder, err = allocator.AcquireDevice(ctx, route.Type, channel, &routeChannel, wait)
+		device, decoders, err = allocator.AcquireDevice(ctx, route.Type, channel, &routeChannel, wait)
 	} else {
 		device, err = p.tunerManager.NewDeviceByType(route.Type, &routeChannel)
 	}
@@ -396,8 +425,8 @@ func (p *Pool) tryLocalRoute(ctx context.Context, channel *config.ChannelConfig,
 	broadcast := p.commitRouteSource(key, &tunerLiveSource{
 		channel: &config.ChannelConfig{Type: channel.Type, Channel: channel.Channel},
 		device:  device,
-	}, decoder)
-	return routeSelection{route: route, channel: routeChannel, device: device, decoder: decoder, broadcast: broadcast}, nil
+	}, decoders)
+	return routeSelection{route: route, channel: routeChannel, device: device, decoders: decoders, broadcast: broadcast}, nil
 }
 
 func waitForRouteRetry(ctx context.Context, channel *config.ChannelConfig) error {

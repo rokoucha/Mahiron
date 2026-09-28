@@ -2,14 +2,12 @@ package service
 
 import (
 	"context"
-	"fmt"
 	"reflect"
 	"strconv"
 	"time"
 
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/model"
-	"github.com/21S1298001/mahiron/ts"
 )
 
 const (
@@ -217,152 +215,22 @@ func (s *Manager) GetLogoByServiceItemID(ctx context.Context, itemID int64) ([]b
 	return s.store.GetLogoByServiceItemID(ctx, itemID)
 }
 
-func (s *Manager) KnownLogoTargets(ctx context.Context) ([]LogoTarget, error) {
-	return s.store.KnownLogoTargets(ctx)
-}
-
-func (s *Manager) MissingLogoTargets(ctx context.Context) ([]LogoTarget, error) {
-	return s.store.MissingLogoTargets(ctx)
-}
-
-func (s *Manager) LogoGatherTargets(ctx context.Context) ([]LogoTarget, error) {
-	targets, err := s.store.MissingLogoTargets(ctx)
+// CommonDataAnnouncements lists the observed announcements of the
+// all-receivers common data, the most recently seen first.
+func (s *Manager) CommonDataAnnouncements(ctx context.Context) ([]model.CommonDataAnnouncement, error) {
+	stored, err := s.store.ListCommonDataAnnouncements(ctx)
 	if err != nil {
 		return nil, err
 	}
-	seen := make(map[LogoTarget]struct{}, len(targets))
-	for _, target := range targets {
-		seen[target] = struct{}{}
+	announcements := make([]model.CommonDataAnnouncement, 0, len(stored))
+	for _, announcement := range stored {
+		announcements = append(announcements, model.CommonDataAnnouncement{
+			Service:    model.ServiceKey{NetworkID: announcement.OriginalNetworkID, StreamID: announcement.TransportStreamID, ServiceID: announcement.ServiceID},
+			DownloadID: announcement.DownloadID,
+			VersionID:  announcement.VersionID,
+		})
 	}
-	known, err := s.store.KnownLogoTargets(ctx)
-	if err != nil {
-		return nil, err
-	}
-	for _, target := range known {
-		if _, ok := seen[target]; ok {
-			continue
-		}
-		targets = append(targets, target)
-		seen[target] = struct{}{}
-	}
-	return s.appendCommonLogoTargets(ctx, targets)
-}
-
-func (s *Manager) appendCommonLogoTargets(ctx context.Context, targets []LogoTarget) ([]LogoTarget, error) {
-	services, err := s.store.List(ctx)
-	if err != nil {
-		return nil, err
-	}
-	commonChannel, err := s.commonDataChannel(ctx)
-	if err != nil {
-		return nil, err
-	}
-	commonServices, err := s.commonDataServiceKeys(ctx)
-	if err != nil {
-		return nil, err
-	}
-	seen := make(map[string]struct{}, len(targets))
-	for _, target := range targets {
-		seen[commonLogoTargetKey(target)] = struct{}{}
-	}
-	var refreshTarget *LogoTarget
-	for _, svc := range services {
-		if !ts.IsSatelliteOriginalNetworkID(svc.Key.NetworkID) {
-			continue
-		}
-		if _, ok := commonServices[commonDataServiceKey{svc.Key.NetworkID, svc.Key.StreamID, svc.Key.ServiceID}]; ok {
-			continue
-		}
-		target := commonLogoTargetForService(svc, commonChannel)
-		if commonChannel != nil && refreshTarget == nil {
-			refreshTarget = &target
-		}
-		if svc.HasLogoData {
-			continue
-		}
-		key := commonLogoTargetKey(target)
-		if _, ok := seen[key]; ok {
-			continue
-		}
-		targets = append(targets, target)
-		seen[key] = struct{}{}
-	}
-	if refreshTarget != nil {
-		key := commonLogoTargetKey(*refreshTarget)
-		if _, ok := seen[key]; !ok {
-			targets = append(targets, *refreshTarget)
-		}
-	}
-	return targets, nil
-}
-
-func commonLogoTargetForService(svc *Service, commonChannel *ChannelKey) LogoTarget {
-	channel := ChannelKey{Type: svc.ChannelType, ID: svc.ChannelId}
-	isProbe := true
-	if commonChannel != nil {
-		channel = *commonChannel
-		isProbe = false
-	}
-	return LogoTarget{
-		NetworkId:         svc.Key.NetworkID,
-		ServiceId:         svc.Key.ServiceID,
-		TransportStreamId: svc.Key.StreamID,
-		ChannelType:       channel.Type,
-		ChannelId:         channel.ID,
-		IsCommonData:      true,
-		IsSDTTProbe:       isProbe,
-	}
-}
-
-type commonDataServiceKey struct {
-	networkID, transportStreamID, serviceID uint16
-}
-
-func (s *Manager) commonDataServiceKeys(ctx context.Context) (map[commonDataServiceKey]struct{}, error) {
-	announcements, err := s.store.ListCommonDataAnnouncements(ctx)
-	if err != nil {
-		return nil, err
-	}
-	result := make(map[commonDataServiceKey]struct{}, len(announcements)+1)
-	for _, announcement := range announcements {
-		result[commonDataServiceKey{announcement.OriginalNetworkID, announcement.TransportStreamID, announcement.ServiceID}] = struct{}{}
-	}
-	defaultAnnouncement := ts.DefaultCommonDataAnnouncement()
-	result[commonDataServiceKey{defaultAnnouncement.OriginalNetworkID, defaultAnnouncement.TransportStreamID, defaultAnnouncement.ServiceID}] = struct{}{}
-	return result, nil
-}
-
-func (s *Manager) commonDataChannel(ctx context.Context) (*ChannelKey, error) {
-	announcements, err := s.store.ListCommonDataAnnouncements(ctx)
-	if err != nil {
-		return nil, err
-	}
-	for _, announcement := range announcements {
-		if !ts.IsSatelliteOriginalNetworkID(announcement.OriginalNetworkID) {
-			continue
-		}
-		svc, err := s.store.GetByTriplet(ctx, announcement.OriginalNetworkID, announcement.TransportStreamID, announcement.ServiceID)
-		if err != nil {
-			return nil, err
-		}
-		if svc == nil {
-			continue
-		}
-		return &ChannelKey{Type: svc.ChannelType, ID: svc.ChannelId}, nil
-	}
-	defaultAnnouncement := ts.DefaultCommonDataAnnouncement()
-	svc, err := s.store.GetByTriplet(ctx, defaultAnnouncement.OriginalNetworkID, defaultAnnouncement.TransportStreamID, defaultAnnouncement.ServiceID)
-	if err != nil {
-		return nil, err
-	}
-	if svc == nil {
-		return nil, nil
-	}
-	return &ChannelKey{Type: svc.ChannelType, ID: svc.ChannelId}, nil
-}
-
-func commonLogoTargetKey(target LogoTarget) string {
-	return fmt.Sprintf("%d/%d/%d/%t/%t/%s/%s", target.NetworkId, target.TransportStreamId, target.ServiceId, target.IsCommonData, target.IsSDTTProbe, target.ChannelType, target.ChannelId)
+	return announcements, nil
 }
 
 func (s *Manager) UpsertLogo(ctx context.Context, networkID, transportStreamID, serviceID uint16, logoID int64, logoType int64, logoVersion int64, downloadDataID int64, data []byte, updatedAt int64) error {
@@ -381,87 +249,80 @@ func (s *Manager) DeleteLogo(ctx context.Context, networkID, transportStreamID, 
 	return nil
 }
 
-// UpsertLogoImage stores a broadcast logo for every service that references
-// it. Sessions already completed the PNG.
+// UpsertLogoImage stores a broadcast logo, for the services it names, or
+// for every service whose logo reference matches it.
 func (s *Manager) UpsertLogoImage(ctx context.Context, image model.Logo) error {
-	targets, err := s.store.KnownLogoTargets(ctx)
+	if len(image.Services) > 0 {
+		return s.upsertAssignedLogo(ctx, image)
+	}
+	services, err := s.store.List(ctx)
 	if err != nil {
 		return err
 	}
 	now := time.Now().UnixMilli()
-	for _, target := range targets {
-		if target.NetworkId != image.NetworkID ||
-			target.LogoId != int64(image.LogoID) ||
-			target.LogoVersion != int64(image.Version) ||
-			target.LogoDownloadDataId != int64(image.DownloadDataID) {
+	for _, svc := range services {
+		logo := svc.Logo
+		if svc.Key.NetworkID != image.NetworkID || logo == nil || logo.LogoID != image.LogoID ||
+			logo.Version == nil || *logo.Version != image.Version ||
+			logo.DownloadDataID == nil || *logo.DownloadDataID != image.DownloadDataID {
 			continue
 		}
 		if image.Deleted {
-			if err := s.DeleteLogo(ctx, target.NetworkId, target.TransportStreamId, target.ServiceId, target.LogoId, int64(image.LogoType), int64(image.Version), int64(image.DownloadDataID)); err != nil {
-				return err
-			}
+			err = s.DeleteLogo(ctx, svc.Key.NetworkID, svc.Key.StreamID, svc.Key.ServiceID, int64(image.LogoID), int64(image.LogoType), int64(image.Version), int64(image.DownloadDataID))
 		} else {
-			if err := s.UpsertLogo(ctx, target.NetworkId, target.TransportStreamId, target.ServiceId, target.LogoId, int64(image.LogoType), int64(image.Version), int64(image.DownloadDataID), image.Data, now); err != nil {
-				return err
-			}
+			err = s.UpsertLogo(ctx, svc.Key.NetworkID, svc.Key.StreamID, svc.Key.ServiceID, int64(image.LogoID), int64(image.LogoType), int64(image.Version), int64(image.DownloadDataID), image.Data, now)
+		}
+		if err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
-func (s *Manager) UpsertCommonLogoImage(ctx context.Context, image ts.CommonLogoImage) error {
-	if image.IsNetwork {
-		return nil
-	}
-	var data []byte
-	var err error
-	if !image.IsDeleted {
-		data, err = ts.NormalizeARIBLogoPNG(image.Data)
-		if err != nil {
-			return err
-		}
-	}
+// upsertAssignedLogo stores a logo for the services it names and points
+// their logo reference at it, only after the image is stored, so a failed
+// store keeps the old logo.
+func (s *Manager) upsertAssignedLogo(ctx context.Context, image model.Logo) error {
 	logoID := int64(image.LogoID)
 	logoType := int64(image.LogoType)
-	logoVersion := int64(image.LogoVersion)
-	downloadID := int64(image.DownloadID)
+	logoVersion := int64(image.Version)
+	downloadID := int64(image.DownloadDataID)
 	now := time.Now().UnixMilli()
-	for _, target := range image.Services {
-		if target.TransportStreamID == ts.NetworkLogoTransportStreamWildcard || target.ServiceID == ts.NetworkLogoServiceWildcard {
-			continue
-		}
-		svc, err := s.store.GetByTriplet(ctx, target.OriginalNetworkID, target.TransportStreamID, target.ServiceID)
+	for _, key := range image.Services {
+		svc, err := s.store.GetByTriplet(ctx, key.NetworkID, key.StreamID, key.ServiceID)
 		if err != nil {
 			return err
 		}
 		if svc == nil {
 			continue
 		}
-		if image.IsDeleted {
-			if err := s.DeleteLogo(ctx, target.OriginalNetworkID, target.TransportStreamID, target.ServiceID, logoID, logoType, logoVersion, downloadID); err != nil {
+		if image.Deleted {
+			if err := s.DeleteLogo(ctx, key.NetworkID, key.StreamID, key.ServiceID, logoID, logoType, logoVersion, downloadID); err != nil {
 				return err
 			}
 			continue
 		}
-		if err := s.UpsertLogo(ctx, target.OriginalNetworkID, target.TransportStreamID, target.ServiceID, logoID, logoType, logoVersion, downloadID, data, now); err != nil {
+		if err := s.UpsertLogo(ctx, key.NetworkID, key.StreamID, key.ServiceID, logoID, logoType, logoVersion, downloadID, image.Data, now); err != nil {
 			return err
 		}
-		updated, err := s.store.UpdateServiceLogoMetadata(ctx, target.OriginalNetworkID, target.TransportStreamID, target.ServiceID, logoID, logoVersion, downloadID)
+		updated, err := s.store.UpdateServiceLogoMetadata(ctx, key.NetworkID, key.StreamID, key.ServiceID, logoID, logoVersion, downloadID)
 		if err != nil {
 			return err
 		}
 		if updated {
-			s.publishServiceByKey(ctx, eventTypeUpdate, target.OriginalNetworkID, target.ServiceID)
+			s.publishServiceByKey(ctx, eventTypeUpdate, key.NetworkID, key.ServiceID)
 		}
 	}
 	return nil
 }
 
-func (s *Manager) UpsertCommonDataAnnouncement(ctx context.Context, announcement ts.CommonDataAnnouncement, channelType, channelID string) error {
+// UpsertCommonDataAnnouncement records which service carries the
+// all-receivers common data, and on which channel it was announced.
+func (s *Manager) UpsertCommonDataAnnouncement(ctx context.Context, announcement model.CommonDataAnnouncement, channelType, channelID string) error {
 	return s.store.UpsertCommonDataAnnouncement(ctx, CommonDataAnnouncement{
-		OriginalNetworkID:   announcement.OriginalNetworkID,
-		TransportStreamID:   announcement.TransportStreamID,
-		ServiceID:           announcement.ServiceID,
+		OriginalNetworkID:   announcement.Service.NetworkID,
+		TransportStreamID:   announcement.Service.StreamID,
+		ServiceID:           announcement.Service.ServiceID,
 		DownloadID:          announcement.DownloadID,
 		VersionID:           announcement.VersionID,
 		ObservedChannelType: channelType,

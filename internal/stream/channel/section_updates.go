@@ -25,12 +25,11 @@ type EventUpdater interface {
 	UpsertEvents(context.Context, []model.Event) error
 }
 
-// LogoUpdater persists logo images and related announcements observed on the
-// stream.
+// LogoUpdater persists logo images and the all-receivers common data
+// announcements observed on the stream, with the channel that carried them.
 type LogoUpdater interface {
 	UpsertLogoImage(context.Context, model.Logo) error
-	UpsertCommonLogoImage(context.Context, ts.CommonLogoImage) error
-	UpsertCommonDataAnnouncement(context.Context, ts.CommonDataAnnouncement, string, string) error
+	UpsertCommonDataAnnouncement(ctx context.Context, announcement model.CommonDataAnnouncement, channelType, channelID string) error
 }
 
 type eitPFSectionKey struct {
@@ -119,7 +118,7 @@ func (s *Session) updateSection(ctx context.Context, section ts.Section) {
 			slog.Error("failed to parse SDTT common data announcement", "type", s.typ, "channel", s.channel, "err", err)
 		}
 		for _, announcement := range announcements {
-			if err := s.logoUpdater.UpsertCommonDataAnnouncement(ctx, announcement, s.typ, s.channel); err != nil {
+			if err := s.logoUpdater.UpsertCommonDataAnnouncement(ctx, CommonDataAnnouncement(announcement), s.typ, s.channel); err != nil {
 				slog.Error("failed to update SDTT common data announcement", "type", s.typ, "channel", s.channel, "err", err)
 			}
 		}
@@ -137,7 +136,11 @@ func (s *Session) updateSection(ctx context.Context, section ts.Section) {
 				return
 			}
 			for _, image := range images {
-				if err := s.logoUpdater.UpsertCommonLogoImage(ctx, image); err != nil {
+				logo, ok, err := CommonLogo(image)
+				if err == nil && ok {
+					err = s.logoUpdater.UpsertLogoImage(ctx, logo)
+				}
+				if err != nil {
 					slog.Error("failed to update common logo", "type", s.typ, "channel", s.channel, "err", err)
 				}
 			}

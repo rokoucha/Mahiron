@@ -6,12 +6,12 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/bml"
 	"github.com/21S1298001/mahiron/internal/config"
+	"github.com/21S1298001/mahiron/internal/isdb"
 	"github.com/21S1298001/mahiron/internal/mirakurun"
 	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/stream/channel"
 	"github.com/21S1298001/mahiron/internal/stream/source"
 	"github.com/21S1298001/mahiron/internal/tuner"
-	"github.com/21S1298001/mahiron/ts"
 )
 
 type SessionConfig struct {
@@ -89,7 +89,7 @@ func (s *Session) ObserveLogos(ctx context.Context, observe func(model.Logo) err
 		if err != nil {
 			return err
 		}
-		data, err = ts.NormalizeARIBLogoPNG(data)
+		data, err = isdb.NormalizeARIBLogoPNG(data)
 		if err != nil {
 			return err
 		}
