@@ -11,6 +11,7 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/bml"
 	"github.com/21S1298001/mahiron/internal/bml/cache"
+	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/stream/internal/streamtest"
 	"github.com/21S1298001/mahiron/internal/stream/source"
@@ -658,6 +659,92 @@ func TestSessionRecreatesDecodedDemuxerAfterAllDecodedSubscribersDetach(t *testi
 	if err := <-rawDone; err != nil {
 		t.Fatalf("raw stream error = %v, want nil", err)
 	}
+}
+
+func TestRemoteSessionRebuildsModuleAfterSSEReconnectWhileVideoContinues(t *testing.T) {
+	channel := config.ChannelConfig{Type: "BS", Channel: "BS05_0"}
+	handle := source.NewRemoteInputHandle(blockingRemoteClient{}, channel, channel, "remote", "BS")
+	rawStopped := make(chan struct{})
+	session := NewSession(Config{
+		Handle:  handle,
+		Channel: channel.Channel,
+		Type:    channel.Type,
+		OnStop:  func() { close(rawStopped) },
+	})
+	t.Cleanup(func() { _ = session.Stop(context.Background()) })
+
+	videoCtx, stopVideo := context.WithCancel(t.Context())
+	videoDone := make(chan error, 1)
+	go func() { videoDone <- session.ServiceStream(videoCtx, 101, true, io.Discard) }()
+	if !streamtest.Eventually(time.Second, func() bool { return session.decodedDemuxer.PacketSubscriberCount() == 1 }) {
+		t.Fatal("decoded video subscriber did not attach")
+	}
+
+	firstCtx, stopFirst := context.WithCancel(t.Context())
+	firstDone := make(chan error, 1)
+	go func() {
+		firstDone <- session.ObserveDataBroadcast(firstCtx, 101, true, func(bml.Event) error { return nil })
+	}()
+	if !streamtest.Eventually(time.Second, func() bool { return rawSectionSubscriberCount(session) == 1 }) {
+		t.Fatal("first raw SSE subscriber did not attach")
+	}
+	stopFirst()
+	if err := <-firstDone; err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-rawStopped:
+	case <-time.After(time.Second):
+		t.Fatal("raw demuxer did not stop after SSE disconnected")
+	}
+	if session.decodedDemuxer.PacketSubscriberCount() != 1 {
+		t.Fatal("video subscriber stopped with SSE")
+	}
+
+	secondCtx, stopSecond := context.WithCancel(t.Context())
+	secondDone := make(chan error, 1)
+	go func() {
+		secondDone <- session.ObserveDataBroadcast(secondCtx, 101, true, func(bml.Event) error { return nil })
+	}()
+	if !streamtest.Eventually(time.Second, func() bool { return rawSectionSubscriberCount(session) == 1 }) {
+		t.Fatal("second raw SSE subscriber did not attach")
+	}
+
+	const serviceID, pmtPID, carouselPID = uint16(101), uint16(0x0100), uint16(0x0200)
+	const componentTag = byte(0x40)
+	session.observePIDSection(ts.PIDSection{PID: pmtPID, Section: streamBuildDataBroadcastPMT(serviceID, carouselPID, componentTag)})
+	session.observePIDSection(ts.PIDSection{PID: carouselPID, Section: streamBuildDSMCCDII(t, 1, 4, 2, 4, 1, []byte("index.bml"))})
+	session.observePIDSection(ts.PIDSection{PID: carouselPID, Section: streamBuildDSMCCDDB(t, 1, 2, 1, 0, []byte("bml!"))})
+	if !streamtest.Eventually(time.Second, func() bool {
+		module, ok := session.DataBroadcastModule(serviceID, componentTag, 2)
+		return ok && module.Complete && string(module.Data) == "bml!"
+	}) {
+		t.Fatal("DDB worker did not complete the module after SSE reconnected")
+	}
+
+	stopSecond()
+	if err := <-secondDone; err != nil {
+		t.Fatal(err)
+	}
+	stopVideo()
+	if err := <-videoDone; err != nil && !errors.Is(err, context.Canceled) {
+		t.Fatal(err)
+	}
+}
+
+type blockingRemoteClient struct{}
+
+func rawSectionSubscriberCount(s *Session) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.rawDemuxer.SectionSubscriberCount()
+}
+
+func (blockingRemoteClient) CheckAvailableForRoute(context.Context, string, string) error { return nil }
+
+func (blockingRemoteClient) ChannelStream(ctx context.Context, _, _ string, _ bool, _ io.Writer) error {
+	<-ctx.Done()
+	return ctx.Err()
 }
 
 func TestStoppingSessionDoesNotStopSharedInputPeer(t *testing.T) {
