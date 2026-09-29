@@ -86,7 +86,11 @@ func NewSession(config Config) *Session {
 	session.carouselQueue = make(chan ts.Section, carouselQueueSize)
 	session.startUpdateWorkersLocked()
 	session.rawDemuxer = demux.New(func(ctx context.Context, dst io.Writer) error { return input.Subscribe(ctx, source.StreamRaw, dst) }, func() {
-		session.stopSectionUpdates()
+		// A remote decoded stream can outlive the raw SSE subscriber. Keep its
+		// update workers ready for the next raw demuxer on the same session.
+		if _, restartable := input.(interface{ SupportsDecodedInput() bool }); !restartable {
+			session.stopSectionUpdates()
+		}
 		if config.OnStop != nil {
 			config.OnStop()
 		}
