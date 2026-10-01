@@ -1,5 +1,11 @@
 # Changelog
 
+## [v5.2.1](https://github.com/rokoucha/Mahiron/compare/v5.2.0...v5.2.1) - 2026-10-01
+
+- Keep data broadcast workers alive after SSE reconnects by @rokoucha in https://github.com/rokoucha/Mahiron/pull/197
+- Update dependency golangci/golangci-lint to v2.14.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/199
+- Update dependency typescript-eslint to v8.71.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/200
+
 ## [v5.1.7](https://github.com/rokoucha/Mahiron/compare/v5.1.6...v5.1.7) - 2026-09-28
 
 - 番組とサービスを内部の型で扱うようにする by @rokoucha in https://github.com/rokoucha/Mahiron/pull/188
