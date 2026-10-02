@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
+	"slices"
 	"testing"
 	"time"
 
@@ -54,7 +56,13 @@ func TestGetTunersIncludesRemoteTuners(t *testing.T) {
 		{Name: "local-first", Types: []string{"BS"}, Command: "sleep 1"},
 	}})
 	streamManager := remoteTunerStatusProvider{Manager: stream.NewManager(stream.ManagerConfig{TunerManager: localTuners})}
-	handler := NewHandler(HandlerConfig{TunerManager: localTuners, StreamManager: streamManager})
+	handler := NewHandler(HandlerConfig{
+		TunerManager: localTuners, StreamManager: streamManager,
+		ServiceManager: service.NewManager(nil, config.ChannelsConfig{{
+			Type: "LOCAL", Channel: "100",
+			Routes: []config.ChannelRouteConfig{{Remote: "living", Type: "GR", Channel: "27"}},
+		}}),
+	})
 
 	res, err := handler.GetTuners(context.Background(), apigen.GetTunersParams{IncludeRemote: apigen.NewOptBool(true)})
 	if err != nil {
@@ -68,8 +76,73 @@ func TestGetTunersIncludesRemoteTuners(t *testing.T) {
 	if !got.IsRemote || got.Name != "living / remote-first" || !got.IsUsing || got.Index >= 0 {
 		t.Fatalf("remote tuner = %+v", got)
 	}
-	if channel, ok := got.CurrentChannel.Get(); !ok || channel != "27" {
+	if !slices.Equal(got.Types, []string{"LOCAL"}) || got.CurrentChannelType.Value != "LOCAL" {
+		t.Fatalf("remote types = %+v", got)
+	}
+	if !slices.Equal(items[0].Types, []string{"BS"}) {
+		t.Fatalf("local types changed: %+v", items[0])
+	}
+	if channel, ok := got.CurrentChannel.Get(); !ok || channel != "100" {
 		t.Fatalf("currentChannel = %q, %v", channel, ok)
+	}
+	localOnly, err := handler.GetTuners(context.Background(), apigen.GetTunersParams{IncludeRemote: apigen.NewOptBool(false)})
+	if err != nil || len(*localOnly.(*apigen.GetTunersOKApplicationJSON)) != 1 {
+		t.Fatalf("local-only response = %v, %v", localOnly, err)
+	}
+}
+
+func TestApiRemoteTunerChannelMapping(t *testing.T) {
+	disabled := true
+	channel := func(typ, number string) config.ChannelConfig {
+		return config.ChannelConfig{Type: typ, Channel: number, Routes: []config.ChannelRouteConfig{
+			{Remote: "living", Type: "CATV", Channel: "C27"},
+		}}
+	}
+	disabledChannel := channel("DISABLED_CHANNEL", "1")
+	disabledChannel.IsDisabled = &disabled
+	disabledRoute := channel("DISABLED_ROUTE", "2")
+	disabledRoute.Routes[0].IsDisabled = &disabled
+	otherRemote := channel("OTHER_REMOTE", "3")
+	otherRemote.Routes[0].Remote = "other"
+	unsupported := channel("UNSUPPORTED", "4")
+	unsupported.Routes[0].Type = "UNSUPPORTED"
+	for _, tt := range []struct {
+		name                        string
+		channels                    config.ChannelsConfig
+		types                       []string
+		currentType, currentChannel string
+	}{
+		{"renamed", config.ChannelsConfig{channel("GR", "27")}, []string{"GR"}, "GR", "27"},
+		{"same names", config.ChannelsConfig{channel("CATV", "C27")}, []string{"CATV"}, "CATV", "C27"},
+		{"duplicate mapping", config.ChannelsConfig{channel("GR", "27"), channel("GR", "27")}, []string{"GR"}, "GR", "27"},
+		{"multiple types", config.ChannelsConfig{channel("GR", "27"), channel("BS", "101")}, []string{"GR", "BS"}, "CATV", "C27"},
+		{"multiple channels", config.ChannelsConfig{channel("GR", "27"), channel("GR", "28"), channel("GR", "27")}, []string{"GR"}, "CATV", "C27"},
+		{"ignored routes", config.ChannelsConfig{channel("GR", "27"), disabledChannel, disabledRoute, otherRemote, unsupported, {Type: "LOCAL_ONLY", Channel: "27"}}, []string{"GR"}, "GR", "27"},
+		{"no mapping", nil, []string{}, "CATV", "C27"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			remote := stream.RemoteTunerStatus{Remote: "living", Status: tuner.Status{
+				Index: 7, Name: "upstream", Types: []string{"CATV", "UNUSED"},
+				CurrentChannelType: "CATV", CurrentChannel: "C27",
+				TunedChannelType: "PHYSICAL", TunedChannel: "13",
+				IsUsing: true, Users: []tuner.User{{ID: "viewer"}},
+			}}
+			before := remote.Status
+			before.Types = slices.Clone(before.Types)
+			got := apiRemoteTuner(remote, 0, tt.channels)
+			if !slices.Equal(got.Types, tt.types) || got.Types == nil {
+				t.Fatalf("types = %v, want %v", got.Types, tt.types)
+			}
+			if got.CurrentChannelType.Value != tt.currentType || got.CurrentChannel.Value != tt.currentChannel {
+				t.Fatalf("current channel = %v/%v", got.CurrentChannelType, got.CurrentChannel)
+			}
+			if got.TunedChannelType.Value != "PHYSICAL" || got.TunedChannel.Value != "13" || len(got.Users) != 1 || got.Users[0].ID != "viewer" || !got.IsUsing {
+				t.Fatalf("upstream details changed: %+v", got)
+			}
+			if !reflect.DeepEqual(remote.Status, before) {
+				t.Fatalf("source status changed: %+v", remote.Status)
+			}
+		})
 	}
 }
 
@@ -84,6 +157,27 @@ func (remoteTunerStatusProvider) RemoteTunerStatuses(context.Context) []stream.R
 			CurrentChannelType: "GR", CurrentChannel: "27",
 		},
 	}}
+}
+
+func TestApiRemoteTunerUnmappedSelection(t *testing.T) {
+	channels := config.ChannelsConfig{{Type: "GR", Channel: "27", Routes: []config.ChannelRouteConfig{
+		{Remote: "living", Type: "CATV", Channel: "C27"},
+	}}}
+	for _, selection := range []string{"", "C28"} {
+		t.Run("selection="+selection, func(t *testing.T) {
+			status := tuner.Status{Types: []string{"CATV"}}
+			if selection != "" {
+				status.CurrentChannelType, status.CurrentChannel = "CATV", selection
+			}
+			got := apiRemoteTuner(stream.RemoteTunerStatus{Remote: "living", Status: status}, 0, channels)
+			if !slices.Equal(got.Types, []string{"GR"}) {
+				t.Fatalf("types = %v", got.Types)
+			}
+			if got.CurrentChannelType.Value != status.CurrentChannelType || got.CurrentChannel.Value != selection || got.CurrentChannel.Set != (selection != "") || got.CurrentChannelType.Set != (selection != "") {
+				t.Fatalf("unmapped selection changed: %+v", got)
+			}
+		})
+	}
 }
 
 func TestGetTunerProcess(t *testing.T) {

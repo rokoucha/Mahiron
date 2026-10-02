@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"slices"
 
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/stream"
@@ -22,16 +23,48 @@ func GetTuners(ctx context.Context, h *Handler, params apigen.GetTunersParams) (
 		if provider, ok := h.streamManager.(interface {
 			RemoteTunerStatuses(context.Context) []stream.RemoteTunerStatus
 		}); ok {
+			var channels config.ChannelsConfig
+			if h.serviceManager != nil {
+				channels = h.serviceManager.GetChannels()
+			}
 			for i, remote := range provider.RemoteTunerStatuses(ctx) {
-				result = append(result, *apiRemoteTuner(remote, i))
+				result = append(result, *apiRemoteTuner(remote, i, channels))
 			}
 		}
 	}
 	return &result, nil
 }
 
-func apiRemoteTuner(remote stream.RemoteTunerStatus, position int) *apigen.TunerDevice {
+func apiRemoteTuner(remote stream.RemoteTunerStatus, position int, channels config.ChannelsConfig) *apigen.TunerDevice {
 	result := apiTuner(remote.Status)
+	result.Types = make([]string, 0)
+	var currentType, currentChannel string
+	ambiguous := false
+	for _, channel := range channels {
+		if config.IsChannelDisabled(channel) {
+			continue
+		}
+		for _, route := range channel.RoutesOrDefault() {
+			if route.Remote != remote.Remote || route.IsDisabled != nil && *route.IsDisabled {
+				continue
+			}
+			if slices.Contains(remote.Status.Types, route.Type) && !slices.Contains(result.Types, channel.Type) {
+				result.Types = append(result.Types, channel.Type)
+			}
+			if route.Type == remote.Status.CurrentChannelType && route.Channel == remote.Status.CurrentChannel {
+				if currentType != "" && (currentType != channel.Type || currentChannel != channel.Channel) {
+					ambiguous = true
+				}
+				currentType, currentChannel = channel.Type, channel.Channel
+			}
+		}
+	}
+	// Keep upstream selection details when the logical channel is ambiguous.
+	// TunedChannel always describes the upstream's actual reception route.
+	if currentType != "" && !ambiguous {
+		result.CurrentChannelType = apigen.NewOptString(currentType)
+		result.CurrentChannel = apigen.NewOptString(currentChannel)
+	}
 	// Remote indexes only have meaning on their own server. Keep list keys
 	// distinct from local tuners without making remote tuner process endpoints
 	// accidentally address a local device.

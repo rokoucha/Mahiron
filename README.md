@@ -47,6 +47,9 @@ mainブランチの最新ビルドを試す場合は、[CIの実行履歴](https
 - TunerDeviceに以下のフィールドを追加しています
   - currentChannel*
   - tunedChannel*
+- リモートチューナーの `types` は、有効な `routes` に対応するローカルの種類を返します
+  - `currentChannelType` / `currentChannel` はローカルの対応先が一意の場合は変換した値を、それ以外の場合はリモートが報告した値を返します
+  - `tunedChannelType` / `tunedChannel` はリモートで実際に選局しているチャンネルの種類と番号を返します
 - `/api/version` にserverフィールドを追加しています
   - 値は常に `mahiron` です
 - JobItemに以下のフィールドを追加しています
