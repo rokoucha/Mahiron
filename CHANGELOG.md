@@ -1,5 +1,11 @@
 # Changelog
 
+## [v5.2.2](https://github.com/rokoucha/Mahiron/compare/v5.2.1...v5.2.2) - 2026-10-03
+
+- fix: リモートチューナーの対応種類をローカルのチャンネル定義に合わせる by @rokoucha in https://github.com/rokoucha/Mahiron/pull/202
+- Update dependency vitest to v5.0.3 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/204
+- Update dependency globals to v17.13.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/205
+
 ## [v5.2.1](https://github.com/rokoucha/Mahiron/compare/v5.2.0...v5.2.1) - 2026-10-01
 
 - Keep data broadcast workers alive after SSE reconnects by @rokoucha in https://github.com/rokoucha/Mahiron/pull/197
