@@ -1,5 +1,16 @@
 # Changelog
 
+## [v5.2.3](https://github.com/rokoucha/Mahiron/compare/v5.2.2...v5.2.3) - 2026-10-09
+
+- Update dependency @types/node to v24.19.1 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/206
+- Update dependency vite to v8.3.2 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/207
+- Update dependency eslint to v10.12.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/209
+- Update module modernc.org/sqlite to v1.60.1 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/210
+- Update dependency @vitejs/plugin-react to v6.1.2 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/211
+- Update dependency typescript-eslint to v8.71.1 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/212
+- Update actions/upload-artifact action to v7.0.2 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/213
+- Update opentelemetry-go by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/214
+
 ## [v5.2.2](https://github.com/rokoucha/Mahiron/compare/v5.2.1...v5.2.2) - 2026-10-03
 
 - fix: リモートチューナーの対応種類をローカルのチャンネル定義に合わせる by @rokoucha in https://github.com/rokoucha/Mahiron/pull/202
