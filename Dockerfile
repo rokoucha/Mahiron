@@ -25,8 +25,12 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=build /out/mahiron /usr/local/bin/mahiron
 WORKDIR /app
-RUN mkdir -p /app/config /app/db
+RUN groupadd --gid 10001 mahiron \
+    && useradd --uid 10001 --gid 10001 --no-create-home --home-dir /app --shell /usr/sbin/nologin mahiron \
+    && mkdir -p /app/config /app/db \
+    && chown mahiron:mahiron /app/config /app/db
 VOLUME ["/app/config", "/app/db"]
 EXPOSE 40772
+USER 10001:10001
 ENTRYPOINT ["/usr/bin/tini", "-s", "--", "mahiron"]
 CMD ["-config-dir", "/app/config"]
