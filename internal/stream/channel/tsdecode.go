@@ -44,6 +44,8 @@ func EventsFromEIT(eit *ts.EIT) []model.Event {
 	out := make([]model.Event, 0, len(eit.Events))
 	for _, entry := range eit.Events {
 		event := model.Event{
+			EITPresent:    ts.IsEITPF(eit.TableID) && eit.SectionNumber == 0,
+			EITFollowing:  ts.IsEITPF(eit.TableID) && eit.SectionNumber == 1,
 			Key:           key,
 			EventID:       entry.EventID,
 			RunningStatus: entry.RunningStatus,

@@ -312,3 +312,17 @@ func TestCommonLogoNamesServicesAndCompletesPalette(t *testing.T) {
 		t.Fatalf("network logo = %v, %v, want skipped", ok, err)
 	}
 }
+
+func TestEventsFromEITPreservesPresentFollowingSource(t *testing.T) {
+	for _, tc := range []struct {
+		table, section     byte
+		present, following bool
+	}{
+		{0x4e, 0, true, false}, {0x4e, 1, false, true}, {0x4f, 0, true, false}, {0x4f, 1, false, true}, {0x50, 0, false, false},
+	} {
+		events := EventsFromEIT(&ts.EIT{TableID: tc.table, SectionNumber: tc.section, Events: []ts.EITEvent{{EventID: 1}}})
+		if len(events) != 1 || events[0].EITPresent != tc.present || events[0].EITFollowing != tc.following {
+			t.Fatalf("table=%x section=%d: events=%+v", tc.table, tc.section, events)
+		}
+	}
+}

@@ -98,6 +98,10 @@ func NewSQLiteStore(database *db.DB) Store {
 }
 
 func (s *sqliteStore) UpsertAll(ctx context.Context, programs []*Program) (err error) {
+	return s.UpsertAndDelete(ctx, programs, nil)
+}
+
+func (s *sqliteStore) UpsertAndDelete(ctx context.Context, programs []*Program, removed []int64) (err error) {
 	start := time.Now()
 	ctx, span := observability.StartSpan(ctx, observability.SpanDBProgramUpsertAll,
 		observability.AttrProgramCount.Int(len(programs)),
@@ -117,6 +121,11 @@ func (s *sqliteStore) UpsertAll(ctx context.Context, programs []*Program) (err e
 		}
 	}()
 
+	for _, id := range removed {
+		if _, err := tx.ExecContext(ctx, "DELETE FROM programs WHERE id = ?", id); err != nil {
+			return err
+		}
+	}
 	if err := upsertPrograms(ctx, tx, programs); err != nil {
 		return err
 	}

@@ -218,6 +218,8 @@ type Series struct {
 // downstream conversions decide how to render that, the model never coerces
 // it to zero.
 type Event struct {
+	EITPresent    bool `json:"-"`
+	EITFollowing  bool `json:"-"`
 	Key           ServiceKey
 	EventID       uint16
 	StartAt       *int64
