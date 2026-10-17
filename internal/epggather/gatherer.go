@@ -25,9 +25,8 @@ type ListStoredPrograms = func(ctx context.Context, networkID, serviceID uint16)
 // depend on the stream package; stream.EPGGatherAdapter implements it.
 type StreamManager interface {
 	HasSession(channelType, channelID string) bool
-	// NetworkWideEIT reports whether every stream of the network carries
-	// the whole network's EIT schedule, as TS satellite streams do.
-	NetworkWideEIT(networkID uint16) bool
+	// StoredEPG reports whether every enabled route reads stored programs.
+	StoredEPG(channelType, channelID string) bool
 	// OpenSchedule acquires the channel. A channel served by a remote
 	// Mahiron or Mirakurun returns listStored, whose stored programs are
 	// copied; any other channel returns collect.
@@ -36,14 +35,14 @@ type StreamManager interface {
 
 type Gatherer struct {
 	channels      config.ChannelsConfig
-	events        EventWriter
+	events        ScheduleWriter
 	programStore  ProgramStore
 	retrievalTime time.Duration
 	serviceStore  ServiceStore
 	streams       StreamManager
 }
 
-func NewGatherer(events EventWriter, programStore ProgramStore, serviceStore ServiceStore, streams StreamManager, channels config.ChannelsConfig, retrievalTime time.Duration) *Gatherer {
+func NewGatherer(events ScheduleWriter, programStore ProgramStore, serviceStore ServiceStore, streams StreamManager, channels config.ChannelsConfig, retrievalTime time.Duration) *Gatherer {
 	return &Gatherer{
 		channels:      channels,
 		events:        events,
@@ -54,7 +53,7 @@ func NewGatherer(events EventWriter, programStore ProgramStore, serviceStore Ser
 	}
 }
 
-func (s *Gatherer) Groups(ctx context.Context) (map[uint16]*Network, error) {
+func (s *Gatherer) Groups(ctx context.Context) (map[GroupKey]*Group, error) {
 	storedServices, err := s.serviceStore.GetServices(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("get services: %w", err)
@@ -62,15 +61,20 @@ func (s *Gatherer) Groups(ctx context.Context) (map[uint16]*Network, error) {
 	if len(storedServices) == 0 {
 		return nil, errors.New("EPG gathering requires scanned services")
 	}
-	return groupServicesByNetwork(storedServices, s.channels, s.streams.NetworkWideEIT), nil
+	return groupServices(storedServices, s.channels, s.streams.StoredEPG), nil
 }
 
-func (s *Gatherer) BuildNetworkInputs(ctx context.Context, networkID uint16) ([]Candidate, []model.ServiceKey, error) {
-	return buildNetworkInputs(ctx, s.serviceStore, s.channels, networkID, s.streams.NetworkWideEIT)
-}
-
-func (s *Gatherer) GatherNetwork(ctx context.Context, networkID uint16, candidates []Candidate, serviceKeys []model.ServiceKey) error {
-	return gatherNetwork(ctx, s.events, s.programStore, s.serviceStore, s.streams, networkID, candidates, serviceKeys, s.retrievalTime)
+func (s *Gatherer) GatherGroup(ctx context.Context, key GroupKey) error {
+	// Scans may have changed the topology while the job waited.
+	storedServices, err := s.serviceStore.GetServices(ctx)
+	if err != nil {
+		return fmt.Errorf("get services: %w", err)
+	}
+	group := groupServices(storedServices, s.channels, s.streams.StoredEPG)[key]
+	if group == nil {
+		return nil
+	}
+	return gatherNetwork(ctx, s.events, s.programStore, s.serviceStore, s.streams, key.NetworkID, group.Candidates, group.Services, s.retrievalTime)
 }
 
 func RetryableError(err error) bool {

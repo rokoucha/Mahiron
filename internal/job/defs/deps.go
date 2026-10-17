@@ -10,7 +10,6 @@ import (
 	"github.com/21S1298001/mahiron/internal/epggather"
 	"github.com/21S1298001/mahiron/internal/job"
 	"github.com/21S1298001/mahiron/internal/logogather"
-	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/servicescan"
 )
 
@@ -30,9 +29,8 @@ type LogoGatherer interface {
 }
 
 type EPGGatherer interface {
-	Groups(context.Context) (map[uint16]*epggather.Network, error)
-	BuildNetworkInputs(context.Context, uint16) ([]epggather.Candidate, []model.ServiceKey, error)
-	GatherNetwork(context.Context, uint16, []epggather.Candidate, []model.ServiceKey) error
+	Groups(context.Context) (map[epggather.GroupKey]*epggather.Group, error)
+	GatherGroup(context.Context, epggather.GroupKey) error
 }
 
 // ProgramCleaner deletes the programs past the retention period.

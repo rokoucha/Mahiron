@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/21S1298001/mahiron/internal/isdb"
+	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/internal/program"
@@ -161,9 +161,7 @@ type remoteEPGStreams struct {
 
 func (remoteEPGStreams) HasSession(string, string) bool { return false }
 
-func (remoteEPGStreams) NetworkWideEIT(networkID uint16) bool {
-	return isdb.IsSatelliteOriginalNetworkID(networkID)
-}
+func (remoteEPGStreams) StoredEPG(string, string) bool { return true }
 
 func (s remoteEPGStreams) OpenSchedule(context.Context, string, string) (CollectSchedule, ListStoredPrograms, error) {
 	return s.session.CollectSchedule, s.session.ListServicePrograms, nil
@@ -180,4 +178,41 @@ func (s *remoteSyncSession) ListServicePrograms(_ context.Context, networkID, se
 func (s *remoteSyncSession) CollectSchedule(context.Context, func(model.ScheduleUpdate) error, func(model.PresentFollowing) error) error {
 	s.collectCalled = true
 	return nil
+}
+
+func TestGatherGroupSyncsStoredProgramsAcrossStreams(t *testing.T) {
+	first := model.ServiceKey{NetworkID: 4, StreamID: 100, ServiceID: 101}
+	second := model.ServiceKey{NetworkID: 4, StreamID: 101, ServiceID: 211}
+	status := channelServiceStore{remoteSyncServiceStore: newRemoteSyncServiceStore(), services: []*service.Service{
+		{Service: model.Service{Key: first, EITSchedule: true}, ChannelType: "CUSTOM", ChannelId: "A"},
+		{Service: model.Service{Key: second, EITSchedule: true}, ChannelType: "CUSTOM", ChannelId: "B"},
+	}}
+	programs := newRemoteSyncProgramStore()
+	session := &remoteSyncSession{programs: map[model.ServiceKey][]model.Event{
+		{NetworkID: 4, ServiceID: 101}: {{EventID: 10, Key: first}},
+		{NetworkID: 4, ServiceID: 211}: {{EventID: 20, Key: second}},
+	}}
+	gatherer := NewGatherer(programs, programs, status, remoteEPGStreams{session: session}, config.ChannelsConfig{{Type: "CUSTOM", Channel: "A"}, {Type: "CUSTOM", Channel: "B"}}, time.Second)
+	groups, err := gatherer.Groups(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(groups) != 1 {
+		t.Fatalf("groups = %v", groups)
+	}
+	if err := gatherer.GatherGroup(t.Context(), GroupKey{NetworkID: 4, Stored: true}); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []model.ServiceKey{first, second} {
+		if status.successes[model.ServiceKey{NetworkID: key.NetworkID, ServiceID: key.ServiceID}] == 0 {
+			t.Fatalf("service %d not synchronized", key.ServiceID)
+		}
+	}
+	if session.collectCalled {
+		t.Fatal("stored EPG started live reception")
+	}
+}
+
+func (s *remoteSyncProgramStore) UpsertSchedule(ctx context.Context, snapshot model.ScheduleSnapshot) error {
+	return s.UpsertEvents(ctx, snapshot.Events)
 }

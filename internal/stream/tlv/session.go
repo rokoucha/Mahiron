@@ -219,7 +219,7 @@ func (s *Session) ScanServices(ctx context.Context) ([]model.Service, error) {
 // CollectSchedule reports MH-EIT schedule and present/following progress
 // until ctx ends, using MH-TOT as the broadcast clock.
 func (s *Session) CollectSchedule(ctx context.Context, onSchedule func(model.ScheduleUpdate) error, onPresentFollowing func(model.PresentFollowing) error) error {
-	collector := schedule.NewCollector(isdb.ScheduleMMT)
+	collector := schedule.NewCollector(isdb.ScheduleMMT, s.typ+"\x00"+s.channel)
 	if onSchedule != nil {
 		next := onSchedule
 		onSchedule = func(update model.ScheduleUpdate) error {

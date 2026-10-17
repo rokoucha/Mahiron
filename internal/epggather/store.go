@@ -12,6 +12,12 @@ type EventWriter interface {
 	UpsertEvents(context.Context, []model.Event) error
 }
 
+// ScheduleWriter preserves table revisions even when a section has no events.
+type ScheduleWriter interface {
+	EventWriter
+	UpsertSchedule(context.Context, model.ScheduleSnapshot) error
+}
+
 // ProgramStore keeps the stored programs: syncing from a remote replaces a
 // service's programs.
 type ProgramStore interface {

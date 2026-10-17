@@ -35,7 +35,7 @@ func RegisterEPGGatherer(registry Registry, service EPGGatherer, programs Progra
 	})
 }
 
-// epgGathererHandler dispatches the per-network EPG gather jobs, then runs
+// epgGathererHandler dispatches EPG gather groups, then runs
 // cleanup when it is set.
 func epgGathererHandler(registry Registry, service EPGGatherer, cleanup func(context.Context) error) func(context.Context) error {
 	return func(ctx context.Context) error {
@@ -45,27 +45,42 @@ func epgGathererHandler(registry Registry, service EPGGatherer, cleanup func(con
 		}
 		queued := 0
 		fresh := 0
-		networkIDs := make([]uint16, 0, len(grouped))
-		for nid := range grouped {
-			networkIDs = append(networkIDs, nid)
+		keys := make([]epggather.GroupKey, 0, len(grouped))
+		for key := range grouped {
+			keys = append(keys, key)
 		}
-		slices.SortFunc(networkIDs, func(a, b uint16) int {
+		slices.SortFunc(keys, func(a, b epggather.GroupKey) int {
 			if order := cmp.Compare(grouped[a].OldestSuccessAt, grouped[b].OldestSuccessAt); order != 0 {
 				return order
 			}
-			return cmp.Compare(a, b)
+			if order := cmp.Compare(a.NetworkID, b.NetworkID); order != 0 {
+				return order
+			}
+			if a.Stored != b.Stored {
+				if a.Stored {
+					return -1
+				}
+				return 1
+			}
+			if order := cmp.Compare(a.StreamID, b.StreamID); order != 0 {
+				return order
+			}
+			if order := cmp.Compare(a.Channel.Type, b.Channel.Type); order != 0 {
+				return order
+			}
+			return cmp.Compare(a.Channel.Channel, b.Channel.Channel)
 		})
 		cutoff := time.Now().Add(-epgRefreshInterval).UnixMilli()
-		for _, nid := range networkIDs {
+		for _, key := range keys {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
-			group := grouped[nid]
+			group := grouped[key]
 			if group.OldestSuccessAt > cutoff {
 				fresh++
 				continue
 			}
-			enqueued, err := enqueueEPGGatherForNetwork(ctx, registry, service, nid, group)
+			enqueued, err := enqueueEPGGatherGroup(registry, service, key, group)
 			if err != nil {
 				return err
 			}
@@ -73,15 +88,15 @@ func epgGathererHandler(registry Registry, service EPGGatherer, cleanup func(con
 				queued++
 			}
 		}
-		slog.Info("EPG gatherer dispatched", "networks", len(grouped), "queued", queued, "fresh", fresh)
+		slog.Info("EPG gatherer dispatched", "groups", len(grouped), "queued", queued, "fresh", fresh)
 
 		result := run.Result{
 			Kind:    "epg_gatherer",
-			Summary: fmt.Sprintf("%d/%d networks queued", queued, len(grouped)),
+			Summary: fmt.Sprintf("%d/%d groups queued", queued, len(grouped)),
 			Counts: map[string]int{
-				"networks": len(grouped),
-				"queued":   queued,
-				"fresh":    fresh,
+				"groups": len(grouped),
+				"queued": queued,
+				"fresh":  fresh,
 			},
 		}
 		if cleanup != nil {
@@ -98,47 +113,34 @@ func epgGathererHandler(registry Registry, service EPGGatherer, cleanup func(con
 	}
 }
 
-// enqueueEPGGatherForNetwork skips networks without services or with an active
-// job. A nil network loads the current inputs before enqueueing.
-func enqueueEPGGatherForNetwork(ctx context.Context, registry Registry, service EPGGatherer, networkID uint16, network *epggather.Network) (bool, error) {
-	if network == nil {
-		var err error
-		network = &epggather.Network{}
-		network.Candidates, network.Services, err = service.BuildNetworkInputs(ctx, networkID)
-		if err != nil {
-			return false, err
-		}
-	}
-	if len(network.Services) == 0 {
-		slog.Debug("skipping EPG gather enqueue with no services", "networkId", networkID)
+func enqueueEPGGatherGroup(registry Registry, service EPGGatherer, key epggather.GroupKey, group *epggather.Group) (bool, error) {
+	if group == nil || len(group.Services) == 0 {
 		return false, nil
 	}
-	nid := networkID
+	jobKey := fmt.Sprintf("epg-gather:nid:%d", key.NetworkID)
+	name := fmt.Sprintf("EPG Gather NID %d", key.NetworkID)
+	if !key.Stored {
+		jobKey += fmt.Sprintf(":stream:%d", key.StreamID)
+		name += fmt.Sprintf(" Stream %d", key.StreamID)
+		if key.Channel != (epggather.Candidate{}) {
+			jobKey += fmt.Sprintf(":channel:%s:%s", key.Channel.Type, key.Channel.Channel)
+			name += fmt.Sprintf(" (%s/%s)", key.Channel.Type, key.Channel.Channel)
+		}
+	}
 	definition := job.JobDefinition{
-		Key: fmt.Sprintf("epg-gather:nid:%d", nid), Name: fmt.Sprintf("EPG Gather NID %d", nid), IsRerunnable: true,
-		SharedKeys: []string{"epg-service-topology"},
-		Priority:   -network.OldestSuccessAt,
-		Handler: func(childCtx context.Context) error {
-			// A service scan may have changed the topology while this job waited.
-			candidates, services, err := service.BuildNetworkInputs(childCtx, nid)
-			if err != nil {
-				return err
-			}
-			if len(services) == 0 {
-				return nil
-			}
-			return service.GatherNetwork(childCtx, nid, candidates, services)
-		},
+		Key: jobKey, Name: name, IsRerunnable: true,
+		SharedKeys:  []string{"epg-service-topology"},
+		Priority:    -group.OldestSuccessAt,
+		Handler:     func(ctx context.Context) error { return service.GatherGroup(ctx, key) },
 		RetryDelays: []time.Duration{time.Minute, 2 * time.Minute, 4 * time.Minute},
 		RetryIf:     epggather.RetryableError,
 	}
 	if _, err := registry.EnqueueDefinition(definition); err != nil {
 		if errors.Is(err, job.ErrJobAlreadyRunning) {
-			slog.Debug("EPG gather already queued or running", "networkId", networkID)
 			return false, nil
 		}
 		return false, err
 	}
-	slog.Info("EPG gather queued", "networkId", networkID, "candidates", len(network.Candidates), "services", len(network.Services))
+	slog.Info("EPG gather queued", "networkId", key.NetworkID, "streamId", key.StreamID, "stored", key.Stored, "candidates", len(group.Candidates), "services", len(group.Services))
 	return true, nil
 }

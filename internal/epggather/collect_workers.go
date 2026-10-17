@@ -14,17 +14,17 @@ var ErrEITPFQueueOverflow = errors.New("eitpf upsert queue overflow")
 
 type partialEITSFlusher struct {
 	ctx       context.Context
-	events    EventWriter
-	requests  chan []model.Event
+	events    ScheduleWriter
+	requests  chan []model.ScheduleSnapshot
 	done      chan struct{}
 	closeOnce sync.Once
 }
 
-func newPartialEITSFlusher(ctx context.Context, events EventWriter) *partialEITSFlusher {
+func newPartialEITSFlusher(ctx context.Context, events ScheduleWriter) *partialEITSFlusher {
 	f := &partialEITSFlusher{
 		ctx:      observability.ContextWithEPGMetricSource(ctx, "eits"),
 		events:   events,
-		requests: make(chan []model.Event, 1),
+		requests: make(chan []model.ScheduleSnapshot, 1),
 		done:     make(chan struct{}),
 	}
 	go f.run()
@@ -35,18 +35,18 @@ func (f *partialEITSFlusher) flush(schedule *collectionSchedule, dirty map[model
 	if schedule == nil || len(dirty) == 0 {
 		return true
 	}
-	var programs []model.Event
+	var snapshots []model.ScheduleSnapshot
 	for key := range dirty {
-		programs = append(programs, schedule.events(key)...)
+		snapshots = append(snapshots, schedule.snapshot(key, schedule.events(key)))
 	}
-	if len(programs) == 0 {
+	if len(snapshots) == 0 {
 		return true
 	}
 	select {
-	case f.requests <- programs:
+	case f.requests <- snapshots:
 		return true
 	default:
-		slog.Debug("skipping partial EITS flush while previous flush is still running", "programs", len(programs))
+		slog.Debug("skipping partial EITS flush while previous flush is still running", "services", len(snapshots))
 		return false
 	}
 }
@@ -63,9 +63,11 @@ func (f *partialEITSFlusher) wait() {
 
 func (f *partialEITSFlusher) run() {
 	defer close(f.done)
-	for programs := range f.requests {
-		if err := f.events.UpsertEvents(f.ctx, programs); err != nil {
-			slog.Debug("partial EITS upsert finished with error", "err", err)
+	for snapshots := range f.requests {
+		for _, snapshot := range snapshots {
+			if err := f.events.UpsertSchedule(f.ctx, snapshot); err != nil {
+				slog.Debug("partial EITS upsert finished with error", "err", err)
+			}
 		}
 	}
 }
