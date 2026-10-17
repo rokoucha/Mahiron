@@ -23,6 +23,7 @@ type eventPublisher interface {
 }
 
 type Manager struct {
+	mu         sync.Mutex
 	store      Store
 	events     eventPublisher
 	eventMu    sync.Mutex
@@ -58,6 +59,8 @@ func (m *Manager) UpsertEvents(ctx context.Context, events []model.Event) error 
 }
 
 func (m *Manager) UpsertPrograms(ctx context.Context, programs []*Program) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	source := observability.EPGMetricSource(ctx)
 	attempted := nonNilProgramCount(programs)
 	pending := make(map[int64]*Program, len(programs))
@@ -106,14 +109,77 @@ func (m *Manager) UpsertPrograms(ctx context.Context, programs []*Program) error
 		return nil
 	}
 
-	if err := m.store.UpsertAll(ctx, toWrite); err != nil {
+	removed := map[int64]bool{}
+	writtenByService := make(map[[2]uint16]map[int64]*Program)
+	for _, p := range toWrite {
+		service := [2]uint16{p.Key.NetworkID, p.Key.ServiceID}
+		written := writtenByService[service]
+		if written == nil {
+			written = make(map[int64]*Program)
+			writtenByService[service] = written
+		}
+		written[p.ID] = p
+		delete(removed, p.ID)
+		old := before[p.ID]
+		if old != nil && old.StartAtOrZero() == p.StartAtOrZero() && old.DurationOrZero() == p.DurationOrZero() {
+			continue
+		}
+		if p.StartAt == nil || p.DurationOrZero() <= 0 {
+			continue
+		}
+		start, end := *p.StartAt, *p.StartAt+int64(p.DurationOrZero())
+		candidates, err := m.store.List(ctx, Query{NetworkID: &p.Key.NetworkID, ServiceID: &p.Key.ServiceID, StartAt: &start, EndAt: &end})
+		if err != nil {
+			return err
+		}
+		latest := make(map[int64]*Program, len(candidates)+len(written))
+		for _, other := range candidates {
+			latest[other.ID] = other
+		}
+		for _, other := range written {
+			latest[other.ID] = other
+		}
+		for _, other := range latest {
+			if other.ID == p.ID || other.Key.NetworkID != p.Key.NetworkID || other.Key.ServiceID != p.Key.ServiceID || other.StartAt == nil || other.DurationOrZero() <= 0 {
+				continue
+			}
+			if (other.EITPresent || other.EITFollowing) && !pending[p.ID].EITPresent {
+				continue
+			}
+			if start < *other.StartAt+int64(other.DurationOrZero()) && *other.StartAt < end {
+				removed[other.ID] = true
+			}
+		}
+	}
+	kept := toWrite[:0]
+	for _, p := range toWrite {
+		if !removed[p.ID] {
+			kept = append(kept, p)
+		}
+	}
+	removedIDs := make([]int64, 0, len(removed))
+	for id := range removed {
+		removedIDs = append(removedIDs, id)
+	}
+	if len(removedIDs) == 0 {
+		err = m.store.UpsertAll(ctx, kept)
+	} else {
+		err = m.store.UpsertAndDelete(ctx, kept, removedIDs)
+	}
+	if err != nil {
 		observability.RecordEPGProgramsUpserted(ctx, source, "error", int64(attempted))
 		return err
 	}
 	for _, ev := range events {
-		m.enqueueProgramEvent(ev.typ, ev.after)
+		if !removed[ev.after.ID] {
+			m.enqueueProgramEvent(ev.typ, ev.after)
+		}
 	}
-	observability.RecordEPGProgramsUpserted(ctx, source, "success", int64(len(events)))
+	for _, id := range removedIDs {
+		m.enqueueProgramRemoveEvent(id)
+	}
+	observability.RecordEPGProgramsDeleted(ctx, source, "success", int64(len(removedIDs)))
+	observability.RecordEPGProgramsUpserted(ctx, source, "success", int64(len(kept)))
 	return nil
 }
 
@@ -130,6 +196,8 @@ func (m *Manager) ListFunc(ctx context.Context, query Query, yield func(*Program
 }
 
 func (m *Manager) DeleteEndedBefore(ctx context.Context, cutoff int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	source := observability.EPGMetricSource(ctx)
 	removed, err := m.store.ListEndedIDsBefore(ctx, cutoff)
 	if err != nil {
@@ -157,6 +225,8 @@ func (m *Manager) DeleteExpired(ctx context.Context, now time.Time, retentionDay
 }
 
 func (m *Manager) ReplaceServicePrograms(ctx context.Context, networkID, serviceID uint16, from int64, programs []*Program) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	source := observability.EPGMetricSource(ctx)
 	attempted := nonNilProgramCount(programs)
 	beforeList, err := m.store.ListByServiceFrom(ctx, networkID, serviceID, from)
@@ -242,6 +312,10 @@ func mergeUpsertProgram(existing, incoming *Program) *Program {
 	merged := *incoming
 	if existing == nil {
 		return &merged
+	}
+	if !merged.EITPresent && !merged.EITFollowing {
+		merged.EITPresent = existing.EITPresent
+		merged.EITFollowing = existing.EITFollowing
 	}
 	if merged.Name == "" {
 		merged.Name = existing.Name

@@ -9,6 +9,8 @@ import "github.com/21S1298001/mahiron/internal/model"
 // rows already stored; the 202609250001_program_event migration writes the
 // same format.
 type storedEvent struct {
+	EITPresent    bool             `json:"eitPresent,omitempty"`
+	EITFollowing  bool             `json:"eitFollowing,omitempty"`
 	Language      string           `json:"language,omitempty"`
 	RunningStatus uint8            `json:"runningStatus,omitempty"`
 	Genres        []storedGenre    `json:"genres,omitempty"`
@@ -89,7 +91,7 @@ type storedSeries struct {
 }
 
 func toStoredEvent(e *model.Event) storedEvent {
-	out := storedEvent{Language: e.Language, RunningStatus: e.RunningStatus}
+	out := storedEvent{EITPresent: e.EITPresent, EITFollowing: e.EITFollowing, Language: e.Language, RunningStatus: e.RunningStatus}
 	for _, g := range e.Genres {
 		out.Genres = append(out.Genres, storedGenre{Lv1: g.Lv1, Lv2: g.Lv2, Un1: g.Un1, Un2: g.Un2})
 	}
@@ -132,6 +134,8 @@ func toStoredEvent(e *model.Event) storedEvent {
 }
 
 func (s storedEvent) applyTo(e *model.Event) {
+	e.EITPresent = s.EITPresent
+	e.EITFollowing = s.EITFollowing
 	e.Language = s.Language
 	e.RunningStatus = s.RunningStatus
 	for _, g := range s.Genres {

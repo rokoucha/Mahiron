@@ -611,7 +611,7 @@ func TestMirakurunOutputsShareOneFixture(t *testing.T) {
 	pm := program.NewManager(programStore)
 	full, minimal := contractFullProgram(), contractMinimalProgram()
 	orphan := &program.Program{ID: program.ProgramID(9, 109, 1), Event: model.Event{Key: model.ServiceKey{ServiceID: 109, NetworkID: 9}, EventID: 1, StartAt: testPtr[int64](1788609060000), DurationMS: testPtr[int](1800000)}}
-	if err := pm.UpsertPrograms(ctx, []*program.Program{full, minimal, orphan}); err != nil {
+	if err := programStore.UpsertAll(ctx, []*program.Program{full, minimal, orphan}); err != nil {
 		t.Fatal(err)
 	}
 

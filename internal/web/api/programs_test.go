@@ -31,12 +31,13 @@ func testProgramHandler(t *testing.T) *Handler {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = database.Close() })
-	pm := program.NewManager(program.NewSQLiteStore(database))
+	store := program.NewSQLiteStore(database)
+	pm := program.NewManager(store)
 	start10, start9, duration := int64(2000), int64(1000), 30000
 	key := model.ServiceKey{NetworkID: 1, ServiceID: 101}
-	if err := pm.UpsertEvents(ctx, []model.Event{
-		{Key: key, EventID: 10, StartAt: &start10, DurationMS: &duration, Name: "second"},
-		{Key: key, EventID: 9, StartAt: &start9, DurationMS: &duration, Name: "first"},
+	if err := store.UpsertAll(ctx, []*program.Program{
+		program.FromEvent(model.Event{Key: key, EventID: 10, StartAt: &start10, DurationMS: &duration, Name: "second"}),
+		program.FromEvent(model.Event{Key: key, EventID: 9, StartAt: &start9, DurationMS: &duration, Name: "first"}),
 	}); err != nil {
 		t.Fatal(err)
 	}
