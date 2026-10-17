@@ -137,3 +137,27 @@ func TestUnknownStreamsHaveDistinctJobKeys(t *testing.T) {
 		t.Fatal("unknown stream jobs collide")
 	}
 }
+
+func TestEPGJobNamesUseChannelsWithoutChangingKeys(t *testing.T) {
+	for _, tc := range []struct {
+		key               epggather.GroupKey
+		candidates        []epggather.Candidate
+		wantName, wantKey string
+	}{
+		{epggather.GroupKey{NetworkID: 32737, StreamID: 32737}, []epggather.Candidate{{Type: "GR", Channel: "26"}}, "EPG Gather GR/26", "epg-gather:nid:32737:stream:32737"},
+		{epggather.GroupKey{NetworkID: 11, Channel: epggather.Candidate{Type: "BS4K", Channel: "45328"}}, []epggather.Candidate{{Type: "BS4K", Channel: "45328"}}, "EPG Gather BS4K/45328", "epg-gather:nid:11:stream:0:channel:BS4K:45328"},
+		{epggather.GroupKey{NetworkID: 7, Stored: true}, []epggather.Candidate{{Type: "CS", Channel: "CS4"}, {Type: "CS", Channel: "CS6"}}, "EPG Gather CS/CS4 (+1)", "epg-gather:nid:7"},
+	} {
+		t.Run(tc.wantKey, func(t *testing.T) {
+			queue := &epgQueue{}
+			group := &epggather.Group{Candidates: tc.candidates, Services: []model.ServiceKey{{NetworkID: tc.key.NetworkID, ServiceID: 1}}}
+			if _, err := enqueueEPGGatherGroup(queue, &scheduledEPG{}, tc.key, group); err != nil {
+				t.Fatal(err)
+			}
+			got := queue.definitions[0]
+			if got.Name != tc.wantName || got.Key != tc.wantKey {
+				t.Fatalf("got %q %q, want %q %q", got.Name, got.Key, tc.wantName, tc.wantKey)
+			}
+		})
+	}
+}

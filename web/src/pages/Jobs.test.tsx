@@ -5,7 +5,7 @@ import type { DashboardResourceState, DashboardState } from '../dashboard'
 import Jobs from './Jobs'
 
 describe('Jobs', () => {
-  it('renders service scan result details with service names', () => {
+  it('renders service names and keeps EPG identifiers in target details', () => {
     const dashboard = {
       data: {
         status: null,
@@ -20,6 +20,16 @@ describe('Jobs', () => {
       services: resource<Service[]>(null),
       channels: resource<Channel[]>(null),
       jobs: resource<Job[]>([
+        {
+          id: 'epg-1',
+          key: 'epg-gather:nid:32737:stream:32737',
+          name: 'EPG Gather GR/26',
+          status: 'running',
+          retryCount: 0,
+          isAborting: false,
+          createdAt: 1,
+          updatedAt: 2,
+        },
         {
           id: 'job-1',
           key: 'service-scan:GR:27',
@@ -70,6 +80,10 @@ describe('Jobs', () => {
     expect(html).toContain('NHK')
     expect(html).toContain('追加')
     expect(html).toContain('SID 101')
+    expect(html).toContain('<strong>EPG Gather GR/26</strong>')
+    expect(html).toContain(
+      '<details><summary>取得対象</summary><span>ONID 32737</span><span>ストリームID 32737</span><code>epg-gather:nid:32737:stream:32737</code></details>',
+    )
   })
 })
 

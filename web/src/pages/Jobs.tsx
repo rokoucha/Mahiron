@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { api, type Job, type JobResultItem } from '../api'
 import type { DashboardState } from '../dashboard'
 import { useAsync } from '../hooks'
-import { jobStatusLabel } from '../domain/job'
+import { epgJobScope, jobStatusLabel } from '../domain/job'
 import { formatDate } from '../format/date'
 import { PageFrame } from '../ui/layout'
 import { ErrorList } from '../ui/logs'
@@ -54,7 +54,7 @@ export default function Jobs({ dashboard }: { dashboard: DashboardState }) {
               <tr key={job.id}>
                 <td>
                   <strong>{job.name}</strong>
-                  <span>{job.key}</span>
+                  <JobTarget job={job} />
                   {job.error && <em>{job.error}</em>}
                 </td>
                 <td>
@@ -135,6 +135,23 @@ export default function Jobs({ dashboard }: { dashboard: DashboardState }) {
         </table>
       </section>
     </PageFrame>
+  )
+}
+
+function JobTarget({ job }: { job: Job }) {
+  const scope = epgJobScope(job.key)
+  if (!scope) return <span>{job.key}</span>
+  return (
+    <details>
+      <summary>取得対象</summary>
+      <span>ONID {scope.onid}</span>
+      <span>
+        {scope.stream === null
+          ? 'ネットワーク単位'
+          : `ストリームID ${scope.stream}`}
+      </span>
+      <code>{job.key}</code>
+    </details>
   )
 }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Job } from '../api'
-import { currentGatheringNetworks, jobStatusLabel } from './job'
+import { currentGatheringChannels, epgJobScope, jobStatusLabel } from './job'
 
 const job = (overrides: Partial<Job>): Job => ({
   id: '1',
@@ -21,13 +21,36 @@ describe('jobStatusLabel', () => {
   })
 })
 
-describe('currentGatheringNetworks', () => {
-  it('extracts network ids from running epg-gather jobs', () => {
+describe('currentGatheringChannels', () => {
+  it('shows channel labels instead of internal stream keys for running jobs', () => {
     const jobs = [
-      job({ status: 'running', key: 'epg-gather:nid:1' }),
+      job({
+        status: 'running',
+        key: 'epg-gather:nid:65534:stream:65120',
+        name: 'EPG Gather CATV/C17',
+      }),
+      job({
+        status: 'running',
+        key: 'epg-gather:nid:65534:stream:65188',
+        name: 'EPG Gather CATV/C18',
+      }),
       job({ status: 'finished', key: 'epg-gather:nid:2' }),
       job({ status: 'running', key: 'other:job' }),
     ]
-    expect(currentGatheringNetworks(jobs)).toEqual(['1'])
+    expect(currentGatheringChannels(jobs)).toEqual(['CATV/C17', 'CATV/C18'])
+  })
+})
+
+describe('epgJobScope', () => {
+  it('distinguishes unknown streams, a known zero stream, and stored network EPG', () => {
+    expect(
+      epgJobScope('epg-gather:nid:11:stream:0:channel:BS4K:45328'),
+    ).toEqual({ onid: '11', stream: '未取得' })
+    expect(epgJobScope('epg-gather:nid:4:stream:0')).toEqual({
+      onid: '4',
+      stream: '0',
+    })
+    expect(epgJobScope('epg-gather:nid:7')).toEqual({ onid: '7', stream: null })
+    expect(epgJobScope('service-scan:GR:26')).toBeNull()
   })
 })
