@@ -2,9 +2,10 @@ package program
 
 import (
 	"context"
+	"testing"
+
 	"github.com/21S1298001/mahiron/internal/db"
 	"github.com/21S1298001/mahiron/internal/model"
-	"testing"
 )
 
 func TestUpsertRemovesConflicts(t *testing.T) {
@@ -97,7 +98,7 @@ func TestConflictRemovalRollsBackWithFailedWrite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	t.Cleanup(func() { _ = database.Close() })
 	store := NewSQLiteStore(database)
 	m := NewManager(store)
 	old := FromEvent(model.Event{Key: model.ServiceKey{NetworkID: 1, ServiceID: 2}, EventID: 1, StartAt: testPtr[int64](100), DurationMS: testPtr(100)})
