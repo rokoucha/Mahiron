@@ -27,6 +27,7 @@ go.work.sum
 
 /mahiron
 /mahiron-agent
+/mahiron-tools
 /mahiron5
 *.db
 *.db-wal

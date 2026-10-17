@@ -76,7 +76,7 @@ jobs:
       - name: Build binaries
         run: |
           mkdir -p dist
-          for binary in mahiron mahiron-agent; do
+          for binary in mahiron mahiron-agent mahiron-tools; do
             for arch in amd64 arm64; do
               output="${binary}_${GITHUB_SHA}_linux_${arch}"
               mkdir -p "dist/${output}"
