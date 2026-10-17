@@ -14,16 +14,32 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
 
 func startTestAgent(t *testing.T) (*Hub, string, string) {
 	t.Helper()
+	return startTestAgentWithReconnectGate(t, nil)
+}
+
+func startTestAgentWithReconnectGate(t *testing.T, reconnect <-chan struct{}) (*Hub, string, string) {
+	t.Helper()
 	token := "test-token-long-enough"
 	hash := fmt.Sprintf("%x", sha256.Sum256([]byte(token)))
 	hub := NewHub(map[string]string{"living": hash})
-	server := httptest.NewServer(hub)
+	var connections atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/agent/v1/control" && connections.Add(1) > 1 && reconnect != nil {
+			select {
+			case <-reconnect:
+			case <-r.Context().Done():
+				return
+			}
+		}
+		hub.ServeHTTP(w, r)
+	}))
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- Run(ctx, server.URL, token) }()
@@ -255,7 +271,9 @@ func TestAgentRejectsAuthenticationAndStaleSession(t *testing.T) {
 func TestAgentDisconnectQuarantinesActiveTuner(t *testing.T) {
 	for _, decoder := range []string{"", "cat"} {
 		t.Run("decoder="+decoder, func(t *testing.T) {
-			hub, _, _ := startTestAgent(t)
+			reconnect, resume := context.WithCancel(t.Context())
+			defer resume()
+			hub, _, _ := startTestAgentWithReconnectGate(t, reconnect.Done())
 			path := filepath.Join(t.TempDir(), "input")
 			if err := os.WriteFile(path, tsData(), 0600); err != nil {
 				t.Fatal(err)
@@ -270,6 +288,21 @@ func TestAgentDisconnectQuarantinesActiveTuner(t *testing.T) {
 			conn := hub.connections["living"]
 			hub.mu.Unlock()
 			_ = conn.conn.Close()
+			// Upload completion can precede control disconnect handling.
+			for {
+				changed := hub.Changed()
+				hub.mu.Lock()
+				disconnected := hub.connections["living"] != conn
+				hub.mu.Unlock()
+				if disconnected {
+					break
+				}
+				select {
+				case <-changed:
+				case <-ctx.Done():
+					t.Fatal("control disconnect was not handled")
+				}
+			}
 			select {
 			case <-d.Done():
 			case <-ctx.Done():
@@ -284,6 +317,7 @@ func TestAgentDisconnectQuarantinesActiveTuner(t *testing.T) {
 			if !q {
 				t.Fatal("unconfirmed cleanup was not quarantined")
 			}
+			resume()
 			for {
 				changed := hub.Changed()
 				if hub.Available("living", "catv") {

@@ -14,6 +14,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/21S1298001/mahiron/internal/bml"
@@ -252,41 +253,43 @@ func TestRemoteSessionStreamsChannelServiceAndProgram(t *testing.T) {
 }
 
 func TestRemoteSessionSharesSameDecodeUpstreamWhileActive(t *testing.T) {
-	upstream := newBlockingStreamTransport()
-	session := newTestRemoteSession(upstream)
-	t.Cleanup(func() { _ = session.Stop(context.Background()) })
+	synctest.Test(t, func(t *testing.T) {
+		upstream := newBlockingStreamTransport()
+		session := newTestRemoteSession(upstream)
+		t.Cleanup(func() { _ = session.Stop(context.Background()) })
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	done := make(chan error, 2)
-	go func() { done <- session.ChannelStream(ctx, false, io.Discard) }()
-	if !streamtest.Eventually(time.Second, func() bool { return upstream.requestCount() == 1 }) {
-		t.Fatal("raw upstream did not start")
-	}
-	go func() { done <- session.ServiceStream(ctx, 101, false, io.Discard) }()
-	time.Sleep(10 * time.Millisecond)
-	if got := upstream.requestCount(); got != 1 {
-		t.Fatalf("upstream requests = %d, want 1", got)
-	}
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		done := make(chan error, 2)
+		go func() { done <- session.ChannelStream(ctx, false, io.Discard) }()
+		if !streamtest.Eventually(time.Second, func() bool { return upstream.requestCount() == 1 }) {
+			t.Fatal("raw upstream did not start")
+		}
+		go func() { done <- session.ServiceStream(ctx, 101, false, io.Discard) }()
+		synctest.Wait()
+		if got := upstream.requestCount(); got != 1 {
+			t.Fatalf("upstream requests = %d, want 1", got)
+		}
 
-	cancel()
-	upstream.close()
-	for range 2 {
-		if err := <-done; err != nil {
+		cancel()
+		upstream.close()
+		for range 2 {
+			if err := <-done; err != nil {
+				t.Fatal(err)
+			}
+		}
+		nextCtx, nextCancel := context.WithCancel(context.Background())
+		nextDone := make(chan error, 1)
+		go func() { nextDone <- session.ChannelStream(nextCtx, false, io.Discard) }()
+		if !streamtest.Eventually(time.Second, func() bool { return upstream.requestCount() == 2 }) {
+			t.Fatalf("upstream requests after re-subscribe = %d, want 2", upstream.requestCount())
+		}
+		nextCancel()
+		upstream.close()
+		if err := <-nextDone; err != nil {
 			t.Fatal(err)
 		}
-	}
-	nextCtx, nextCancel := context.WithCancel(context.Background())
-	nextDone := make(chan error, 1)
-	go func() { nextDone <- session.ChannelStream(nextCtx, false, io.Discard) }()
-	if !streamtest.Eventually(time.Second, func() bool { return upstream.requestCount() == 2 }) {
-		t.Fatalf("upstream requests after re-subscribe = %d, want 2", upstream.requestCount())
-	}
-	nextCancel()
-	upstream.close()
-	if err := <-nextDone; err != nil {
-		t.Fatal(err)
-	}
+	})
 }
 
 func TestRemoteSessionSeparatesRawAndDecodedUpstreams(t *testing.T) {
