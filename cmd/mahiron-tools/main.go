@@ -19,11 +19,14 @@ import (
 func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
 func run(args []string, out, stderr io.Writer) int {
 	if len(args) == 0 || args[0] == "help" || args[0] == "--help" || args[0] == "-h" {
-		fmt.Fprintln(out, "Usage: mahiron-tools probe [options] [file|-]\n\nCommands:\n  probe  Inspect services, components and residual scrambling in TS/TSMF/TLV")
+		if _, err := fmt.Fprintln(out, "Usage: mahiron-tools probe [options] [file|-]\n\nCommands:\n  probe  Inspect services, components and residual scrambling in TS/TSMF/TLV"); err != nil {
+			_, _ = fmt.Fprintln(stderr, err)
+			return 1
+		}
 		return 0
 	}
 	if args[0] != "probe" {
-		fmt.Fprintf(stderr, "unknown command %q\n", args[0])
+		_, _ = fmt.Fprintf(stderr, "unknown command %q\n", args[0])
 		return 2
 	}
 	fs := flag.NewFlagSet("probe", flag.ContinueOnError)
@@ -39,17 +42,17 @@ func run(args []string, out, stderr io.Writer) int {
 		return 2
 	}
 	if fs.NArg() > 1 || *relative > 15 || *duration < 0 {
-		fmt.Fprintln(stderr, "expected at most one input, --relative-ts 0..15, and nonnegative --duration")
+		_, _ = fmt.Fprintln(stderr, "expected at most one input, --relative-ts 0..15, and nonnegative --duration")
 		return 2
 	}
 	switch *format {
 	case "auto", "ts", "tsmf", "tlv":
 	default:
-		fmt.Fprintln(stderr, "--format must be auto, ts, tsmf or tlv")
+		_, _ = fmt.Fprintln(stderr, "--format must be auto, ts, tsmf or tlv")
 		return 2
 	}
 	if *format == "tlv" && *relative != 0 {
-		fmt.Fprintln(stderr, "--relative-ts requires TS/TSMF input")
+		_, _ = fmt.Fprintln(stderr, "--relative-ts requires TS/TSMF input")
 		return 2
 	}
 	input := os.Stdin
@@ -57,10 +60,10 @@ func run(args []string, out, stderr io.Writer) int {
 		var err error
 		input, err = os.Open(fs.Arg(0))
 		if err != nil {
-			fmt.Fprintln(stderr, err)
+			_, _ = fmt.Fprintln(stderr, err)
 			return 1
 		}
-		defer input.Close()
+		defer func() { _ = input.Close() }()
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
@@ -75,7 +78,7 @@ func run(args []string, out, stderr io.Writer) int {
 	go func() {
 		select {
 		case <-ctx.Done():
-			input.Close()
+			_ = input.Close()
 		case <-done:
 		}
 	}()
@@ -85,16 +88,16 @@ func run(args []string, out, stderr io.Writer) int {
 			encoder := json.NewEncoder(out)
 			encoder.SetIndent("", "  ")
 			if e := encoder.Encode(report); e != nil {
-				fmt.Fprintln(stderr, e)
+				_, _ = fmt.Fprintln(stderr, e)
 				return 1
 			}
 		} else if e := writeText(out, report); e != nil {
-			fmt.Fprintln(stderr, e)
+			_, _ = fmt.Fprintln(stderr, e)
 			return 1
 		}
 	}
 	if err != nil {
-		fmt.Fprintln(stderr, err)
+		_, _ = fmt.Fprintln(stderr, err)
 		return 1
 	}
 	return 0
@@ -138,7 +141,7 @@ func writeText(dst io.Writer, r *probe.Report) error {
 	_, err := io.WriteString(dst, b.String())
 	return err
 }
-func writeService(out io.Writer, s *probe.Service) {
+func writeService(out *strings.Builder, s *probe.Service) {
 	fmt.Fprintf(out, "Service %d: %s\n", s.ID, s.Name)
 	if s.Provider != "" {
 		fmt.Fprintf(out, "  Provider: %s\n", s.Provider)
@@ -202,7 +205,7 @@ func writeService(out io.Writer, s *probe.Service) {
 		writeCA(out, c.CA)
 	}
 }
-func writeCA(out io.Writer, entries []probe.ConditionalAccess) {
+func writeCA(out *strings.Builder, entries []probe.ConditionalAccess) {
 	for _, ca := range entries {
 		fmt.Fprintf(out, "    CA system: 0x%04x\n", ca.SystemID)
 		if ca.PID == ts.PIDNull {

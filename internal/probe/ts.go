@@ -132,9 +132,10 @@ func (t *tsState) feed(p ts.Packet, elapsed time.Duration) uint64 {
 					case ts.DescriptorTagDataComponent:
 						if len(b) >= 2 {
 							id := uint16(b[0])<<8 | uint16(b[1])
-							if id == 8 || id == 0x12 {
+							switch id {
+							case 8, 0x12:
 								c.Kind = "subtitle"
-							} else if id == 0xc {
+							case 0xc:
 								c.Kind = "data"
 							}
 							c.Codec = fmt.Sprintf("ARIB data 0x%04x", id)

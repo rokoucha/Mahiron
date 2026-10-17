@@ -52,8 +52,8 @@ func TestProbeDurationInterruptsIdlePipe(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer r.Close()
-	defer w.Close()
+	defer func() { _ = r.Close() }()
+	defer func() { _ = w.Close() }()
 	original := os.Stdin
 	os.Stdin = r
 	defer func() { os.Stdin = original }()
@@ -79,7 +79,7 @@ func TestProbeDurationInterruptsIdlePipe(t *testing.T) {
 			t.Fatalf("report: %+v", report)
 		}
 	case <-time.After(3 * time.Second):
-		r.Close()
+		_ = r.Close()
 		<-done
 		t.Fatal("duration did not interrupt idle pipe")
 	}
@@ -98,8 +98,8 @@ func TestProbeDurationRetainsDetectionBuffer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer r.Close()
-	defer w.Close()
+	defer func() { _ = r.Close() }()
+	defer func() { _ = w.Close() }()
 	original := os.Stdin
 	os.Stdin = r
 	defer func() { os.Stdin = original }()
@@ -132,8 +132,8 @@ func TestProbeDurationWithoutInputReturnsReport(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer r.Close()
-	defer w.Close()
+	defer func() { _ = r.Close() }()
+	defer func() { _ = w.Close() }()
 	original := os.Stdin
 	os.Stdin = r
 	defer func() { os.Stdin = original }()
