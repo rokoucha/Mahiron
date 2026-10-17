@@ -238,7 +238,7 @@ func TestEnqueueEPGGatherForNetworkIgnoresMissingNetwork(t *testing.T) {
 	pm := program.NewManager(program.NewSQLiteStore(database))
 	epgService := epggather.NewGatherer(pm, pm, sm, stream.NewEPGGatherAdapter(stm), channels, 10*time.Minute)
 
-	enqueued, err := enqueueEPGGatherForNetwork(ctx, mgr, epgService, 999, nil, nil)
+	enqueued, err := enqueueEPGGatherForNetwork(ctx, mgr, epgService, 999, nil)
 	if err != nil {
 		t.Fatalf("expected nil error for missing network, got %v", err)
 	}

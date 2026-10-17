@@ -28,6 +28,7 @@ type Manager struct {
 	active              map[string]context.CancelFunc
 	activeKeys          map[string]bool
 	activeExclusiveKeys map[string]bool
+	activeSharedKeys    map[string]int
 	running             int
 	maxConcurrent       int
 	maxHistory          int
@@ -67,6 +68,7 @@ func NewManager(cfg Config, events ...eventPublisher) (*Manager, error) {
 		active:              make(map[string]context.CancelFunc),
 		activeKeys:          make(map[string]bool),
 		activeExclusiveKeys: make(map[string]bool),
+		activeSharedKeys:    make(map[string]int),
 		maxConcurrent:       cfg.MaxConcurrentJobs,
 		maxHistory:          cfg.MaxHistory,
 		shutdownCtx:         shutdownCtx,
@@ -289,23 +291,35 @@ func (m *Manager) enqueueItemLocked(item *Job) {
 }
 
 func (m *Manager) popRunnableQueueLocked() *Job {
+	selected := -1
 	for i, item := range m.queue {
-		if !m.dependenciesSatisfiedLocked(item.definition.DependsOn, item.definition.ExclusiveKeys) {
+		if !m.dependenciesSatisfiedLocked(item.definition.DependsOn, item.definition.ExclusiveKeys, item.definition.SharedKeys) {
 			continue
 		}
-		m.queue = append(m.queue[:i], m.queue[i+1:]...)
-		return item
+		if selected < 0 || item.definition.Priority > m.queue[selected].definition.Priority {
+			selected = i
+		}
 	}
-	return nil
+	if selected < 0 {
+		return nil
+	}
+	item := m.queue[selected]
+	m.queue = append(m.queue[:selected], m.queue[selected+1:]...)
+	return item
 }
 
-func (m *Manager) dependenciesSatisfiedLocked(dependencies, exclusiveKeys []string) bool {
+func (m *Manager) dependenciesSatisfiedLocked(dependencies, exclusiveKeys, sharedKeys []string) bool {
 	for _, key := range dependencies {
 		if m.activeKeys[key] {
 			return false
 		}
 	}
 	for _, key := range exclusiveKeys {
+		if m.activeExclusiveKeys[key] || m.activeSharedKeys[key] > 0 {
+			return false
+		}
+	}
+	for _, key := range sharedKeys {
 		if m.activeExclusiveKeys[key] {
 			return false
 		}
@@ -323,6 +337,9 @@ func (m *Manager) startJobLocked(item *Job) context.Context {
 	for _, key := range item.definition.ExclusiveKeys {
 		m.activeExclusiveKeys[key] = true
 	}
+	for _, key := range item.definition.SharedKeys {
+		m.activeSharedKeys[key]++
+	}
 	m.running++
 	m.publishJobChangeLocked("update", item)
 	m.wg.Add(1)
@@ -334,6 +351,12 @@ func (m *Manager) completeActiveLocked(item *Job) {
 	delete(m.active, item.ID)
 	for _, key := range item.definition.ExclusiveKeys {
 		delete(m.activeExclusiveKeys, key)
+	}
+	for _, key := range item.definition.SharedKeys {
+		m.activeSharedKeys[key]--
+		if m.activeSharedKeys[key] == 0 {
+			delete(m.activeSharedKeys, key)
+		}
 	}
 	m.running--
 }
