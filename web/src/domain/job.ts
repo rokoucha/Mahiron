@@ -10,12 +10,28 @@ export function jobStatusLabel(status: Job['status']) {
   return labels[status] ?? status
 }
 
-export function currentGatheringNetworks(jobs: Job[]) {
+export function currentGatheringChannels(jobs: Job[]) {
   return jobs
     .filter(
       (job) =>
         job.status === 'running' && job.key.startsWith('epg-gather:nid:'),
     )
-    .map((job) => job.key.slice('epg-gather:nid:'.length))
+    .map((job) => job.name.replace(/^EPG Gather /, ''))
     .filter(Boolean)
+}
+
+export function epgJobScope(key: string) {
+  const match = /^epg-gather:nid:(\d+)(?::stream:(\d+))?(?::channel:.+)?$/.exec(
+    key,
+  )
+  if (!match) return null
+  return {
+    onid: match[1],
+    stream:
+      match[2] === undefined
+        ? null
+        : key.includes(':channel:')
+          ? '未取得'
+          : match[2],
+  }
 }

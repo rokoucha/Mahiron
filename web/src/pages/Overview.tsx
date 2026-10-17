@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import type { Tuner } from '../api'
 import type { DashboardState } from '../dashboard'
-import { currentGatheringNetworks } from '../domain/job'
+import { currentGatheringChannels } from '../domain/job'
 import {
   channelLabel,
   isVisibleService,
@@ -61,11 +61,11 @@ export default function Overview({ dashboard }: { dashboard: DashboardState }) {
   const faultTuners = tuners.data?.filter((tuner) => tuner.isFault).length ?? 0
   const activeJobs =
     jobs.data?.filter((job) => job.status !== 'finished').length ?? 0
-  const gatheringNetworks = useMemo(
-    () => currentGatheringNetworks(jobs.data ?? []),
+  const gatheringChannels = useMemo(
+    () => currentGatheringChannels(jobs.data ?? []),
     [jobs.data],
   )
-  const epgGathering = gatheringNetworks.length > 0
+  const epgGathering = gatheringChannels.length > 0
   const visibleServices = useMemo(
     () => (services.data ?? []).filter(isVisibleService),
     [services.data],
@@ -146,8 +146,8 @@ export default function Overview({ dashboard }: { dashboard: DashboardState }) {
             value={epgGathering ? '取得中' : '待機中'}
           />
           <Definition
-            label="取得中ネットワーク"
-            value={gatheringNetworks.join(', ') || 'なし'}
+            label="取得中チャンネル"
+            value={gatheringChannels.join(', ') || 'なし'}
           />
           <Definition
             label="最終更新"

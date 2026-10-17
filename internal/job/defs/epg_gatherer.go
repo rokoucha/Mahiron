@@ -118,13 +118,18 @@ func enqueueEPGGatherGroup(registry Registry, service EPGGatherer, key epggather
 		return false, nil
 	}
 	jobKey := fmt.Sprintf("epg-gather:nid:%d", key.NetworkID)
-	name := fmt.Sprintf("EPG Gather NID %d", key.NetworkID)
+	name := "EPG Gather"
+	if len(group.Candidates) > 0 {
+		candidate := group.Candidates[0]
+		name += fmt.Sprintf(" %s/%s", candidate.Type, candidate.Channel)
+		if len(group.Candidates) > 1 {
+			name += fmt.Sprintf(" (+%d)", len(group.Candidates)-1)
+		}
+	}
 	if !key.Stored {
 		jobKey += fmt.Sprintf(":stream:%d", key.StreamID)
-		name += fmt.Sprintf(" Stream %d", key.StreamID)
 		if key.Channel != (epggather.Candidate{}) {
 			jobKey += fmt.Sprintf(":channel:%s:%s", key.Channel.Type, key.Channel.Channel)
-			name += fmt.Sprintf(" (%s/%s)", key.Channel.Type, key.Channel.Channel)
 		}
 	}
 	definition := job.JobDefinition{
