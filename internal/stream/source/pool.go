@@ -233,6 +233,25 @@ func (p *Pool) IsTLVChannel(channelType, channel string) bool {
 	return channelConfig != nil && config.IsTLVTransport(*channelConfig)
 }
 
+// StoredEPG is conservative for mixed local/remote routes: a local fallback
+// must still collect each stream's schedule.
+func (p *Pool) StoredEPG(channelType, channel string) bool {
+	ch := p.findChannel(channelType, channel)
+	if ch == nil || config.IsChannelDisabled(*ch) || config.IsTLVTransport(*ch) {
+		return false
+	}
+	routes := enabledRoutes(ch.RoutesOrDefault())
+	if len(routes) == 0 {
+		return false
+	}
+	for _, route := range routes {
+		if route.Remote == "" {
+			return false
+		}
+	}
+	return true
+}
+
 func (p *Pool) localLease(channelType, channel string, selected routeSelection) InputHandle {
 	decoderCommand := p.descramblerCommand(channelType, channel, selected)
 

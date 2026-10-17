@@ -298,17 +298,11 @@ func (s *blockingStartupScanner) ScanChannel(ctx context.Context, _, _ string, _
 
 type startupEPGGatherer struct{}
 
-func (startupEPGGatherer) Groups(context.Context) (map[uint16]*epggather.Network, error) {
+func (startupEPGGatherer) Groups(context.Context) (map[epggather.GroupKey]*epggather.Group, error) {
 	return nil, nil
 }
 
-func (startupEPGGatherer) BuildNetworkInputs(context.Context, uint16) ([]epggather.Candidate, []model.ServiceKey, error) {
-	return nil, nil, nil
-}
-
-func (startupEPGGatherer) GatherNetwork(context.Context, uint16, []epggather.Candidate, []model.ServiceKey) error {
-	return nil
-}
+func (startupEPGGatherer) GatherGroup(context.Context, epggather.GroupKey) error { return nil }
 
 func (startupEPGGatherer) Cleanup(context.Context, time.Time) error {
 	return nil

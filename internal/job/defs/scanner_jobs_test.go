@@ -174,7 +174,7 @@ func TestServiceScanDoesNotRetryChannelNotFound(t *testing.T) {
 	}
 }
 
-func TestEPGGathererDispatchesPerNetwork(t *testing.T) {
+func TestEPGGathererDispatchesPerStream(t *testing.T) {
 	ctx := context.Background()
 	channels := config.ChannelsConfig{
 		{Type: "GR", Channel: "27"},
@@ -189,17 +189,17 @@ func TestEPGGathererDispatchesPerNetwork(t *testing.T) {
 	serviceStore := service.NewSQLiteStore(database)
 	sm := service.NewManager(serviceStore, channels)
 	if err := serviceStore.ReplaceChannelServices(ctx, "GR", "27", []*service.Service{
-		{Id: "327360001", Service: model.Service{Key: model.ServiceKey{NetworkID: 32736, ServiceID: 1}, EITSchedule: true}, ChannelType: "GR", ChannelId: "27"},
+		{Id: "327360001", Service: model.Service{Key: model.ServiceKey{NetworkID: 32736, StreamID: 32736, ServiceID: 1}, EITSchedule: true}, ChannelType: "GR", ChannelId: "27"},
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := serviceStore.ReplaceChannelServices(ctx, "BS", "BS01", []*service.Service{
-		{Id: "0000400101", Service: model.Service{Key: model.ServiceKey{NetworkID: 4, ServiceID: 101}, EITSchedule: true}, ChannelType: "BS", ChannelId: "BS01"},
+		{Id: "0000400101", Service: model.Service{Key: model.ServiceKey{NetworkID: 4, StreamID: 100, ServiceID: 101}, EITSchedule: true}, ChannelType: "BS", ChannelId: "BS01"},
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := serviceStore.ReplaceChannelServices(ctx, "BS", "BS03", []*service.Service{
-		{Id: "0000400103", Service: model.Service{Key: model.ServiceKey{NetworkID: 4, ServiceID: 103}, EITSchedule: true}, ChannelType: "BS", ChannelId: "BS03"},
+		{Id: "0000400103", Service: model.Service{Key: model.ServiceKey{NetworkID: 4, StreamID: 101, ServiceID: 103}, EITSchedule: true}, ChannelType: "BS", ChannelId: "BS03"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -218,14 +218,14 @@ func TestEPGGathererDispatchesPerNetwork(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitForJobKeys(t, mgr, map[string]bool{
-		EPGGathererKey:         true,
-		"epg-gather:nid:32736": true,
-		"epg-gather:nid:4":     true,
+		EPGGathererKey:                      true,
+		"epg-gather:nid:32736:stream:32736": true,
+		"epg-gather:nid:4:stream:100":       true,
+		"epg-gather:nid:4:stream:101":       true,
 	})
 }
 
-func TestEnqueueEPGGatherForNetworkIgnoresMissingNetwork(t *testing.T) {
-	ctx := context.Background()
+func TestEnqueueEPGGatherGroupIgnoresMissingGroup(t *testing.T) {
 	channels := config.ChannelsConfig{{Type: "BS", Channel: "BS01"}}
 	database, err := db.OpenInMemory()
 	if err != nil {
@@ -238,7 +238,7 @@ func TestEnqueueEPGGatherForNetworkIgnoresMissingNetwork(t *testing.T) {
 	pm := program.NewManager(program.NewSQLiteStore(database))
 	epgService := epggather.NewGatherer(pm, pm, sm, stream.NewEPGGatherAdapter(stm), channels, 10*time.Minute)
 
-	enqueued, err := enqueueEPGGatherForNetwork(ctx, mgr, epgService, 999, nil)
+	enqueued, err := enqueueEPGGatherGroup(mgr, epgService, epggather.GroupKey{NetworkID: 999}, nil)
 	if err != nil {
 		t.Fatalf("expected nil error for missing network, got %v", err)
 	}
@@ -352,7 +352,7 @@ func TestServiceUpdaterStartsEPGGatherAfterServiceScans(t *testing.T) {
 		ServiceUpdaterKey:           true,
 		"service-scan:BS:BS01":      true,
 		serviceUpdateEPGGathererKey: true,
-		"epg-gather:nid:4":          true,
+		"epg-gather:nid:4:stream:1": true,
 	})
 }
 
@@ -389,17 +389,11 @@ func (s *recordingServiceScanner) lastWait() bool {
 
 type fakeEPGGatherer struct{}
 
-func (fakeEPGGatherer) Groups(context.Context) (map[uint16]*epggather.Network, error) {
+func (fakeEPGGatherer) Groups(context.Context) (map[epggather.GroupKey]*epggather.Group, error) {
 	return nil, nil
 }
 
-func (fakeEPGGatherer) BuildNetworkInputs(context.Context, uint16) ([]epggather.Candidate, []model.ServiceKey, error) {
-	return nil, []model.ServiceKey{{NetworkID: 4, ServiceID: 101}}, nil
-}
-
-func (fakeEPGGatherer) GatherNetwork(context.Context, uint16, []epggather.Candidate, []model.ServiceKey) error {
-	return nil
-}
+func (fakeEPGGatherer) GatherGroup(context.Context, epggather.GroupKey) error { return nil }
 
 type fakeLogoGatherer struct {
 	mu          sync.Mutex

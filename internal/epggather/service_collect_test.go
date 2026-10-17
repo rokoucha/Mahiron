@@ -3,10 +3,12 @@ package epggather
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/21S1298001/mahiron/internal/config"
+	"github.com/21S1298001/mahiron/internal/db"
 	"github.com/21S1298001/mahiron/internal/isdb"
 	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/observability"
@@ -15,6 +17,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/stream/channel"
 	"github.com/21S1298001/mahiron/internal/stream/schedule"
 	"github.com/21S1298001/mahiron/ts"
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestCollectServiceSnapshotsRoutesEITSAndEITPF(t *testing.T) {
@@ -93,9 +96,9 @@ func TestCollectServiceSnapshotsFlushesPartialEITSDuringCollection(t *testing.T)
 	}
 }
 
-func TestCollectServiceSnapshotsKeepsSameNetworkServicesOutsideExpected(t *testing.T) {
+func TestCollectServiceSnapshotsKeepsSameStreamServicesOutsideExpected(t *testing.T) {
 	expected := model.ServiceKey{NetworkID: 4, ServiceID: 151, StreamID: 100}
-	extra := model.ServiceKey{NetworkID: 4, ServiceID: 161, StreamID: 101}
+	extra := model.ServiceKey{NetworkID: 4, ServiceID: 161, StreamID: 100}
 	store := &collectProgramStore{}
 	status := newRemoteSyncServiceStore()
 	session := &collectEITSession{sections: []*ts.EIT{
@@ -111,7 +114,7 @@ func TestCollectServiceSnapshotsKeepsSameNetworkServicesOutsideExpected(t *testi
 		t.Fatalf("observed services = %v, want %v", result.Observed, want)
 	}
 	if got := store.eventIDs(); !containsEventIDs(got, []uint16{10, 20}) {
-		t.Fatalf("upserted event IDs = %v, want expected and same-network extra events", got)
+		t.Fatalf("upserted event IDs = %v, want expected and same-stream extra events", got)
 	}
 	for _, key := range []model.ServiceKey{expected, extra} {
 		statusKey := model.ServiceKey{NetworkID: key.NetworkID, ServiceID: key.ServiceID}
@@ -123,7 +126,7 @@ func TestCollectServiceSnapshotsKeepsSameNetworkServicesOutsideExpected(t *testi
 
 func TestCollectServiceSnapshotsStoresWarningForObservedServiceOutsideExpected(t *testing.T) {
 	expected := model.ServiceKey{NetworkID: 4, ServiceID: 151, StreamID: 100}
-	extra := model.ServiceKey{NetworkID: 4, ServiceID: 161, StreamID: 101}
+	extra := model.ServiceKey{NetworkID: 4, ServiceID: 161, StreamID: 100}
 	status := newRemoteSyncServiceStore()
 	session := &collectEITSession{sections: []*ts.EIT{
 		testEIT(ts.TableIDEITSStart, expected, 10),
@@ -335,132 +338,6 @@ func TestGatherNetworkCarriesUnobservedServicesToNextCandidate(t *testing.T) {
 	}
 }
 
-func TestBuildNetworkInputsFiltersServicesWithoutEITSchedule(t *testing.T) {
-	store := &staticEPGServiceStore{services: []*servicepkg.Service{
-		{Service: model.Service{Key: model.ServiceKey{NetworkID: 4, ServiceID: 101}, EITSchedule: true}, ChannelType: "GR", ChannelId: "27"},
-		{Service: model.Service{Key: model.ServiceKey{NetworkID: 4, ServiceID: 102}, EITSchedule: false}, ChannelType: "GR", ChannelId: "27"},
-		{Service: model.Service{Key: model.ServiceKey{NetworkID: 5, ServiceID: 201}, EITSchedule: true}, ChannelType: "GR", ChannelId: "27"},
-	}}
-	channels := []config.ChannelConfig{{Type: "GR", Channel: "27"}}
-
-	_, services, err := buildNetworkInputs(context.Background(), store, channels, 4, isdb.IsSatelliteOriginalNetworkID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := []model.ServiceKey{{NetworkID: 4, ServiceID: 101}}
-	if len(services) != len(want) || services[0] != want[0] {
-		t.Fatalf("network services = %v, want %v", services, want)
-	}
-}
-
-func TestBuildNetworkInputsUsesAllConfiguredChannelsForNetworkType(t *testing.T) {
-	store := &staticEPGServiceStore{services: []*servicepkg.Service{
-		{Service: model.Service{Key: model.ServiceKey{NetworkID: 4, ServiceID: 151}, EITSchedule: true}, ChannelType: "USER_DEFINED", ChannelId: "BS01"},
-	}}
-	channels := []config.ChannelConfig{
-		{Type: "USER_DEFINED", Channel: "BS01"},
-		{Type: "USER_DEFINED", Channel: "BS03"},
-		{Type: "GR", Channel: "27"},
-	}
-
-	candidates, _, err := buildNetworkInputs(context.Background(), store, channels, 4, isdb.IsSatelliteOriginalNetworkID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := []Candidate{{Type: "USER_DEFINED", Channel: "BS01"}, {Type: "USER_DEFINED", Channel: "BS03"}}
-	if !equalCandidates(candidates, want) {
-		t.Fatalf("candidates = %v, want %v", candidates, want)
-	}
-}
-
-func TestBuildNetworkInputsLimitsBroadTypeWhenMultipleNetworksExist(t *testing.T) {
-	store := &staticEPGServiceStore{services: []*servicepkg.Service{
-		{Service: model.Service{Key: model.ServiceKey{NetworkID: 6, ServiceID: 296}, EITSchedule: true}, ChannelType: "USER_DEFINED", ChannelId: "CS2"},
-		{Service: model.Service{Key: model.ServiceKey{NetworkID: 7, ServiceID: 250}, EITSchedule: true}, ChannelType: "USER_DEFINED", ChannelId: "CS4"},
-		{Service: model.Service{Key: model.ServiceKey{NetworkID: 7, ServiceID: 294}, EITSchedule: true}, ChannelType: "USER_DEFINED", ChannelId: "CS6"},
-	}}
-	channels := []config.ChannelConfig{
-		{Type: "USER_DEFINED", Channel: "CS2"},
-		{Type: "USER_DEFINED", Channel: "CS4"},
-		{Type: "USER_DEFINED", Channel: "CS6"},
-		{Type: "USER_DEFINED", Channel: "CS8"},
-	}
-
-	candidates, _, err := buildNetworkInputs(context.Background(), store, channels, 7, isdb.IsSatelliteOriginalNetworkID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := []Candidate{{Type: "USER_DEFINED", Channel: "CS4"}, {Type: "USER_DEFINED", Channel: "CS6"}}
-	if !equalCandidates(candidates, want) {
-		t.Fatalf("candidates = %v, want %v", candidates, want)
-	}
-}
-
-func TestBuildNetworkInputsDoesNotUseBroadCandidatesForTerrestrialNetwork(t *testing.T) {
-	store := &staticEPGServiceStore{services: []*servicepkg.Service{
-		{Service: model.Service{Key: model.ServiceKey{NetworkID: 32736, ServiceID: 101}, EITSchedule: true}, ChannelType: "USER_DEFINED", ChannelId: "27"},
-	}}
-	channels := []config.ChannelConfig{
-		{Type: "USER_DEFINED", Channel: "27"},
-		{Type: "USER_DEFINED", Channel: "28"},
-	}
-
-	candidates, _, err := buildNetworkInputs(context.Background(), store, channels, 32736, isdb.IsSatelliteOriginalNetworkID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := []Candidate{{Type: "USER_DEFINED", Channel: "27"}}
-	if !equalCandidates(candidates, want) {
-		t.Fatalf("candidates = %v, want %v", candidates, want)
-	}
-}
-
-func TestGroupServicesByNetworkLimitsBroadTypeWhenMultipleNetworksExist(t *testing.T) {
-	services := []*servicepkg.Service{
-		{Service: model.Service{Key: model.ServiceKey{NetworkID: 6, ServiceID: 296}, EITSchedule: true}, ChannelType: "USER_DEFINED", ChannelId: "CS2"},
-		{Service: model.Service{Key: model.ServiceKey{NetworkID: 7, ServiceID: 250}, EITSchedule: true}, ChannelType: "USER_DEFINED", ChannelId: "CS4"},
-		{Service: model.Service{Key: model.ServiceKey{NetworkID: 7, ServiceID: 294}, EITSchedule: true}, ChannelType: "USER_DEFINED", ChannelId: "CS6"},
-	}
-	channels := []config.ChannelConfig{
-		{Type: "USER_DEFINED", Channel: "CS2"},
-		{Type: "USER_DEFINED", Channel: "CS4"},
-		{Type: "USER_DEFINED", Channel: "CS6"},
-		{Type: "USER_DEFINED", Channel: "CS8"},
-	}
-
-	groups := groupServicesByNetwork(services, channels, isdb.IsSatelliteOriginalNetworkID)
-	if !equalCandidates(groups[6].Candidates, []Candidate{{Type: "USER_DEFINED", Channel: "CS2"}}) {
-		t.Fatalf("NID 6 candidates = %v", groups[6].Candidates)
-	}
-	wantNID7 := []Candidate{{Type: "USER_DEFINED", Channel: "CS4"}, {Type: "USER_DEFINED", Channel: "CS6"}}
-	if !equalCandidates(groups[7].Candidates, wantNID7) {
-		t.Fatalf("NID 7 candidates = %v, want %v", groups[7].Candidates, wantNID7)
-	}
-}
-
-func TestGroupServicesByNetworkUsesBroadCandidatesOnlyForSatelliteNetwork(t *testing.T) {
-	services := []*servicepkg.Service{
-		{Service: model.Service{Key: model.ServiceKey{NetworkID: 4, ServiceID: 151}, EITSchedule: true}, ChannelType: "USER_DEFINED", ChannelId: "BS01"},
-		{Service: model.Service{Key: model.ServiceKey{NetworkID: 32736, ServiceID: 101}, EITSchedule: true}, ChannelType: "LOCAL", ChannelId: "27"},
-	}
-	channels := []config.ChannelConfig{
-		{Type: "USER_DEFINED", Channel: "BS01"},
-		{Type: "USER_DEFINED", Channel: "BS03"},
-		{Type: "LOCAL", Channel: "27"},
-		{Type: "LOCAL", Channel: "28"},
-	}
-
-	groups := groupServicesByNetwork(services, channels, isdb.IsSatelliteOriginalNetworkID)
-	wantSatellite := []Candidate{{Type: "USER_DEFINED", Channel: "BS01"}, {Type: "USER_DEFINED", Channel: "BS03"}}
-	if !equalCandidates(groups[4].Candidates, wantSatellite) {
-		t.Fatalf("NID 4 candidates = %v, want %v", groups[4].Candidates, wantSatellite)
-	}
-	wantTerrestrial := []Candidate{{Type: "LOCAL", Channel: "27"}}
-	if !equalCandidates(groups[32736].Candidates, wantTerrestrial) {
-		t.Fatalf("NID 32736 candidates = %v, want %v", groups[32736].Candidates, wantTerrestrial)
-	}
-}
-
 func TestCollectServiceSnapshotsDoesNotFailWhenSomeServicesUnobserved(t *testing.T) {
 	observed := model.ServiceKey{NetworkID: 4, ServiceID: 101}
 	missing := model.ServiceKey{NetworkID: 4, ServiceID: 102}
@@ -584,9 +461,7 @@ type blockingEPGStreams struct{}
 
 func (blockingEPGStreams) HasSession(string, string) bool { return false }
 
-func (blockingEPGStreams) NetworkWideEIT(networkID uint16) bool {
-	return isdb.IsSatelliteOriginalNetworkID(networkID)
-}
+func (blockingEPGStreams) StoredEPG(string, string) bool { return false }
 
 func (blockingEPGStreams) OpenSchedule(ctx context.Context, _, _ string) (CollectSchedule, ListStoredPrograms, error) {
 	<-ctx.Done()
@@ -599,9 +474,7 @@ type staticEPGStreams struct {
 
 func (staticEPGStreams) HasSession(string, string) bool { return false }
 
-func (staticEPGStreams) NetworkWideEIT(networkID uint16) bool {
-	return isdb.IsSatelliteOriginalNetworkID(networkID)
-}
+func (staticEPGStreams) StoredEPG(string, string) bool { return false }
 
 func (s staticEPGStreams) OpenSchedule(ctx context.Context, _, _ string) (CollectSchedule, ListStoredPrograms, error) {
 	if err := ctx.Err(); err != nil {
@@ -616,9 +489,7 @@ type keyedEPGStreams struct {
 
 func (keyedEPGStreams) HasSession(string, string) bool { return false }
 
-func (keyedEPGStreams) NetworkWideEIT(networkID uint16) bool {
-	return isdb.IsSatelliteOriginalNetworkID(networkID)
-}
+func (keyedEPGStreams) StoredEPG(string, string) bool { return false }
 
 func (s keyedEPGStreams) OpenSchedule(ctx context.Context, typ, ch string) (CollectSchedule, ListStoredPrograms, error) {
 	if err := ctx.Err(); err != nil {
@@ -859,18 +730,6 @@ func equalStrings(a, b []string) bool {
 	return true
 }
 
-func equalCandidates(a, b []Candidate) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
-}
-
 func equalServiceKeys(a, b []model.ServiceKey) bool {
 	if len(a) != len(b) {
 		return false
@@ -883,25 +742,6 @@ func equalServiceKeys(a, b []model.ServiceKey) bool {
 	return true
 }
 
-func TestBuildNetworkInputsIncludesTLVChannels(t *testing.T) {
-	store := &staticEPGServiceStore{services: []*servicepkg.Service{
-		{Service: model.Service{Key: model.ServiceKey{NetworkID: 0x000B, StreamID: 0xB110, ServiceID: 101}, EITSchedule: true}, ChannelType: "BS4K", ChannelId: "BS1_0"},
-		{Service: model.Service{Key: model.ServiceKey{NetworkID: 0x000B, StreamID: 0xB0E0, ServiceID: 102}, EITSchedule: true}, ChannelType: "BS4K", ChannelId: "BS3_2"},
-	}}
-	channels := []config.ChannelConfig{
-		{Type: "BS4K", Channel: "BS1_0", Transport: config.TransportTLV},
-		{Type: "BS4K", Channel: "BS3_2", Transport: config.TransportTLV},
-	}
-
-	candidates, services, err := buildNetworkInputs(context.Background(), store, channels, 0x000B, isdb.IsSatelliteOriginalNetworkID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(candidates) != 2 || len(services) != 2 {
-		t.Fatalf("candidates = %v, services = %v, want both TLV channels and services", candidates, services)
-	}
-}
-
 // channelServiceStore lists services on channels, as scans store them.
 type channelServiceStore struct {
 	*remoteSyncServiceStore
@@ -912,44 +752,224 @@ func (s channelServiceStore) GetServices(context.Context) ([]*servicepkg.Service
 	return s.services, nil
 }
 
-// TestGatherNetworkWaitsOnlyForCandidateChannelServices covers networks
-// whose streams carry only their own EIT schedule, as ISDB-S3 MH-EIT does:
-// each candidate waits for its own channel's services instead of the whole
-// network, and a channel without remaining services is not tuned.
-func TestGatherNetworkWaitsOnlyForCandidateChannelServices(t *testing.T) {
-	bs4k := model.ServiceKey{NetworkID: 0x000B, StreamID: 0xB110, ServiceID: 101}
-	bs8k := model.ServiceKey{NetworkID: 0x000B, StreamID: 0xB0E0, ServiceID: 102}
-	sessionA := &collectEITSession{sections: []*ts.EIT{testEIT(ts.TableIDEITSStart, bs4k, 10)}}
-	sessionB := &collectEITSession{sections: []*ts.EIT{testEIT(ts.TableIDEITSStart, bs8k, 20)}}
-	unused := &collectEITSession{}
+func TestGatherGroupCollectsEachTLVStreamIndependently(t *testing.T) {
+	a := model.ServiceKey{NetworkID: 11, StreamID: 0xB110, ServiceID: 101}
+	b := model.ServiceKey{NetworkID: 11, StreamID: 0xB0E0, ServiceID: 102}
+	sessionA := &collectEITSession{sections: []*ts.EIT{testEIT(ts.TableIDEITSStart, a, 10)}}
+	sessionB := &collectEITSession{sections: []*ts.EIT{testEIT(ts.TableIDEITSStart, b, 20)}}
 	store := channelServiceStore{remoteSyncServiceStore: newRemoteSyncServiceStore(), services: []*servicepkg.Service{
-		{Service: model.Service{Key: bs4k, EITSchedule: true}, ChannelType: "BS4K", ChannelId: "BS1_0"},
-		{Service: model.Service{Key: bs8k, EITSchedule: true}, ChannelType: "BS4K", ChannelId: "BS3_2"},
+		{Service: model.Service{Key: a, EITSchedule: true}, ChannelType: "CUSTOM", ChannelId: "A"},
+		{Service: model.Service{Key: b, EITSchedule: true}, ChannelType: "CUSTOM", ChannelId: "B"},
 	}}
 	streams := keyedEPGStreams{sessions: map[Candidate]scheduleSession{
-		{Type: "BS4K", Channel: "BS1_0"}: sessionA,
-		{Type: "BS4K", Channel: "BS3_2"}: sessionB,
-		{Type: "BS4K", Channel: "BS5_0"}: unused,
+		{Type: "CUSTOM", Channel: "A"}: sessionA,
+		{Type: "CUSTOM", Channel: "B"}: sessionB,
 	}}
+	events := &collectProgramStore{}
+	gatherer := NewGatherer(events, events, store, streams, config.ChannelsConfig{
+		{Type: "CUSTOM", Channel: "A", Transport: config.TransportTLV},
+		{Type: "CUSTOM", Channel: "B", Transport: config.TransportTLV},
+		{Type: "CUSTOM", Channel: "unscanned", Transport: config.TransportTLV},
+	}, 20*time.Millisecond)
+	if err := gatherer.GatherGroup(t.Context(), GroupKey{NetworkID: 11, StreamID: a.StreamID}); err != nil {
+		t.Fatal(err)
+	}
+	if sessionA.collectCalls != 1 || sessionB.collectCalls != 0 {
+		t.Fatalf("collection calls = %d/%d", sessionA.collectCalls, sessionB.collectCalls)
+	}
+	if err := gatherer.GatherGroup(t.Context(), GroupKey{NetworkID: 11, StreamID: b.StreamID}); err != nil {
+		t.Fatal(err)
+	}
+	if sessionB.collectCalls != 1 {
+		t.Fatalf("second collection calls = %d", sessionB.collectCalls)
+	}
+}
 
-	err := gatherNetwork(
-		context.Background(),
-		&collectProgramStore{},
-		&collectProgramStore{},
-		store,
-		streams,
-		bs4k.NetworkID,
-		[]Candidate{{Type: "BS4K", Channel: "BS5_0"}, {Type: "BS4K", Channel: "BS1_0"}, {Type: "BS4K", Channel: "BS3_2"}},
-		[]model.ServiceKey{bs4k, bs8k},
-		50*time.Millisecond,
-	)
+func TestCollectServiceSnapshotsStoresOtherStreamsWithoutUpdatingFreshness(t *testing.T) {
+	expected := model.ServiceKey{NetworkID: 4, StreamID: 100, ServiceID: 151}
+	other := model.ServiceKey{NetworkID: 4, StreamID: 101, ServiceID: 161}
+	store := &collectProgramStore{}
+	status := newRemoteSyncServiceStore()
+	otherStatus := model.ServiceKey{NetworkID: other.NetworkID, ServiceID: other.ServiceID}
+	status.attempts[otherStatus] = 123
+	status.successes[otherStatus] = 100
+	status.errors[otherStatus] = "previous failure"
+	session := &collectEITSession{sections: []*ts.EIT{
+		testEIT(ts.TableIDEITSStart, expected, 10),
+		testEIT(ts.TableIDEITSStart+0x10, other, 20),
+	}}
+	result, err := CollectServiceSnapshots(t.Context(), store, status, session.CollectSchedule, []model.ServiceKey{expected}, 20*time.Millisecond)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if unused.collectCalls != 0 {
-		t.Fatalf("channel without services was collected %d times", unused.collectCalls)
+	if !equalServiceKeys(result.Observed, []model.ServiceKey{expected}) {
+		t.Fatalf("observed = %v", result.Observed)
 	}
-	if sessionA.collectCalls != 1 || sessionB.collectCalls != 1 {
-		t.Fatalf("CollectSchedule calls = %d/%d, want 1/1", sessionA.collectCalls, sessionB.collectCalls)
+	if !containsEventIDs(store.eventIDs(), []uint16{20}) {
+		t.Fatal("did not persist another stream's basic EPG")
 	}
+	if status.attempts[otherStatus] != 123 || status.successes[otherStatus] != 100 || status.errors[otherStatus] != "previous failure" {
+		t.Fatalf("changed another stream's status: attempts=%v successes=%v errors=%v", status.attempts, status.successes, status.errors)
+	}
+}
+
+func TestOtherStreamBasicEPGDoesNotCompleteMissingTarget(t *testing.T) {
+	expected := model.ServiceKey{NetworkID: 4, StreamID: 100, ServiceID: 151}
+	other := model.ServiceKey{NetworkID: 4, StreamID: 101, ServiceID: 161}
+	foreign := model.ServiceKey{NetworkID: 7, StreamID: 101, ServiceID: 162}
+	store := &collectProgramStore{}
+	status := newRemoteSyncServiceStore()
+	session := &collectEITSession{sections: []*ts.EIT{
+		testEIT(ts.TableIDEITSStart+0x10, other, 20),
+		testEIT(ts.TableIDEITSStart, foreign, 30),
+	}}
+	result, err := CollectServiceSnapshots(t.Context(), store, status, session.CollectSchedule, []model.ServiceKey{expected}, 20*time.Millisecond)
+	if err == nil {
+		t.Fatal("other stream completed the missing target")
+	}
+	if len(result.Observed) != 0 || !equalServiceKeys(result.Unobserved, []model.ServiceKey{expected}) {
+		t.Fatalf("result = %#v", result)
+	}
+	if !containsEventIDs(store.eventIDs(), []uint16{20}) {
+		t.Fatal("discarded other stream's basic EPG")
+	}
+	if containsEventIDs(store.eventIDs(), []uint16{30}) {
+		t.Fatal("stored another network's EPG")
+	}
+	otherStatus := model.ServiceKey{NetworkID: other.NetworkID, ServiceID: other.ServiceID}
+	if _, ok := status.attempts[otherStatus]; ok {
+		t.Fatal("recorded attempt for another stream")
+	}
+	if _, ok := status.successes[otherStatus]; ok {
+		t.Fatal("recorded success for another stream")
+	}
+}
+
+func TestOtherStreamUpdatesDoNotDelayStableCompletion(t *testing.T) {
+	expected := model.ServiceKey{NetworkID: 4, StreamID: 100, ServiceID: 151}
+	other := model.ServiceKey{NetworkID: 4, StreamID: 101, ServiceID: 161}
+	index := newExpectedServiceIndex([]model.ServiceKey{expected})
+	schedule := newCollectionSchedule([]model.ServiceKey{expected})
+	schedule.lastProgress = time.Now().Add(-time.Minute)
+	update := model.ScheduleUpdate{Service: other, BasicObserved: true}
+	schedule.observe(update, index.matchesCollectionStream(other))
+	if !schedule.stableFor(time.Second) {
+		t.Fatal("other stream reset target stability")
+	}
+	if shouldStopEITSCollection(schedule, []model.ServiceKey{expected}) {
+		t.Fatal("other stream completed missing target")
+	}
+}
+
+func TestOtherStreamBasicUpdateKeepsDetailGroupDue(t *testing.T) {
+	ctx := t.Context()
+	database, err := db.OpenInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	first := model.ServiceKey{NetworkID: 4, StreamID: 100, ServiceID: 151}
+	second := model.ServiceKey{NetworkID: 4, StreamID: 101, ServiceID: 161}
+	channels := config.ChannelsConfig{{Type: "CUSTOM", Channel: "A"}, {Type: "CUSTOM", Channel: "B"}}
+	services := servicepkg.NewManager(servicepkg.NewSQLiteStore(database), channels)
+	for i, key := range []model.ServiceKey{first, second} {
+		if err := services.ReplaceChannelServices(ctx, "CUSTOM", channels[i].Channel, []*servicepkg.Service{
+			{Id: fmt.Sprint(key.MirakurunID()), Service: model.Service{Key: key, EITSchedule: true}, ChannelType: "CUSTOM", ChannelId: channels[i].Channel},
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := services.SetEPGSuccess(ctx, 4, second.ServiceID, 100); err != nil {
+		t.Fatal(err)
+	}
+	if err := services.SetEPGAttempt(ctx, 4, second.ServiceID, 123, "previous failure"); err != nil {
+		t.Fatal(err)
+	}
+	programs := program.NewManager(program.NewSQLiteStore(database))
+	priorStart := int64(1000)
+	prior := model.Event{EITRevision: &model.EITRevision{TableID: 0x60}, Key: second, EventID: 20, StartAt: &priorStart, Name: "stored title", Extended: []model.ExtendedBlock{{Language: "jpn", Items: []model.ExtendedItem{{Name: "出演者", Text: "stored details"}}}}}
+	if err := programs.UpsertEvents(ctx, []model.Event{prior}); err != nil {
+		t.Fatal(err)
+	}
+	sessionA := &collectEITSession{sections: []*ts.EIT{testEIT(ts.TableIDEITSStart, first, 10), testEIT(ts.TableIDEITSStart+0x10, second, 20)}}
+	sessionB := &collectEITSession{sections: []*ts.EIT{testEIT(ts.TableIDEITSStart, second, 20)}}
+	streams := keyedEPGStreams{sessions: map[Candidate]scheduleSession{{Type: "CUSTOM", Channel: "A"}: sessionA, {Type: "CUSTOM", Channel: "B"}: sessionB}}
+	gatherer := NewGatherer(programs, programs, services, streams, channels, 20*time.Millisecond)
+	if err := gatherer.GatherGroup(ctx, GroupKey{NetworkID: 4, StreamID: 100}); err != nil {
+		t.Fatal(err)
+	}
+	stored, ok, err := programs.Get(ctx, model.ProgramID(second, 20))
+	if err != nil || !ok {
+		t.Fatalf("get program: ok=%v err=%v", ok, err)
+	}
+	if stored.StartAt == nil || *stored.StartAt != 20000 {
+		t.Fatalf("basic update was not stored: %#v", stored.StartAt)
+	}
+	if diff := cmp.Diff(prior.Extended, stored.Extended); diff != "" {
+		t.Fatalf("basic update lost stored details: %s", diff)
+	}
+	records, err := services.GetServices(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, svc := range records {
+		if svc.Key != second {
+			continue
+		}
+		if svc.EPG.LastAttemptAt == nil || *svc.EPG.LastAttemptAt != 123 || svc.EPG.LastSuccessAt == nil || *svc.EPG.LastSuccessAt != 100 || svc.EPG.LastError != "previous failure" {
+			t.Fatalf("other stream's status changed: %#v", svc.EPG)
+		}
+	}
+	groups, err := gatherer.Groups(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := GroupKey{NetworkID: 4, StreamID: 101}
+	if groups[key].OldestSuccessAt != 100 {
+		t.Fatalf("detail group freshness = %d", groups[key].OldestSuccessAt)
+	}
+	if err := gatherer.GatherGroup(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	if sessionB.collectCalls != 1 {
+		t.Fatal("detail group did not collect its own stream")
+	}
+}
+
+func TestUnknownTargetStreamDoesNotMarkOtherServicesFresh(t *testing.T) {
+	expected := model.ServiceKey{NetworkID: 4, ServiceID: 151}
+	observed := model.ServiceKey{NetworkID: 4, StreamID: 100, ServiceID: 151}
+	other := model.ServiceKey{NetworkID: 4, StreamID: 101, ServiceID: 161}
+	store := &collectProgramStore{}
+	status := newRemoteSyncServiceStore()
+	session := &collectEITSession{sections: []*ts.EIT{testEIT(ts.TableIDEITSStart, observed, 10), testEIT(ts.TableIDEITSStart+0x10, other, 20)}}
+	result, err := CollectServiceSnapshots(t.Context(), store, status, session.CollectSchedule, []model.ServiceKey{expected}, 20*time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !equalServiceKeys(result.Observed, []model.ServiceKey{expected}) {
+		t.Fatalf("observed = %v", result.Observed)
+	}
+	if !containsEventIDs(store.eventIDs(), []uint16{20}) {
+		t.Fatal("other stream's basic EPG was discarded")
+	}
+	otherStatus := model.ServiceKey{NetworkID: other.NetworkID, ServiceID: other.ServiceID}
+	if _, ok := status.attempts[otherStatus]; ok {
+		t.Fatal("recorded attempt for unknown stream's peer")
+	}
+	if _, ok := status.successes[otherStatus]; ok {
+		t.Fatal("recorded success for unknown stream's peer")
+	}
+	index := newExpectedServiceIndex([]model.ServiceKey{expected})
+	if index.matchesCollectionStream(other) {
+		t.Fatal("unknown stream matched unrelated service")
+	}
+}
+
+func (s *collectProgramStore) UpsertSchedule(ctx context.Context, snapshot model.ScheduleSnapshot) error {
+	return s.UpsertEvents(ctx, snapshot.Events)
+}
+
+func (s *contextCheckingProgramStore) UpsertSchedule(ctx context.Context, snapshot model.ScheduleSnapshot) error {
+	return s.UpsertEvents(ctx, snapshot.Events)
 }

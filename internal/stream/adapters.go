@@ -79,12 +79,10 @@ func (a *EPGGatherAdapter) HasSession(channelType, channelID string) bool {
 	return a.manager.HasSession(channelType, channelID)
 }
 
-// NetworkWideEIT reports whether every stream of the network carries the
-// whole network's EIT schedule. TS satellite streams carry the other
-// streams' schedules in the actual-other tables; terrestrial streams and
-// ISDB-S3 (MH-EIT covers only its own TLV stream) do not.
-func (a *EPGGatherAdapter) NetworkWideEIT(networkID uint16) bool {
-	return isdb.IsSatelliteOriginalNetworkID(networkID)
+// StoredEPG follows session construction: TLV always collects live signaling,
+// while TS uses stored programs only when all enabled routes are remote.
+func (a *EPGGatherAdapter) StoredEPG(channelType, channelID string) bool {
+	return a.manager.sources.StoredEPG(channelType, channelID)
 }
 
 func (a *EPGGatherAdapter) OpenSchedule(ctx context.Context, channelType, channelID string) (func(context.Context, func(model.ScheduleUpdate) error, func(model.PresentFollowing) error) error, func(context.Context, uint16, uint16) ([]model.Event, error), error) {

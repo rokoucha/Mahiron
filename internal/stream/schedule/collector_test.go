@@ -187,3 +187,83 @@ func TestCollectorMMTTables(t *testing.T) {
 		t.Fatalf("update = %+v, want the MH-EIT schedule", update)
 	}
 }
+
+func TestCollectorPreservesSubtableGenerationAcrossSectionsAndWrap(t *testing.T) {
+	c := NewCollector(isdb.ScheduleTS, "source-A")
+	first := observe(t, c, section(0x50, 0, 1, 31, event(1, "old"))).Events()[0]
+	if first.EITRevision == nil || first.EITRevision.Version != 31 {
+		t.Fatal("missing section version")
+	}
+	update := observe(t, c, section(0x50, 1, 1, 31, event(2, "same version")))
+	for _, e := range update.Events() {
+		if e.EITRevision.Reception != first.EITRevision.Reception {
+			t.Fatal("one subtable version received different generations")
+		}
+	}
+	newer := observe(t, c, section(0x50, 0, 1, 0, event(1, "new"))).Events()[0]
+	if newer.Name != "new" || newer.EITRevision.Version != 0 || newer.EITRevision.Reception <= first.EITRevision.Reception {
+		t.Fatalf("wrap lost: %#v", newer)
+	}
+	if first.Name != "old" || first.EITRevision.Version != 31 {
+		t.Fatal("buffered snapshot mutated")
+	}
+	duplicate := observe(t, c, section(0x50, 0, 1, 0, event(1, "new")))
+	if duplicate.Service != (model.ServiceKey{}) {
+		t.Fatal("unchanged version was restamped")
+	}
+}
+
+func TestCollectorReportsEmptyBasicVersion(t *testing.T) {
+	c := NewCollector(isdb.ScheduleTS, "source-A")
+	old := observe(t, c, section(0x50, 0, 0, 2, event(1, "old"))).Events()[0]
+	update := observe(t, c, section(0x50, 0, 0, 3))
+	if len(update.Events()) != 0 {
+		t.Fatal("removed section event survived")
+	}
+	revisions := update.Revisions()
+	if len(revisions) != 1 || revisions[0].Version != 3 || revisions[0].Reception <= old.EITRevision.Reception {
+		t.Fatalf("empty version missing: %#v", revisions)
+	}
+}
+
+func TestCollectorRejectsRetiredVersionReplay(t *testing.T) {
+	for _, table := range []uint8{0x50, 0x58} {
+		c := NewCollector(isdb.ScheduleTS, "source-A")
+		observe(t, c, section(0x50, 0, 0, 1, event(1, "basic")))
+		observe(t, c, section(table, 0, 0, 5, event(1, "five")))
+		latest := observe(t, c, section(table, 0, 0, 6, event(1, "six")))
+		replay := observe(t, c, section(table, 0, 0, 5, event(1, "five")))
+		if replay.Service != (model.ServiceKey{}) {
+			t.Fatalf("retired version replay accepted for %#x", table)
+		}
+		revisions := latest.Revisions()
+		found := false
+		for _, r := range revisions {
+			if r.TableID == table {
+				found = true
+				if r.Version != 6 {
+					t.Fatal("current version regressed")
+				}
+			}
+		}
+		if !found {
+			t.Fatal("latest table revision lost")
+		}
+	}
+}
+
+func TestCollectorAllowsObservedFullVersionCycle(t *testing.T) {
+	c := NewCollector(isdb.ScheduleTS, "source-A")
+	var previous uint64
+	for version := 0; version <= 32; version++ {
+		update := observe(t, c, section(0x50, 0, 0, uint8(version%32), event(1, "version")))
+		if update.Service == (model.ServiceKey{}) {
+			t.Fatalf("legitimate cycle rejected at %d", version)
+		}
+		revision := update.Events()[0].EITRevision
+		if revision.Reception <= previous {
+			t.Fatal("full cycle did not advance")
+		}
+		previous = revision.Reception
+	}
+}

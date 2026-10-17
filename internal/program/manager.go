@@ -23,12 +23,15 @@ type eventPublisher interface {
 }
 
 type Manager struct {
-	mu         sync.Mutex
-	store      Store
-	events     eventPublisher
-	eventMu    sync.Mutex
-	eventTimer *time.Timer
-	eventQueue []programEvent
+	mu          sync.Mutex
+	eit         map[int64]eitState
+	eitExtended map[int64]eitState
+	eitTables   map[eitTable]model.EITRevision
+	store       Store
+	events      eventPublisher
+	eventMu     sync.Mutex
+	eventTimer  *time.Timer
+	eventQueue  []programEvent
 }
 
 type programEvent struct {
@@ -61,6 +64,10 @@ func (m *Manager) UpsertEvents(ctx context.Context, events []model.Event) error 
 func (m *Manager) UpsertPrograms(ctx context.Context, programs []*Program) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	return m.upsertPrograms(ctx, programs)
+}
+
+func (m *Manager) upsertPrograms(ctx context.Context, programs []*Program) error {
 	source := observability.EPGMetricSource(ctx)
 	attempted := nonNilProgramCount(programs)
 	pending := make(map[int64]*Program, len(programs))
@@ -72,7 +79,7 @@ func (m *Manager) UpsertPrograms(ctx context.Context, programs []*Program) error
 		if _, ok := pending[p.ID]; !ok {
 			ids = append(ids, p.ID)
 		}
-		pending[p.ID] = p
+		pending[p.ID] = preferPending(pending[p.ID], p)
 	}
 	existingPrograms, err := m.store.ListByIDs(ctx, ids)
 	if err != nil {
@@ -87,12 +94,57 @@ func (m *Manager) UpsertPrograms(ctx context.Context, programs []*Program) error
 		typ   string
 		after *Program
 	}
+	tableRevisions := make(map[eitTable]model.EITRevision, len(pending))
+	for _, p := range pending {
+		for _, revision := range []*model.EITRevision{p.EITRevision, p.EITExtendedRevision} {
+			if revision == nil {
+				continue
+			}
+			key := tableOf(p.Key, *revision)
+			previous, ok := tableRevisions[key]
+			if !ok {
+				previous, ok = m.eitTables[key]
+			}
+			if !ok || revision.Reception > previous.Reception {
+				previous = *revision
+			}
+			tableRevisions[key] = previous
+		}
+	}
+	accepted := make(map[int64]*Program)
 	toWrite := make([]*Program, 0, len(ids))
 	events := make([]pendingEvent, 0, len(ids))
 	for _, id := range ids {
 		p := pending[id]
 		existing, ok := before[id]
-		after := mergeUpsertProgram(existing, p)
+		var after *Program
+		if m.acceptEIT(p, tableRevisions, existing) {
+			after = mergeUpsertProgram(existing, p)
+			accepted[id] = after
+		} else {
+			if !ok {
+				continue
+			}
+			// A stale/other snapshot may fill missing details, but must not move or
+			// rename an authoritative event or delete its overlapping neighbours.
+			after = mergeUpsertProgram(p, existing)
+			after.EITRevision = existing.EITRevision
+			after.EITExtendedRevision = existing.EITExtendedRevision
+		}
+		if p.EITExtendedRevision != nil {
+			if m.acceptExtended(p, tableRevisions, existing) {
+				after.Extended = p.Extended
+				after.EITExtendedRevision = p.EITExtendedRevision
+				accepted[id] = after
+			} else if existing != nil {
+				after.Extended = existing.Extended
+				after.EITExtendedRevision = existing.EITExtendedRevision
+			} else {
+				after.Extended = nil
+				after.EITExtendedRevision = nil
+			}
+		}
+
 		if ok && sameProgram(existing, after) {
 			continue
 		}
@@ -105,11 +157,13 @@ func (m *Manager) UpsertPrograms(ctx context.Context, programs []*Program) error
 	}
 
 	if len(toWrite) == 0 {
+		m.recordEIT(accepted)
 		observability.RecordEPGProgramsUpserted(ctx, source, "success", 0)
 		return nil
 	}
 
 	removed := map[int64]bool{}
+	blockedWrites := map[int64]bool{}
 	writtenByService := make(map[[2]uint16]map[int64]*Program)
 	for _, p := range toWrite {
 		service := [2]uint16{p.Key.NetworkID, p.Key.ServiceID}
@@ -139,6 +193,8 @@ func (m *Manager) UpsertPrograms(ctx context.Context, programs []*Program) error
 		for _, other := range written {
 			latest[other.ID] = other
 		}
+		var overlaps []int64
+		blocked := false
 		for _, other := range latest {
 			if other.ID == p.ID || other.Key.NetworkID != p.Key.NetworkID || other.Key.ServiceID != p.Key.ServiceID || other.StartAt == nil || other.DurationOrZero() <= 0 {
 				continue
@@ -147,13 +203,38 @@ func (m *Manager) UpsertPrograms(ctx context.Context, programs []*Program) error
 				continue
 			}
 			if start < *other.StartAt+int64(other.DurationOrZero()) && *other.StartAt < end {
-				removed[other.ID] = true
+				if p.EITRevision != nil {
+					previous := other.EITRevision
+					if previous == nil {
+						if state, ok := m.eit[other.ID]; ok {
+							previous = &state.revision
+						}
+					}
+					if previous == nil && p.EITRevision.Other() || previous != nil && !p.EITRevision.PreferTo(*previous) {
+						blocked = true
+						break
+					}
+				}
+				overlaps = append(overlaps, other.ID)
+			}
+		}
+		if blocked {
+			blockedWrites[p.ID] = true
+			if old != nil {
+				written[p.ID] = old
+			} else {
+				delete(written, p.ID)
+			}
+		} else {
+			for _, id := range overlaps {
+				removed[id] = true
 			}
 		}
 	}
+
 	kept := toWrite[:0]
 	for _, p := range toWrite {
-		if !removed[p.ID] {
+		if !removed[p.ID] && !blockedWrites[p.ID] {
 			kept = append(kept, p)
 		}
 	}
@@ -170,8 +251,15 @@ func (m *Manager) UpsertPrograms(ctx context.Context, programs []*Program) error
 		observability.RecordEPGProgramsUpserted(ctx, source, "error", int64(attempted))
 		return err
 	}
+	for id := range removed {
+		delete(accepted, id)
+	}
+	for id := range blockedWrites {
+		delete(accepted, id)
+	}
+	m.recordEIT(accepted)
 	for _, ev := range events {
-		if !removed[ev.after.ID] {
+		if !removed[ev.after.ID] && !blockedWrites[ev.after.ID] {
 			m.enqueueProgramEvent(ev.typ, ev.after)
 		}
 	}
@@ -206,6 +294,13 @@ func (m *Manager) DeleteEndedBefore(ctx context.Context, cutoff int64) error {
 	if err := m.store.DeleteEndedBefore(ctx, cutoff); err != nil {
 		observability.RecordEPGProgramsDeleted(ctx, source, "error", int64(len(removed)))
 		return err
+	}
+	for _, states := range []map[int64]eitState{m.eit, m.eitExtended} {
+		for id, state := range states {
+			if state.endAt > 0 && state.endAt < cutoff {
+				delete(states, id)
+			}
+		}
 	}
 	for _, id := range removed {
 		m.enqueueProgramRemoveEvent(id)
@@ -248,6 +343,16 @@ func (m *Manager) ReplaceServicePrograms(ctx context.Context, networkID, service
 		observability.RecordEPGProgramsUpserted(ctx, source, "error", int64(attempted))
 		observability.RecordEPGProgramsDeleted(ctx, source, "error", int64(len(beforeList)))
 		return err
+	}
+	for _, p := range beforeList {
+		delete(m.eit, p.ID)
+		delete(m.eitExtended, p.ID)
+	}
+	for _, p := range programs {
+		if p != nil {
+			delete(m.eit, p.ID)
+			delete(m.eitExtended, p.ID)
+		}
 	}
 	changed := 0
 	for _, p := range programs {
@@ -312,6 +417,12 @@ func mergeUpsertProgram(existing, incoming *Program) *Program {
 	merged := *incoming
 	if existing == nil {
 		return &merged
+	}
+	if merged.EITExtendedRevision == nil {
+		merged.EITExtendedRevision = existing.EITExtendedRevision
+	}
+	if merged.EITRevision == nil {
+		merged.EITRevision = existing.EITRevision
 	}
 	if !merged.EITPresent && !merged.EITFollowing {
 		merged.EITPresent = existing.EITPresent

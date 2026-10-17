@@ -13,7 +13,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 )
 
-func gatherNetwork(ctx context.Context, events EventWriter, programStore ProgramStore, serviceStore ServiceStore, streams StreamManager, networkID uint16, candidates []Candidate, serviceKeys []model.ServiceKey, retrievalTime time.Duration) (err error) {
+func gatherNetwork(ctx context.Context, events ScheduleWriter, programStore ProgramStore, serviceStore ServiceStore, streams StreamManager, networkID uint16, candidates []Candidate, serviceKeys []model.ServiceKey, retrievalTime time.Duration) (err error) {
 	ctx, span := observability.StartSpan(ctx, observability.SpanEPGGatherNetwork,
 		observability.AttrEPGNetworkID.Int(int(networkID)),
 		observability.AttrEPGCandidates.Int(len(candidates)),
@@ -37,12 +37,6 @@ func gatherNetwork(ctx context.Context, events EventWriter, programStore Program
 			ordered = append(ordered, candidate)
 		}
 	}
-	var channelServices map[string]map[model.ServiceKey]bool
-	if !streams.NetworkWideEIT(networkID) {
-		if channelServices, err = servicesByChannel(ctx, serviceStore, networkID); err != nil {
-			return err
-		}
-	}
 	remaining := append([]model.ServiceKey(nil), serviceKeys...)
 	var result error
 	items := make([]run.Item, 0, len(ordered)+len(serviceKeys))
@@ -56,17 +50,7 @@ func gatherNetwork(ctx context.Context, events EventWriter, programStore Program
 			span.SetAttributes(epgGatherAttributes(report)...)
 			return nil
 		}
-		// A stream carrying only its own EIT schedule waits for its own
-		// services only, or every candidate would hold the tuner for the
-		// full retrieval time.
 		targets := remaining
-		if channelServices != nil {
-			targets = serviceKeysIn(remaining, channelServices[epgChannelKey(candidate.Type, candidate.Channel)])
-			if len(targets) == 0 {
-				slog.Debug("skipping EPG candidate without remaining services", "networkId", networkID, "type", candidate.Type, "channel", candidate.Channel)
-				continue
-			}
-		}
 		slog.Info("starting network EPG collection", "networkId", networkID, "type", candidate.Type, "channel", candidate.Channel, "services", len(targets), "activeSession", active[candidate])
 		candidateCtx, candidateSpan := observability.StartSpan(ctx, observability.SpanEPGGatherCandidate,
 			observability.AttrEPGNetworkID.Int(int(networkID)),
@@ -190,36 +174,6 @@ func epgGatherAttributes(result run.Result) []attribute.KeyValue {
 		observability.AttrEPGServicesRemaining.Int(result.Counts["remainingServices"]),
 		observability.AttrProgramCount.Int(result.Counts["programs"]),
 	}
-}
-
-// servicesByChannel maps each channel to the network's services on it.
-func servicesByChannel(ctx context.Context, serviceStore ServiceStore, networkID uint16) (map[string]map[model.ServiceKey]bool, error) {
-	services, err := serviceStore.GetServices(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("get services: %w", err)
-	}
-	byChannel := make(map[string]map[model.ServiceKey]bool)
-	for _, svc := range services {
-		if svc.Key.NetworkID != networkID {
-			continue
-		}
-		key := epgChannelKey(svc.ChannelType, svc.ChannelId)
-		if byChannel[key] == nil {
-			byChannel[key] = make(map[model.ServiceKey]bool)
-		}
-		byChannel[key][svc.Key] = true
-	}
-	return byChannel, nil
-}
-
-func serviceKeysIn(keys []model.ServiceKey, set map[model.ServiceKey]bool) []model.ServiceKey {
-	var out []model.ServiceKey
-	for _, key := range keys {
-		if set[key] {
-			out = append(out, key)
-		}
-	}
-	return out
 }
 
 func serviceKeyDifference(keys, remove []model.ServiceKey) []model.ServiceKey {

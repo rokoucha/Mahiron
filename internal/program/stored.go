@@ -9,17 +9,27 @@ import "github.com/21S1298001/mahiron/internal/model"
 // rows already stored; the 202609250001_program_event migration writes the
 // same format.
 type storedEvent struct {
-	EITPresent    bool             `json:"eitPresent,omitempty"`
-	EITFollowing  bool             `json:"eitFollowing,omitempty"`
-	Language      string           `json:"language,omitempty"`
-	RunningStatus uint8            `json:"runningStatus,omitempty"`
-	Genres        []storedGenre    `json:"genres,omitempty"`
-	Videos        []storedVideo    `json:"videos,omitempty"`
-	Audios        []storedAudio    `json:"audios,omitempty"`
-	Extended      []storedExtended `json:"extended,omitempty"`
-	Related       []storedRelated  `json:"related,omitempty"`
-	Parental      []storedParental `json:"parental,omitempty"`
-	Series        *storedSeries    `json:"series,omitempty"`
+	EITExtendedRevision *storedEITRevision `json:"eitExtendedRevision,omitempty"`
+	EITRevision         *storedEITRevision `json:"eitRevision,omitempty"`
+	EITPresent          bool               `json:"eitPresent,omitempty"`
+	EITFollowing        bool               `json:"eitFollowing,omitempty"`
+	Language            string             `json:"language,omitempty"`
+	RunningStatus       uint8              `json:"runningStatus,omitempty"`
+	Genres              []storedGenre      `json:"genres,omitempty"`
+	Videos              []storedVideo      `json:"videos,omitempty"`
+	Audios              []storedAudio      `json:"audios,omitempty"`
+	Extended            []storedExtended   `json:"extended,omitempty"`
+	Related             []storedRelated    `json:"related,omitempty"`
+	Parental            []storedParental   `json:"parental,omitempty"`
+	Series              *storedSeries      `json:"series,omitempty"`
+}
+
+// Reception generations are process-local; only source and broadcast version
+// survive a restart so that other EIT cannot replace an actual EIT row.
+type storedEITRevision struct {
+	Source  string `json:"source,omitempty"`
+	TableID uint8  `json:"tableId"`
+	Version uint8  `json:"version"`
 }
 
 type storedGenre struct {
@@ -92,6 +102,13 @@ type storedSeries struct {
 
 func toStoredEvent(e *model.Event) storedEvent {
 	out := storedEvent{EITPresent: e.EITPresent, EITFollowing: e.EITFollowing, Language: e.Language, RunningStatus: e.RunningStatus}
+	if r := e.EITExtendedRevision; r != nil {
+		out.EITExtendedRevision = &storedEITRevision{Source: r.Source, TableID: r.TableID, Version: r.Version}
+	}
+	if r := e.EITRevision; r != nil {
+		out.EITRevision = &storedEITRevision{Source: r.Source, TableID: r.TableID, Version: r.Version}
+	}
+
 	for _, g := range e.Genres {
 		out.Genres = append(out.Genres, storedGenre{Lv1: g.Lv1, Lv2: g.Lv2, Un1: g.Un1, Un2: g.Un2})
 	}
@@ -134,6 +151,12 @@ func toStoredEvent(e *model.Event) storedEvent {
 }
 
 func (s storedEvent) applyTo(e *model.Event) {
+	if r := s.EITExtendedRevision; r != nil {
+		e.EITExtendedRevision = &model.EITRevision{Source: r.Source, TableID: r.TableID, Version: r.Version}
+	}
+	if r := s.EITRevision; r != nil {
+		e.EITRevision = &model.EITRevision{Source: r.Source, TableID: r.TableID, Version: r.Version}
+	}
 	e.EITPresent = s.EITPresent
 	e.EITFollowing = s.EITFollowing
 	e.Language = s.Language

@@ -147,11 +147,7 @@ const (
 	NetworkClassAdvancedWidebandCS
 )
 
-// ClassifyOriginalNetworkID classifies an original_network_id. 0x000B is
-// advanced BS and 0x000C is advanced wideband CS; neither is covered by the
-// legacy satellite predicate, so channel-scoped gathering keeps working
-// unchanged for them. Only the IDs the codebase already relies on are
-// classified; everything else is NetworkClassOther.
+// ClassifyOriginalNetworkID classifies known broadcast network identifiers.
 func ClassifyOriginalNetworkID(onid uint16) NetworkClass {
 	switch onid {
 	case 0x000B:
@@ -167,10 +163,8 @@ func ClassifyOriginalNetworkID(onid uint16) NetworkClass {
 	}
 }
 
-// IsSatelliteOriginalNetworkID reports whether services under this network
-// ID share EIT schedule tables network-wide (satellite) rather than
-// per-stream. It mirrors the legacy ts predicate so existing callers keep
-// their behavior while the EIT-range query takes over.
+// IsSatelliteOriginalNetworkID identifies legacy BS/CS networks that use
+// all-receivers common data. It does not imply network-wide EIT coverage.
 func IsSatelliteOriginalNetworkID(onid uint16) bool {
 	switch ClassifyOriginalNetworkID(onid) {
 	case NetworkClassBSSatellite, NetworkClassCSSatellite:

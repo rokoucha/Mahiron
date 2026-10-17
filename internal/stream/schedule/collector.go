@@ -8,6 +8,7 @@ package schedule
 import (
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/21S1298001/mahiron/internal/isdb"
@@ -27,6 +28,7 @@ type Section struct {
 // receiver evaluates the events of earlier updates.
 type Collector struct {
 	system isdb.ScheduleSystem
+	source string
 
 	mu       sync.Mutex
 	services map[model.ServiceKey]*serviceSchedule
@@ -34,15 +36,24 @@ type Collector struct {
 }
 
 type serviceSchedule struct {
-	tracker *isdb.ScheduleTracker[[]model.Event]
+	tracker      *isdb.ScheduleTracker[[]model.Event]
+	revisions    map[uint8]model.EITRevision
+	seenVersions map[uint8]uint32
 	// events caches the assembled events until a section arrives.
 	events []model.Event
 	stale  bool
 }
 
-func NewCollector(system isdb.ScheduleSystem) *Collector {
+var receptionSequence atomic.Uint64
+
+func NewCollector(system isdb.ScheduleSystem, source ...string) *Collector {
+	origin := ""
+	if len(source) > 0 {
+		origin = source[0]
+	}
 	return &Collector{
 		system:   system,
+		source:   origin,
 		services: make(map[model.ServiceKey]*serviceSchedule),
 		pf:       make(map[model.ServiceKey]*model.PresentFollowing),
 	}
@@ -108,15 +119,55 @@ func (c *Collector) observeSchedule(section Section, now time.Time) (model.Sched
 	defer c.mu.Unlock()
 	schedule := c.services[section.Service]
 	if schedule == nil {
-		schedule = &serviceSchedule{tracker: isdb.NewScheduleTracker[[]model.Event](c.system)}
+		schedule = &serviceSchedule{tracker: isdb.NewScheduleTracker[[]model.Event](c.system), revisions: make(map[uint8]model.EITRevision), seenVersions: make(map[uint8]uint32)}
 		c.services[section.Service] = schedule
 	}
+	if !section.Header.CurrentNext || section.Header.Version > 31 {
+		return model.ScheduleUpdate{}, false
+	}
+	if previous, ok := schedule.revisions[section.TableID]; ok && previous.Version != section.Header.Version {
+		mask := schedule.seenVersions[section.TableID]
+		if mask&(uint32(1)<<section.Header.Version) != 0 {
+			// A retired version is ambiguous until a full cycle has been observed.
+			// Keep the current version rather than label a replay as new.
+			if mask != ^uint32(0) {
+				return model.ScheduleUpdate{}, false
+			}
+			mask = uint32(1) << previous.Version
+		}
+		schedule.seenVersions[section.TableID] = mask
+	}
+	schedule.seenVersions[section.TableID] |= uint32(1) << section.Header.Version
+	key := section.TableID
+	revision, ok := schedule.revisions[key]
+	if !ok || revision.Version != section.Header.Version {
+		revision = model.EITRevision{Source: c.source, TableID: section.TableID, Version: section.Header.Version, Reception: receptionSequence.Add(1)}
+		schedule.revisions[key] = revision
+	}
+	section.Events = append([]model.Event(nil), section.Events...)
+	for i := range section.Events {
+		if c.classify(section.TableID) == isdb.EITKindScheduleBasic {
+			section.Events[i].EITRevision = &revision
+		} else {
+			section.Events[i].EITExtendedRevision = &revision
+		}
+	}
+
 	if !schedule.tracker.Observe(section.TableID, section.Header, section.Events, now) {
 		return model.ScheduleUpdate{}, false
 	}
 	schedule.stale = true
 	return model.ScheduleUpdate{
-		Service:          section.Service,
+		Service: section.Service,
+		Revisions: func() []model.EITRevision {
+			c.mu.Lock()
+			defer c.mu.Unlock()
+			revisions := make([]model.EITRevision, 0, len(schedule.revisions))
+			for _, revision := range schedule.revisions {
+				revisions = append(revisions, revision)
+			}
+			return revisions
+		},
 		BasicObserved:    schedule.tracker.HasBasic(),
 		BasicComplete:    schedule.tracker.BasicComplete(),
 		ExtendedComplete: schedule.tracker.ExtendedComplete(),
@@ -155,7 +206,13 @@ func assemble(sections []isdb.ScheduleSection[[]model.Event]) []model.Event {
 				continue
 			}
 			if dst := events[e.EventID]; dst != nil {
-				merge(dst, e, true)
+				if e.EITRevision != nil && dst.EITRevision != nil && !e.EITRevision.PreferTo(*dst.EITRevision) {
+					continue
+				}
+				newer := cloneEvent(e)
+				merge(&newer, *dst, false)
+				newer.FreeCA = e.FreeCA
+				events[e.EventID] = &newer
 			} else {
 				clone := cloneEvent(e)
 				events[e.EventID] = &clone
@@ -195,6 +252,21 @@ func cloneEvent(e model.Event) model.Event {
 // merge fills what dst lacks from src. updateTiming also takes src's start
 // time and duration, which basic tables carry.
 func merge(dst *model.Event, src model.Event, updateTiming bool) {
+	if src.EITExtendedRevision != nil {
+		if previous := dst.EITExtendedRevision; previous != nil {
+			if !src.EITExtendedRevision.PreferTo(*previous) {
+				return
+			}
+			if src.EITExtendedRevision.Reception > previous.Reception {
+				dst.Extended = nil
+			}
+		}
+		dst.EITExtendedRevision = src.EITExtendedRevision
+	}
+
+	if updateTiming && src.EITRevision != nil {
+		dst.EITRevision = src.EITRevision
+	}
 	if updateTiming && src.StartAt != nil {
 		dst.StartAt = src.StartAt
 	}

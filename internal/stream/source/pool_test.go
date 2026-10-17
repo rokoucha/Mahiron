@@ -240,3 +240,37 @@ func TestAgentDecodedRouteSkipsLocalFallbackOnReuse(t *testing.T) {
 		}
 	}
 }
+
+func TestStoredEPGFollowsEveryEnabledRouteAndTransport(t *testing.T) {
+	disabled := true
+	remote := config.ChannelRouteConfig{Remote: "upstream", Type: "CUSTOM", Channel: "A"}
+	local := config.ChannelRouteConfig{Type: "CUSTOM", Channel: "A"}
+	disabledLocal := local
+	disabledLocal.IsDisabled = &disabled
+	for _, tc := range []struct {
+		name    string
+		channel config.ChannelConfig
+		want    bool
+	}{
+		{"remote TS", config.ChannelConfig{Routes: []config.ChannelRouteConfig{remote}}, true},
+		{"remote TLV", config.ChannelConfig{Transport: config.TransportTLV, Routes: []config.ChannelRouteConfig{remote}}, false},
+		{"local", config.ChannelConfig{}, false},
+		{"remote with local fallback", config.ChannelConfig{Routes: []config.ChannelRouteConfig{remote, local}}, false},
+		{"local with remote fallback", config.ChannelConfig{Routes: []config.ChannelRouteConfig{local, remote}}, false},
+		{"disabled local fallback", config.ChannelConfig{Routes: []config.ChannelRouteConfig{remote, disabledLocal}}, true},
+		{"no enabled route", config.ChannelConfig{Routes: []config.ChannelRouteConfig{disabledLocal}}, false},
+		{"disabled channel", config.ChannelConfig{Routes: []config.ChannelRouteConfig{remote}, IsDisabled: &disabled}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tc.channel.Type = "CUSTOM"
+			tc.channel.Channel = "A"
+			pool := NewPool(config.ChannelsConfig{tc.channel}, nil, nil, nil)
+			if got := pool.StoredEPG("CUSTOM", "A"); got != tc.want {
+				t.Fatalf("StoredEPG = %v, want %v", got, tc.want)
+			}
+			if pool.StoredEPG("CUSTOM", "missing") {
+				t.Fatal("unknown channel has stored EPG")
+			}
+		})
+	}
+}

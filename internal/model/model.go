@@ -218,24 +218,26 @@ type Series struct {
 // downstream conversions decide how to render that, the model never coerces
 // it to zero.
 type Event struct {
-	EITPresent    bool `json:"-"`
-	EITFollowing  bool `json:"-"`
-	Key           ServiceKey
-	EventID       uint16
-	StartAt       *int64
-	DurationMS    *int
-	RunningStatus uint8
-	FreeCA        bool
-	Language      string
-	Name          string
-	Description   string
-	Genres        []Genre
-	Videos        []VideoComponent
-	Audios        []AudioComponent
-	Extended      []ExtendedBlock
-	Related       []RelatedEvent
-	Parental      []ParentalRating
-	Series        *Series
+	EITExtendedRevision *EITRevision `json:"-"`
+	EITRevision         *EITRevision `json:"-"`
+	EITPresent          bool         `json:"-"`
+	EITFollowing        bool         `json:"-"`
+	Key                 ServiceKey
+	EventID             uint16
+	StartAt             *int64
+	DurationMS          *int
+	RunningStatus       uint8
+	FreeCA              bool
+	Language            string
+	Name                string
+	Description         string
+	Genres              []Genre
+	Videos              []VideoComponent
+	Audios              []AudioComponent
+	Extended            []ExtendedBlock
+	Related             []RelatedEvent
+	Parental            []ParentalRating
+	Series              *Series
 }
 
 // ScheduleUpdate reports that a service's EIT schedule reception made
@@ -247,7 +249,8 @@ type Event struct {
 // every section would make a collection quadratic in the number of sections.
 // Events returns copies whose slices must not be modified in place.
 type ScheduleUpdate struct {
-	Service ServiceKey
+	Revisions func() []EITRevision
+	Service   ServiceKey
 	// BasicObserved reports whether a basic table (event names, genres,
 	// components) arrived. Extended tables alone do not make a service
 	// observed.

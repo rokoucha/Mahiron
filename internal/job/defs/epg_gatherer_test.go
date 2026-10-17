@@ -20,27 +20,21 @@ func (q *epgQueue) EnqueueDefinition(def job.JobDefinition) (string, error) {
 }
 
 type scheduledEPG struct {
-	groups   map[uint16]*epggather.Network
-	inputs   []model.ServiceKey
-	gathered []model.ServiceKey
-	gather   func(context.Context, uint16) error
+	groups map[epggather.GroupKey]*epggather.Group
+	gather func(context.Context, epggather.GroupKey) error
 }
 
-func (s *scheduledEPG) Groups(context.Context) (map[uint16]*epggather.Network, error) {
+func (s *scheduledEPG) Groups(context.Context) (map[epggather.GroupKey]*epggather.Group, error) {
 	return s.groups, nil
 }
-func (s *scheduledEPG) BuildNetworkInputs(context.Context, uint16) ([]epggather.Candidate, []model.ServiceKey, error) {
-	return nil, s.inputs, nil
-}
-func (s *scheduledEPG) GatherNetwork(ctx context.Context, nid uint16, _ []epggather.Candidate, keys []model.ServiceKey) error {
+func (s *scheduledEPG) GatherGroup(ctx context.Context, key epggather.GroupKey) error {
 	if s.gather != nil {
-		return s.gather(ctx, nid)
+		return s.gather(ctx, key)
 	}
-	s.gathered = keys
 	return nil
 }
 
-func TestEPGNetworksGatherConcurrently(t *testing.T) {
+func TestEPGStreamsInSameNetworkGatherConcurrently(t *testing.T) {
 	mgr, err := job.NewManager(job.Config{MaxConcurrentJobs: 2})
 	if err != nil {
 		t.Fatal(err)
@@ -50,15 +44,14 @@ func TestEPGNetworksGatherConcurrently(t *testing.T) {
 			t.Error(err)
 		}
 	})
-	started := make(chan uint16, 2)
+	started := make(chan epggather.GroupKey, 2)
 	service := &scheduledEPG{
-		groups: map[uint16]*epggather.Network{
-			1: {Services: []model.ServiceKey{{NetworkID: 1, ServiceID: 1}}},
-			2: {Services: []model.ServiceKey{{NetworkID: 2, ServiceID: 1}}},
+		groups: map[epggather.GroupKey]*epggather.Group{
+			{NetworkID: 11, StreamID: 100}: {Services: []model.ServiceKey{{NetworkID: 11, StreamID: 100, ServiceID: 1}}},
+			{NetworkID: 11, StreamID: 101}: {Services: []model.ServiceKey{{NetworkID: 11, StreamID: 101, ServiceID: 2}}},
 		},
-		inputs: []model.ServiceKey{{ServiceID: 1}},
-		gather: func(ctx context.Context, nid uint16) error {
-			started <- nid
+		gather: func(ctx context.Context, key epggather.GroupKey) error {
+			started <- key
 			<-ctx.Done()
 			return ctx.Err()
 		},
@@ -86,13 +79,13 @@ func TestEPGNetworksGatherConcurrently(t *testing.T) {
 
 func TestEPGDispatchPrioritizesUnseenAndOldNetworks(t *testing.T) {
 	now := time.Now()
-	service := &scheduledEPG{groups: map[uint16]*epggather.Network{}}
+	service := &scheduledEPG{groups: map[epggather.GroupKey]*epggather.Group{}}
 	for nid, age := range map[uint16]time.Duration{1: time.Hour, 2: 0, 3: 2 * time.Hour, 4: time.Minute, 5: time.Hour} {
-		group := &epggather.Network{Services: []model.ServiceKey{{NetworkID: nid, ServiceID: 1}}}
+		group := &epggather.Group{Services: []model.ServiceKey{{NetworkID: nid, ServiceID: 1}}}
 		if age != 0 {
 			group.OldestSuccessAt = now.Add(-age).UnixMilli()
 		}
-		service.groups[nid] = group
+		service.groups[epggather.GroupKey{NetworkID: nid, Stored: true}] = group
 	}
 	queue := &epgQueue{}
 	if err := epgGathererHandler(queue, service, nil)(t.Context()); err != nil {
@@ -112,26 +105,35 @@ func TestEPGDispatchPrioritizesUnseenAndOldNetworks(t *testing.T) {
 	}
 }
 
-func TestEPGQueuedJobReloadsTopology(t *testing.T) {
-	old := model.ServiceKey{NetworkID: 4, ServiceID: 101}
-	replacement := model.ServiceKey{NetworkID: 4, ServiceID: 102}
-	service := &scheduledEPG{inputs: []model.ServiceKey{replacement}}
+func TestEPGStoredAndStreamJobsHaveDistinctKeys(t *testing.T) {
 	queue := &epgQueue{}
-	if _, err := enqueueEPGGatherForNetwork(t.Context(), queue, service, 4, &epggather.Network{Services: []model.ServiceKey{old}}); err != nil {
-		t.Fatal(err)
+	service := &scheduledEPG{}
+	group := &epggather.Group{Services: []model.ServiceKey{{NetworkID: 4, ServiceID: 101}}}
+	for _, key := range []epggather.GroupKey{{NetworkID: 4, Stored: true}, {NetworkID: 4, StreamID: 0}, {NetworkID: 4, StreamID: 100}} {
+		if _, err := enqueueEPGGatherGroup(queue, service, key, group); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if err := queue.definitions[0].Handler(t.Context()); err != nil {
-		t.Fatal(err)
+	var keys []string
+	for _, def := range queue.definitions {
+		keys = append(keys, def.Key)
 	}
-	if diff := cmp.Diff([]model.ServiceKey{replacement}, service.gathered); diff != "" {
+	if diff := cmp.Diff([]string{"epg-gather:nid:4", "epg-gather:nid:4:stream:0", "epg-gather:nid:4:stream:100"}, keys); diff != "" {
 		t.Fatal(diff)
 	}
-	service.inputs = nil
-	service.gathered = nil
-	if err := queue.definitions[0].Handler(t.Context()); err != nil {
-		t.Fatal(err)
+}
+
+func TestUnknownStreamsHaveDistinctJobKeys(t *testing.T) {
+	queue := &epgQueue{}
+	service := &scheduledEPG{}
+	group := &epggather.Group{Services: []model.ServiceKey{{NetworkID: 4, ServiceID: 151}}}
+	for _, ch := range []string{"A", "B"} {
+		key := epggather.GroupKey{NetworkID: 4, Channel: epggather.Candidate{Type: "CUSTOM", Channel: ch}}
+		if _, err := enqueueEPGGatherGroup(queue, service, key, group); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if service.gathered != nil {
-		t.Fatal("gathered a removed network")
+	if queue.definitions[0].Key == queue.definitions[1].Key {
+		t.Fatal("unknown stream jobs collide")
 	}
 }

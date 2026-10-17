@@ -32,17 +32,14 @@ var eitsDeadStreamTimeout = 30 * time.Second
 // expectedServiceIndex answers membership queries for the services a collection
 // run is targeting, keyed by original network / transport stream / service ID.
 type expectedServiceIndex struct {
-	byNID    map[uint16]map[uint16]map[uint16]struct{}
-	networks map[uint16]struct{}
+	byNID map[uint16]map[uint16]map[uint16]struct{}
 }
 
 func newExpectedServiceIndex(expected []model.ServiceKey) *expectedServiceIndex {
 	idx := &expectedServiceIndex{
-		byNID:    make(map[uint16]map[uint16]map[uint16]struct{}, len(expected)),
-		networks: make(map[uint16]struct{}, len(expected)),
+		byNID: make(map[uint16]map[uint16]map[uint16]struct{}, len(expected)),
 	}
 	for _, key := range expected {
-		idx.networks[key.NetworkID] = struct{}{}
 		if idx.byNID[key.NetworkID] == nil {
 			idx.byNID[key.NetworkID] = make(map[uint16]map[uint16]struct{})
 		}
@@ -73,8 +70,15 @@ func (idx *expectedServiceIndex) matchesExpected(key model.ServiceKey) bool {
 }
 
 func (idx *expectedServiceIndex) matchesCollectionNetwork(key model.ServiceKey) bool {
-	_, ok := idx.networks[key.NetworkID]
+	_, ok := idx.byNID[key.NetworkID]
 	return ok
+}
+
+func (idx *expectedServiceIndex) matchesCollectionStream(key model.ServiceKey) bool {
+	streams := idx.byNID[key.NetworkID]
+	_, known := streams[key.StreamID]
+	_, unknown := streams[0]
+	return known || unknown && idx.matchesExpected(key)
 }
 
 // collectionSchedule holds the latest schedule update of each service a
@@ -111,13 +115,15 @@ func newCollectionSchedule(expected []model.ServiceKey) *collectionSchedule {
 	return c
 }
 
-func (c *collectionSchedule) observe(update model.ScheduleUpdate) model.ServiceKey {
+func (c *collectionSchedule) observe(update model.ScheduleUpdate, progress bool) model.ServiceKey {
 	key := update.Service
 	if expected, ok := c.unknownStream[serviceIdentity{networkID: key.NetworkID, serviceID: key.ServiceID}]; ok {
 		key = expected
 	}
 	c.updates[key] = update
-	c.lastProgress = time.Now()
+	if progress {
+		c.lastProgress = time.Now()
+	}
 	c.clock = max(c.clock, update.ObservedAt)
 	return key
 }
@@ -154,11 +160,19 @@ func (c *collectionSchedule) diagnosis(key model.ServiceKey) string {
 	return update.Diagnosis()
 }
 
+func (c *collectionSchedule) snapshot(key model.ServiceKey, events []model.Event) model.ScheduleSnapshot {
+	snapshot := model.ScheduleSnapshot{Service: c.updates[key].Service, Events: events}
+	if revisions := c.updates[key].Revisions; revisions != nil {
+		snapshot.Revisions = revisions()
+	}
+	return snapshot
+}
+
 // CollectSchedule collects the EIT of one channel until the expected
 // services are complete, the stream turns out dead or retrievalTime passes.
 type CollectSchedule = func(context.Context, func(model.ScheduleUpdate) error, func(model.PresentFollowing) error) error
 
-func CollectServiceSnapshots(ctx context.Context, events EventWriter, serviceStore ServiceStore, collect CollectSchedule, expected []model.ServiceKey, retrievalTime time.Duration) (result *CollectResult, err error) {
+func CollectServiceSnapshots(ctx context.Context, events ScheduleWriter, serviceStore ServiceStore, collect CollectSchedule, expected []model.ServiceKey, retrievalTime time.Duration) (result *CollectResult, err error) {
 	ctx, span := observability.StartSpan(ctx, observability.SpanEPGCollectServiceSnapshots,
 		observability.AttrEPGServices.Int(len(expected)),
 		observability.AttrEPGRetrievalTimeMS.Int64(retrievalTime.Milliseconds()),
@@ -229,7 +243,7 @@ func CollectServiceSnapshots(ctx context.Context, events EventWriter, serviceSto
 	var pfUpdates, scheduleUpdates, received int
 	handleUpdate := func(update model.ScheduleUpdate) {
 		scheduleUpdates++
-		key := schedule.observe(update)
+		key := schedule.observe(update, index.matchesCollectionStream(update.Service))
 		dirtyServices[key] = struct{}{}
 		observedServices[key] = struct{}{}
 	}
@@ -329,9 +343,9 @@ func CollectServiceSnapshots(ctx context.Context, events EventWriter, serviceSto
 // persistObservedSnapshots stores the observed schedules, records
 // per-service EPG attempt/success state, and populates result.Observed /
 // result.Unobserved. It returns the joined error of the persist stage.
-func persistObservedSnapshots(ctx context.Context, writer EventWriter, serviceStore ServiceStore, schedule *collectionSchedule, expected []model.ServiceKey, observedServices map[model.ServiceKey]struct{}, updatedAt int64, result *CollectResult) error {
+func persistObservedSnapshots(ctx context.Context, writer ScheduleWriter, serviceStore ServiceStore, schedule *collectionSchedule, expected []model.ServiceKey, observedServices map[model.ServiceKey]struct{}, updatedAt int64, result *CollectResult) error {
 	var collectErr error
-	observed := 0
+	index := newExpectedServiceIndex(expected)
 	expectedObserved := 0
 	var unobserved error
 	observedEvents := make(map[model.ServiceKey][]model.Event)
@@ -363,11 +377,13 @@ func persistObservedSnapshots(ctx context.Context, writer EventWriter, serviceSt
 	for _, key := range mergeKeys {
 		_, isExpected := expectedSeen[key]
 		if schedule.observed(key) {
-			result.Observed = append(result.Observed, key)
+			inTargetStream := index.matchesCollectionStream(key)
+			if inTargetStream {
+				result.Observed = append(result.Observed, key)
+			}
 			if isExpected {
 				expectedObserved++
 			}
-			observed++
 			events := observedEvents[key]
 			result.ProgramCount += len(events)
 			update := schedule.updates[key]
@@ -394,13 +410,19 @@ func persistObservedSnapshots(ctx context.Context, writer EventWriter, serviceSt
 				observability.AttrProgramCount.Int(len(events)),
 			)
 			mergeCtx = observability.ContextWithEPGMetricSource(mergeCtx, "eits")
-			err := writer.UpsertEvents(mergeCtx, events)
+			err := writer.UpsertSchedule(mergeCtx, schedule.snapshot(key, events))
 			observability.EndSpan(mergeSpan, err)
 			if err != nil {
-				if attemptErr := serviceStore.SetEPGAttempt(ctx, key.NetworkID, key.ServiceID, updatedAt, err.Error()); attemptErr != nil {
-					observability.RecordEPGServiceUpdateError(ctx, "eits", "attempt")
+				if inTargetStream {
+					if attemptErr := serviceStore.SetEPGAttempt(ctx, key.NetworkID, key.ServiceID, updatedAt, err.Error()); attemptErr != nil {
+						observability.RecordEPGServiceUpdateError(ctx, "eits", "attempt")
+					}
 				}
 				collectErr = errors.Join(collectErr, fmt.Errorf("service %d: merge: %w", key.ServiceID, err))
+				continue
+			}
+			// Other streams contribute programs, not collection freshness or completion.
+			if !inTargetStream {
 				continue
 			}
 			if err := serviceStore.SetEPGSuccess(ctx, key.NetworkID, key.ServiceID, updatedAt); err != nil {

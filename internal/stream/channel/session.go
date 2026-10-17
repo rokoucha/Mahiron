@@ -167,7 +167,7 @@ func (s *Session) ScanServices(ctx context.Context) ([]model.Service, error) {
 // ctx ends. The schedule's reception state lives in this call, and the
 // broadcast clock from TOT decides which of today's segments have elapsed.
 func (s *Session) CollectSchedule(ctx context.Context, onSchedule func(model.ScheduleUpdate) error, onPresentFollowing func(model.PresentFollowing) error) error {
-	collector := schedule.NewCollector(isdb.ScheduleTS)
+	collector := schedule.NewCollector(isdb.ScheduleTS, s.typ+"\x00"+s.channel)
 	return s.input.WithUser(ctx, func(ctx context.Context) error {
 		return s.observeEIT(ctx, func(eit *ts.EIT, clock time.Time) error {
 			if clock.IsZero() {
@@ -244,7 +244,7 @@ func (s *Session) ObserveDataBroadcast(ctx context.Context, serviceID uint16, de
 			select {
 			case <-ctx.Done():
 				cancel()
-				<-done
+				<-done //nolint:errcheck // Only wait for the canceled keepalive to release its source.
 				return nil
 			case err := <-done:
 				s.bml.wg.Wait()
@@ -267,12 +267,12 @@ func (s *Session) ObserveDataBroadcast(ctx context.Context, serviceID uint16, de
 			case event, ok := <-events:
 				if !ok {
 					cancel()
-					<-done
+					<-done //nolint:errcheck // Only wait for the canceled keepalive to release its source.
 					return nil
 				}
 				if err := observe(event); err != nil {
 					cancel()
-					<-done
+					<-done //nolint:errcheck // Only wait for the canceled keepalive to release its source.
 					return err
 				}
 			}
@@ -342,7 +342,7 @@ func (s *Session) stopSectionUpdates() {
 		cancel()
 	}
 	if done != nil {
-		<-done
+		<-done //nolint:errcheck // Only wait for the canceled keepalive to release its source.
 	}
 	if worker != nil {
 		worker.stop()
