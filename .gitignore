@@ -26,6 +26,7 @@ go.work.sum
 .env
 
 /mahiron
+/mahiron-agent
 /mahiron5
 *.db
 *.db-wal

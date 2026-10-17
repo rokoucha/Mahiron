@@ -208,7 +208,7 @@ func (tm *Manager) statusLockedByTuner(item *Tuner) Status {
 			break
 		}
 	}
-	available := !item.IsDisabled() && item.Usable() && !runtime.fault && !runtime.stopped
+	available := !item.IsDisabled() && item.Usable() && item.Available() && !runtime.fault && !runtime.stopped
 	status := Status{
 		Index: index, Name: item.Name(), Types: append([]string(nil), item.Groups()...),
 		IsAvailable: available, IsFault: runtime.fault,

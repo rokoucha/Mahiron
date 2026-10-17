@@ -4,6 +4,7 @@ TEST_ENV := $(if $(CI),,GOCACHE=/private/tmp/mahiron-gocache)
 
 build:
 	go build ./cmd/mahiron
+	go build ./cmd/mahiron-agent
 
 web-build:
 	npm --prefix web install
@@ -21,6 +22,6 @@ test:
 	$(TEST_ENV) go test ./...
 
 test-race:
-	$(TEST_ENV) go test -race ./internal/job/... ./internal/stream/... ./internal/tuner/... ./internal/util/...
+	$(TEST_ENV) go test -race ./internal/agent/... ./internal/job/... ./internal/stream/... ./internal/tuner/... ./internal/util/...
 
 verify: test test-race

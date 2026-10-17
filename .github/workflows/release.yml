@@ -39,9 +39,12 @@ jobs:
       - name: Build binaries
         run: |
           mkdir -p dist
-          for arch in amd64 arm64; do
-            CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build -trimpath -ldflags="-s -w" -o "dist/mahiron_linux_$arch/mahiron" ./cmd/mahiron
-            tar -C dist -czf "dist/mahiron_${{ inputs.tag }}_linux_$arch.tar.gz" "mahiron_linux_$arch"
+          for binary in mahiron mahiron-agent; do
+            for arch in amd64 arm64; do
+              mkdir -p "dist/${binary}_linux_$arch"
+              CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build -trimpath -ldflags="-s -w" -o "dist/${binary}_linux_$arch/${binary}" "./cmd/${binary}"
+              tar -C dist -czf "dist/${binary}_${{ inputs.tag }}_linux_$arch.tar.gz" "${binary}_linux_$arch"
+            done
           done
           cd dist && sha256sum *.tar.gz > checksums.txt
       - name: Upload release assets
@@ -50,6 +53,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
 
   docker:
+    strategy:
+      matrix:
+        binary: [mahiron, mahiron-agent]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -68,7 +74,7 @@ jobs:
       - uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         id: meta
         with:
-          images: ghcr.io/${{ github.repository }}
+          images: ghcr.io/${{ github.repository }}${{ matrix.binary == 'mahiron-agent' && '-agent' || '' }}
           tags: |
             type=semver,pattern={{version}},value=${{ inputs.tag }}
             type=semver,pattern={{major}}.{{minor}},value=${{ inputs.tag }}
@@ -76,9 +82,10 @@ jobs:
       - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
+          file: ${{ matrix.binary == 'mahiron-agent' && 'Dockerfile.agent' || 'Dockerfile' }}
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ matrix.binary }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.binary }}
