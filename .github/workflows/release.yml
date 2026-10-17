@@ -39,7 +39,7 @@ jobs:
       - name: Build binaries
         run: |
           mkdir -p dist
-          for binary in mahiron mahiron-agent; do
+          for binary in mahiron mahiron-agent mahiron-tools; do
             for arch in amd64 arm64; do
               mkdir -p "dist/${binary}_linux_$arch"
               CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build -trimpath -ldflags="-s -w" -o "dist/${binary}_linux_$arch/${binary}" "./cmd/${binary}"

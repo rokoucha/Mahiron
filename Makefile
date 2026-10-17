@@ -5,6 +5,7 @@ TEST_ENV := $(if $(CI),,GOCACHE=/private/tmp/mahiron-gocache)
 build:
 	go build ./cmd/mahiron
 	go build ./cmd/mahiron-agent
+	go build ./cmd/mahiron-tools
 
 web-build:
 	npm --prefix web install

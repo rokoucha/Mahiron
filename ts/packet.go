@@ -229,3 +229,9 @@ func (pr *PacketReader) consumePacketInto(dst []byte, pos, stride int) Packet {
 	pr.buf = pr.buf[:len(remaining)]
 	return Packet(packet)
 }
+
+// SyncLosses returns how often packet synchronization was lost.
+func (pr *PacketReader) SyncLosses() uint64 { return pr.syncLosses }
+
+// PacketStride returns the detected input packet size, or zero before detection.
+func (pr *PacketReader) PacketStride() int { return pr.stride }
