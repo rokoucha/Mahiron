@@ -256,10 +256,11 @@ func receiveAndUpload(ctx context.Context, base *url.URL, token, generation, id 
 	client := &http.Client{Transport: transport, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}
 	resp, requestErr := client.Do(req)
 	if resp != nil {
-		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		responseBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		_ = resp.Body.Close()
 		if resp.StatusCode != http.StatusNoContent {
-			requestErr = fmt.Errorf("stream rejected: HTTP %d", resp.StatusCode)
+			detail := strings.TrimSpace(strings.ReplaceAll(string(responseBody), token, "[redacted]"))
+			requestErr = fmt.Errorf("stream rejected: HTTP %d: %s", resp.StatusCode, detail)
 		}
 	}
 	cleanupErr := receiver.stop()
