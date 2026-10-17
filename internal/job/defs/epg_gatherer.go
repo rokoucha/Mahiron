@@ -1,16 +1,17 @@
 package defs
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"time"
 
 	"github.com/21S1298001/mahiron/internal/epggather"
 	"github.com/21S1298001/mahiron/internal/job"
 	"github.com/21S1298001/mahiron/internal/job/run"
-	"github.com/21S1298001/mahiron/internal/model"
 )
 
 const (
@@ -18,6 +19,7 @@ const (
 	EPGGathererName = "EPG Gatherer"
 
 	EPGGathererDefaultSchedule = "20,50 * * * *"
+	epgRefreshInterval         = 30 * time.Minute
 )
 
 func RegisterEPGGatherer(registry Registry, service EPGGatherer, programs ProgramCleaner, retentionDays int) {
@@ -42,11 +44,28 @@ func epgGathererHandler(registry Registry, service EPGGatherer, cleanup func(con
 			return err
 		}
 		queued := 0
-		for nid, group := range grouped {
+		fresh := 0
+		networkIDs := make([]uint16, 0, len(grouped))
+		for nid := range grouped {
+			networkIDs = append(networkIDs, nid)
+		}
+		slices.SortFunc(networkIDs, func(a, b uint16) int {
+			if order := cmp.Compare(grouped[a].OldestSuccessAt, grouped[b].OldestSuccessAt); order != 0 {
+				return order
+			}
+			return cmp.Compare(a, b)
+		})
+		cutoff := time.Now().Add(-epgRefreshInterval).UnixMilli()
+		for _, nid := range networkIDs {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
-			enqueued, err := enqueueEPGGatherForNetwork(ctx, registry, service, nid, group.Candidates, group.Services)
+			group := grouped[nid]
+			if group.OldestSuccessAt > cutoff {
+				fresh++
+				continue
+			}
+			enqueued, err := enqueueEPGGatherForNetwork(ctx, registry, service, nid, group)
 			if err != nil {
 				return err
 			}
@@ -54,7 +73,7 @@ func epgGathererHandler(registry Registry, service EPGGatherer, cleanup func(con
 				queued++
 			}
 		}
-		slog.Info("EPG gatherer dispatched", "networks", len(grouped), "queued", queued)
+		slog.Info("EPG gatherer dispatched", "networks", len(grouped), "queued", queued, "fresh", fresh)
 
 		result := run.Result{
 			Kind:    "epg_gatherer",
@@ -62,6 +81,7 @@ func epgGathererHandler(registry Registry, service EPGGatherer, cleanup func(con
 			Counts: map[string]int{
 				"networks": len(grouped),
 				"queued":   queued,
+				"fresh":    fresh,
 			},
 		}
 		if cleanup != nil {
@@ -78,34 +98,36 @@ func epgGathererHandler(registry Registry, service EPGGatherer, cleanup func(con
 	}
 }
 
-// enqueueEPGGatherForNetwork enqueues the per-network EPG gather job for the
-// given network ID, ignoring job.ErrJobAlreadyRunning. It is used by both the
-// EPGGatherer cron handler and by callers (e.g. the service updater) that
-// want to trigger gathering for a freshly discovered network without waiting
-// for the next cron tick. Returns true when a job was actually enqueued (not
-// already running and not skipped for having no services).
-func enqueueEPGGatherForNetwork(ctx context.Context, registry Registry, service EPGGatherer, networkID uint16, presetCandidates []epggather.Candidate, presetServices []model.ServiceKey) (bool, error) {
-	candidates := presetCandidates
-	serviceKeys := presetServices
-	if len(candidates) == 0 && len(serviceKeys) == 0 {
+// enqueueEPGGatherForNetwork skips networks without services or with an active
+// job. A nil network loads the current inputs before enqueueing.
+func enqueueEPGGatherForNetwork(ctx context.Context, registry Registry, service EPGGatherer, networkID uint16, network *epggather.Network) (bool, error) {
+	if network == nil {
 		var err error
-		candidates, serviceKeys, err = service.BuildNetworkInputs(ctx, networkID)
+		network = &epggather.Network{}
+		network.Candidates, network.Services, err = service.BuildNetworkInputs(ctx, networkID)
 		if err != nil {
 			return false, err
 		}
 	}
-	if len(serviceKeys) == 0 {
+	if len(network.Services) == 0 {
 		slog.Debug("skipping EPG gather enqueue with no services", "networkId", networkID)
 		return false, nil
 	}
 	nid := networkID
-	networkCandidates := append([]epggather.Candidate(nil), candidates...)
-	networkServices := append([]model.ServiceKey(nil), serviceKeys...)
 	definition := job.JobDefinition{
 		Key: fmt.Sprintf("epg-gather:nid:%d", nid), Name: fmt.Sprintf("EPG Gather NID %d", nid), IsRerunnable: true,
-		ExclusiveKeys: []string{"epg-service-topology"},
+		SharedKeys: []string{"epg-service-topology"},
+		Priority:   -network.OldestSuccessAt,
 		Handler: func(childCtx context.Context) error {
-			return service.GatherNetwork(childCtx, nid, networkCandidates, networkServices)
+			// A service scan may have changed the topology while this job waited.
+			candidates, services, err := service.BuildNetworkInputs(childCtx, nid)
+			if err != nil {
+				return err
+			}
+			if len(services) == 0 {
+				return nil
+			}
+			return service.GatherNetwork(childCtx, nid, candidates, services)
 		},
 		RetryDelays: []time.Duration{time.Minute, 2 * time.Minute, 4 * time.Minute},
 		RetryIf:     epggather.RetryableError,
@@ -117,6 +139,6 @@ func enqueueEPGGatherForNetwork(ctx context.Context, registry Registry, service 
 		}
 		return false, err
 	}
-	slog.Info("EPG gather queued", "networkId", networkID, "candidates", len(networkCandidates), "services", len(networkServices))
+	slog.Info("EPG gather queued", "networkId", networkID, "candidates", len(network.Candidates), "services", len(network.Services))
 	return true, nil
 }

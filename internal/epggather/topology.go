@@ -17,6 +17,8 @@ type Candidate struct {
 type Network struct {
 	Candidates []Candidate
 	Services   []model.ServiceKey
+	// Zero means at least one service has never been gathered.
+	OldestSuccessAt int64
 }
 
 // groupServicesByNetwork lists each network's services and the channels to
@@ -71,7 +73,15 @@ func groupServicesByNetwork(services []*service.Service, channels config.Channel
 		}
 		key := svc.Key
 		if groups[svc.Key.NetworkID] != nil && !serviceSeen[key] {
-			groups[svc.Key.NetworkID].Services = append(groups[svc.Key.NetworkID].Services, key)
+			group := groups[svc.Key.NetworkID]
+			lastSuccess := int64(0)
+			if svc.EPG.LastSuccessAt != nil {
+				lastSuccess = *svc.EPG.LastSuccessAt
+			}
+			if len(group.Services) == 0 || lastSuccess < group.OldestSuccessAt {
+				group.OldestSuccessAt = lastSuccess
+			}
+			group.Services = append(group.Services, key)
 			serviceSeen[key] = true
 		}
 	}

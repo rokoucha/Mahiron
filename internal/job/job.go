@@ -43,9 +43,13 @@ type JobDefinition struct {
 	Handler       func(ctx context.Context) error
 	DependsOn     []string
 	ExclusiveKeys []string
-	IsRerunnable  bool
-	RetryDelays   []time.Duration
-	RetryIf       func(error) bool
+	// Shared jobs may overlap each other, but not jobs with the same exclusive key.
+	SharedKeys []string
+	// Higher priorities run first; equal priorities retain queue order.
+	Priority     int64
+	IsRerunnable bool
+	RetryDelays  []time.Duration
+	RetryIf      func(error) bool
 }
 
 type ScheduleInfo struct {
