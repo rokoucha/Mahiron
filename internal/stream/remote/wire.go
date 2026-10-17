@@ -224,13 +224,76 @@ func scanRemoteEvents(ctx context.Context, src io.Reader, dst chan<- scannedRemo
 	}
 }
 
-// decodeRemoteProgram decodes a Mirakurun-compatible program with the ogen
-// types and converts it through the shared conversion, the same one the API
-// serves. Payloads missing required fields are rejected.
-func decodeRemoteProgram(data json.RawMessage) (model.Event, error) {
+// remoteProgram accepts null optional metadata fields emitted by some
+// Mirakurun-compatible servers, while retaining the generated API validation.
+type remoteProgram struct {
+	apigen.Program
+}
+
+func (p *remoteProgram) UnmarshalJSON(data []byte) error {
 	var api apigen.Program
+	originalErr := json.Unmarshal(data, &api)
+	if originalErr == nil {
+		p.Program = api
+		return nil
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return originalErr
+	}
+	var items []map[string]json.RawMessage
+	if raw, ok := fields["relatedItems"]; ok {
+		if err := json.Unmarshal(raw, &items); err != nil {
+			return originalErr
+		}
+	}
+	changed := false
+	for _, item := range items {
+		for _, name := range []string{"type", "networkId", "transportStreamId", "serviceId", "eventId"} {
+			if bytes.Equal(bytes.TrimSpace(item[name]), []byte("null")) {
+				delete(item, name)
+				changed = true
+			}
+		}
+	}
+	if changed {
+		related, err := json.Marshal(items)
+		if err != nil {
+			return err
+		}
+		fields["relatedItems"] = related
+	}
+	var video map[string]json.RawMessage
+	if raw, ok := fields["video"]; ok && json.Unmarshal(raw, &video) == nil {
+		if bytes.Equal(bytes.TrimSpace(video["resolution"]), []byte("null")) {
+			delete(video, "resolution")
+			normalizedVideo, err := json.Marshal(video)
+			if err != nil {
+				return err
+			}
+			fields["video"] = normalizedVideo
+			changed = true
+		}
+	}
+	if !changed {
+		return originalErr
+	}
+	normalized, err := json.Marshal(fields)
+	if err != nil {
+		return err
+	}
+	api = apigen.Program{}
+	if err := json.Unmarshal(normalized, &api); err != nil {
+		return err
+	}
+	p.Program = api
+	return nil
+}
+
+func decodeRemoteProgram(data json.RawMessage) (model.Event, error) {
+	var api remoteProgram
 	if err := json.Unmarshal(data, &api); err != nil {
 		return model.Event{}, err
 	}
-	return mirakurun.EventFromAPI(&api), nil
+	return mirakurun.EventFromAPI(&api.Program), nil
 }

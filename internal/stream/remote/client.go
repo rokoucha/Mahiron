@@ -302,13 +302,18 @@ func (c *Client) ListServicePrograms(ctx context.Context, networkID, serviceID u
 	query.Set("serviceId", fmt.Sprint(serviceID))
 	req.URL.RawQuery = query.Encode()
 
-	var apiPrograms []apigen.Program
+	var apiPrograms []remoteProgram
 	if err := c.doJSON(req, &apiPrograms); err != nil {
 		return nil, err
 	}
-	programs = make([]model.Event, len(apiPrograms))
+	programs = make([]model.Event, 0, len(apiPrograms))
 	for i := range apiPrograms {
-		programs[i] = mirakurun.EventFromAPI(&apiPrograms[i])
+		p := &apiPrograms[i].Program
+		// Some remotes ignore the query and return programs for every service.
+		if p.NetworkId != apigen.NetworkId(networkID) || p.ServiceId != apigen.ServiceId(serviceID) {
+			continue
+		}
+		programs = append(programs, mirakurun.EventFromAPI(p))
 	}
 	return programs, nil
 }
