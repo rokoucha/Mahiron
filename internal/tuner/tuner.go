@@ -101,10 +101,11 @@ func (t *Tuner) NewDevice(channel *config.ChannelConfig) Device {
 		if t.agents == nil {
 			return nil
 		}
-		r := agent.Request{Tuner: t.Name(), Command: replaceCommandTemplate(t.config.Agent.Command, channel), DVBDevicePath: t.config.Agent.DvbDevicePath, Transport: config.TransportTS, RetryMax: t.config.StartupRetryMax, TimeoutMS: t.config.StartupTimeout, RetryDelayMS: t.config.StartupRetryDelay}
+		r := agent.Request{Tuner: t.Name(), Command: replaceCommandTemplate(t.config.Agent.Command, channel), DVBDevicePath: t.config.Agent.DvbDevicePath, Transport: config.TransportTS, Decoder: t.config.Agent.Decoder, RetryMax: t.config.StartupRetryMax, TimeoutMS: t.config.StartupTimeout, RetryDelayMS: t.config.StartupRetryDelay}
 		if channel != nil {
 			if config.IsTLVTransport(*channel) {
 				r.Transport = config.TransportTLV
+				r.Decoder = t.config.Agent.B61Decoder
 			}
 			if channel.TsmfRelTs != nil {
 				r.RelativeTS = *channel.TsmfRelTs

@@ -219,3 +219,24 @@ func TestPoolTLVWithoutB61DecoderHasNoDescrambler(t *testing.T) {
 		t.Fatal("IsTLVChannel(unknown) = true, want false")
 	}
 }
+
+type fallbackDecoderManager struct{ *fakeAllocatorManager }
+
+func (m fallbackDecoderManager) DecoderCommandByType(string) string    { return "local-b25" }
+func (m fallbackDecoderManager) B61DecoderCommandByType(string) string { return "local-b61" }
+
+func TestAgentDecodedRouteSkipsLocalFallbackOnReuse(t *testing.T) {
+	manager := fallbackDecoderManager{&fakeAllocatorManager{device: &fakeAllocatorDevice{done: make(chan struct{})}, decoders: tuner.DecoderCommands{AgentDecoder: true, AgentB61Decoder: true}}}
+	pool := NewPool(config.ChannelsConfig{{Type: "GR", Channel: "27"}, {Type: "BS4K", Channel: "101", Transport: config.TransportTLV}}, manager, func(string) Descrambler { t.Fatal("local decoder invoked"); return nil }, nil)
+	for _, ch := range []struct{ typ, channel string }{{"GR", "27"}, {"BS4K", "101"}} {
+		for range 2 {
+			handle, err := pool.Acquire(context.Background(), ch.typ, ch.channel, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if handle.Descrambler() != nil {
+				t.Fatal("unexpected local decoder")
+			}
+		}
+	}
+}

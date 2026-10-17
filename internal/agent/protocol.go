@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	Version           = 1
+	Version           = 2
 	heartbeatInterval = 5 * time.Second
 	heartbeatTimeout  = 15 * time.Second
 	streamIdleTimeout = 15 * time.Second
@@ -17,6 +17,7 @@ const (
 )
 
 type Request struct {
+	Decoder       string `json:"decoder,omitempty"`
 	Tuner         string `json:"tuner"`
 	Command       string `json:"command"`
 	DVBDevicePath string `json:"dvbDevicePath,omitempty"`

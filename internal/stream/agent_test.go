@@ -37,9 +37,13 @@ func (d *agentTestDecoder) Descramble(_ context.Context, r io.Reader, w io.Write
 	return err
 }
 
-func TestAgentInputUsesLocalTSAndTLVDecoders(t *testing.T) {
-	for _, transport := range []string{"ts", "tlv"} {
-		t.Run(transport, func(t *testing.T) {
+func TestAgentInputUsesSelectedTSAndTLVDecoders(t *testing.T) {
+	for _, tc := range []struct {
+		transport string
+		remote    bool
+	}{{"ts", false}, {"tlv", false}, {"ts", true}, {"tlv", true}} {
+		transport := tc.transport
+		t.Run(fmt.Sprintf("%s/agentDecoder=%v", transport, tc.remote), func(t *testing.T) {
 			token := "stream-agent-test"
 			hub := agent.NewHub(map[string]string{"living": fmt.Sprintf("%x", sha256.Sum256([]byte(token)))})
 			server := httptest.NewServer(hub)
@@ -85,6 +89,10 @@ func TestAgentInputUsesLocalTSAndTLVDecoders(t *testing.T) {
 				t.Fatal(err)
 			}
 			tuners := tuner.NewManager(&tuner.ManagerConfig{Agents: hub, TunersConfig: config.TunersConfig{{Name: "remote", Types: []string{"TEST"}, Agent: &config.AgentTunerConfig{Name: "living", Command: "cat '" + path + "'"}, Decoder: "b25-local", B61Decoder: "b61-local"}}})
+			marker := filepath.Join(t.TempDir(), "decoder-invoked")
+			if tc.remote {
+				tuners = tuner.NewManager(&tuner.ManagerConfig{Agents: hub, TunersConfig: config.TunersConfig{{Name: "remote", Types: []string{"TEST"}, Agent: &config.AgentTunerConfig{Name: "living", Command: "cat '" + path + "'", Decoder: "touch '" + marker + "'; cat", B61Decoder: "touch '" + marker + "'; cat"}}}})
+			}
 			decoder := new(agentTestDecoder)
 			manager := NewManager(ManagerConfig{Channels: config.ChannelsConfig{{Name: "test", Type: "TEST", Channel: "1", Transport: transport}}, TunerManager: tuners, DescramblerFactory: func(command string) source.Descrambler { decoder.command = command; return decoder }})
 			defer func() { _ = manager.Shutdown(context.Background()) }()
@@ -100,13 +108,19 @@ func TestAgentInputUsesLocalTSAndTLVDecoders(t *testing.T) {
 			if transport == "tlv" {
 				want = "b61-local"
 			}
+			if tc.remote {
+				if _, err := os.Stat(marker); err != nil {
+					t.Fatalf("agent decoder was not invoked: %v", err)
+				}
+				want = ""
+			}
 			if decoder.command != want {
 				t.Fatalf("decoder %q, want %q", decoder.command, want)
 			}
 			decoder.mu.Lock()
 			got := bytes.Clone(decoder.input.Bytes())
 			decoder.mu.Unlock()
-			if !bytes.Equal(got, data) {
+			if !tc.remote && !bytes.Equal(got, data) {
 				t.Fatalf("local decoder got %d bytes, want %d", len(got), len(data))
 			}
 			if !bytes.Equal(dst.Bytes(), data) {
