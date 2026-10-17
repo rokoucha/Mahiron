@@ -23,7 +23,8 @@ type Broadcast struct {
 	onStops     []func()
 	refs        int
 	source      LiveSource
-	started     bool
+	starting    chan struct{}
+	startErr    error
 	stopped     bool
 	channelID   string
 	channelType string
@@ -83,6 +84,7 @@ func (b *Broadcast) Stop(ctx context.Context) error {
 	}
 	b.stopped = true
 	cancel := b.cancel
+	starting := b.starting
 	onStops := append([]func(){}, b.onStops...)
 	b.onStops = nil
 	b.hub.Close()
@@ -93,8 +95,21 @@ func (b *Broadcast) Stop(ctx context.Context) error {
 	}
 
 	var result error
-	if b.source != nil {
-		result = errors.Join(result, b.source.Stop(ctx))
+	if starting != nil {
+		select {
+		case <-starting:
+		case <-ctx.Done():
+			result = ctx.Err()
+			go func() {
+				<-starting
+				stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				_ = b.source.Stop(stopCtx)
+			}()
+		}
+	}
+	if result == nil && b.source != nil {
+		result = b.source.Stop(ctx)
 	}
 	for _, onStop := range onStops {
 		onStop()
@@ -140,16 +155,30 @@ func (b *Broadcast) attach(ctx context.Context, dst io.Writer) error {
 			observability.RecordStreamFanoutQueueDepth(context.Background(), b.channelType, b.channelID, delta)
 		},
 	})
-	if err := b.startLocked(ctx); err != nil {
-		b.refs--
-		b.hub.Detach(dst)
-		b.mu.Unlock()
-		stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = b.Stop(stopCtx)
-		return err
+	if b.starting == nil {
+		b.starting = make(chan struct{})
+		sharedCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
+		b.cancel = cancel
+		go b.start(sharedCtx)
+	}
+	ready := b.starting
+	b.mu.Unlock()
+	select {
+	case <-ctx.Done():
+		b.detach(dst)
+		return ctx.Err()
+	case <-ready:
+	}
+	b.mu.Lock()
+	err := b.startErr
+	if b.stopped && err == nil {
+		err = ErrBroadcastStopped
 	}
 	b.mu.Unlock()
+	if err != nil {
+		b.detach(dst)
+		return err
+	}
 	slog.Debug("broadcast subscriber attached", "refs", refs)
 	return nil
 }
@@ -176,21 +205,18 @@ func (b *Broadcast) detach(dst io.Writer) {
 	slog.Debug("broadcast subscriber detached", "refs", refs)
 }
 
-func (b *Broadcast) startLocked(sourceCtx context.Context) error {
-	if b.started {
-		return nil
+func (b *Broadcast) start(ctx context.Context) {
+	err := ctx.Err()
+	if err == nil {
+		err = b.source.Start(ctx, b.hub)
 	}
-	// The shared source outlives its first subscriber, but keeps trace suppression.
-	ctx, cancel := context.WithCancel(context.WithoutCancel(sourceCtx))
-	b.cancel = cancel
-	if err := b.source.Start(ctx, b.hub); err != nil {
-		cancel()
-		return err
+	b.mu.Lock()
+	b.startErr = err
+	if err == nil {
+		b.done = b.source.Done()
 	}
-	b.done = b.source.Done()
-	b.started = true
-	slog.Info("broadcast started")
-	return nil
+	close(b.starting)
+	b.mu.Unlock()
 }
 
 func (b *Broadcast) wait(ctx context.Context) error {

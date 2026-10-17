@@ -1,0 +1,22 @@
+# syntax=docker/dockerfile:1
+FROM --platform=$BUILDPLATFORM golang:1.27-bookworm AS build
+WORKDIR /src
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=bind,source=go.mod,target=go.mod \
+    --mount=type=bind,source=go.sum,target=go.sum \
+    go mod download
+ARG TARGETOS TARGETARCH
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=bind,target=.,rw \
+    CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /out/mahiron-agent ./cmd/mahiron-agent
+
+FROM debian:bookworm-slim
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates tini \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --gid 10001 mahiron \
+    && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin mahiron
+COPY --from=build /out/mahiron-agent /usr/local/bin/mahiron-agent
+USER 10001:10001
+ENTRYPOINT ["/usr/bin/tini", "-s", "--", "mahiron-agent"]

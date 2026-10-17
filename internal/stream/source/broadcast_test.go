@@ -3,6 +3,7 @@ package source
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"os"
@@ -10,9 +11,11 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/observability"
+	"github.com/21S1298001/mahiron/internal/tuner"
 	"go.opentelemetry.io/otel"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
@@ -213,5 +216,106 @@ func TestBroadcastPreservesTraceSuppressionWithoutSubscriberCancellation(t *test
 	}
 	if source.ctx.Err() != context.Canceled {
 		t.Fatal("source not canceled on stop")
+	}
+}
+
+type blockingStartSource struct {
+	*fakeLiveSourceForBroadcast
+	entered chan struct{}
+	proceed chan struct{}
+}
+
+func (s *blockingStartSource) Start(ctx context.Context, w io.Writer) error {
+	close(s.entered)
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-s.proceed:
+		return s.fakeLiveSourceForBroadcast.Start(ctx, w)
+	}
+}
+
+func TestBroadcastStopInterruptsStartingSource(t *testing.T) {
+	source := &blockingStartSource{fakeLiveSourceForBroadcast: newFakeLiveSource(), entered: make(chan struct{}), proceed: make(chan struct{})}
+	b := NewBroadcast(source, nil)
+	result := make(chan error, 1)
+	go func() { result <- b.attach(context.Background(), io.Discard) }()
+	<-source.entered
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := b.Stop(ctx); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-result:
+		if err == nil {
+			t.Fatal("stopped startup succeeded")
+		}
+	case <-ctx.Done():
+		t.Fatal("Stop could not interrupt startup")
+	}
+}
+
+func TestBroadcastCanceledSubscriberDoesNotCancelOtherStartup(t *testing.T) {
+	source := &blockingStartSource{fakeLiveSourceForBroadcast: newFakeLiveSource(), entered: make(chan struct{}), proceed: make(chan struct{})}
+	b := NewBroadcast(source, nil)
+	firstCtx, cancelFirst := context.WithCancel(context.Background())
+	first := make(chan error, 1)
+	second := make(chan error, 1)
+	w1, w2 := new(bytes.Buffer), new(bytes.Buffer)
+	go func() { first <- b.attach(firstCtx, w1) }()
+	<-source.entered
+	go func() { second <- b.attach(context.Background(), w2) }()
+	deadline := time.Now().Add(time.Second)
+	for {
+		b.mu.Lock()
+		refs := b.refs
+		b.mu.Unlock()
+		if refs == 2 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("second subscriber did not attach")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	cancelFirst()
+	if err := <-first; !errors.Is(err, context.Canceled) {
+		t.Fatalf("first error: %v", err)
+	}
+	close(source.proceed)
+	select {
+	case err := <-second:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("second subscriber lost shared startup")
+	}
+	b.detach(w2)
+}
+
+func TestBroadcastCancellationDuringLocalTunerStartup(t *testing.T) {
+	device := tuner.NewCommandDevice(nil, "sleep 60", tuner.StartupRetryConfig{Max: 1, Timeout: 10 * time.Second})
+	b := NewBroadcast(&tunerLiveSource{device: device}, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	result := make(chan error, 1)
+	go func() { result <- b.SubscribeRaw(ctx, io.Discard) }()
+	deadline := time.Now().Add(time.Second)
+	for device.(tuner.ProcessStatus).ProcessStatus().PID == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("local process did not start")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	cancel()
+	select {
+	case err := <-result:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("error=%v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("local startup cancellation waited for Stop deadline")
 	}
 }

@@ -55,7 +55,7 @@ func acceptsGzip(r *http.Request) bool {
 }
 
 func excludedFromGzip(path string) bool {
-	return strings.HasSuffix(path, "/stream") || strings.Contains(path, "/data-broadcast/")
+	return strings.HasPrefix(path, "/agent/v1/") || strings.HasSuffix(path, "/stream") || strings.Contains(path, "/data-broadcast/")
 }
 
 type gzipResponseWriter struct {

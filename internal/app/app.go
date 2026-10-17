@@ -10,12 +10,15 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
 
+	"github.com/21S1298001/mahiron/internal/agent"
 	"github.com/21S1298001/mahiron/internal/bml"
 	"github.com/21S1298001/mahiron/internal/bml/cache"
 	"github.com/21S1298001/mahiron/internal/config"
@@ -145,6 +148,7 @@ type applicationRuntime struct {
 	services           *service.Manager
 	streams            *stream.Manager
 	tuners             *tuner.Manager
+	agents             *agent.Hub
 	stopCheckpointer   func()
 }
 
@@ -153,8 +157,14 @@ func buildRuntime(cfg *config.Config, database *db.DB, obs observability.SetupRe
 	programStore := program.NewSQLiteStore(database)
 	events := event.New()
 
+	credentials := map[string]string{}
+	for _, a := range cfg.System.Agents {
+		credentials[a.Name] = a.TokenHash
+	}
+	agents := agent.NewHub(credentials)
 	tuners := tuner.NewManager(&tuner.ManagerConfig{
 		TunersConfig: cfg.Tuners,
+		Agents:       agents,
 		EventHub:     events,
 	})
 
@@ -259,10 +269,19 @@ func buildRuntime(cfg *config.Config, database *db.DB, obs observability.SetupRe
 		return nil, "failed to create web handler", err
 	}
 
+	webHandler := handler
+	handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/agent/v1/") {
+			agents.ServeHTTP(w, r)
+			return
+		}
+		webHandler.ServeHTTP(w, r)
+	})
 	registerRuntimeMetrics(obs.MeterProvider, streams, tuners, jobs, programs, services, events, obs.LogStore, int64(cfg.System.EpgStaleAfter))
 
 	return &applicationRuntime{
 		dataBroadcastStore: dataBroadcastStore,
+		agents:             agents,
 		database:           database,
 		jobs:               jobs,
 		obs:                obs,
@@ -285,6 +304,9 @@ func listenAddresses(cfg *config.Config) []server.ListenAddress {
 }
 
 func (r *applicationRuntime) shutdown() {
+	if r.agents != nil {
+		r.agents.Close()
+	}
 	timeoutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 

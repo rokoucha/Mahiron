@@ -36,6 +36,26 @@ func LoadAndParseConfigFromDir(configDir string) (*Config, error) {
 		return nil, err
 	}
 
+	knownAgents := map[string]bool{}
+	for _, a := range system.Agents {
+		knownAgents[a.Name] = true
+	}
+	devices := map[string]bool{}
+	for _, t := range tuners {
+		if t.Agent != nil {
+			if !knownAgents[t.Agent.Name] {
+				return nil, fmt.Errorf("tuner %s references unknown agent %s", t.Name, t.Agent.Name)
+			}
+			if t.Agent.DvbDevicePath != "" {
+				key := t.Agent.Name + "/" + t.Agent.DvbDevicePath
+				if devices[key] {
+					return nil, fmt.Errorf("duplicate agent DVB device for %s", t.Name)
+				}
+				devices[key] = true
+			}
+		}
+	}
+
 	remotes, err := loadRemotesForChannels(filepath.Join(configDir, "remotes.yml"), channels)
 	if err != nil {
 		return nil, err

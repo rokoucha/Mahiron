@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/hex"
 	"errors"
 	"net/url"
 	"os"
@@ -8,7 +9,13 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
+type AgentCredential struct {
+	Name      string `json:"name"`
+	TokenHash string `json:"tokenHash"`
+}
+
 type SystemConfig struct {
+	Agents            []AgentCredential   `json:"agents,omitempty"`
 	Addresses         []ServerAddress     `json:"addresses"`
 	LogLevel          string              `json:"logLevel,omitempty"`
 	Observability     ObservabilityConfig `json:"observability,omitempty"`
@@ -91,6 +98,17 @@ func LoadAndParseSystemConfig(filePath string) (*SystemConfig, error) {
 	err = yaml.Unmarshal(file, &config)
 	if err != nil {
 		return nil, err
+	}
+
+	seenAgents := map[string]bool{}
+	seenHashes := map[string]bool{}
+	for _, a := range config.Agents {
+		hash, err := hex.DecodeString(a.TokenHash)
+		if a.Name == "" || seenAgents[a.Name] || err != nil || len(hash) != 32 || seenHashes[string(hash)] {
+			return nil, errors.New("agents require unique names and unique SHA-256 token hashes")
+		}
+		seenAgents[a.Name] = true
+		seenHashes[string(hash)] = true
 	}
 
 	if len(config.Addresses) == 0 {

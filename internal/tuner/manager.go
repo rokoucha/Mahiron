@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/21S1298001/mahiron/internal/agent"
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/observability"
 )
@@ -23,6 +24,7 @@ type eventPublisher interface {
 }
 
 type Manager struct {
+	agents     *agent.Hub
 	tuners     []*Tuner
 	mu         sync.Mutex
 	inUse      map[*Tuner]bool
@@ -33,6 +35,7 @@ type Manager struct {
 }
 
 type ManagerConfig struct {
+	Agents       *agent.Hub
 	TunersConfig config.TunersConfig
 	EventHub     eventPublisher
 }
@@ -42,9 +45,11 @@ func NewManager(cfg *ManagerConfig) *Manager {
 	runtime := make(map[*Tuner]*tunerRuntime, len(tuners))
 	for i, tunerConfig := range cfg.TunersConfig {
 		tuners[i] = NewTuner(tunerConfig)
+		tuners[i].agents = cfg.Agents
 		runtime[tuners[i]] = &tunerRuntime{users: make(map[string]*trackedUser)}
 	}
 	return &Manager{
+		agents:     cfg.Agents,
 		tuners:     tuners,
 		inUse:      make(map[*Tuner]bool),
 		runtime:    runtime,
@@ -98,7 +103,7 @@ func (tm *Manager) CheckAvailable(ctx context.Context, channelType string) error
 		}
 		usable = true
 		runtime := tm.runtime[item]
-		if runtime.fault {
+		if runtime.fault || !item.Available() {
 			continue
 		}
 		if !tm.inUse[item] || runtime.device != nil && requestPriority > runtime.effectivePriority() {
@@ -139,6 +144,7 @@ func (tm *Manager) AcquireDevice(ctx context.Context, channelType string, reques
 	requestPriority := priorityFromContext(ctx)
 	for {
 		tm.mu.Lock()
+		agentChanged := tm.agents.Changed()
 		attempt := tm.tryAcquireLocked(channelType, requestPriority, requestedChannel, tunedChannel)
 		tm.mu.Unlock()
 
@@ -182,6 +188,7 @@ func (tm *Manager) AcquireDevice(ctx context.Context, channelType string, reques
 			slog.Debug("tuner wait canceled", "type", channelType, "channel", channelID(requestedChannel), "err", ctx.Err())
 			return nil, DecoderCommands{}, ctx.Err()
 		case <-attempt.changed:
+		case <-agentChanged:
 		}
 	}
 }
@@ -241,7 +248,7 @@ func (tm *Manager) tryAcquireLocked(channelType string, requestPriority int, req
 		}
 		result.usable = true
 		runtime := tm.runtime[item]
-		if runtime.fault {
+		if runtime.fault || !item.Available() {
 			continue
 		}
 		if tm.inUse[item] {

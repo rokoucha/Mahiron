@@ -4,6 +4,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/21S1298001/mahiron/internal/agent"
 	"github.com/21S1298001/mahiron/internal/config"
 )
 
@@ -13,10 +14,12 @@ const (
 	SourceKindUnsupported SourceKind = ""
 	SourceKindCommand     SourceKind = "command"
 	SourceKindDVB         SourceKind = "dvb"
+	SourceKindAgent       SourceKind = "agent"
 )
 
 type Tuner struct {
 	config *config.TunerConfig
+	agents *agent.Hub
 }
 
 func NewTuner(config *config.TunerConfig) *Tuner {
@@ -53,6 +56,8 @@ func (t *Tuner) Command() string {
 
 func (t *Tuner) SourceKind() SourceKind {
 	switch {
+	case t.config.Agent != nil:
+		return SourceKindAgent
 	case t.config.DvbDevicePath != "":
 		return SourceKindDVB
 	case t.config.Command != "":
@@ -64,11 +69,15 @@ func (t *Tuner) SourceKind() SourceKind {
 
 func (t *Tuner) Usable() bool {
 	switch t.SourceKind() {
-	case SourceKindCommand, SourceKindDVB:
+	case SourceKindCommand, SourceKindDVB, SourceKindAgent:
 		return true
 	default:
 		return false
 	}
+}
+
+func (t *Tuner) Available() bool {
+	return t.config.Agent == nil || t.agents.Available(t.config.Agent.Name, t.Name())
 }
 
 func (t *Tuner) DecoderCommand() string {
@@ -88,6 +97,20 @@ func (t *Tuner) NewDevice(channel *config.ChannelConfig) Device {
 		Delay:   time.Duration(t.config.StartupRetryDelay) * time.Millisecond,
 	}
 	switch t.SourceKind() {
+	case SourceKindAgent:
+		if t.agents == nil {
+			return nil
+		}
+		r := agent.Request{Tuner: t.Name(), Command: replaceCommandTemplate(t.config.Agent.Command, channel), DVBDevicePath: t.config.Agent.DvbDevicePath, Transport: config.TransportTS, RetryMax: t.config.StartupRetryMax, TimeoutMS: t.config.StartupTimeout, RetryDelayMS: t.config.StartupRetryDelay}
+		if channel != nil {
+			if config.IsTLVTransport(*channel) {
+				r.Transport = config.TransportTLV
+			}
+			if channel.TsmfRelTs != nil {
+				r.RelativeTS = *channel.TsmfRelTs
+			}
+		}
+		return t.agents.NewDevice(t.config.Agent.Name, r)
 	case SourceKindDVB:
 		return NewDVBDevice(channel, t.config.Command, t.config.DvbDevicePath, startupRetry)
 	case SourceKindCommand:

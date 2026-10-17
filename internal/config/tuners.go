@@ -11,16 +11,23 @@ type TunersConfig []*TunerConfig
 
 type TunerConfig struct {
 	// https://github.com/Chinachu/Mirakurun/blob/61c4155d2535c56fbf6fd379c5e8aba779fd642b/api.d.ts#L297
-	Name              string   `json:"name"`
-	Types             []string `json:"types,omitempty"`
-	Command           string   `json:"command,omitempty"`
-	DvbDevicePath     string   `json:"dvbDevicePath,omitempty"`
-	Decoder           string   `json:"decoder,omitempty"`
-	B61Decoder        string   `json:"b61Decoder,omitempty"`
-	IsDisabled        bool     `json:"isDisabled,omitempty"`
-	StartupRetryMax   int      `json:"startupRetryMax,omitempty"`
-	StartupTimeout    int      `json:"startupTimeout,omitempty"`
-	StartupRetryDelay int      `json:"startupRetryDelay,omitempty"`
+	Name              string            `json:"name"`
+	Agent             *AgentTunerConfig `json:"agent,omitempty"`
+	Types             []string          `json:"types,omitempty"`
+	Command           string            `json:"command,omitempty"`
+	DvbDevicePath     string            `json:"dvbDevicePath,omitempty"`
+	Decoder           string            `json:"decoder,omitempty"`
+	B61Decoder        string            `json:"b61Decoder,omitempty"`
+	IsDisabled        bool              `json:"isDisabled,omitempty"`
+	StartupRetryMax   int               `json:"startupRetryMax,omitempty"`
+	StartupTimeout    int               `json:"startupTimeout,omitempty"`
+	StartupRetryDelay int               `json:"startupRetryDelay,omitempty"`
+}
+
+type AgentTunerConfig struct {
+	Name          string `json:"name"`
+	Command       string `json:"command"`
+	DvbDevicePath string `json:"dvbDevicePath,omitempty"`
 }
 
 func LoadAndParseTunersConfig(filePath string) (TunersConfig, error) {
@@ -38,11 +45,29 @@ func LoadAndParseTunersConfig(filePath string) (TunersConfig, error) {
 	if len(config) == 0 {
 		return nil, errors.New("at least one tuner is required")
 	}
+	seen := map[string]bool{}
 	for _, tuner := range config {
+		if tuner == nil {
+			return nil, errors.New("tuner must not be null")
+		}
+		if tuner.Agent != nil {
+			key := tuner.Agent.Name + "/" + tuner.Name
+			if seen[key] {
+				return nil, errors.New("duplicate agent tuner name")
+			}
+			seen[key] = true
+		}
 		if tuner.Name == "" {
 			return nil, errors.New("tuner name is required")
 		}
-		if tuner.Command == "" {
+		if tuner.Agent != nil {
+			if tuner.Agent.Name == "" || tuner.Agent.Command == "" {
+				return nil, errors.New("agent name and command are required")
+			}
+			if tuner.Command != "" || tuner.DvbDevicePath != "" {
+				return nil, errors.New("agent and local command/device are mutually exclusive")
+			}
+		} else if tuner.Command == "" {
 			return nil, errors.New("command is required")
 		}
 		if tuner.DvbDevicePath != "" && tuner.Command == "" {
@@ -50,6 +75,9 @@ func LoadAndParseTunersConfig(filePath string) (TunersConfig, error) {
 		}
 		if len(tuner.Types) == 0 {
 			return nil, errors.New("at least one types is required")
+		}
+		if tuner.Agent != nil && (tuner.StartupRetryMax > 100 || tuner.StartupTimeout > 3600000 || tuner.StartupRetryDelay > 3600000) {
+			return nil, errors.New("agent retry settings exceed limits")
 		}
 		if tuner.StartupRetryMax < 0 {
 			return nil, errors.New("startupRetryMax must be >= 0")
