@@ -1,6 +1,10 @@
 package config
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func TestLoadAndParseChannelsConfigNormalizesDefaults(t *testing.T) {
 	got, err := LoadAndParseChannelsConfig("testdata/channels-valid.yml")
@@ -88,7 +92,6 @@ func TestLoadAndParseChannelsConfigRejectsInvalidInputs(t *testing.T) {
 		{name: "empty name", path: "testdata/channels-empty-name.yml"},
 		{name: "empty type", path: "testdata/channels-empty-type.yml"},
 		{name: "empty symbol", path: "testdata/channels-empty-symbol.yml"},
-		{name: "tsmfRelTs without serviceId", path: "testdata/channels-tsmfrelts.yml"},
 		{name: "invalid tsmfRelTs", path: "testdata/channels-invalid-tsmfrelts.yml"},
 		{name: "legacy fields with commandVars", path: "testdata/channels-duplicate-commandvars.yml"},
 		{name: "invalid transport", path: "testdata/channels-invalid-transport.yml"},
@@ -97,6 +100,39 @@ func TestLoadAndParseChannelsConfigRejectsInvalidInputs(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if _, err := LoadAndParseChannelsConfig(tt.path); err == nil {
 				t.Fatal("LoadAndParseChannelsConfig() error = nil, want error")
+			}
+		})
+	}
+}
+
+func TestTSMFWithoutServiceID(t *testing.T) {
+	c, err := LoadAndParseChannelsConfig("testdata/channels-tsmfrelts.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c[0].TsmfRelTs == nil || *c[0].TsmfRelTs != 15 {
+		t.Fatalf("tsmfRelTs = %v", c[0].TsmfRelTs)
+	}
+}
+
+func TestTSMFTransportValidation(t *testing.T) {
+	for _, tc := range []struct {
+		name, fields string
+		valid        bool
+	}{
+		{"channel", "tsmfRelTs: 2", false},
+		{"route", "routes:\n  - type: CATV\n    channel: C14\n    tsmfRelTs: 2", false},
+		{"disabled", "tsmfRelTs: 0", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "channels.yml")
+			data := "- name: test\n  type: CATV\n  channel: C14\n  transport: tlv\n  " + tc.fields + "\n"
+			if err := os.WriteFile(path, []byte(data), 0600); err != nil {
+				t.Fatal(err)
+			}
+			_, err := LoadAndParseChannelsConfig(path)
+			if (err == nil) != tc.valid {
+				t.Fatalf("valid=%v err=%v", tc.valid, err)
 			}
 		})
 	}

@@ -5,6 +5,9 @@ package ts
 
 import (
 	"bytes"
+	"errors"
+	"io"
+	"os"
 	"testing"
 )
 
@@ -193,4 +196,45 @@ func payloadPacket(pid uint16, payload []byte, counter byte) Packet {
 	packet[3] = 0x10 | (counter & 0x0f)
 	copy(packet[4:], payload)
 	return Packet(packet)
+}
+
+// A closed live input can leave a partial packet buffered during shutdown.
+func TestPacketReaderReturnsReadErrorAfterBufferedPackets(t *testing.T) {
+	for _, terminal := range []error{io.EOF, os.ErrClosed, io.ErrUnexpectedEOF} {
+		for _, combined := range []bool{false, true} {
+			packet := payloadPacket(0x100, []byte{1}, 0)
+			data := append(bytes.Repeat(packet, 5), packet[:73]...)
+			reader := &terminalPacketInput{data: data, err: terminal, combined: combined}
+			pr := NewPacketReader(reader)
+			for range 5 {
+				got, err := pr.Next()
+				if err != nil || !bytes.Equal(got, packet) {
+					t.Fatalf("packet=%x err=%v", got, err)
+				}
+			}
+			for range 2 {
+				if _, err := pr.Next(); !errors.Is(err, terminal) {
+					t.Fatalf("error=%v, want %v", err, terminal)
+				}
+			}
+		}
+	}
+}
+
+type terminalPacketInput struct {
+	data     []byte
+	err      error
+	combined bool
+}
+
+func (r *terminalPacketInput) Read(p []byte) (int, error) {
+	if len(r.data) == 0 {
+		return 0, r.err
+	}
+	n := copy(p, r.data)
+	r.data = r.data[n:]
+	if r.combined && len(r.data) == 0 {
+		return n, r.err
+	}
+	return n, nil
 }

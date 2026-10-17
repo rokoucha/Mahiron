@@ -1,6 +1,7 @@
 package channel
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"io"
@@ -423,22 +424,33 @@ func (s *Session) subscribeDecodedMux(ctx context.Context, dst io.Writer) error 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	r, w := io.Pipe()
+	// Unblock the decoder's stdin copier even when the initial batch is incomplete.
+	stopInput := context.AfterFunc(ctx, func() { _ = r.CloseWithError(ctx.Err()) })
+	defer stopInput()
 	rawDone := make(chan error, 1)
 	go func() {
 		rawDone <- s.rawDemuxer.SubscribeChannel(tuner.WithoutStreamInfoReporter(ctx), w)
 		_ = w.Close()
 	}()
-	err := s.descrambler.Descramble(ctx, r, dst)
+	// Fanout may deliver single packets regardless of the tuner's write size.
+	// Prime the decoder input for TS framing without delaying raw subscribers.
+	input := bufio.NewReaderSize(r, ts.PacketSize*128)
+	_, _ = input.Peek(ts.PacketSize * 128)
+	err := ctx.Err()
+	if err == nil {
+		err = s.descrambler.Descramble(ctx, input, dst)
+	}
 	_ = r.Close()
 	cancel()
 	rawErr := <-rawDone
-	if err == nil || util.IsExpectedStreamCloseError(err) || errors.Is(err, context.Canceled) {
-		err = nil
+	return errors.Join(decodedInputError(err), decodedInputError(rawErr))
+}
+
+func decodedInputError(err error) error {
+	if util.IsExpectedStreamCloseError(err) || errors.Is(err, context.Canceled) {
+		return nil
 	}
-	if rawErr == nil || util.IsExpectedStreamCloseError(rawErr) || errors.Is(rawErr, context.Canceled) {
-		rawErr = nil
-	}
-	return errors.Join(err, rawErr)
+	return err
 }
 
 func waitContext(ctx context.Context) error {
