@@ -2,7 +2,6 @@ package ts
 
 import (
 	"bytes"
-	"errors"
 	"io"
 )
 
@@ -95,11 +94,12 @@ func (p Packet) ProgramClockReference() (uint64, uint16, bool) {
 
 // PacketReader reads TS packets from an io.Reader, recovering sync if necessary.
 type PacketReader struct {
-	r      io.Reader
-	buf    []byte
-	stride int
-	eof    bool
-	tmp    []byte
+	r          io.Reader
+	buf        []byte
+	stride     int
+	syncLosses uint64
+	readErr    error
+	tmp        []byte
 }
 
 // NewPacketReader creates a new PacketReader.
@@ -131,13 +131,14 @@ func (pr *PacketReader) NextInto(dst []byte) (Packet, error) {
 			if pr.packetReadyAt(0, pr.stride) {
 				return pr.consumePacketInto(dst, 0, pr.stride), nil
 			}
+			pr.syncLosses++
 			pr.stride = 0
 		}
 
 		pos, stride, ok := pr.detectPacket()
 		if !ok {
-			if pr.eof {
-				return nil, io.EOF
+			if pr.readErr != nil {
+				return nil, pr.readErr
 			}
 			if i := bytes.LastIndexByte(pr.buf, SyncByte); i > 0 {
 				pr.buf = pr.buf[i:]
@@ -155,24 +156,21 @@ func (pr *PacketReader) NextInto(dst []byte) (Packet, error) {
 const minDetectBytes = 4 * packetSizeWithParity
 
 func (pr *PacketReader) fill(min int) error {
-	for !pr.eof && len(pr.buf) < min {
+	for pr.readErr == nil && len(pr.buf) < min {
 		n, err := pr.r.Read(pr.tmp)
 		if n > 0 {
 			pr.buf = append(pr.buf, pr.tmp[:n]...)
 		}
 		if err != nil {
-			if errors.Is(err, io.EOF) {
-				pr.eof = true
-				break
-			}
-			return err
+			pr.readErr = err
+			break
 		}
 		if n == 0 {
 			break
 		}
 	}
-	if len(pr.buf) == 0 && pr.eof {
-		return io.EOF
+	if len(pr.buf) == 0 && pr.readErr != nil {
+		return pr.readErr
 	}
 	return nil
 }
@@ -198,7 +196,7 @@ func (pr *PacketReader) packetReadyAt(pos, stride int) bool {
 		return false
 	}
 	if len(pr.buf)-pos < stride {
-		if !pr.eof {
+		if pr.readErr == nil {
 			_ = pr.fill(pos + stride)
 		}
 		if len(pr.buf)-pos < stride {
@@ -212,7 +210,7 @@ func (pr *PacketReader) packetReadyAt(pos, stride int) bool {
 		}
 		checks++
 	}
-	return checks > 0 || pr.eof
+	return checks > 0 || pr.readErr != nil
 }
 
 func (pr *PacketReader) consumePacketInto(dst []byte, pos, stride int) Packet {

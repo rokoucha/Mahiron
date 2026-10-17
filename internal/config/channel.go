@@ -85,9 +85,6 @@ func LoadAndParseChannelsConfig(filePath string) (ChannelsConfig, error) {
 		if channel.Channel == "" {
 			return nil, errors.New("channel symbol is required")
 		}
-		if channel.TsmfRelTs != nil && channel.ServiceId == nil {
-			return nil, errors.New("serviceId is required when tsmfRelTs is set")
-		}
 		if channel.TsmfRelTs != nil && *channel.TsmfRelTs > 0x0F {
 			return nil, errors.New("tsmfRelTs must be between 0 and 15")
 		}
@@ -135,6 +132,16 @@ func LoadAndParseChannelsConfig(filePath string) (ChannelsConfig, error) {
 			return nil, err
 		}
 		config[i].Routes = routes
+		if config[i].Transport == TransportTLV {
+			if channel.TsmfRelTs != nil && *channel.TsmfRelTs != 0 {
+				return nil, errors.New("tsmfRelTs requires ts transport")
+			}
+			for _, route := range routes {
+				if route.TsmfRelTs != nil && *route.TsmfRelTs != 0 {
+					return nil, errors.New("route tsmfRelTs requires ts transport")
+				}
+			}
+		}
 	}
 
 	return config, nil
@@ -163,9 +170,6 @@ func normalizeRoutes(channel ChannelConfig) ([]ChannelRouteConfig, error) {
 			return nil, errors.New("duplicate route id")
 		}
 		seen[routes[i].Id] = struct{}{}
-		if routes[i].TsmfRelTs != nil && routes[i].ServiceId == nil {
-			return nil, errors.New("serviceId is required when route tsmfRelTs is set")
-		}
 		if routes[i].TsmfRelTs != nil && *routes[i].TsmfRelTs > 0x0F {
 			return nil, errors.New("route tsmfRelTs must be between 0 and 15")
 		}

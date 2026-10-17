@@ -14,6 +14,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/internal/util"
+	"github.com/21S1298001/mahiron/ts"
 )
 
 type Device interface {
@@ -385,10 +386,10 @@ func (d *processDevice) Stop(ctx context.Context) error {
 	d.mu.Unlock()
 
 	var result error
-	result = errors.Join(result, d.closeRawReader())
 	if tunerProcess != nil {
 		result = errors.Join(result, tunerProcess.Stop(ctx))
 	}
+	result = errors.Join(result, d.closeRawReader())
 	if done != nil {
 		select {
 		case <-done:
@@ -404,6 +405,9 @@ func (d *processDevice) Stop(ctx context.Context) error {
 
 func (d *processDevice) copyRaw(src io.Reader, dst io.Writer) {
 	defer func() { _ = d.closeRawReader() }()
+	if d.channel != nil && d.channel.TsmfRelTs != nil && *d.channel.TsmfRelTs != 0 {
+		src = ts.NewTSMFReader(src, *d.channel.TsmfRelTs)
+	}
 	copied, copyErr := io.Copy(dst, src)
 	if util.IsExpectedStreamCloseError(copyErr) {
 		copyErr = nil
@@ -418,8 +422,11 @@ func (d *processDevice) copyRaw(src io.Reader, dst io.Writer) {
 	err := errors.Join(copyErr, waitErr)
 	result := classifyProcessExit(err, copied)
 	if result == tunerProcessExitEmpty {
-		slog.Warn("tuner process exited without producing any data",
-			"channelType", channelTypeOf(d.channel), "channelId", channelID(d.channel))
+		if d.channel != nil && d.channel.TsmfRelTs != nil && *d.channel.TsmfRelTs != 0 {
+			slog.Warn("tuner output contains no packets for configured relative TS", "channelType", channelTypeOf(d.channel), "channelId", channelID(d.channel), "tsmfRelTs", *d.channel.TsmfRelTs)
+		} else {
+			slog.Warn("tuner process exited without producing any data", "channelType", channelTypeOf(d.channel), "channelId", channelID(d.channel))
+		}
 	}
 	observability.RecordTunerProcessExit(context.Background(), channelTypeOf(d.channel), channelID(d.channel), result)
 	d.finish(err)
@@ -446,7 +453,11 @@ func (d *processDevice) closeRawReader() error {
 	if rawReader == nil {
 		return nil
 	}
-	return rawReader.Close()
+	err := rawReader.Close()
+	if errors.Is(err, os.ErrClosed) {
+		return nil
+	}
+	return err
 }
 
 func (d *processDevice) stopOnContext(ctx context.Context) {
