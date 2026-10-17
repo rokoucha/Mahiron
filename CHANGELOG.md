@@ -1,5 +1,24 @@
 # Changelog
 
+## [v5.2.4](https://github.com/rokoucha/Mahiron/compare/v5.2.3...v5.2.4) - 2026-10-17
+
+- Update module golang.org/x/text to v0.43.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/222
+- Update dependency typescript-eslint to v8.71.2 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/224
+- Update dependency vitest to v5.0.4 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/225
+- Update Songmu/tagpr action to v1.21.2 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/226
+- Support CATV TSMF stream extraction by @rokoucha in https://github.com/rokoucha/Mahiron/pull/227
+- Fix stale overlapping programs after EIT replacements by @rokoucha in https://github.com/rokoucha/Mahiron/pull/228
+- リモートチューナーエージェントを追加 by @rokoucha in https://github.com/rokoucha/Mahiron/pull/229
+- リモートagent側でのスクランブル解除に対応 by @rokoucha in https://github.com/rokoucha/Mahiron/pull/230
+- Prime agent decoder input after TSMF separation by @rokoucha in https://github.com/rokoucha/Mahiron/pull/231
+- リモートEPG応答のnullとサービス絞り込みに対応 by @rokoucha in https://github.com/rokoucha/Mahiron/pull/232
+- Fix flaky synchronization in asynchronous tests by @rokoucha in https://github.com/rokoucha/Mahiron/pull/233
+- Add mahiron-tools probe for broadcast stream inspection by @rokoucha in https://github.com/rokoucha/Mahiron/pull/234
+- Parallelize EPG gathering and prioritize stale networks by @rokoucha in https://github.com/rokoucha/Mahiron/pull/235
+- Report server details for rejected agent uploads by @rokoucha in https://github.com/rokoucha/Mahiron/pull/236
+- Split live EPG jobs by stream and prevent schedule rollback by @rokoucha in https://github.com/rokoucha/Mahiron/pull/237
+- Use channel labels for EPG jobs and overview by @rokoucha in https://github.com/rokoucha/Mahiron/pull/238
+
 ## [v5.2.3](https://github.com/rokoucha/Mahiron/compare/v5.2.2...v5.2.3) - 2026-10-12
 
 - Update dependency @types/node to v24.19.1 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/206
