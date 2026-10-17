@@ -57,8 +57,10 @@ func TestGetStatusExposesEPGSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 	epgBlock := make(chan struct{})
+	epgStarted := make(chan struct{})
 	t.Cleanup(func() { close(epgBlock) })
 	if _, err := mgr.EnqueueDefinition(job.JobDefinition{Key: "epg-gather:nid:1", Name: "EPG Gather NID 1", Handler: func(ctx context.Context) error {
+		close(epgStarted)
 		<-epgBlock
 		return nil
 	}}); err != nil {
@@ -67,7 +69,11 @@ func TestGetStatusExposesEPGSnapshot(t *testing.T) {
 	if _, err := mgr.EnqueueDefinition(job.JobDefinition{Key: "service-scan:GR:27", Name: "Service Scan", Handler: func(context.Context) error { return nil }}); err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(20 * time.Millisecond)
+	select {
+	case <-epgStarted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("EPG job did not start")
+	}
 	res, err := handler.GetStatus(ctx)
 	if err != nil {
 		t.Fatal(err)

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/21S1298001/mahiron/internal/event"
@@ -175,40 +176,42 @@ func TestGetEventsReturnsJobResources(t *testing.T) {
 }
 
 func TestGetEventsStreamReceivesEventsPublishedAfterSubscribe(t *testing.T) {
-	hub := event.New()
-	hub.PublishEvent(event.ResourceProgram, event.TypeUpdate, map[string]any{"id": 1})
-	handler := NewHandler(HandlerConfig{EventHub: hub})
+	synctest.Test(t, func(t *testing.T) {
+		hub := event.New()
+		hub.PublishEvent(event.ResourceProgram, event.TypeUpdate, map[string]any{"id": 1})
+		handler := NewHandler(HandlerConfig{EventHub: hub})
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	reader := newEventsStreamReader(ctx, handler, apigen.GetEventsStreamParams{
-		Resource: apigen.NewOptGetEventsStreamResource(apigen.GetEventsStreamResourceProgram),
-		Type:     apigen.NewOptGetEventsStreamType(apigen.GetEventsStreamTypeUpdate),
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		reader := newEventsStreamReader(ctx, handler, apigen.GetEventsStreamParams{
+			Resource: apigen.NewOptGetEventsStreamResource(apigen.GetEventsStreamResourceProgram),
+			Type:     apigen.NewOptGetEventsStreamType(apigen.GetEventsStreamTypeUpdate),
+		})
+		defer reader.Close()
+
+		prefix := make([]byte, 2)
+		if _, err := io.ReadFull(reader, prefix); err != nil {
+			t.Fatal(err)
+		}
+		if string(prefix) != "[\n" {
+			t.Fatalf("prefix = %q, want open JSON array", prefix)
+		}
+
+		synctest.Wait()
+		hub.PublishEvent(event.ResourceProgram, event.TypeUpdate, map[string]any{"id": 2})
+		line := readEventLine(t, reader, time.Second)
+		var event apigen.Event
+		if err := json.Unmarshal([]byte(line), &event); err != nil {
+			t.Fatal(err)
+		}
+		var id int
+		if err := json.Unmarshal(event.Data["id"], &id); err != nil {
+			t.Fatal(err)
+		}
+		if id != 2 {
+			t.Fatalf("stream event id = %d, want 2", id)
+		}
 	})
-	defer reader.Close()
-
-	prefix := make([]byte, 2)
-	if _, err := io.ReadFull(reader, prefix); err != nil {
-		t.Fatal(err)
-	}
-	if string(prefix) != "[\n" {
-		t.Fatalf("prefix = %q, want open JSON array", prefix)
-	}
-
-	time.Sleep(10 * time.Millisecond)
-	hub.PublishEvent(event.ResourceProgram, event.TypeUpdate, map[string]any{"id": 2})
-	line := readEventLine(t, reader, time.Second)
-	var event apigen.Event
-	if err := json.Unmarshal([]byte(line), &event); err != nil {
-		t.Fatal(err)
-	}
-	var id int
-	if err := json.Unmarshal(event.Data["id"], &id); err != nil {
-		t.Fatal(err)
-	}
-	if id != 2 {
-		t.Fatalf("stream event id = %d, want 2", id)
-	}
 }
 
 func TestGetEventsStreamFlushesInitialBytes(t *testing.T) {
