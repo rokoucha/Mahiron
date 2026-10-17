@@ -21,9 +21,8 @@ type routeSourceKey struct {
 }
 
 type sharedRouteSource struct {
-	broadcast         *Broadcast
-	decoderCommand    string
-	b61DecoderCommand string
+	broadcast *Broadcast
+	decoders  tuner.DecoderCommands
 }
 
 func newRouteSourceKey(route config.ChannelRouteConfig) routeSourceKey {
@@ -84,7 +83,7 @@ func (p *Pool) commitRouteSource(key routeSourceKey, source LiveSource, decoders
 		return shared.broadcast
 	}
 	broadcast := NewBroadcast(source, func() { p.removeRouteSource(key) })
-	p.routeSources[key] = &sharedRouteSource{broadcast: broadcast, decoderCommand: decoders.Decoder, b61DecoderCommand: decoders.B61Decoder}
+	p.routeSources[key] = &sharedRouteSource{broadcast: broadcast, decoders: decoders}
 	p.mu.Unlock()
 	return broadcast
 }

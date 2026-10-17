@@ -207,7 +207,15 @@ func (d *DynamicMultiWriter) Write(p []byte) (n int, err error) {
 		go d.detachSubscriber(sub, false)
 	}
 	if result != nil && delivered == 0 {
-		return 0, result
+		// A peer may attach while a lossless write is blocked.
+		d.mutex.RLock()
+		hasPeer := slices.ContainsFunc(d.subscribers, func(sub *dynamicMultiWriterSubscriber) bool {
+			return !slices.Contains(failed, sub)
+		})
+		d.mutex.RUnlock()
+		if !hasPeer {
+			return 0, result
+		}
 	}
 	return len(p), nil
 }

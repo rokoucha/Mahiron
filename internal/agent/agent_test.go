@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -252,51 +253,55 @@ func TestAgentRejectsAuthenticationAndStaleSession(t *testing.T) {
 }
 
 func TestAgentDisconnectQuarantinesActiveTuner(t *testing.T) {
-	hub, _, _ := startTestAgent(t)
-	path := filepath.Join(t.TempDir(), "input")
-	if err := os.WriteFile(path, tsData(), 0600); err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	d := hub.NewDevice("living", Request{Tuner: "catv", Command: "cat '" + path + "'; sleep 60", Transport: "ts", TimeoutMS: 1000})
-	if err := d.Start(ctx, io.Discard); err != nil {
-		t.Fatal(err)
-	}
-	hub.mu.Lock()
-	conn := hub.connections["living"]
-	hub.mu.Unlock()
-	_ = conn.conn.Close()
-	select {
-	case <-d.Done():
-	case <-ctx.Done():
-		t.Fatal("disconnect did not stop input")
-	}
-	if hub.Available("living", "catv") {
-		t.Fatal("disconnected tuner available")
-	}
-	hub.mu.Lock()
-	q := hub.quarantined[tunerKey{"living", "catv"}] != nil
-	hub.mu.Unlock()
-	if !q {
-		t.Fatal("unconfirmed cleanup was not quarantined")
-	}
-	for {
-		changed := hub.Changed()
-		if hub.Available("living", "catv") {
-			break
-		}
-		select {
-		case <-changed:
-		case <-ctx.Done():
-			t.Fatal("clean reconnect did not recover tuner")
-		}
-	}
-	hub.mu.Lock()
-	current := hub.connections["living"]
-	hub.mu.Unlock()
-	if current == conn || current.instance != conn.instance {
-		t.Fatal("recovery did not use same process instance")
+	for _, decoder := range []string{"", "cat"} {
+		t.Run("decoder="+decoder, func(t *testing.T) {
+			hub, _, _ := startTestAgent(t)
+			path := filepath.Join(t.TempDir(), "input")
+			if err := os.WriteFile(path, tsData(), 0600); err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			d := hub.NewDevice("living", Request{Tuner: "catv", Decoder: decoder, Command: "cat '" + path + "'; sleep 60", Transport: "ts", TimeoutMS: 1000})
+			if err := d.Start(ctx, io.Discard); err != nil {
+				t.Fatal(err)
+			}
+			hub.mu.Lock()
+			conn := hub.connections["living"]
+			hub.mu.Unlock()
+			_ = conn.conn.Close()
+			select {
+			case <-d.Done():
+			case <-ctx.Done():
+				t.Fatal("disconnect did not stop input")
+			}
+			if hub.Available("living", "catv") {
+				t.Fatal("disconnected tuner available")
+			}
+			hub.mu.Lock()
+			q := hub.quarantined[tunerKey{"living", "catv"}] != nil
+			hub.mu.Unlock()
+			if !q {
+				t.Fatal("unconfirmed cleanup was not quarantined")
+			}
+			for {
+				changed := hub.Changed()
+				if hub.Available("living", "catv") {
+					break
+				}
+				select {
+				case <-changed:
+				case <-ctx.Done():
+					t.Fatal("clean reconnect did not recover tuner")
+				}
+			}
+			hub.mu.Lock()
+			current := hub.connections["living"]
+			hub.mu.Unlock()
+			if current == conn || current.instance != conn.instance {
+				t.Fatal("recovery did not use same process instance")
+			}
+		})
 	}
 }
 
@@ -319,21 +324,188 @@ func TestStopDeadlineAfterAcknowledgementDoesNotQuarantine(t *testing.T) {
 }
 
 func TestAgentStoppingLiveStreamIsNotFailure(t *testing.T) {
-	hub, _, _ := startTestAgent(t)
+	for _, decoder := range []string{"", "cat"} {
+		t.Run("decoder="+decoder, func(t *testing.T) {
+			hub, _, _ := startTestAgent(t)
+			path := filepath.Join(t.TempDir(), "input")
+			if err := os.WriteFile(path, tsData(), 0600); err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			device := hub.NewDevice("living", Request{Tuner: "catv", Decoder: decoder, Command: "cat '" + path + "'; sleep 60", Transport: "ts", TimeoutMS: 1000})
+			if err := device.Start(ctx, io.Discard); err != nil {
+				t.Fatal(err)
+			}
+			if err := device.Stop(ctx); err != nil {
+				t.Fatal(err)
+			}
+			if err := device.Err(); err != nil {
+				t.Fatalf("normal stop marked stream failed: %v", err)
+			}
+		})
+	}
+}
+
+func TestAgentDecoderReceivesSeparatedTS(t *testing.T) {
+	mux, want := tsmfData()
+	dir := t.TempDir()
+	input, capture := filepath.Join(dir, "mux"), filepath.Join(dir, "decoder-input")
+	if err := os.WriteFile(input, mux, 0600); err != nil {
+		t.Fatal(err)
+	}
+	r, first, err := openReceiver(context.Background(), Request{Command: "cat '" + input + "'", Decoder: "tee '" + capture + "'", Transport: "ts", RelativeTS: 1, TimeoutMS: 1000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := r.stop(); err != nil {
+			t.Error(err)
+		}
+	})
+	rest, err := io.ReadAll(r.reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := append(first, rest...)
+	if !bytes.Equal(got, want) {
+		t.Fatalf("output %d bytes, want %d", len(got), len(want))
+	}
+	fed, err := os.ReadFile(capture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(fed, want) {
+		t.Fatal("decoder received unseparated input")
+	}
+}
+
+func TestAgentDecoderStartupFailureAndCancellation(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "input")
+	if err := os.WriteFile(path, tsData(), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, command := range []string{"exit 1", "sleep 60"} {
+		t.Run(command, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+			defer cancel()
+			start := time.Now()
+			r, _, err := openReceiver(ctx, Request{Command: "cat '" + path + "'; sleep 60", Decoder: command, Transport: "ts", TimeoutMS: 1000})
+			if r != nil {
+				_ = r.stop()
+				t.Fatal("failed decoder started")
+			}
+			if err == nil || errors.Is(err, errCleanup) {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if time.Since(start) > 3*time.Second {
+				t.Fatal("decoder cleanup stalled")
+			}
+		})
+	}
+}
+
+func TestAgentDecoderFailureAfterOutput(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "input")
 	if err := os.WriteFile(path, tsData(), 0600); err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	device := hub.NewDevice("living", Request{Tuner: "catv", Command: "cat '" + path + "'; sleep 60", Transport: "ts", TimeoutMS: 1000})
-	if err := device.Start(ctx, io.Discard); err != nil {
+	r, first, err := openReceiver(context.Background(), Request{Command: "cat '" + path + "'", Decoder: "cat; exit 1", Transport: "ts", TimeoutMS: 1000})
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := device.Stop(ctx); err != nil {
+	t.Cleanup(func() {
+		if err := r.stop(); err != nil {
+			t.Error(err)
+		}
+	})
+	rest, err := io.ReadAll(r.reader)
+	if err == nil {
+		t.Fatal("decoder failure treated as clean EOF")
+	}
+	if !bytes.Equal(append(first, rest...), tsData()) {
+		t.Fatal("decoder output truncated")
+	}
+}
+
+type failingDecoderSource struct {
+	data *bytes.Reader
+	err  error
+}
+
+func (s failingDecoderSource) Read(p []byte) (int, error) {
+	n, err := s.data.Read(p)
+	if err == io.EOF {
+		err = s.err
+	}
+	return n, err
+}
+func (s failingDecoderSource) Close() error { return nil }
+
+func TestAgentDecoderPreservesSourceError(t *testing.T) {
+	sourceErr := errors.New("receiver read failed")
+	src := failingDecoderSource{bytes.NewReader(tsData()), sourceErr}
+	r := &receiver{source: src}
+	reader, err := r.descramble(src, "cat")
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := device.Err(); err != nil {
-		t.Fatalf("normal stop marked stream failed: %v", err)
+	t.Cleanup(func() {
+		if err := r.stop(); err != nil {
+			t.Error(err)
+		}
+	})
+	got, err := io.ReadAll(reader)
+	if !errors.Is(err, sourceErr) {
+		t.Fatalf("source failure lost: %v", err)
+	}
+	if !bytes.Equal(got, tsData()) {
+		t.Fatal("output truncated")
+	}
+}
+
+func TestAgentDecoderStopsLiveProcesses(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "input")
+	if err := os.WriteFile(path, tsData(), 0600); err != nil {
+		t.Fatal(err)
+	}
+	r, first, err := openReceiver(context.Background(), Request{Command: "cat '" + path + "'; exec sleep 60", Decoder: "exec cat", Transport: "ts", TimeoutMS: 1000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := r.stop(); err != nil {
+			t.Error(err)
+		}
+	})
+	if len(first) == 0 {
+		t.Fatal("no stream output")
+	}
+	start := time.Now()
+	if err := r.stop(); err != nil {
+		t.Fatal(err)
+	}
+	if time.Since(start) > 3*time.Second {
+		t.Fatal("stop exceeded deadline")
+	}
+	for _, wait := range []func() error{r.process.Wait, r.decoder.Wait} {
+		done := make(chan error, 1)
+		go func() { done <- wait() }()
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Fatal(err)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("process was not reaped")
+		}
+	}
+}
+
+func TestAgentDecoderReportsExitStatus(t *testing.T) {
+	_, _, err := openReceiver(context.Background(), Request{Command: "sleep 60", Decoder: "exit 42", Transport: "ts", TimeoutMS: 1000})
+	if err == nil || !strings.Contains(err.Error(), "exit status 42") {
+		t.Fatalf("exit status lost: %v", err)
 	}
 }

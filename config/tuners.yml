@@ -40,3 +40,21 @@
   # decode=1 without b61Decoder falls back to the raw stream.
   b61Decoder: cat
   isDisabled: true
+
+- name: living-catv
+  types: [CATV, CATV_BS]
+  agent:
+    name: living
+    command: recpt1 <channel> - -
+    decoder: arib-b25-stream-test
+  isDisabled: false
+  startupTimeout: 5000
+
+- name: living-bs4k
+  types: [BS4K]
+  agent:
+    name: living
+    command: recpt1 --device /dev/pt4k0 <channel> - -
+    b61Decoder: arib-b61-stream-test
+  isDisabled: false
+  startupTimeout: 5000

@@ -347,12 +347,18 @@ type routeSelection struct {
 // TLV channels use the ACAS (STD-B61) command, TS channels the B-CAS command.
 func (p *Pool) descramblerCommand(channelType, channel string, selected routeSelection) string {
 	if p.IsTLVChannel(channelType, channel) {
+		if selected.decoders.AgentB61Decoder {
+			return ""
+		}
 		if selected.decoders.B61Decoder != "" {
 			return selected.decoders.B61Decoder
 		}
 		if provider, ok := p.tunerManager.(B61DecoderCommandProvider); ok {
 			return provider.B61DecoderCommandByType(selected.route.Type)
 		}
+		return ""
+	}
+	if selected.decoders.AgentDecoder {
 		return ""
 	}
 	if selected.decoders.Decoder != "" {
@@ -407,7 +413,7 @@ func (p *Pool) tryLocalRoute(ctx context.Context, channel *config.ChannelConfig,
 	}
 	if source != nil {
 		slog.Debug("reusing local stream route", "type", channel.Type, "channel", channel.Channel, "routeType", route.Type)
-		return routeSelection{route: route, channel: routeChannel, decoders: tuner.DecoderCommands{Decoder: source.decoderCommand, B61Decoder: source.b61DecoderCommand}, broadcast: source.broadcast}, nil
+		return routeSelection{route: route, channel: routeChannel, decoders: source.decoders, broadcast: source.broadcast}, nil
 	}
 	defer finishCreate()
 

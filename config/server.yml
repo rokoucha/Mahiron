@@ -40,3 +40,7 @@ jobs:
     schedule: "20,50 * * * *"
   - key: logo-gatherer
     schedule: "5 3 * * *"
+
+agents:
+  - name: living
+    tokenHash: "0000000000000000000000000000000000000000000000000000000000000000"

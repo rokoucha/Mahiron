@@ -123,8 +123,10 @@ func (tm *Manager) CheckAvailable(ctx context.Context, channelType string) error
 // Decoder for TS (B-CAS), B61Decoder for TLV (ACAS/STD-B61). Either may be
 // empty.
 type DecoderCommands struct {
-	Decoder    string
-	B61Decoder string
+	AgentDecoder    bool
+	AgentB61Decoder bool
+	Decoder         string
+	B61Decoder      string
 }
 
 func (tm *Manager) AcquireDevice(ctx context.Context, channelType string, requestedChannel, tunedChannel *config.ChannelConfig, wait bool) (device Device, decoders DecoderCommands, err error) {
@@ -271,6 +273,8 @@ func (tm *Manager) tryAcquireLocked(channelType string, requestPriority int, req
 			"tunedChannel", channelID(tunedChannel),
 			"decoder", decoders.Decoder != "",
 			"b61Decoder", decoders.B61Decoder != "",
+			"agentDecoder", decoders.AgentDecoder,
+			"agentB61Decoder", decoders.AgentB61Decoder,
 		)
 		return result
 	}
@@ -310,7 +314,12 @@ func (tm *Manager) reserveLocked(item *Tuner, priority int, requestedChannel, tu
 	runtime.tuned = tunedChannel
 	managed := &managedDevice{Device: base, manager: tm, tuner: item}
 	runtime.device = managed
-	return managed, DecoderCommands{Decoder: item.DecoderCommand(), B61Decoder: item.B61DecoderCommand()}, true
+	decoders := DecoderCommands{Decoder: item.DecoderCommand(), B61Decoder: item.B61DecoderCommand()}
+	if item.config.Agent != nil {
+		decoders.AgentDecoder = item.config.Agent.Decoder != ""
+		decoders.AgentB61Decoder = item.config.Agent.B61Decoder != ""
+	}
+	return managed, decoders, true
 }
 
 func (tm *Manager) KillProcess(ctx context.Context, index int) error {

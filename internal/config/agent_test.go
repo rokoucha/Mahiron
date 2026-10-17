@@ -12,6 +12,9 @@ func TestAgentTunerConfiguration(t *testing.T) {
 		name, extra string
 		valid       bool
 	}{
+		{"agent decoder", "agent:\n    name: living\n    command: recpt1\n    decoder: b25\n    b61Decoder: b61", true},
+		{"decoder conflict", "decoder: local\n  agent:\n    name: living\n    command: recpt1\n    decoder: remote", false},
+		{"b61 conflict", "b61Decoder: local\n  agent:\n    name: living\n    command: recpt1\n    b61Decoder: remote", false},
 		{"agent", "agent:\n    name: living\n    command: recpt1 <channel> - -", true},
 		{"local command conflict", "command: recpt1\n  agent:\n    name: living\n    command: remote-recpt1", false},
 		{"missing remote command", "agent:\n    name: living", false},

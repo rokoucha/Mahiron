@@ -25,6 +25,8 @@ type TunerConfig struct {
 }
 
 type AgentTunerConfig struct {
+	Decoder       string `json:"decoder,omitempty"`
+	B61Decoder    string `json:"b61Decoder,omitempty"`
 	Name          string `json:"name"`
 	Command       string `json:"command"`
 	DvbDevicePath string `json:"dvbDevicePath,omitempty"`
@@ -63,6 +65,9 @@ func LoadAndParseTunersConfig(filePath string) (TunersConfig, error) {
 		if tuner.Agent != nil {
 			if tuner.Agent.Name == "" || tuner.Agent.Command == "" {
 				return nil, errors.New("agent name and command are required")
+			}
+			if (tuner.Agent.Decoder != "" && tuner.Decoder != "") || (tuner.Agent.B61Decoder != "" && tuner.B61Decoder != "") {
+				return nil, errors.New("agent and local decoders for the same transport are mutually exclusive")
 			}
 			if tuner.Command != "" || tuner.DvbDevicePath != "" {
 				return nil, errors.New("agent and local command/device are mutually exclusive")

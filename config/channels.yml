@@ -73,3 +73,9 @@
   channel: "101"
   transport: tlv
   isDisabled: true
+
+- name: CATV TSMFサンプル
+  type: CATV
+  channel: C101
+  tsmfRelTs: 1
+  isDisabled: false
