@@ -509,3 +509,57 @@ func TestAgentDecoderReportsExitStatus(t *testing.T) {
 		t.Fatalf("exit status lost: %v", err)
 	}
 }
+
+func TestAgentDecoderPrimesTSMFInput(t *testing.T) {
+	if os.Getenv("MAHIRON_TEST_FRAMING_DECODER") == "source" {
+		data, err := os.ReadFile(os.Args[len(os.Args)-1])
+		if err != nil {
+			os.Exit(5)
+		}
+		for len(data) > 0 {
+			if _, err := os.Stdout.Write(data[:188]); err != nil {
+				os.Exit(6)
+			}
+			data = data[188:]
+			time.Sleep(time.Millisecond)
+		}
+		os.Exit(0)
+	}
+	if os.Getenv("MAHIRON_TEST_FRAMING_DECODER") == "1" {
+		buf := make([]byte, 32<<10)
+		n, _ := os.Stdin.Read(buf)
+		if n < 5*188 {
+			os.Exit(2)
+		}
+		if _, err := os.Stdout.Write(buf[:n]); err != nil {
+			os.Exit(3)
+		}
+		if _, err := io.Copy(os.Stdout, os.Stdin); err != nil {
+			os.Exit(4)
+		}
+		os.Exit(0)
+	}
+	mux, want := tsmfData()
+	path := filepath.Join(t.TempDir(), "mux")
+	if err := os.WriteFile(path, mux, 0600); err != nil {
+		t.Fatal(err)
+	}
+	decoder := fmt.Sprintf("MAHIRON_TEST_FRAMING_DECODER=1 '%s' -test.run '^TestAgentDecoderPrimesTSMFInput$'", os.Args[0])
+	source := fmt.Sprintf("MAHIRON_TEST_FRAMING_DECODER=source '%s' -test.run '^TestAgentDecoderPrimesTSMFInput$' -- '%s'", os.Args[0], path)
+	r, first, err := openReceiver(t.Context(), Request{Command: source, Decoder: decoder, Transport: "ts", RelativeTS: 1, TimeoutMS: 5000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := r.stop(); err != nil {
+			t.Error(err)
+		}
+	})
+	rest, err := io.ReadAll(r.reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(append(first, rest...), want) {
+		t.Fatal("decoder output differs from separated TS")
+	}
+}

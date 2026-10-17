@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -158,7 +159,10 @@ func (r *receiver) descramble(src io.Reader, command string) (io.Reader, error) 
 	r.decoder = d
 	r.decoderCopyDone = make(chan struct{})
 	go func() {
-		_, err := io.Copy(r.decoderInput, src)
+		// TSMF separation can yield single packets; decoders need an initial framing batch.
+		input := bufio.NewReaderSize(src, ts.PacketSize*128)
+		_, _ = input.Peek(ts.PacketSize * 128)
+		_, err := io.Copy(r.decoderInput, input)
 		_ = r.decoderInput.Close()
 		r.decoderCopyErr = err
 		close(r.decoderCopyDone)
