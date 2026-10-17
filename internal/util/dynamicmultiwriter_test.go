@@ -297,6 +297,7 @@ func TestDynamicMultiWriter_Write(t *testing.T) {
 }
 
 type blockingWriter struct {
+	err     error
 	release chan struct{}
 	started chan struct{}
 	once    sync.Once
@@ -312,6 +313,9 @@ func newBlockingWriter() *blockingWriter {
 func (w *blockingWriter) Write(p []byte) (int, error) {
 	w.once.Do(func() { close(w.started) })
 	<-w.release
+	if w.err != nil {
+		return 0, w.err
+	}
 	return len(p), nil
 }
 
@@ -583,5 +587,39 @@ func BenchmarkDynamicMultiWriter_Write(b *testing.B) {
 				}
 			})
 		}
+	}
+}
+
+func TestDynamicMultiWriter_LosslessFailureDoesNotStopNewPeer(t *testing.T) {
+	failed := newBlockingWriter()
+	failed.err = io.ErrClosedPipe
+	peer := &syncBuffer{}
+	d := NewDynamicMultiWriter()
+	d.AttachWithOptions(failed, DynamicMultiWriterSubscriberOptions{Lossless: true})
+	defer d.Close()
+	done := make(chan error, 1)
+	go func() { _, err := d.Write([]byte("in flight")); done <- err }()
+	select {
+	case <-failed.started:
+	case <-time.After(time.Second):
+		close(failed.release)
+		t.Fatal("write did not start")
+	}
+	d.AttachWithOptions(peer, DynamicMultiWriterSubscriberOptions{Lossless: true})
+	close(failed.release)
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Write stopped with a newly attached peer: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("write did not finish")
+	}
+	data := []byte("peer survives")
+	if _, err := d.Write(data); err != nil {
+		t.Fatal(err)
+	}
+	if got := peer.String(); got != string(data) {
+		t.Fatalf("peer content = %q", got)
 	}
 }
