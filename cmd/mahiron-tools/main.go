@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/21S1298001/mahiron/internal/probe"
@@ -63,26 +64,38 @@ func run(args []string, out, stderr io.Writer) int {
 			_, _ = fmt.Fprintln(stderr, err)
 			return 1
 		}
-		defer func() { _ = input.Close() }()
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if *duration > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, *duration)
 		defer cancel()
 	}
-	// Closing the owned input also releases a read blocked on an idle pipe.
+	// A blocking file read (for example a device) may survive Close. Keep it
+	// separate so cancellation can always release the probe's input read.
+	ownedInput := input != os.Stdin
+	reader, writer := io.Pipe()
+	defer func() { _ = reader.Close() }()
+	go func() {
+		if ownedInput {
+			defer func() { _ = input.Close() }()
+		}
+		_, err := io.Copy(writer, input)
+		_ = writer.CloseWithError(err)
+	}()
 	done := make(chan struct{})
 	defer close(done)
 	go func() {
 		select {
 		case <-ctx.Done():
+			stop()
+			_ = writer.CloseWithError(ctx.Err())
 			_ = input.Close()
 		case <-done:
 		}
 	}()
-	report, err := probe.Run(ctx, input, probe.Options{Format: *format, RelativeTS: uint8(*relative)})
+	report, err := probe.Run(ctx, reader, probe.Options{Format: *format, RelativeTS: uint8(*relative)})
 	if report != nil {
 		if *jsonOutput {
 			encoder := json.NewEncoder(out)

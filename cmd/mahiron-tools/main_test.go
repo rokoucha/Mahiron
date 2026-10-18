@@ -2,9 +2,12 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -147,5 +150,51 @@ func TestProbeDurationWithoutInputReturnsReport(t *testing.T) {
 	}
 	if report.Format != "unknown" || report.StopReason != "duration" || report.TimeBasis != "read_elapsed" || len(report.Warnings) == 0 {
 		t.Fatalf("report: %+v", report)
+	}
+}
+
+func TestProbeSignal(t *testing.T) {
+	if os.Getenv("MAHIRON_TOOLS_SIGNAL_HELPER") == "1" {
+		// Fd switches the pipe to blocking mode; NewFile then uses a read
+		// that cannot be interrupted by Close on all platforms.
+		os.Stdin = os.NewFile(os.Stdin.Fd(), "blocking stdin")
+		os.Exit(run([]string{"probe", "--duration", "0", "--json", "-"}, os.Stdout, os.Stderr))
+	}
+	for _, sig := range []os.Signal{os.Interrupt, syscall.SIGTERM} {
+		t.Run(sig.String(), func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestProbeSignal$")
+			cmd.Env = append(os.Environ(), "MAHIRON_TOOLS_SIGNAL_HELPER=1")
+			input, err := cmd.StdinPipe()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer input.Close()
+			var out, stderr bytes.Buffer
+			cmd.Stdout, cmd.Stderr = &out, &stderr
+			if err := cmd.Start(); err != nil {
+				t.Fatal(err)
+			}
+			// Exceed pipe capacity so completion proves the child has started
+			// reading, after registering its signal handler.
+			p := bytes.Repeat([]byte{0xff}, 188)
+			p[0], p[1], p[2], p[3] = 0x47, 0x1f, 0xff, 0x10
+			_, writeErr := input.Write(bytes.Repeat(p, 8192))
+			if writeErr == nil {
+				writeErr = cmd.Process.Signal(sig)
+			}
+			err = cmd.Wait()
+			if writeErr != nil || err != nil {
+				t.Fatalf("write/signal: %v, exit: %v, stderr: %s", writeErr, err, &stderr)
+			}
+			var report probe.Report
+			if err := json.Unmarshal(out.Bytes(), &report); err != nil {
+				t.Fatal(err)
+			}
+			if report.StopReason != "cancelled" || report.Packets == 0 {
+				t.Fatalf("report: %+v", report)
+			}
+		})
 	}
 }
