@@ -23,8 +23,8 @@ func ScheduleSection(eit *ts.EIT) schedule.Section {
 			LastTableID:        eit.LastTableID,
 			SegmentLastSection: eit.SegmentLastSectionNumber,
 		},
-		Service: model.ServiceKey{NetworkID: eit.OriginalNetworkID, StreamID: eit.TransportStreamID, ServiceID: eit.ServiceID},
-		Events:  EventsFromEIT(eit),
+		Service:      model.ServiceKey{NetworkID: eit.OriginalNetworkID, StreamID: eit.TransportStreamID, ServiceID: eit.ServiceID},
+		DecodeEvents: func() []model.Event { return EventsFromEIT(eit) },
 	}
 }
 

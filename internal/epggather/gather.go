@@ -70,6 +70,22 @@ func gatherNetwork(ctx context.Context, events ScheduleWriter, programStore Prog
 				collectResult, candidateErr = CollectServiceSnapshots(candidateCtx, events, serviceStore, collect, targets, retrievalTime)
 			}
 		}
+		endReason := ""
+		if collectResult != nil {
+			endReason = collectResult.EndReason
+		}
+		if collectResult == nil && candidateErr != nil {
+			endReason = "receive_error"
+			if errors.Is(candidateErr, context.DeadlineExceeded) {
+				endReason = "deadline"
+			}
+			if ctx.Err() != nil {
+				endReason = "canceled"
+			}
+		}
+		if endReason != "" {
+			candidateSpan.SetAttributes(attribute.String("epg.end_reason", endReason))
+		}
 		observability.EndSpan(candidateSpan, candidateErr)
 		observedInRemaining := 0
 		if collectResult != nil && len(collectResult.Observed) > 0 {
@@ -90,12 +106,25 @@ func gatherNetwork(ctx context.Context, events ScheduleWriter, programStore Prog
 				"remaining":     len(remaining),
 				"programs":      0,
 				"result":        "success",
+				"endReason":     endReason,
 			},
 		}
 		if collectResult != nil {
 			item.Data["observedServices"] = len(collectResult.Observed)
 			item.Data["unobserved"] = len(collectResult.Unobserved)
 			item.Data["programs"] = collectResult.ProgramCount
+			item.Data["endReason"] = collectResult.EndReason
+			incomplete := len(collectResult.Incomplete) - len(collectResult.Unobserved)
+			item.Data["incomplete"] = incomplete
+			if collectResult.ReceiveError != "" {
+				item.Data["result"] = "partial"
+				item.Data["receiveError"] = collectResult.ReceiveError
+				warnings = append(warnings, fmt.Sprintf("%s/%s: EPG saved after reception failed: %s", candidate.Type, candidate.Channel, collectResult.ReceiveError))
+			}
+			if incomplete > 0 {
+				item.Data["result"] = "partial"
+				warnings = append(warnings, fmt.Sprintf("%s/%s: %d target services have incomplete EPG (%s)", candidate.Type, candidate.Channel, incomplete, collectResult.EndReason))
+			}
 		}
 		if candidateErr != nil {
 			item.Data["result"] = "failure"
@@ -147,19 +176,29 @@ func gatherNetwork(ctx context.Context, events ScheduleWriter, programStore Prog
 
 func epgGatherResult(networkID uint16, candidateCount, serviceCount, observed, remaining, programs int, items []run.Item, warnings []string) run.Result {
 	kind := "epg_gather"
+	incomplete := 0
+	for _, item := range items {
+		if n, ok := item.Data["incomplete"].(int); ok {
+			incomplete += n
+		}
+	}
 	summary := fmt.Sprintf("network %d: %d/%d services observed", networkID, observed, serviceCount)
 	if remaining > 0 {
 		summary = fmt.Sprintf("%s, %d remaining", summary, remaining)
+	}
+	if incomplete > 0 {
+		summary = fmt.Sprintf("%s, %d incomplete", summary, incomplete)
 	}
 	return run.Result{
 		Kind:    kind,
 		Summary: summary,
 		Counts: map[string]int{
-			"candidates":        candidateCount,
-			"services":          serviceCount,
-			"observedServices":  observed,
-			"remainingServices": remaining,
-			"programs":          programs,
+			"candidates":         candidateCount,
+			"services":           serviceCount,
+			"observedServices":   observed,
+			"remainingServices":  remaining,
+			"incompleteServices": incomplete,
+			"programs":           programs,
 		},
 		Items:    append([]run.Item(nil), items...),
 		Warnings: append([]string(nil), warnings...),
@@ -173,6 +212,7 @@ func epgGatherAttributes(result run.Result) []attribute.KeyValue {
 		observability.AttrEPGServicesObserved.Int(result.Counts["observedServices"]),
 		observability.AttrEPGServicesRemaining.Int(result.Counts["remainingServices"]),
 		observability.AttrProgramCount.Int(result.Counts["programs"]),
+		attribute.Int("epg.services.incomplete", result.Counts["incompleteServices"]),
 	}
 }
 

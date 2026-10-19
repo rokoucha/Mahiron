@@ -1,6 +1,8 @@
 package isdb
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 )
@@ -144,5 +146,73 @@ func TestScheduleTrackerOtherStreamTables(t *testing.T) {
 	sections := tracker.Sections()
 	if len(sections) != 16 || !sections[0].Basic || sections[8].Basic {
 		t.Fatalf("sections = %v, want 8 basic then 8 extended", sections)
+	}
+}
+
+func TestScheduleTrackerVersionChangePreservesOtherTables(t *testing.T) {
+	for _, system := range []ScheduleSystem{ScheduleTS, ScheduleMMT} {
+		t.Run(fmt.Sprint(system), func(t *testing.T) {
+			first := uint8(0x58)
+			if system == ScheduleMMT {
+				first = 0x94
+			}
+			tracker := NewScheduleTracker[string](system)
+			observe := func(id, section, version uint8) {
+				tracker.Observe(id, tsHeader(section, 248, version, first+1, section), "payload", fixedNow())
+			}
+			for _, id := range []uint8{first, first + 1} {
+				for segment := 0; segment < 32; segment++ {
+					observe(id, uint8(segment*8), 1)
+				}
+			}
+			if !tracker.ExtendedComplete() {
+				t.Fatal(tracker.Diagnosis())
+			}
+			observe(first, 0, 2)
+			if tracker.ExtendedComplete() {
+				t.Fatal("updated table prematurely complete")
+			}
+			for segment := 1; segment < 32; segment++ {
+				observe(first, uint8(segment*8), 2)
+			}
+			if !tracker.ExtendedComplete() {
+				t.Fatalf("unchanged table lost coverage: %s", tracker.Diagnosis())
+			}
+			if tracker.CoverageResets() != 1 {
+				t.Fatalf("resets = %d", tracker.CoverageResets())
+			}
+		})
+	}
+}
+
+func TestScheduleTrackerRangeChangePreservesExistingTables(t *testing.T) {
+	tracker := NewScheduleTracker[string](ScheduleMMT)
+	tracker.Observe(0x94, tsHeader(0, 0, 1, 0x94, 0), "first", fixedNow())
+	tracker.Observe(0x95, tsHeader(0, 0, 1, 0x95, 0), "second", fixedNow())
+	if !tracker.ExtendedComplete() {
+		t.Fatalf("range expansion cleared existing table: %s", tracker.Diagnosis())
+	}
+	tracker.Observe(0x94, tsHeader(0, 0, 2, 0x94, 0), "shrink", fixedNow())
+	if !tracker.ExtendedComplete() {
+		t.Fatal(tracker.Diagnosis())
+	}
+	tracker.Observe(0x94, tsHeader(0, 0, 3, 0x95, 0), "expand", fixedNow())
+	if tracker.ExtendedComplete() {
+		t.Fatal("expanded range reused removed table's coverage")
+	}
+}
+
+func TestScheduleTrackerLazyDuplicatesAndBoundedDiagnosis(t *testing.T) {
+	tracker := NewScheduleTracker[string](ScheduleMMT)
+	calls := 0
+	payload := func() string { calls++; return "payload" }
+	header := tsHeader(0, 255, 1, 0x95, 0)
+	tracker.ObserveLazy(0x94, header, payload, fixedNow())
+	tracker.ObserveLazy(0x94, header, payload, fixedNow())
+	if calls != 1 {
+		t.Fatalf("duplicate decoded %d payloads", calls)
+	}
+	if diagnosis := tracker.Diagnosis(); !strings.Contains(diagnosis, "more)") || len(diagnosis) > 1200 {
+		t.Fatalf("unbounded diagnosis: %s", diagnosis)
 	}
 }

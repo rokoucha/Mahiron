@@ -267,3 +267,25 @@ func TestCollectorAllowsObservedFullVersionCycle(t *testing.T) {
 		previous = revision.Reception
 	}
 }
+
+func TestCollectorLazyDecodeAndReceptionMetadata(t *testing.T) {
+	c := NewCollector(isdb.ScheduleMMT)
+	calls := 0
+	s := section(0x94, 0, 0, 1)
+	s.DecodeEvents = func() []model.Event { calls++; return []model.Event{event(1, "one")} }
+	first := observe(t, c, s)
+	if first.Reception == nil || !first.ExtendedObserved || first.Reception.VersionChanged {
+		t.Fatalf("first metadata = %#v", first)
+	}
+	if err := c.Observe(s, testNow, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Fatalf("duplicate decoded %d times", calls)
+	}
+	s.Header.Version = 2
+	update := observe(t, c, s)
+	if calls != 2 || !update.Reception.VersionChanged || !update.Reception.CoverageReset || update.Reception.PreviousVersion != 1 {
+		t.Fatalf("metadata = %#v, decodes = %d", update.Reception, calls)
+	}
+}

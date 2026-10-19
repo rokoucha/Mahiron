@@ -256,13 +256,28 @@ type ScheduleUpdate struct {
 	// observed.
 	BasicObserved    bool
 	BasicComplete    bool
+	ExtendedObserved bool
 	ExtendedComplete bool
+	Reception        *ScheduleReception
 	// ObservedAt is the broadcast clock (TOT) of the update in Unix
 	// milliseconds, or the wall clock until the first TOT arrives.
 	ObservedAt int64
 	Events     func() []Event
-	// Diagnosis describes what is still missing, for logs only.
+	// Diagnosis describes what is still missing, with bounded detail.
 	Diagnosis func() string
+}
+
+// ScheduleReception identifies the section that advanced collection.
+type ScheduleReception struct {
+	TableID            uint8
+	Version            uint8
+	PreviousVersion    uint8
+	VersionChanged     bool
+	CoverageReset      bool
+	Section            uint8
+	LastSection        uint8
+	SegmentLastSection uint8
+	LastTableID        uint8
 }
 
 // PresentFollowing is one service's current and next events from EIT p/f.
