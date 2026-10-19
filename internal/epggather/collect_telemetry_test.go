@@ -304,3 +304,27 @@ func TestSameStreamOpportunisticPartialDoesNotRefreshStatus(t *testing.T) {
 		t.Fatalf("opportunistic partial made fresh: result=%+v status=%v", result, status.successes)
 	}
 }
+
+type failedReceptionSession struct{}
+
+func (failedReceptionSession) CollectSchedule(context.Context, func(model.ScheduleUpdate) error, func(model.PresentFollowing) error) error {
+	return errors.New("receiver startup failed")
+}
+
+func TestGatherDoesNotClaimSaveWithoutObservedTarget(t *testing.T) {
+	key := model.ServiceKey{NetworkID: 11, StreamID: 1, ServiceID: 102}
+	recorder := &collectionResultRecorder{}
+	store := &collectProgramStore{}
+	err := gatherNetwork(run.WithReporter(t.Context(), recorder), store, store, newRemoteSyncServiceStore(), staticEPGStreams{session: failedReceptionSession{}}, 11, []Candidate{{Type: "BS4K", Channel: "45280"}}, []model.ServiceKey{key}, time.Second)
+	if err == nil {
+		t.Fatal("missing reception failure")
+	}
+	if recorder.result.Items[0].Data["result"] != "failure" {
+		t.Fatalf("result=%+v", recorder.result)
+	}
+	for _, warning := range recorder.result.Warnings {
+		if strings.Contains(warning, "saved after") {
+			t.Fatalf("claimed saved data: %s", warning)
+		}
+	}
+}

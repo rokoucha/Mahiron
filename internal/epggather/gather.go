@@ -116,7 +116,7 @@ func gatherNetwork(ctx context.Context, events ScheduleWriter, programStore Prog
 			item.Data["endReason"] = collectResult.EndReason
 			incomplete := len(collectResult.Incomplete) - len(collectResult.Unobserved)
 			item.Data["incomplete"] = incomplete
-			if collectResult.ReceiveError != "" {
+			if collectResult.ReceiveError != "" && observedInRemaining > 0 {
 				item.Data["result"] = "partial"
 				item.Data["receiveError"] = collectResult.ReceiveError
 				warnings = append(warnings, fmt.Sprintf("%s/%s: EPG saved after reception failed: %s", candidate.Type, candidate.Channel, collectResult.ReceiveError))
