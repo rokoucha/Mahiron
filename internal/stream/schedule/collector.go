@@ -17,10 +17,11 @@ import (
 
 // Section is one decoded EIT section.
 type Section struct {
-	TableID uint8
-	Header  isdb.SectionHeader
-	Service model.ServiceKey
-	Events  []model.Event
+	TableID      uint8
+	Header       isdb.SectionHeader
+	Service      model.ServiceKey
+	Events       []model.Event
+	DecodeEvents func() []model.Event
 }
 
 // Collector keeps the EIT reception state of one collection. It is safe for
@@ -65,6 +66,9 @@ func NewCollector(system isdb.ScheduleSystem, source ...string) *Collector {
 func (c *Collector) Observe(section Section, now time.Time, onSchedule func(model.ScheduleUpdate) error, onPresentFollowing func(model.PresentFollowing) error) error {
 	switch c.classify(section.TableID) {
 	case isdb.EITKindPresentFollowing:
+		if section.DecodeEvents != nil {
+			section.Events = section.DecodeEvents()
+		}
 		pf, ok := c.observePresentFollowing(section)
 		if !ok || onPresentFollowing == nil {
 			return nil
@@ -139,21 +143,28 @@ func (c *Collector) observeSchedule(section Section, now time.Time) (model.Sched
 	}
 	schedule.seenVersions[section.TableID] |= uint32(1) << section.Header.Version
 	key := section.TableID
+	previous, hadPrevious := schedule.revisions[key]
 	revision, ok := schedule.revisions[key]
 	if !ok || revision.Version != section.Header.Version {
 		revision = model.EITRevision{Source: c.source, TableID: section.TableID, Version: section.Header.Version, Reception: receptionSequence.Add(1)}
 		schedule.revisions[key] = revision
 	}
-	section.Events = append([]model.Event(nil), section.Events...)
-	for i := range section.Events {
-		if c.classify(section.TableID) == isdb.EITKindScheduleBasic {
-			section.Events[i].EITRevision = &revision
-		} else {
-			section.Events[i].EITExtendedRevision = &revision
+	resets := schedule.tracker.CoverageResets()
+	if !schedule.tracker.ObserveLazy(section.TableID, section.Header, func() []model.Event {
+		events := section.Events
+		if section.DecodeEvents != nil {
+			events = section.DecodeEvents()
 		}
-	}
-
-	if !schedule.tracker.Observe(section.TableID, section.Header, section.Events, now) {
+		events = append([]model.Event(nil), events...)
+		for i := range events {
+			if c.classify(section.TableID) == isdb.EITKindScheduleBasic {
+				events[i].EITRevision = &revision
+			} else {
+				events[i].EITExtendedRevision = &revision
+			}
+		}
+		return events
+	}, now) {
 		return model.ScheduleUpdate{}, false
 	}
 	schedule.stale = true
@@ -168,7 +179,15 @@ func (c *Collector) observeSchedule(section Section, now time.Time) (model.Sched
 			}
 			return revisions
 		},
+		Reception: &model.ScheduleReception{
+			TableID: section.TableID, Version: section.Header.Version,
+			PreviousVersion: previous.Version, VersionChanged: hadPrevious && previous.Version != section.Header.Version,
+			CoverageReset: schedule.tracker.CoverageResets() != resets,
+			Section:       section.Header.SectionNumber, LastSection: section.Header.LastSectionNumber,
+			SegmentLastSection: section.Header.SegmentLastSection, LastTableID: section.Header.LastTableID,
+		},
 		BasicObserved:    schedule.tracker.HasBasic(),
+		ExtendedObserved: schedule.tracker.HasExtended(),
 		BasicComplete:    schedule.tracker.BasicComplete(),
 		ExtendedComplete: schedule.tracker.ExtendedComplete(),
 		ObservedAt:       now.UnixMilli(),

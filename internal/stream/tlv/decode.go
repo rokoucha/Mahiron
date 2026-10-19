@@ -22,8 +22,8 @@ func scheduleSection(eit *mmt.MHEIT) schedule.Section {
 			LastTableID:        eit.LastTableID,
 			SegmentLastSection: eit.SegmentLastSectionNumber,
 		},
-		Service: model.ServiceKey{NetworkID: eit.OriginalNetworkID, StreamID: eit.TLVStreamID, ServiceID: eit.ServiceID},
-		Events:  eventsFromMHEIT(eit),
+		Service:      model.ServiceKey{NetworkID: eit.OriginalNetworkID, StreamID: eit.TLVStreamID, ServiceID: eit.ServiceID},
+		DecodeEvents: func() []model.Event { return eventsFromMHEIT(eit) },
 	}
 }
 

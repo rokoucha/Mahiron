@@ -59,6 +59,7 @@ type ScheduleTracker[P any] struct {
 	tables map[uint8]*scheduleTable[P]
 	groups map[uint8]*scheduleReadyGroup
 	latest time.Time
+	resets int
 }
 
 type scheduleTable[P any] struct {
@@ -101,6 +102,11 @@ func NewScheduleTracker[P any](system ScheduleSystem) *ScheduleTracker[P] {
 // progress (a new or replaced section, or newly completed coverage),
 // which drives collection stop decisions.
 func (t *ScheduleTracker[P]) Observe(tableID uint8, header SectionHeader, payload P, now time.Time) bool {
+	return t.ObserveLazy(tableID, header, func() P { return payload }, now)
+}
+
+// ObserveLazy decodes payloads only when a section is new or its version changed.
+func (t *ScheduleTracker[P]) ObserveLazy(tableID uint8, header SectionHeader, payload func() P, now time.Time) bool {
 	base, _, _, ok := scheduleBaseOf(t.system, tableID)
 	if !ok {
 		return false
@@ -118,7 +124,9 @@ func (t *ScheduleTracker[P]) Observe(tableID uint8, header SectionHeader, payloa
 	previous, existed := table.versions[header.SectionNumber]
 	changed := !existed || previous != header.Version
 	table.sections[header.SectionNumber] = struct{}{}
-	table.payloads[header.SectionNumber] = payload
+	if changed {
+		table.payloads[header.SectionNumber] = payload()
+	}
 	table.versions[header.SectionNumber] = header.Version
 
 	table.version = header.Version
@@ -157,8 +165,21 @@ func (t *ScheduleTracker[P]) observeReady(tableID, base uint8, header SectionHea
 	flagsID := int(index)
 	target := &group.flags[flagsID]
 	changed := false
-	if group.lastFlagsID != lastFlagsID || (target.observed && target.version != header.Version) {
-		group.reset(lastFlagsID)
+	if group.lastFlagsID != lastFlagsID {
+		if group.lastFlagsID >= 0 {
+			t.resets++
+		}
+		for i := range group.flags {
+			if i > lastFlagsID || i > group.lastFlagsID {
+				group.flags[i].reset(i <= lastFlagsID)
+			}
+		}
+		changed = true
+	}
+	// TR-B39 6.1.1 assigns versions independently to each sub-table.
+	if target.observed && target.version != header.Version {
+		target.reset(true)
+		t.resets++
 		changed = true
 	}
 	group.lastFlagsID = lastFlagsID
@@ -204,19 +225,24 @@ func (t *ScheduleTracker[P]) observeReady(tableID, base uint8, header SectionHea
 	return changed
 }
 
-func (g *scheduleReadyGroup) reset(lastFlagsID int) {
-	for i := range g.flags {
-		g.flags[i].observed = false
-		g.flags[i].version = 0
-		for j := range g.flags[i].flag {
-			g.flags[i].flag[j] = 0x00
-			if i <= lastFlagsID {
-				g.flags[i].ignore[j] = 0x00
-			} else {
-				g.flags[i].ignore[j] = 0xff
-			}
+func (f *scheduleReadyFlag) reset(required bool) {
+	*f = scheduleReadyFlag{}
+	if !required {
+		for i := range f.ignore {
+			f.ignore[i] = 0xff
 		}
 	}
+}
+
+func (t *ScheduleTracker[P]) CoverageResets() int { return t.resets }
+
+func (t *ScheduleTracker[P]) HasExtended() bool {
+	for _, group := range t.groups {
+		if !group.basic {
+			return true
+		}
+	}
+	return false
 }
 
 func currentJSTSegment(now time.Time) int {
@@ -316,7 +342,7 @@ func (t *ScheduleTracker[P]) HasBasic() bool {
 	return false
 }
 
-// Diagnosis summarizes missing tables and sections for log-only output.
+// Diagnosis summarizes missing tables and sections for logs and traces.
 func (t *ScheduleTracker[P]) Diagnosis() string {
 	var missing []string
 	for base, group := range t.groups {
@@ -334,6 +360,10 @@ func (t *ScheduleTracker[P]) Diagnosis() string {
 	sort.Strings(missing)
 	if len(missing) == 0 {
 		return "complete"
+	}
+	const limit = 32
+	if len(missing) > limit {
+		return fmt.Sprintf("missing %s (+%d more)", strings.Join(missing[:limit], ", "), len(missing)-limit)
 	}
 	return "missing " + strings.Join(missing, ", ")
 }

@@ -9,12 +9,16 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/observability"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 type CollectResult struct {
 	Observed     []model.ServiceKey
 	Unobserved   []model.ServiceKey
 	ProgramCount int
+	Incomplete   []model.ServiceKey
+	EndReason    string
+	ReceiveError string
 }
 
 const eitsCollectionBuffer = 4096
@@ -154,8 +158,14 @@ func (c *collectionSchedule) events(key model.ServiceKey) []model.Event {
 
 func (c *collectionSchedule) diagnosis(key model.ServiceKey) string {
 	update, ok := c.updates[key]
-	if !ok || update.Diagnosis == nil {
-		return ""
+	if !ok {
+		return "no schedule sections received"
+	}
+	if !update.BasicObserved {
+		return "no basic schedule received"
+	}
+	if update.Diagnosis == nil {
+		return "diagnosis unavailable"
 	}
 	return update.Diagnosis()
 }
@@ -184,6 +194,7 @@ func CollectServiceSnapshots(ctx context.Context, events ScheduleWriter, service
 	}
 	result = &CollectResult{}
 	index := newExpectedServiceIndex(expected)
+	telemetry := collectionTrace{span: span, started: time.Now()}
 
 	startedAt := time.Now().UnixMilli()
 	for _, key := range expected {
@@ -238,17 +249,37 @@ func CollectServiceSnapshots(ctx context.Context, events ScheduleWriter, service
 	defer flushTicker.Stop()
 	deadStreamTimer := time.NewTimer(eitsDeadStreamTimeout)
 	defer deadStreamTimer.Stop()
+	stableTimer := time.NewTimer(time.Hour)
+	stableTimer.Stop()
+	defer stableTimer.Stop()
+	var stableC <-chan time.Time
 	dirtyServices := make(map[model.ServiceKey]struct{})
 	observedServices := make(map[model.ServiceKey]struct{})
 	var pfUpdates, scheduleUpdates, received int
 	handleUpdate := func(update model.ScheduleUpdate) {
 		scheduleUpdates++
-		key := schedule.observe(update, index.matchesCollectionStream(update.Service))
+		key := update.Service
+		if mapped, ok := schedule.unknownStream[serviceIdentity{networkID: key.NetworkID, serviceID: key.ServiceID}]; ok {
+			key = mapped
+		}
+		previous := schedule.updates[key]
+		target := index.matchesExpected(update.Service)
+		key = schedule.observe(update, target)
+		telemetry.observe(update, previous, target)
+		if target {
+			stableTimer.Stop()
+			stableC = nil
+			if targetTablesComplete(schedule, expected) {
+				stableTimer.Reset(eitsStableStopDuration)
+				stableC = stableTimer.C
+			}
+		}
 		dirtyServices[key] = struct{}{}
 		observedServices[key] = struct{}{}
 	}
 	handlePresentFollowing := func(pf model.PresentFollowing) {
 		pfUpdates++
+		telemetry.firstReceive("present_following")
 		var current []model.Event
 		for _, event := range []*model.Event{pf.Present, pf.Following} {
 			if event != nil {
@@ -260,14 +291,12 @@ func CollectServiceSnapshots(ctx context.Context, events ScheduleWriter, service
 	finished := false
 	var collectorResult collectionResult
 	collectorDone := false
+	endReason := "deadline"
 	for !finished {
 		select {
 		case update := <-updateCh:
 			received++
 			handleUpdate(update)
-			if shouldStopEITSCollection(schedule, expected) && schedule.stableFor(eitsStableStopDuration) {
-				cancel()
-			}
 		case pf := <-pfCh:
 			received++
 			handlePresentFollowing(pf)
@@ -275,25 +304,56 @@ func CollectServiceSnapshots(ctx context.Context, events ScheduleWriter, service
 			if partialFlushes.flush(schedule, dirtyServices) {
 				dirtyServices = make(map[model.ServiceKey]struct{})
 			}
-			if shouldStopEITSCollection(schedule, expected) && schedule.stableFor(eitsStableStopDuration) {
-				cancel()
+		case <-stableC:
+			stableC = nil
+			for pending := len(updateCh); pending > 0; pending-- {
+				handleUpdate(<-updateCh)
+			}
+			if schedule.stableFor(eitsStableStopDuration) && shouldStopEITSCollection(schedule, expected) {
+				endReason = "complete"
+				finished = true
 			}
 		case <-deadStreamTimer.C:
 			if received == 0 {
 				slog.Warn("aborting EPG collection: no EIT sections received, tuner may be connected to a dead stream",
 					"expectedServices", len(expected),
 					"waited", eitsDeadStreamTimeout)
-				cancel()
+				endReason = "no_eit"
+				finished = true
 			}
 		case collectorResult = <-collectDone:
 			collectorDone = true
+			endReason = "stream_ended"
+			if collectorResult.collectErr != nil {
+				endReason = "receive_error"
+			}
+			if collectCtx.Err() != nil {
+				endReason = "deadline"
+			}
+			if ctx.Err() != nil {
+				endReason = "canceled"
+			}
 			finished = true
 			cancel()
 		case <-collectCtx.Done():
+			if ctx.Err() != nil {
+				endReason = "canceled"
+			}
 			finished = true
 		}
 	}
 	cancel()
+	if !collectorDone {
+		if ctx.Err() != nil {
+			slog.Debug("skipping EPG collector drain during shutdown", "err", ctx.Err())
+		} else {
+			select {
+			case collectorResult = <-collectDone:
+				collectorDone = true
+			case <-time.After(2 * time.Second):
+			}
+		}
+	}
 	// The collector may have buffered updates that the loop never got to
 	// before collectDone or the deadline won the select. Drain them so
 	// already-reported progress is not dropped.
@@ -311,20 +371,13 @@ func CollectServiceSnapshots(ctx context.Context, events ScheduleWriter, service
 	pfUpserts.wait()
 	partialFlushes.stop()
 	partialFlushes.wait()
-	if !collectorDone {
-		if ctx.Err() != nil {
-			slog.Debug("skipping EPG collector drain during shutdown", "err", ctx.Err())
-		} else {
-			select {
-			case collectorResult = <-collectDone:
-				collectorDone = true
-			case <-time.After(2 * time.Second):
-			}
-		}
-	}
+	var receiveErr error
 	if collectorDone {
-		if collectorResult.collectErr != nil && !errors.Is(collectorResult.collectErr, context.Canceled) {
-			slog.Warn("EPG collector finished with error", "err", collectorResult.collectErr)
+		expectedCancellation := (errors.Is(collectorResult.collectErr, context.Canceled) || errors.Is(collectorResult.collectErr, context.DeadlineExceeded)) && endReason != "receive_error"
+		if collectorResult.collectErr != nil && !expectedCancellation {
+			receiveErr = collectorResult.collectErr
+			endReason = "receive_error"
+			slog.Warn("EPG reception failed", "err", receiveErr)
 		}
 		if pfErr := pfUpserts.Err(); pfErr != nil {
 			slog.Debug("EITPF upsert finished with error", "err", pfErr)
@@ -336,14 +389,24 @@ func CollectServiceSnapshots(ctx context.Context, events ScheduleWriter, service
 		"observedServices", len(observedServices),
 		"expectedServices", len(expected))
 
-	collectErr := persistObservedSnapshots(ctx, events, serviceStore, schedule, expected, observedServices, schedule.nowMillis(), result)
-	return result, collectErr
+	collectErr := persistObservedSnapshots(ctx, events, serviceStore, schedule, expected, observedServices, schedule.nowMillis(), result, receiveErr)
+	if ctx.Err() != nil {
+		endReason = "canceled"
+	}
+	result.EndReason = endReason
+	if receiveErr != nil {
+		result.ReceiveError = receiveErr.Error()
+	}
+	telemetry.finish(schedule, expected, endReason, result, receiveErr)
+	span.SetAttributes(attribute.Int("epg.schedule_updates", scheduleUpdates), attribute.Int("epg.present_following_updates", pfUpdates))
+	slog.Info("EPG collection finished", "reason", endReason, "targetServices", len(expected), "incompleteTargets", len(result.Incomplete), "programs", result.ProgramCount)
+	return result, errors.Join(collectErr, ctx.Err())
 }
 
 // persistObservedSnapshots stores the observed schedules, records
 // per-service EPG attempt/success state, and populates result.Observed /
 // result.Unobserved. It returns the joined error of the persist stage.
-func persistObservedSnapshots(ctx context.Context, writer ScheduleWriter, serviceStore ServiceStore, schedule *collectionSchedule, expected []model.ServiceKey, observedServices map[model.ServiceKey]struct{}, updatedAt int64, result *CollectResult) error {
+func persistObservedSnapshots(ctx context.Context, writer ScheduleWriter, serviceStore ServiceStore, schedule *collectionSchedule, expected []model.ServiceKey, observedServices map[model.ServiceKey]struct{}, updatedAt int64, result *CollectResult, receiveErr error) error {
 	var collectErr error
 	index := newExpectedServiceIndex(expected)
 	expectedObserved := 0
@@ -378,36 +441,28 @@ func persistObservedSnapshots(ctx context.Context, writer ScheduleWriter, servic
 		_, isExpected := expectedSeen[key]
 		if schedule.observed(key) {
 			inTargetStream := index.matchesCollectionStream(key)
-			if inTargetStream {
-				result.Observed = append(result.Observed, key)
-			}
+
 			if isExpected {
 				expectedObserved++
 			}
 			events := observedEvents[key]
 			result.ProgramCount += len(events)
 			update := schedule.updates[key]
-			diagnosis := schedule.diagnosis(key)
-			missingTitles, titleTotal := eventTitleCounts(events)
-			if !update.BasicComplete {
-				slog.Warn("flushing incomplete EITS collection",
-					"networkId", key.NetworkID,
-					"serviceId", key.ServiceID,
-					"report", diagnosis)
+			diagnosis := ""
+			incomplete := !update.BasicComplete || !update.ExtendedComplete
+			if inTargetStream && (isExpected || !incomplete) {
+				result.Observed = append(result.Observed, key)
 			}
-			slog.Info("finished EITS collection",
-				"networkId", key.NetworkID,
-				"serviceId", key.ServiceID,
-				"programs", len(events),
-				"missingTitles", missingTitles,
-				"titleTotal", titleTotal,
-				"basicComplete", update.BasicComplete,
-				"observedExtendedComplete", update.ExtendedComplete,
-				"report", diagnosis)
+			if isExpected && incomplete {
+				diagnosis = schedule.diagnosis(key)
+				result.Incomplete = append(result.Incomplete, key)
+				slog.Warn("target EPG collection incomplete", "networkId", key.NetworkID, "serviceId", key.ServiceID, "basicComplete", update.BasicComplete, "extendedComplete", update.ExtendedComplete, "report", diagnosis)
+			}
 			mergeCtx, mergeSpan := observability.StartSpan(ctx, observability.SpanEPGMergeServicePrograms,
 				observability.AttrEPGNetworkID.Int(int(key.NetworkID)),
 				observability.AttrEPGServiceID.Int(int(key.ServiceID)),
 				observability.AttrProgramCount.Int(len(events)),
+				attribute.Bool("epg.target", isExpected), attribute.Bool("epg.basic_complete", update.BasicComplete), attribute.Bool("epg.extended_complete", update.ExtendedComplete),
 			)
 			mergeCtx = observability.ContextWithEPGMetricSource(mergeCtx, "eits")
 			err := writer.UpsertSchedule(mergeCtx, schedule.snapshot(key, events))
@@ -421,8 +476,8 @@ func persistObservedSnapshots(ctx context.Context, writer ScheduleWriter, servic
 				collectErr = errors.Join(collectErr, fmt.Errorf("service %d: merge: %w", key.ServiceID, err))
 				continue
 			}
-			// Other streams contribute programs, not collection freshness or completion.
-			if !inTargetStream {
+			// Opportunistic partial data must not make a future target look fresh.
+			if !inTargetStream || (!isExpected && incomplete) {
 				continue
 			}
 			if err := serviceStore.SetEPGSuccess(ctx, key.NetworkID, key.ServiceID, updatedAt); err != nil {
@@ -437,11 +492,15 @@ func persistObservedSnapshots(ctx context.Context, writer ScheduleWriter, servic
 			}
 		} else if isExpected {
 			result.Unobserved = append(result.Unobserved, key)
-			slog.Warn("EITS snapshot incomplete",
+			result.Incomplete = append(result.Incomplete, key)
+			slog.Warn("target EPG not received",
 				"networkId", key.NetworkID,
 				"serviceId", key.ServiceID,
 				"report", schedule.diagnosis(key))
 			err := fmt.Errorf("service %d EITS incomplete", key.ServiceID)
+			if receiveErr != nil {
+				err = fmt.Errorf("service %d EPG reception failed: %w", key.ServiceID, receiveErr)
+			}
 			if attemptErr := serviceStore.SetEPGAttempt(ctx, key.NetworkID, key.ServiceID, updatedAt, err.Error()); attemptErr != nil {
 				observability.RecordEPGServiceUpdateError(ctx, "eits", "attempt")
 			}
@@ -454,19 +513,26 @@ func persistObservedSnapshots(ctx context.Context, writer ScheduleWriter, servic
 	return collectErr
 }
 
-// shouldStopEITSCollection reports whether every expected service's basic
-// and extended tables are complete and the collected events are good enough.
-// A service without extended tables counts as extended-complete.
-func shouldStopEITSCollection(schedule *collectionSchedule, expected []model.ServiceKey) bool {
+func targetTablesComplete(schedule *collectionSchedule, expected []model.ServiceKey) bool {
 	if len(expected) == 0 {
+		return false
+	}
+	for _, key := range expected {
+		u := schedule.updates[key]
+		if !u.BasicComplete || !u.ExtendedComplete {
+			return false
+		}
+	}
+	return true
+}
+
+// shouldStopEITSCollection also checks quality after reception has stabilized.
+func shouldStopEITSCollection(schedule *collectionSchedule, expected []model.ServiceKey) bool {
+	if !targetTablesComplete(schedule, expected) {
 		return false
 	}
 	var events [][]model.Event
 	for _, key := range expected {
-		update, ok := schedule.updates[key]
-		if !ok || !update.BasicComplete || !update.ExtendedComplete {
-			return false
-		}
 		events = append(events, schedule.events(key))
 	}
 	fillEventsFromSharedPeers(events...)

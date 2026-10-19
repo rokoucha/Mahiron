@@ -180,6 +180,49 @@ function JobResultView({ job }: { job: Job }) {
 }
 
 function JobResultItemView({ item }: { item: JobResultItem }) {
+  if (item.kind === 'candidate') {
+    const data = item.data ?? {}
+    const reasons: Record<string, string> = {
+      complete: '取得完了',
+      deadline: '取得期限に到達',
+      receive_error: '受信失敗',
+      no_eit: 'EPG未受信',
+      stream_ended: '受信終了',
+      canceled: 'キャンセル',
+    }
+    const reason = stringValue(data.endReason)
+    const results: Record<string, string> = {
+      success: '成功',
+      partial: '部分取得',
+      failure: '失敗',
+    }
+    const result = stringValue(data.result)
+    return (
+      <div className="job-result-item">
+        <strong>{item.summary || item.kind}</strong>
+        <span>
+          {result ? (results[result] ?? result) : ''}
+          {reason ? ` / ${reasons[reason] ?? reason}` : ''}
+          {numberValue(data.observed) !== null
+            ? ` / 取得 ${numberValue(data.observed)}件`
+            : ''}
+          {numberValue(data.programs) !== null
+            ? ` / 番組 ${numberValue(data.programs)}件`
+            : ''}
+          {numberValue(data.incomplete)
+            ? ` / 取得対象の不完全 ${numberValue(data.incomplete)}件`
+            : ''}
+          {numberValue(data.unobserved)
+            ? ` / 取得対象の未受信 ${numberValue(data.unobserved)}件`
+            : ''}
+        </span>
+        {stringValue(data.error) && <em>{stringValue(data.error)}</em>}
+        {stringValue(data.receiveError) && !stringValue(data.error) && (
+          <em>{stringValue(data.receiveError)}</em>
+        )}
+      </div>
+    )
+  }
   if (item.kind === 'service') {
     const data = item.data ?? {}
     const name = stringValue(data.name) || item.summary || 'サービス'
@@ -227,6 +270,7 @@ const countOrder = [
   'candidates',
   'observedServices',
   'remainingServices',
+  'incompleteServices',
   'programs',
   'targets',
   'logos',
@@ -260,6 +304,7 @@ function countLabel(key: string) {
     candidates: '候補',
     observedServices: '取得済み',
     remainingServices: '未取得',
+    incompleteServices: '取得不完全',
     programs: '番組',
     targets: '対象',
     logos: 'ロゴ',
