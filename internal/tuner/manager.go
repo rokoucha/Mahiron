@@ -529,3 +529,10 @@ var (
 	ErrUnsupportedTuner = errors.New("unsupported tuner")
 	ErrTunerUnavailable = errors.New("tuner unavailable")
 )
+
+// Changes closes when local tuner allocation changes. Subscribe before checking.
+func (tm *Manager) Changes() <-chan struct{} {
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
+	return tm.changed
+}

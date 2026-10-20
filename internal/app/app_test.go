@@ -327,3 +327,46 @@ func hasMetric(data metricdata.ResourceMetrics, name string) bool {
 	}
 	return false
 }
+
+func TestContinuousControllerWiresPeriodicCleanup(t *testing.T) {
+	database, err := db.OpenInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Migrate(t.Context(), database); err != nil {
+		t.Fatal(err)
+	}
+	obs := observability.Setup(t.Context(), config.ObservabilityConfig{}, nil)
+	cfg := &config.Config{System: &config.SystemConfig{Addresses: []config.ServerAddress{{Http: "127.0.0.1:0"}}, DataBroadcastCachePath: ":memory:", MaxConcurrentJobs: 1, EpgRetrievalTime: 5000, EpgStaleAfter: 7200000, EpgRetentionDays: 3, LogoGatherTimeout: 1200000, ServiceScanTimeout: 30000}}
+	runtime, message, err := buildRuntime(cfg, database, obs)
+	if err != nil {
+		t.Fatalf("%s: %v", message, err)
+	}
+	t.Cleanup(runtime.shutdown)
+	if runtime.epgController == nil {
+		t.Fatal("default controller not wired")
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	done := make(chan struct{})
+	go func() { defer close(done); runtime.epgController.Run(ctx) }()
+	timeout := time.NewTimer(time.Second)
+	defer timeout.Stop()
+	for {
+		changed := runtime.jobs.Changes()
+		for _, item := range runtime.jobs.GetJobs() {
+			if item.Key == "epg-cleanup" {
+				cancel()
+				<-done
+				return
+			}
+		}
+		select {
+		case <-changed:
+		case <-timeout.C:
+			cancel()
+			<-done
+			t.Fatal("controller cleaner not wired")
+		}
+	}
+}

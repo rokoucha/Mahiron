@@ -78,5 +78,41 @@ func (s *Gatherer) GatherGroup(ctx context.Context, key GroupKey) error {
 }
 
 func RetryableError(err error) bool {
-	return err != nil
+	return err != nil && !errors.Is(err, ErrIncomplete)
 }
+
+// CheckGroup is only a hint; OpenSchedule must still acquire without waiting.
+func (s *Gatherer) CheckGroup(ctx context.Context, key GroupKey) error {
+	if key.Stored {
+		return nil
+	}
+	checker, ok := s.streams.(interface {
+		CheckAvailable(context.Context, string, string) error
+	})
+	if !ok {
+		return nil
+	}
+	groups, err := s.Groups(ctx)
+	if err != nil {
+		return err
+	}
+	group := groups[key]
+	if group == nil {
+		return nil
+	}
+	var result error
+	for _, candidate := range group.Candidates {
+		if s.streams.HasSession(candidate.Type, candidate.Channel) {
+			return nil
+		}
+		if err := checker.CheckAvailable(ctx, candidate.Type, candidate.Channel); err == nil {
+			return nil
+		} else {
+			result = errors.Join(result, err)
+		}
+	}
+	return result
+}
+
+var ErrIncomplete = errors.New("EPG reception incomplete")
+var ErrDeferred = errors.New("EPG acquisition deferred: no available tuner")

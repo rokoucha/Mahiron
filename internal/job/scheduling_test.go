@@ -108,3 +108,125 @@ func TestQueuePriorityKeepsFIFOForTies(t *testing.T) {
 		t.Fatal(diff)
 	}
 }
+
+func TestQueuedWriterBlocksNewReadersButNotItsDependencies(t *testing.T) {
+	mgr, err := NewManager(Config{MaxConcurrentJobs: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = mgr.Shutdown(context.Background()) })
+	started := make(chan string, 5)
+	handler := func(key string) func(context.Context) error {
+		return func(ctx context.Context) error { started <- key; <-ctx.Done(); return ctx.Err() }
+	}
+	reader, err := mgr.EnqueueDefinition(JobDefinition{Key: "reader", SharedKeys: []string{"topology"}, Handler: handler("reader")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-started
+	writer, err := mgr.EnqueueDefinition(JobDefinition{Key: "writer", ExclusiveKeys: []string{"topology"}, Handler: handler("writer")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	late, err := mgr.EnqueueDefinition(JobDefinition{Key: "late", SharedKeys: []string{"topology"}, Handler: handler("late")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range mgr.GetJobs() {
+		if item.ID == late && item.Status != StatusQueued {
+			t.Fatal("reader overtook waiting writer")
+		}
+	}
+	_ = mgr.Abort(reader)
+	select {
+	case got := <-started:
+		if got != "writer" {
+			t.Fatalf("started %s", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("writer starved")
+	}
+	_ = mgr.Abort(writer)
+	select {
+	case got := <-started:
+		if got != "late" {
+			t.Fatalf("started %s", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("reader did not resume")
+	}
+	_ = mgr.Abort(late)
+	waitJob(t, mgr, late)
+	// An unresolved writer cannot block its own shared-key dependency.
+	mgr.mu.Lock()
+	dependency := &Job{Key: "dep", definition: &JobDefinition{SharedKeys: []string{"topology"}}}
+	waiting := &Job{Key: "waiting", definition: &JobDefinition{ExclusiveKeys: []string{"topology"}, DependsOn: []string{"dep"}}}
+	mgr.activeKeys["dep"] = true
+	mgr.queue = append(mgr.queue, waiting)
+	blocked := mgr.blockedByWriterLocked(dependency)
+	mgr.queue = nil
+	delete(mgr.activeKeys, "dep")
+	mgr.mu.Unlock()
+	if blocked {
+		t.Fatal("writer blocked its dependency")
+	}
+}
+
+func TestOnlyIndependentGroupsBypassSharedConcurrencyLimit(t *testing.T) {
+	mgr, err := NewManager(Config{MaxConcurrentJobs: 1, GroupLimits: map[string]int{"live": 1, "api": 1}, IndependentGroups: map[string]bool{"api": true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = mgr.Shutdown(context.Background()) })
+	started := make(chan string, 3)
+	handler := func(key string) func(context.Context) error {
+		return func(ctx context.Context) error { started <- key; <-ctx.Done(); return ctx.Err() }
+	}
+	ordinary, err := mgr.EnqueueDefinition(JobDefinition{Key: "ordinary", Handler: handler("ordinary")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-started
+	live, err := mgr.EnqueueDefinition(JobDefinition{Key: "live", ConcurrencyGroup: "live", Handler: handler("live")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = mgr.EnqueueDefinition(JobDefinition{Key: "api", ConcurrencyGroup: "api", Handler: handler("api")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case got := <-started:
+		if got != "api" {
+			t.Fatalf("shared limit bypassed by %s", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("independent API blocked")
+	}
+	for _, item := range mgr.GetJobs() {
+		if item.ID == live && item.Status != StatusQueued {
+			t.Fatal("live bypassed common limit")
+		}
+	}
+	_ = mgr.Abort(ordinary)
+	select {
+	case got := <-started:
+		if got != "live" {
+			t.Fatalf("started %s", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("live did not resume")
+	}
+}
+
+func TestUnconfiguredConcurrencyGroupIsRejected(t *testing.T) {
+	mgr, err := NewManager(Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = mgr.Shutdown(context.Background()) })
+	_, err = mgr.EnqueueDefinition(JobDefinition{Key: "unknown", ConcurrencyGroup: "unknown", Handler: func(context.Context) error { return nil }})
+	if err != ErrInvalidDefinition {
+		t.Fatalf("unknown group queued forever: %v", err)
+	}
+}

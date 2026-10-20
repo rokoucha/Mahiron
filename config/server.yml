@@ -11,6 +11,8 @@ dataBroadcastCacheMaxAgeDays: 14
 dataBroadcastSnapshotDisabled: false
 dataBroadcastSnapshotMaxAgeHours: 6
 maxConcurrentJobs: 1
+epgGatheringMode: continuous
+epgRefreshInterval: 1800000
 epgRetentionDays: 3
 epgRetrievalTime: 600000
 epgStaleAfter: 7200000
@@ -36,8 +38,6 @@ observability:
 jobs:
   - key: service-updater
     schedule: "5 6 * * *"
-  - key: epg-gatherer
-    schedule: "20,50 * * * *"
   - key: logo-gatherer
     schedule: "5 3 * * *"
 
