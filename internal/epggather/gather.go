@@ -10,6 +10,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/job/run"
 	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/observability"
+	"github.com/21S1298001/mahiron/internal/tuner"
 	"go.opentelemetry.io/otel/attribute"
 )
 
@@ -41,6 +42,8 @@ func gatherNetwork(ctx context.Context, events ScheduleWriter, programStore Prog
 	var result error
 	items := make([]run.Item, 0, len(ordered)+len(serviceKeys))
 	warnings := []string{}
+	partial := false
+	onlyUnavailable := true
 	observedTotal := 0
 	programTotal := 0
 	for _, candidate := range ordered {
@@ -48,7 +51,10 @@ func gatherNetwork(ctx context.Context, events ScheduleWriter, programStore Prog
 			report := epgGatherResult(networkID, len(candidates), len(serviceKeys), observedTotal, len(remaining), programTotal, items, warnings)
 			run.Set(ctx, report)
 			span.SetAttributes(epgGatherAttributes(report)...)
-			return nil
+			if partial {
+				return errors.Join(result, ErrIncomplete)
+			}
+			return result
 		}
 		targets := remaining
 		slog.Info("starting network EPG collection", "networkId", networkID, "type", candidate.Type, "channel", candidate.Channel, "services", len(targets), "activeSession", active[candidate])
@@ -62,6 +68,16 @@ func gatherNetwork(ctx context.Context, events ScheduleWriter, programStore Prog
 		sessionCtx, cancel := context.WithTimeout(candidateCtx, retrievalTime)
 		collect, listStored, candidateErr := streams.OpenSchedule(sessionCtx, candidate.Type, candidate.Channel)
 		cancel()
+		if !errors.Is(candidateErr, tuner.ErrTunerUnavailable) {
+			onlyUnavailable = false
+		}
+		if candidateErr != nil && ctx.Err() == nil && !errors.Is(candidateErr, tuner.ErrTunerUnavailable) {
+			for _, key := range targets {
+				if err := serviceStore.SetEPGAttempt(ctx, key.NetworkID, key.ServiceID, time.Now().UnixMilli(), candidateErr.Error()); err != nil {
+					candidateErr = errors.Join(candidateErr, err)
+				}
+			}
+		}
 		var collectResult *CollectResult
 		if candidateErr == nil {
 			if listStored != nil {
@@ -73,6 +89,7 @@ func gatherNetwork(ctx context.Context, events ScheduleWriter, programStore Prog
 		endReason := ""
 		if collectResult != nil {
 			endReason = collectResult.EndReason
+			partial = partial || len(collectResult.Incomplete) > len(collectResult.Unobserved)
 		}
 		if collectResult == nil && candidateErr != nil {
 			endReason = "receive_error"
@@ -136,6 +153,9 @@ func gatherNetwork(ctx context.Context, events ScheduleWriter, programStore Prog
 			report := epgGatherResult(networkID, len(candidates), len(serviceKeys), observedTotal, len(remaining), programTotal, items, warnings)
 			run.Set(ctx, report)
 			span.SetAttributes(epgGatherAttributes(report)...)
+			if partial {
+				return ErrIncomplete
+			}
 			return nil
 		}
 		if ctx.Err() != nil {
@@ -151,7 +171,13 @@ func gatherNetwork(ctx context.Context, events ScheduleWriter, programStore Prog
 		if len(ordered) == 0 {
 			return fmt.Errorf("network %d has no channel candidates", networkID)
 		}
-		result = fmt.Errorf("network %d EITS incomplete for %d services", networkID, len(remaining))
+		result = fmt.Errorf("network %d EITS incomplete for %d services: %w", networkID, len(remaining), ErrIncomplete)
+	}
+	if partial {
+		result = errors.Join(result, ErrIncomplete)
+	}
+	if onlyUnavailable && len(ordered) > 0 {
+		result = errors.Join(result, ErrDeferred)
 	}
 	slog.Warn("network EPG collection failed", "networkId", networkID, "candidates", len(ordered), "err", result)
 	report := epgGatherResult(networkID, len(candidates), len(serviceKeys), observedTotal, len(remaining), programTotal, items, warnings)

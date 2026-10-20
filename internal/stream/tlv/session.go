@@ -242,13 +242,20 @@ func (s *Session) CollectSchedule(ctx context.Context, onSchedule func(model.Sch
 			return false
 		}
 		id := sig.Section.TableID()
-		return mmt.IsMHEITPF(id) || mmt.IsMHEITSchedule(id) || id == mmt.TableIDMHTOT
+		return mmt.IsMHEITPF(id) || mmt.IsMHEITSchedule(id) || id == mmt.TableIDMHTOT || id == mmt.TableIDMHBIT
 	}, func(sig signal) error {
 		if sig.Section.TableID() == mmt.TableIDMHTOT {
 			if tot, err := mmt.ParseMHTOT(sig.Section); err == nil {
 				clock = tot.JSTTime
 			}
 			return nil
+		}
+		if sig.Section.TableID() == mmt.TableIDMHBIT {
+			now := clock
+			if now.IsZero() {
+				now = time.Now()
+			}
+			return collector.ObserveMHBIT(sig.Section, now, onSchedule)
 		}
 		eit, err := mmt.ParseMHEIT(sig.Section)
 		if err != nil {

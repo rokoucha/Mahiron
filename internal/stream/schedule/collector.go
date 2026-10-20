@@ -31,12 +31,16 @@ type Collector struct {
 	system isdb.ScheduleSystem
 	source string
 
-	mu       sync.Mutex
-	services map[model.ServiceKey]*serviceSchedule
-	pf       map[model.ServiceKey]*model.PresentFollowing
+	mu                    sync.Mutex
+	services              map[model.ServiceKey]*serviceSchedule
+	pf                    map[model.ServiceKey]*model.PresentFollowing
+	operations            map[operationService]bool
+	actualServices        map[operationService]byte
+	terrestrialParameters map[uint16][]operationDescriptor
 }
 
 type serviceSchedule struct {
+	current      model.ScheduleUpdate
 	tracker      *isdb.ScheduleTracker[[]model.Event]
 	revisions    map[uint8]model.EITRevision
 	seenVersions map[uint8]uint32
@@ -168,7 +172,7 @@ func (c *Collector) observeSchedule(section Section, now time.Time) (model.Sched
 		return model.ScheduleUpdate{}, false
 	}
 	schedule.stale = true
-	return model.ScheduleUpdate{
+	update := model.ScheduleUpdate{
 		Service: section.Service,
 		Revisions: func() []model.EITRevision {
 			c.mu.Lock()
@@ -189,11 +193,13 @@ func (c *Collector) observeSchedule(section Section, now time.Time) (model.Sched
 		BasicObserved:    schedule.tracker.HasBasic(),
 		ExtendedObserved: schedule.tracker.HasExtended(),
 		BasicComplete:    schedule.tracker.BasicComplete(),
-		ExtendedComplete: schedule.tracker.ExtendedComplete(),
+		ExtendedComplete: schedule.tracker.ExtendedComplete() && (schedule.tracker.HasExtended() || c.extendedNotTransmitted(section.Service)),
 		ObservedAt:       now.UnixMilli(),
 		Events:           func() []model.Event { return c.events(schedule) },
 		Diagnosis:        func() string { return c.diagnosis(schedule) },
-	}, true
+	}
+	schedule.current = update
+	return update, true
 }
 
 func (c *Collector) events(schedule *serviceSchedule) []model.Event {
@@ -209,6 +215,9 @@ func (c *Collector) events(schedule *serviceSchedule) []model.Event {
 func (c *Collector) diagnosis(schedule *serviceSchedule) string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if !schedule.tracker.HasExtended() && !c.extendedNotTransmitted(schedule.current.Service) {
+		return schedule.tracker.Diagnosis() + "; extended transmission unknown (awaiting EIT or BIT parameters)"
+	}
 	return schedule.tracker.Diagnosis()
 }
 
@@ -355,4 +364,9 @@ func mergeExtended(dst *model.Event, src model.ExtendedBlock) {
 	}
 	src.Items = append([]model.ExtendedItem(nil), src.Items...)
 	dst.Extended = append(dst.Extended, src)
+}
+
+func (c *Collector) extendedNotTransmitted(key model.ServiceKey) bool {
+	required, known := c.operations[operationService{key.NetworkID, key.ServiceID}]
+	return known && !required
 }

@@ -18,6 +18,7 @@ const (
 	TableIDMHEITPF     = 0x8B // present/following, self-stream
 	TableIDMHEITSStart = 0x8C // schedule, self-stream
 	TableIDMHEITSEnd   = 0x9B // schedule, self-stream
+	TableIDMHBIT       = 0x9D
 	TableIDMHSDTActual = 0x9F
 	TableIDMHSDTOther  = 0xA0
 	TableIDMHTOT       = 0xA1

@@ -547,3 +547,29 @@ func (s *tunerLiveSource) WithUser(ctx context.Context, runFn func(context.Conte
 	}
 	return runFn(ctx)
 }
+
+// ListStoredPrograms reads API-backed EPG without allocating a stream or tuner.
+func (p *Pool) ListStoredPrograms(ctx context.Context, channelType, channel string, networkID, serviceID uint16) ([]model.Event, error) {
+	config := p.findChannel(channelType, channel)
+	if config == nil {
+		return nil, ErrChannelNotFound
+	}
+	var result error
+	for _, route := range enabledRoutes(config.RoutesOrDefault()) {
+		client, ok := p.remotes[route.Remote].(interface {
+			ListServicePrograms(context.Context, uint16, uint16) ([]model.Event, error)
+		})
+		if !ok {
+			continue
+		}
+		events, err := client.ListServicePrograms(ctx, networkID, serviceID)
+		if err == nil {
+			return events, nil
+		}
+		result = errors.Join(result, err)
+	}
+	if result == nil {
+		result = ErrChannelNotFound
+	}
+	return nil, result
+}

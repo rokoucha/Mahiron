@@ -26,6 +26,7 @@ type Group struct {
 	Services   []model.ServiceKey
 	// Zero means at least one service has never been gathered.
 	OldestSuccessAt int64
+	LastFailureAt   int64
 }
 
 func groupServices(services []*service.Service, channels config.ChannelsConfig, storedEPG func(string, string) bool) map[GroupKey]*Group {
@@ -76,6 +77,9 @@ func groupServices(services []*service.Service, channels config.ChannelsConfig, 
 		success := int64(0)
 		if svc.EPG.LastSuccessAt != nil {
 			success = *svc.EPG.LastSuccessAt
+		}
+		if svc.EPG.LastError != "" && svc.EPG.LastAttemptAt != nil && *svc.EPG.LastAttemptAt > success {
+			group.LastFailureAt = max(group.LastFailureAt, *svc.EPG.LastAttemptAt)
 		}
 		if len(group.Services) == 0 || success < group.OldestSuccessAt {
 			group.OldestSuccessAt = success

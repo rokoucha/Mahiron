@@ -82,8 +82,8 @@ func TestCollectorCompletesAndOrdersEvents(t *testing.T) {
 	update := observe(t, c,
 		section(0x50, 0, 0, 1, event(3, "three"), event(1, "one")),
 	)
-	if !update.BasicObserved || !update.BasicComplete || !update.ExtendedComplete {
-		t.Fatalf("update = %+v, want observed and complete", update)
+	if !update.BasicObserved || !update.BasicComplete || update.ExtendedComplete {
+		t.Fatalf("update = %+v, want complete basic and unknown extended", update)
 	}
 	if got := eventIDs(update.Events()); !equalIDs(got, []uint16{1, 3}) {
 		t.Fatalf("events = %v, want [1 3]", got)

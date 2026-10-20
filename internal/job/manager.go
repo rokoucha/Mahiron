@@ -31,6 +31,10 @@ type Manager struct {
 	activeSharedKeys    map[string]int
 	running             int
 	maxConcurrent       int
+	groupLimits         map[string]int
+	independentGroups   map[string]bool
+	groupRunning        map[string]int
+	manualSchedules     map[string]string
 	maxHistory          int
 	mu                  sync.Mutex
 	wg                  sync.WaitGroup
@@ -43,6 +47,8 @@ type Manager struct {
 type Config struct {
 	MaxHistory        int
 	MaxConcurrentJobs int
+	GroupLimits       map[string]int
+	IndependentGroups map[string]bool
 }
 
 func NewManager(cfg Config, events ...eventPublisher) (*Manager, error) {
@@ -70,6 +76,10 @@ func NewManager(cfg Config, events ...eventPublisher) (*Manager, error) {
 		activeExclusiveKeys: make(map[string]bool),
 		activeSharedKeys:    make(map[string]int),
 		maxConcurrent:       cfg.MaxConcurrentJobs,
+		groupLimits:         cfg.GroupLimits,
+		independentGroups:   cfg.IndependentGroups,
+		groupRunning:        make(map[string]int),
+		manualSchedules:     make(map[string]string),
 		maxHistory:          cfg.MaxHistory,
 		shutdownCtx:         shutdownCtx,
 		shutdownCancel:      shutdownCancel,
@@ -154,7 +164,7 @@ func (m *Manager) enqueueLocked(def *JobDefinition) (string, error) {
 	if m.shutdownCtx.Err() != nil {
 		return "", ErrManagerShutdown
 	}
-	if def.Key == "" || def.Handler == nil {
+	if def.Key == "" || def.Handler == nil || def.ConcurrencyGroup != "" && m.groupLimits[def.ConcurrencyGroup] <= 0 {
 		return "", ErrInvalidDefinition
 	}
 	if m.activeKeys[def.Key] {
@@ -176,7 +186,7 @@ func (m *Manager) enqueueLocked(def *JobDefinition) (string, error) {
 }
 
 func (m *Manager) dispatchLocked() {
-	for m.running < m.maxConcurrent && len(m.queue) > 0 && m.shutdownCtx.Err() == nil {
+	for len(m.queue) > 0 && m.shutdownCtx.Err() == nil {
 		item := m.popRunnableQueueLocked()
 		if item == nil {
 			return
@@ -293,6 +303,26 @@ func (m *Manager) enqueueItemLocked(item *Job) {
 func (m *Manager) popRunnableQueueLocked() *Job {
 	selected := -1
 	for i, item := range m.queue {
+		group := item.definition.ConcurrencyGroup
+		sharedRunning := m.running
+		for name, independent := range m.independentGroups {
+			if independent {
+				sharedRunning -= m.groupRunning[name]
+			}
+		}
+		if !m.independentGroups[group] && sharedRunning >= m.maxConcurrent {
+			continue
+		}
+		limit := m.maxConcurrent
+		if group != "" {
+			limit = m.groupLimits[group]
+		}
+		if limit <= 0 || m.groupRunning[group] >= limit {
+			continue
+		}
+		if m.blockedByWriterLocked(item) {
+			continue
+		}
 		if !m.dependenciesSatisfiedLocked(item.definition.DependsOn, item.definition.ExclusiveKeys, item.definition.SharedKeys) {
 			continue
 		}
@@ -306,6 +336,41 @@ func (m *Manager) popRunnableQueueLocked() *Job {
 	item := m.queue[selected]
 	m.queue = append(m.queue[:selected], m.queue[selected+1:]...)
 	return item
+}
+
+// A waiting writer must be allowed to drain its readers. Writers with
+// unresolved dependencies cannot block the jobs needed to satisfy them.
+func (m *Manager) blockedByWriterLocked(item *Job) bool {
+	for _, writer := range m.queue {
+		if writer == item || len(writer.definition.ExclusiveKeys) == 0 {
+			continue
+		}
+		ready := true
+		for _, dep := range writer.definition.DependsOn {
+			if m.activeKeys[dep] {
+				ready = false
+				break
+			}
+		}
+		if !ready {
+			continue
+		}
+		for _, key := range writer.definition.ExclusiveKeys {
+			for _, shared := range item.definition.SharedKeys {
+				if key == shared {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// AddManualSchedule exposes a controller's trigger through the existing jobs API.
+func (m *Manager) AddManualSchedule(key, description string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.manualSchedules[key] = description
 }
 
 func (m *Manager) dependenciesSatisfiedLocked(dependencies, exclusiveKeys, sharedKeys []string) bool {
@@ -341,6 +406,7 @@ func (m *Manager) startJobLocked(item *Job) context.Context {
 		m.activeSharedKeys[key]++
 	}
 	m.running++
+	m.groupRunning[item.definition.ConcurrencyGroup]++
 	m.publishJobChangeLocked("update", item)
 	m.wg.Add(1)
 	slog.Info("job started", "key", item.Key, "name", item.Name, "id", item.ID)
@@ -359,6 +425,7 @@ func (m *Manager) completeActiveLocked(item *Job) {
 		}
 	}
 	m.running--
+	m.groupRunning[item.definition.ConcurrencyGroup]--
 }
 
 func (m *Manager) retryToQueueLocked(item *Job) {
@@ -535,6 +602,13 @@ func (m *Manager) Rerun(id string) error {
 
 func (m *Manager) RunSchedule(key string) error {
 	m.mu.Lock()
+	_, manual := m.manualSchedules[key]
+	m.mu.Unlock()
+	if manual {
+		_, err := m.Enqueue(key)
+		return err
+	}
+	m.mu.Lock()
 	gocronID, ok := m.gocronIDs[key]
 	m.mu.Unlock()
 	if !ok {
@@ -591,6 +665,11 @@ func (m *Manager) GetJobSchedules() []ScheduleInfo {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	var result []ScheduleInfo
+	for key, description := range m.manualSchedules {
+		if def, ok := m.definitions[key]; ok {
+			result = append(result, ScheduleInfo{Key: key, Schedule: description, JobKey: key, JobName: def.Name})
+		}
+	}
 	for _, item := range scheduled {
 		cronSchedule, ok := item.Schedule().(gocron.CronJobSchedule)
 		if !ok {

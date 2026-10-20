@@ -1275,3 +1275,62 @@ func (d *fakeLiveTunerDevice) stopCount() int {
 	defer d.mu.Unlock()
 	return d.stops
 }
+
+func TestStoredEPGDoesNotCheckOrAcquireRemoteTuner(t *testing.T) {
+	previous := newRemoteClient
+	t.Cleanup(func() { newRemoteClient = previous })
+	calls := 0
+	newRemoteClient = func(cfg config.RemoteConfig) *remote.Client {
+		return remote.NewClient(cfg, remote.WithHTTPClient(&http.Client{Transport: streamtest.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
+			calls++
+			if r.URL.Path != "/api/programs" || r.Method != http.MethodGet {
+				t.Errorf("stored EPG accessed tuner/stream: %s %s", r.Method, r.URL.Path)
+				return streamtest.StringResponse(http.StatusServiceUnavailable, ""), nil
+			}
+			return streamtest.StringResponse(http.StatusOK, `[]`), nil
+		})}))
+	}
+	manager := NewManager(ManagerConfig{Channels: config.ChannelsConfig{{Type: "CUSTOM", Channel: "A", Routes: []config.ChannelRouteConfig{{Remote: "remote", Type: "GR", Channel: "27"}}}}, Remotes: config.RemotesConfig{{Name: "remote", URL: "http://remote.local/api"}}})
+	adapter := NewEPGGatherAdapter(manager)
+	collect, list, err := adapter.OpenSchedule(t.Context(), "CUSTOM", "A")
+	if err != nil || collect != nil || list == nil {
+		t.Fatalf("open stored: collect=%v list=%v err=%v", collect != nil, list != nil, err)
+	}
+	if _, err := list(t.Context(), 4, 101); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Fatalf("requests=%d", calls)
+	}
+	if manager.HasSession("CUSTOM", "A") {
+		t.Fatal("stored synchronization allocated a session")
+	}
+}
+
+type recordingEPGAllocator struct {
+	routeSelectingTunerManager
+	waits []bool
+}
+
+func (m *recordingEPGAllocator) AcquireDevice(_ context.Context, _ string, _ *config.ChannelConfig, _ *config.ChannelConfig, wait bool) (tuner.Device, tuner.DecoderCommands, error) {
+	m.waits = append(m.waits, wait)
+	return nil, tuner.DecoderCommands{}, tuner.ErrTunerUnavailable
+}
+
+func TestEPGAcquisitionWaitIsModeSpecific(t *testing.T) {
+	for _, wait := range []bool{true, false} {
+		devices := &recordingEPGAllocator{}
+		manager := NewManager(ManagerConfig{Channels: config.ChannelsConfig{{Type: "GR", Channel: "27"}}, TunerManager: devices})
+		adapter := NewEPGGatherAdapter(manager)
+		adapter.WaitForTuner = wait
+		ctx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
+		_, _, err := adapter.OpenSchedule(ctx, "GR", "27")
+		cancel()
+		if err == nil || len(devices.waits) == 0 || devices.waits[0] != wait {
+			t.Fatalf("wait=%v acquisitions=%v err=%v", wait, devices.waits, err)
+		}
+		if !wait && !errors.Is(err, tuner.ErrTunerUnavailable) {
+			t.Fatalf("nonblocking acquisition: %v", err)
+		}
+	}
+}

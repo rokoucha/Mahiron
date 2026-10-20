@@ -113,7 +113,7 @@ func TestGroupsIgnoreDisabledChannelsAndPreferStoredCopy(t *testing.T) {
 func TestGatherGroupReloadsTopology(t *testing.T) {
 	key := GroupKey{NetworkID: 4, StreamID: 100}
 	replacement := model.ServiceKey{NetworkID: 4, StreamID: 100, ServiceID: 102}
-	session := &collectEITSession{sections: []*ts.EIT{testEIT(ts.TableIDEITSStart, replacement, 10)}}
+	session := &collectEITSession{sections: []*ts.EIT{testEIT(ts.TableIDEITSStart, replacement, 10), testEIT(0x58, replacement, 10)}}
 	store := channelServiceStore{remoteSyncServiceStore: newRemoteSyncServiceStore(), services: []*service.Service{
 		{Service: model.Service{Key: replacement, EITSchedule: true}, ChannelType: "CUSTOM", ChannelId: "new"},
 	}}
@@ -166,5 +166,22 @@ func TestUnknownLiveStreamsRemainSeparateUntilScanned(t *testing.T) {
 	groups = groupServices(services, channels, func(string, string) bool { return true })
 	if len(groups) != 1 || len(groups[GroupKey{NetworkID: 4, Stored: true}].Services) != 2 {
 		t.Fatal("stored EPG must stay network-wide without stream IDs")
+	}
+}
+
+func TestQualityWarningsDoNotBecomeGroupFailures(t *testing.T) {
+	timestamp := func(value int64) *int64 { return &value }
+	a := &service.Service{Service: model.Service{Key: model.ServiceKey{NetworkID: 4, StreamID: 100, ServiceID: 101}, EITSchedule: true}, ChannelType: "CUSTOM", ChannelId: "A", EPG: service.EPGStatus{LastSuccessAt: timestamp(100), LastAttemptAt: timestamp(100), LastError: "low quality EITS"}}
+	b := &service.Service{Service: model.Service{Key: model.ServiceKey{NetworkID: 4, StreamID: 100, ServiceID: 102}, EITSchedule: true}, ChannelType: "CUSTOM", ChannelId: "A", EPG: service.EPGStatus{LastSuccessAt: timestamp(300), LastAttemptAt: timestamp(300)}}
+	groups := groupServices([]*service.Service{a, b}, config.ChannelsConfig{{Type: "CUSTOM", Channel: "A"}}, func(string, string) bool { return false })
+	key := GroupKey{NetworkID: 4, StreamID: 100}
+	if groups[key].LastFailureAt != 0 {
+		t.Fatal("quality-only warning triggered retry")
+	}
+	a.EPG.LastAttemptAt = timestamp(200)
+	a.EPG.LastError = "EPG reception incomplete"
+	groups = groupServices([]*service.Service{a, b}, config.ChannelsConfig{{Type: "CUSTOM", Channel: "A"}}, func(string, string) bool { return false })
+	if groups[key].LastFailureAt != 200 {
+		t.Fatalf("failure timestamp smeared across services: %+v", groups[key])
 	}
 }

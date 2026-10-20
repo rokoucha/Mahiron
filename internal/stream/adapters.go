@@ -68,11 +68,13 @@ func (a *ServiceScanAdapter) ScanServices(scanCtx, acquireCtx context.Context, c
 // standard types only. A channel served by a remote yields the remote's
 // stored-program lister instead of EIT collection.
 type EPGGatherAdapter struct {
-	manager *Manager
+	// Legacy scheduled gathers may wait; continuous acquisition must not.
+	WaitForTuner bool
+	manager      *Manager
 }
 
 func NewEPGGatherAdapter(manager *Manager) *EPGGatherAdapter {
-	return &EPGGatherAdapter{manager: manager}
+	return &EPGGatherAdapter{manager: manager, WaitForTuner: true}
 }
 
 func (a *EPGGatherAdapter) HasSession(channelType, channelID string) bool {
@@ -86,7 +88,12 @@ func (a *EPGGatherAdapter) StoredEPG(channelType, channelID string) bool {
 }
 
 func (a *EPGGatherAdapter) OpenSchedule(ctx context.Context, channelType, channelID string) (func(context.Context, func(model.ScheduleUpdate) error, func(model.PresentFollowing) error) error, func(context.Context, uint16, uint16) ([]model.Event, error), error) {
-	session, err := a.manager.GetOrCreateWait(ctx, channelType, channelID)
+	if a.StoredEPG(channelType, channelID) {
+		return nil, func(ctx context.Context, nid, sid uint16) ([]model.Event, error) {
+			return a.manager.sources.ListStoredPrograms(ctx, channelType, channelID, nid, sid)
+		}, nil
+	}
+	session, err := a.manager.getOrCreate(ctx, channelType, channelID, a.WaitForTuner)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -97,4 +104,8 @@ func (a *EPGGatherAdapter) OpenSchedule(ctx context.Context, channelType, channe
 		return nil, remoteSession.ListServicePrograms, nil
 	}
 	return session.CollectSchedule, nil, nil
+}
+
+func (a *EPGGatherAdapter) CheckAvailable(ctx context.Context, channelType, channelID string) error {
+	return a.manager.CheckAvailable(ensureUserContext(ctx, channelType, channelID), channelType, channelID)
 }

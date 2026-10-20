@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	servicepkg "github.com/21S1298001/mahiron/internal/service"
 	"github.com/21S1298001/mahiron/internal/stream/channel"
 	"github.com/21S1298001/mahiron/internal/stream/schedule"
+	"github.com/21S1298001/mahiron/internal/tuner"
 	"github.com/21S1298001/mahiron/ts"
 	"github.com/google/go-cmp/cmp"
 )
@@ -102,8 +104,8 @@ func TestCollectServiceSnapshotsKeepsSameStreamServicesOutsideExpected(t *testin
 	store := &collectProgramStore{}
 	status := newRemoteSyncServiceStore()
 	session := &collectEITSession{sections: []*ts.EIT{
-		testEIT(ts.TableIDEITSStart, expected, 10),
-		testEIT(ts.TableIDEITSStart, extra, 20),
+		testEIT(ts.TableIDEITSStart, expected, 10), testEIT(0x58, expected, 10),
+		testEIT(ts.TableIDEITSStart, extra, 20), testEIT(0x58, extra, 20),
 	}}
 
 	result, err := CollectServiceSnapshots(context.Background(), store, status, session.CollectSchedule, []model.ServiceKey{expected}, 20*time.Millisecond)
@@ -130,7 +132,7 @@ func TestCollectServiceSnapshotsStoresWarningForObservedServiceOutsideExpected(t
 	status := newRemoteSyncServiceStore()
 	session := &collectEITSession{sections: []*ts.EIT{
 		testEIT(ts.TableIDEITSStart, expected, 10),
-		testSparseEIT(ts.TableIDEITSStart, extra, 10),
+		testSparseEIT(ts.TableIDEITSStart, extra, 10), testEmptyExtended(extra),
 	}}
 
 	if _, err := CollectServiceSnapshots(context.Background(), &collectProgramStore{}, status, session.CollectSchedule, []model.ServiceKey{expected}, 20*time.Millisecond); err != nil {
@@ -138,7 +140,7 @@ func TestCollectServiceSnapshotsStoresWarningForObservedServiceOutsideExpected(t
 	}
 	statusKey := model.ServiceKey{NetworkID: extra.NetworkID, ServiceID: extra.ServiceID}
 	if status.successes[statusKey] == 0 {
-		t.Fatal("extra service did not record success")
+		t.Fatal("structurally complete service did not record success")
 	}
 	if got := status.errors[statusKey]; got != "low quality EITS: 10/10 programs missing titles" {
 		t.Fatalf("extra service warning = %q", got)
@@ -287,7 +289,7 @@ func TestGatherNetworkMergesAfterCollectionTimeout(t *testing.T) {
 		[]model.ServiceKey{key},
 		20*time.Millisecond,
 	)
-	if err != nil {
+	if !errors.Is(err, ErrIncomplete) {
 		t.Fatal(err)
 	}
 	if store.calls != 1 {
@@ -299,10 +301,10 @@ func TestGatherNetworkCarriesUnobservedServicesToNextCandidate(t *testing.T) {
 	tsA := model.ServiceKey{NetworkID: 4, ServiceID: 101, StreamID: 100}
 	tsB := model.ServiceKey{NetworkID: 4, ServiceID: 161, StreamID: 101}
 	sessionA := &collectEITSession{sections: []*ts.EIT{
-		testEIT(ts.TableIDEITSStart, tsA, 10),
+		testEIT(ts.TableIDEITSStart, tsA, 10), testEIT(0x58, tsA, 10),
 	}}
 	sessionB := &collectEITSession{sections: []*ts.EIT{
-		testEIT(ts.TableIDEITSStart, tsB, 20),
+		testEIT(ts.TableIDEITSStart, tsB, 20), testEIT(0x58, tsB, 20),
 	}}
 	status := newRemoteSyncServiceStore()
 	streams := keyedEPGStreams{sessions: map[Candidate]scheduleSession{
@@ -344,7 +346,7 @@ func TestCollectServiceSnapshotsDoesNotFailWhenSomeServicesUnobserved(t *testing
 	store := &collectProgramStore{}
 	status := newRemoteSyncServiceStore()
 	session := &collectEITSession{sections: []*ts.EIT{
-		testEIT(ts.TableIDEITSStart, observed, 10),
+		testEIT(ts.TableIDEITSStart, observed, 10), testEIT(0x58, observed, 10),
 	}}
 
 	result, err := CollectServiceSnapshots(context.Background(), store, status, session.CollectSchedule, []model.ServiceKey{observed, missing}, 20*time.Millisecond)
@@ -411,7 +413,7 @@ func TestCollectServiceSnapshotsStoresLowQualityWarningWithoutFailing(t *testing
 	store := &collectProgramStore{}
 	status := newRemoteSyncServiceStore()
 	session := &collectEITSession{sections: []*ts.EIT{
-		testSparseEIT(ts.TableIDEITSStart, key, 10),
+		testSparseEIT(ts.TableIDEITSStart, key, 10), testEmptyExtended(key),
 	}}
 
 	_, err := CollectServiceSnapshots(context.Background(), store, status, session.CollectSchedule, []model.ServiceKey{key}, 20*time.Millisecond)
@@ -419,7 +421,7 @@ func TestCollectServiceSnapshotsStoresLowQualityWarningWithoutFailing(t *testing
 		t.Fatal(err)
 	}
 	if status.successes[key] == 0 {
-		t.Fatal("service did not record success")
+		t.Fatal("structurally complete service did not record success")
 	}
 	if got := status.errors[key]; got != "low quality EITS: 10/10 programs missing titles" {
 		t.Fatalf("service warning = %q", got)
@@ -440,7 +442,7 @@ func TestCollectServiceSnapshotsUsesBroadcastClockForSuccessTimestamp(t *testing
 	session := &collectEITClockSession{sections: []clockedEIT{{
 		eit:   testEIT(ts.TableIDEITSStart, key, 10),
 		clock: clock,
-	}}}
+	}, {eit: testEIT(0x58, key, 10), clock: clock}}}
 
 	if _, err := CollectServiceSnapshots(context.Background(), store, status, session.CollectSchedule, []model.ServiceKey{key}, 20*time.Millisecond); err != nil {
 		t.Fatal(err)
@@ -755,8 +757,8 @@ func (s channelServiceStore) GetServices(context.Context) ([]*servicepkg.Service
 func TestGatherGroupCollectsEachTLVStreamIndependently(t *testing.T) {
 	a := model.ServiceKey{NetworkID: 11, StreamID: 0xB110, ServiceID: 101}
 	b := model.ServiceKey{NetworkID: 11, StreamID: 0xB0E0, ServiceID: 102}
-	sessionA := &collectEITSession{sections: []*ts.EIT{testEIT(ts.TableIDEITSStart, a, 10)}}
-	sessionB := &collectEITSession{sections: []*ts.EIT{testEIT(ts.TableIDEITSStart, b, 20)}}
+	sessionA := &collectEITSession{sections: []*ts.EIT{testEIT(ts.TableIDEITSStart, a, 10), testEIT(0x58, a, 10)}}
+	sessionB := &collectEITSession{sections: []*ts.EIT{testEIT(ts.TableIDEITSStart, b, 20), testEIT(0x58, b, 20)}}
 	store := channelServiceStore{remoteSyncServiceStore: newRemoteSyncServiceStore(), services: []*servicepkg.Service{
 		{Service: model.Service{Key: a, EITSchedule: true}, ChannelType: "CUSTOM", ChannelId: "A"},
 		{Service: model.Service{Key: b, EITSchedule: true}, ChannelType: "CUSTOM", ChannelId: "B"},
@@ -891,8 +893,8 @@ func TestOtherStreamBasicUpdateKeepsDetailGroupDue(t *testing.T) {
 	if err := programs.UpsertEvents(ctx, []model.Event{prior}); err != nil {
 		t.Fatal(err)
 	}
-	sessionA := &collectEITSession{sections: []*ts.EIT{testEIT(ts.TableIDEITSStart, first, 10), testEIT(ts.TableIDEITSStart+0x10, second, 20)}}
-	sessionB := &collectEITSession{sections: []*ts.EIT{testEIT(ts.TableIDEITSStart, second, 20)}}
+	sessionA := &collectEITSession{sections: []*ts.EIT{testEIT(ts.TableIDEITSStart, first, 10), testEIT(0x58, first, 10), testEIT(ts.TableIDEITSStart+0x10, second, 20)}}
+	sessionB := &collectEITSession{sections: []*ts.EIT{testEIT(ts.TableIDEITSStart, second, 20), testEIT(0x58, second, 20)}}
 	streams := keyedEPGStreams{sessions: map[Candidate]scheduleSession{{Type: "CUSTOM", Channel: "A"}: sessionA, {Type: "CUSTOM", Channel: "B"}: sessionB}}
 	gatherer := NewGatherer(programs, programs, services, streams, channels, 20*time.Millisecond)
 	if err := gatherer.GatherGroup(ctx, GroupKey{NetworkID: 4, StreamID: 100}); err != nil {
@@ -972,4 +974,58 @@ func (s *collectProgramStore) UpsertSchedule(ctx context.Context, snapshot model
 
 func (s *contextCheckingProgramStore) UpsertSchedule(ctx context.Context, snapshot model.ScheduleSnapshot) error {
 	return s.UpsertEvents(ctx, snapshot.Events)
+}
+
+func testEmptyExtended(key model.ServiceKey) *ts.EIT {
+	eit := testEIT(0x58, key, 0)
+	eit.Events = nil
+	return eit
+}
+
+type unavailableCandidateStreams struct {
+	available Candidate
+	session   scheduleSession
+}
+
+func (unavailableCandidateStreams) HasSession(string, string) bool { return false }
+func (unavailableCandidateStreams) StoredEPG(string, string) bool  { return false }
+func (s unavailableCandidateStreams) OpenSchedule(_ context.Context, kind, channel string) (CollectSchedule, ListStoredPrograms, error) {
+	if (Candidate{Type: kind, Channel: channel}) == s.available && s.session != nil {
+		return s.session.CollectSchedule, nil, nil
+	}
+	return nil, nil, tuner.ErrTunerUnavailable
+}
+
+func TestOnlyPureTunerShortageIsDeferred(t *testing.T) {
+	a := model.ServiceKey{NetworkID: 4, StreamID: 100, ServiceID: 101}
+	b := model.ServiceKey{NetworkID: 4, StreamID: 100, ServiceID: 102}
+	candidates := []Candidate{{Type: "CUSTOM", Channel: "A"}, {Type: "CUSTOM", Channel: "B"}}
+	for _, mixed := range []bool{false, true} {
+		streams := unavailableCandidateStreams{}
+		if mixed {
+			streams.available = candidates[0]
+			streams.session = &collectEITSession{sections: []*ts.EIT{testEIT(0x50, a, 1)}}
+		}
+		events := &collectProgramStore{}
+		err := gatherNetwork(t.Context(), events, events, newRemoteSyncServiceStore(), streams, 4, candidates, []model.ServiceKey{a, b}, 20*time.Millisecond)
+		if errors.Is(err, ErrDeferred) == mixed {
+			t.Fatalf("mixed=%v err=%v", mixed, err)
+		}
+		if mixed && !errors.Is(err, ErrIncomplete) {
+			t.Fatalf("lost partial acquisition: %v", err)
+		}
+	}
+}
+
+func TestIncompleteQualityWarningPreservesBothReasons(t *testing.T) {
+	key := model.ServiceKey{NetworkID: 4, StreamID: 100, ServiceID: 101}
+	status := newRemoteSyncServiceStore()
+	session := &collectEITSession{sections: []*ts.EIT{testSparseEIT(0x50, key, 10)}}
+	if _, err := CollectServiceSnapshots(t.Context(), &collectProgramStore{}, status, session.CollectSchedule, []model.ServiceKey{key}, 20*time.Millisecond); err != nil {
+		t.Fatal(err)
+	}
+	warning := status.errors[model.ServiceKey{NetworkID: 4, ServiceID: 101}]
+	if !strings.Contains(warning, "EPG reception incomplete") || !strings.Contains(warning, "low quality EITS") {
+		t.Fatalf("lost diagnostic: %s", warning)
+	}
 }

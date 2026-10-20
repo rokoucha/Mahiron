@@ -32,16 +32,22 @@ func RegisterServiceUpdater(registry Registry, scanner ServiceScanner, epgServic
 			// Build EPG inputs only after every scan has committed its result. This
 			// is essential for satellite networks, whose services are distributed
 			// across several transponders but share one original network ID.
-			if _, err := registry.EnqueueDefinition(job.JobDefinition{
-				Key:           serviceUpdateEPGGathererKey,
-				Name:          "EPG Gatherer After Service Update",
-				Handler:       epgGathererHandler(registry, epgService, nil),
-				DependsOn:     serviceScanJobKeys(channels),
-				ExclusiveKeys: []string{"epg-service-topology"},
-				IsRerunnable:  true,
-				RetryDelays:   []time.Duration{time.Minute, 2 * time.Minute, 4 * time.Minute},
-			}); err != nil && !errors.Is(err, job.ErrJobAlreadyRunning) {
-				return fmt.Errorf("enqueue EPG gather after service scans: %w", err)
+			if epgService != nil {
+				definition := job.JobDefinition{
+					Key:           serviceUpdateEPGGathererKey,
+					Name:          "EPG Gatherer After Service Update",
+					Handler:       epgGathererHandler(registry, epgService, nil),
+					DependsOn:     serviceScanJobKeys(channels),
+					ExclusiveKeys: []string{"epg-service-topology"},
+					IsRerunnable:  true,
+					RetryDelays:   []time.Duration{time.Minute, 2 * time.Minute, 4 * time.Minute},
+				}
+				if _, continuous := epgService.(interface{ Refresh() }); continuous {
+					definition.ExclusiveKeys = nil
+				}
+				if _, err := registry.EnqueueDefinition(definition); err != nil && !errors.Is(err, job.ErrJobAlreadyRunning) {
+					return fmt.Errorf("enqueue EPG gather after service scans: %w", err)
+				}
 			}
 			run.Set(ctx, run.Result{
 				Kind:    "service_updater",

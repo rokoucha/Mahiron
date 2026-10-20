@@ -169,11 +169,31 @@ func (s *Session) ScanServices(ctx context.Context) ([]model.Service, error) {
 func (s *Session) CollectSchedule(ctx context.Context, onSchedule func(model.ScheduleUpdate) error, onPresentFollowing func(model.PresentFollowing) error) error {
 	collector := schedule.NewCollector(isdb.ScheduleTS, s.typ+"\x00"+s.channel)
 	return s.input.WithUser(ctx, func(ctx context.Context) error {
-		return s.observeEIT(ctx, func(eit *ts.EIT, clock time.Time) error {
-			if clock.IsZero() {
-				clock = time.Now()
+		var clock time.Time
+		return s.rawDemuxer.ObserveSections(ctx, func(section ts.Section) bool {
+			return ts.IsEITS(section.TableID()) || ts.IsEITPF(section.TableID()) || section.TableID() == ts.TableIDTOT || section.TableID() == ts.TableIDBIT || section.TableID() == ts.TableIDSDT0
+		}, func(section ts.Section) error {
+			if section.TableID() == ts.TableIDTOT {
+				if tot, err := ts.ParseTOT(section); err == nil {
+					clock = tot.JSTTime
+				}
+				return nil
 			}
-			return collector.Observe(ScheduleSection(eit), clock, onSchedule, onPresentFollowing)
+			now := clock
+			if now.IsZero() {
+				now = time.Now()
+			}
+			if section.TableID() == ts.TableIDSDT0 {
+				return collector.ObserveSDT(section, now, onSchedule)
+			}
+			if section.TableID() == ts.TableIDBIT {
+				return collector.ObserveBIT(section, now, onSchedule)
+			}
+			eit, err := ts.ParseEIT(section)
+			if err != nil {
+				return nil
+			}
+			return collector.Observe(ScheduleSection(eit), now, onSchedule, onPresentFollowing)
 		})
 	})
 }
@@ -459,23 +479,4 @@ func waitContext(ctx context.Context) error {
 		return err
 	}
 	return nil
-}
-
-func (s *Session) observeEIT(ctx context.Context, observe func(*ts.EIT, time.Time) error) error {
-	var latestClock time.Time
-	return s.rawDemuxer.ObserveSections(ctx, func(section ts.Section) bool {
-		return ts.IsEITS(section.TableID()) || ts.IsEITPF(section.TableID()) || section.TableID() == ts.TableIDTOT
-	}, func(section ts.Section) error {
-		if section.TableID() == ts.TableIDTOT {
-			if tot, err := ts.ParseTOT(section); err == nil {
-				latestClock = tot.JSTTime
-			}
-			return nil
-		}
-		eit, err := ts.ParseEIT(section)
-		if err != nil {
-			return nil
-		}
-		return observe(eit, latestClock)
-	})
 }

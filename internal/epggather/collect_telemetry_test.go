@@ -239,7 +239,7 @@ func TestGatherReportsPartialTargetAfterDeadline(t *testing.T) {
 	status := newRemoteSyncServiceStore()
 	store := &collectProgramStore{}
 	err := gatherNetwork(run.WithReporter(t.Context(), recorder), store, store, status, streams, 4, []Candidate{{Type: "BS", Channel: "BS01_0"}}, []model.ServiceKey{key}, 20*time.Millisecond)
-	if err != nil {
+	if !errors.Is(err, ErrIncomplete) {
 		t.Fatal(err)
 	}
 	result := recorder.result
@@ -250,7 +250,7 @@ func TestGatherReportsPartialTargetAfterDeadline(t *testing.T) {
 		t.Fatalf("candidate=%+v", result.Items[0])
 	}
 	statusKey := model.ServiceKey{NetworkID: 4, ServiceID: 101}
-	if status.errors[statusKey] != "" {
+	if status.errors[statusKey] == "" || status.successes[statusKey] != 0 {
 		t.Fatalf("partial save became service failure: %v", status.errors)
 	}
 }
@@ -272,13 +272,13 @@ func TestGatherPreservesPartialSaveAfterReceiveError(t *testing.T) {
 		store := &collectProgramStore{}
 		streams := staticEPGStreams{session: failingAfterPartialSession{key: key}}
 		err := gatherNetwork(run.WithReporter(t.Context(), recorder), store, store, status, streams, 11, candidates, []model.ServiceKey{key}, time.Second)
-		if err != nil {
+		if !errors.Is(err, ErrIncomplete) {
 			t.Fatalf("partial save failed with %d candidates: %v", len(candidates), err)
 		}
 		if len(recorder.result.Warnings) == 0 || recorder.result.Items[0].Data["result"] != "partial" || recorder.result.Items[0].Data["endReason"] != "receive_error" {
 			t.Fatalf("lost partial reception warning: %+v", recorder.result)
 		}
-		if status.errors[model.ServiceKey{NetworkID: 11, ServiceID: 102}] != "" {
+		if status.errors[model.ServiceKey{NetworkID: 11, ServiceID: 102}] == "" || status.successes[model.ServiceKey{NetworkID: 11, ServiceID: 102}] != 0 {
 			t.Fatalf("partial save changed health: %v", status.errors)
 		}
 	}

@@ -121,6 +121,12 @@ func Run(ctx context.Context, args []string) int {
 	if err := runStartupTasks(signalCtx, runtime.services, runtime.programs, runtime.jobs, runtime.serviceScanner, runtime.epgGatherer, runtime.database, cfg); err != nil {
 		slog.Error("startup tasks failed", "err", err)
 	}
+	if runtime.epgController != nil {
+		controllerCtx, stopController := context.WithCancel(signalCtx)
+		runtime.stopEPGController = stopController
+		runtime.epgControllerDone = make(chan struct{})
+		go func() { defer close(runtime.epgControllerDone); runtime.epgController.Run(controllerCtx) }()
+	}
 	if err := runtime.services.SeedEventLog(signalCtx); err != nil {
 		slog.Warn("failed to seed service events", "err", err)
 	}
@@ -142,6 +148,9 @@ type applicationRuntime struct {
 	jobs               *job.Manager
 	obs                observability.SetupResult
 	epgGatherer        *epggather.Gatherer
+	epgController      *defs.EPGController
+	stopEPGController  context.CancelFunc
+	epgControllerDone  chan struct{}
 	programs           *program.Manager
 	server             *server.Server
 	serviceScanner     *servicescan.Scanner
@@ -222,27 +231,53 @@ func buildRuntime(cfg *config.Config, database *db.DB, obs observability.SetupRe
 	scanAdapter := stream.NewServiceScanAdapter(streams)
 	logoGatherer := logogather.NewGatherer(services, stream.NewLogoGatherAdapter(streams), time.Duration(cfg.System.LogoGatherTimeout)*time.Millisecond)
 	serviceScanner := servicescan.NewScanner(services, scanAdapter, cfg.Channels, time.Duration(cfg.System.ServiceScanTimeout)*time.Millisecond)
-	epgGatherer := epggather.NewGatherer(programs, programs, services, stream.NewEPGGatherAdapter(streams), cfg.Channels, time.Duration(cfg.System.EpgRetrievalTime)*time.Millisecond)
+	epgAdapter := stream.NewEPGGatherAdapter(streams)
+	epgAdapter.WaitForTuner = cfg.System.EPGMode() != "continuous"
+	epgGatherer := epggather.NewGatherer(programs, programs, services, epgAdapter, cfg.Channels, time.Duration(cfg.System.EpgRetrievalTime)*time.Millisecond)
 
-	jobs, err := job.NewManager(job.Config{MaxHistory: 100, MaxConcurrentJobs: cfg.System.MaxConcurrentJobs}, events)
+	jobs, err := job.NewManager(job.Config{
+		MaxHistory: 100, MaxConcurrentJobs: cfg.System.MaxConcurrentJobs,
+		GroupLimits:       map[string]int{defs.EPGLiveGroup: cfg.System.MaxConcurrentJobs, defs.EPGStoredGroup: 1},
+		IndependentGroups: map[string]bool{defs.EPGStoredGroup: true},
+	}, events)
 	if err != nil {
 		return nil, "failed to create job manager", err
 	}
 
-	defs.RegisterServiceUpdater(jobs, serviceScanner, epgGatherer)
-	defs.RegisterEPGGatherer(jobs, epgGatherer, programs, cfg.System.EpgRetentionDays)
+	var scheduledEPG defs.EPGGatherer = epgGatherer
+	var controller *defs.EPGController
+	if cfg.System.EPGMode() == "continuous" {
+		interval := time.Duration(cfg.System.EpgRefreshInterval) * time.Millisecond
+		if interval <= 0 {
+			interval = 30 * time.Minute
+		}
+		controller = defs.NewEPGController(jobs, epgGatherer, interval, cfg.System.MaxConcurrentJobs)
+		controller.SetCleaner(programs, cfg.System.EpgRetentionDays)
+		controller.SetResourceChanges(tuners.Changes)
+		scheduledEPG = controller
+		jobs.AddManualSchedule(defs.EPGGathererKey, "continuous")
+	}
+	automaticEPG := scheduledEPG
+	if cfg.System.EPGMode() == "disabled" {
+		automaticEPG = nil
+	}
+	defs.RegisterServiceUpdater(jobs, serviceScanner, automaticEPG)
+	defs.RegisterEPGGatherer(jobs, scheduledEPG, programs, cfg.System.EpgRetentionDays)
 	defs.RegisterLogoGatherer(jobs, logoGatherer)
 
 	schedules := cfg.System.Jobs
 	if len(schedules) == 0 {
 		schedules = []config.JobScheduleConfig{
 			{Key: defs.ServiceUpdaterKey, Schedule: defs.ServiceUpdaterDefaultSchedule},
-			{Key: defs.EPGGathererKey, Schedule: defs.EPGGathererDefaultSchedule},
+
 			{Key: defs.LogoGathererKey, Schedule: defs.LogoGathererDefaultSchedule},
 		}
 		slog.Info("no job schedules in config, using defaults")
 	}
 
+	if cfg.System.EPGMode() == "scheduled" && len(cfg.System.Jobs) == 0 {
+		schedules = append(schedules, config.JobScheduleConfig{Key: defs.EPGGathererKey, Schedule: defs.EPGGathererDefaultSchedule})
+	}
 	for _, js := range schedules {
 		if err := jobs.AddSchedule(js.Key, js.Schedule); err != nil {
 			slog.Error("failed to add job schedule", "key", js.Key, "err", err)
@@ -286,6 +321,7 @@ func buildRuntime(cfg *config.Config, database *db.DB, obs observability.SetupRe
 		jobs:               jobs,
 		obs:                obs,
 		epgGatherer:        epgGatherer,
+		epgController:      controller,
 		programs:           programs,
 		server:             server.NewServer(listenAddresses(cfg), handler),
 		serviceScanner:     serviceScanner,
@@ -304,6 +340,10 @@ func listenAddresses(cfg *config.Config) []server.ListenAddress {
 }
 
 func (r *applicationRuntime) shutdown() {
+	if r.stopEPGController != nil {
+		r.stopEPGController()
+		<-r.epgControllerDone
+	}
 	if r.agents != nil {
 		r.agents.Close()
 	}
@@ -393,7 +433,9 @@ func runStartupTasks(ctx context.Context, services *service.Manager, programs *p
 	if err != nil {
 		return fmt.Errorf("read EPG status: %w", err)
 	}
-	enqueueStartupEPGGather(jobs, count, stale)
+	if cfg.System.EPGMode() == "scheduled" {
+		enqueueStartupEPGGather(jobs, count, stale)
+	}
 	cleanupOldEPG(ctx, programs, cfg.System.EpgRetentionDays)
 
 	return nil

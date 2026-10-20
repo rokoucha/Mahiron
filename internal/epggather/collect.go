@@ -389,7 +389,13 @@ func CollectServiceSnapshots(ctx context.Context, events ScheduleWriter, service
 		"observedServices", len(observedServices),
 		"expectedServices", len(expected))
 
-	collectErr := persistObservedSnapshots(ctx, events, serviceStore, schedule, expected, observedServices, schedule.nowMillis(), result, receiveErr)
+	persistCtx := ctx
+	if ctx.Err() != nil {
+		var persistCancel context.CancelFunc
+		persistCtx, persistCancel = context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer persistCancel()
+	}
+	collectErr := persistObservedSnapshots(persistCtx, events, serviceStore, schedule, expected, observedServices, schedule.nowMillis(), result, receiveErr)
 	if ctx.Err() != nil {
 		endReason = "canceled"
 	}
@@ -450,9 +456,6 @@ func persistObservedSnapshots(ctx context.Context, writer ScheduleWriter, servic
 			update := schedule.updates[key]
 			diagnosis := ""
 			incomplete := !update.BasicComplete || !update.ExtendedComplete
-			if inTargetStream && (isExpected || !incomplete) {
-				result.Observed = append(result.Observed, key)
-			}
 			if isExpected && incomplete {
 				diagnosis = schedule.diagnosis(key)
 				result.Incomplete = append(result.Incomplete, key)
@@ -476,8 +479,24 @@ func persistObservedSnapshots(ctx context.Context, writer ScheduleWriter, servic
 				collectErr = errors.Join(collectErr, fmt.Errorf("service %d: merge: %w", key.ServiceID, err))
 				continue
 			}
+			if inTargetStream && (isExpected || !incomplete) {
+				result.Observed = append(result.Observed, key)
+			}
 			// Opportunistic partial data must not make a future target look fresh.
-			if !inTargetStream || (!isExpected && incomplete) {
+			if !inTargetStream {
+				continue
+			}
+			if incomplete {
+				warning := "EPG reception incomplete: " + schedule.diagnosis(key)
+				if quality := lowQualityEventWarning(events); quality != "" {
+					warning += "; " + quality
+				}
+				if receiveErr != nil {
+					warning += ": " + receiveErr.Error()
+				}
+				if err := serviceStore.SetEPGAttempt(ctx, key.NetworkID, key.ServiceID, updatedAt, warning); err != nil {
+					collectErr = errors.Join(collectErr, err)
+				}
 				continue
 			}
 			if err := serviceStore.SetEPGSuccess(ctx, key.NetworkID, key.ServiceID, updatedAt); err != nil {
