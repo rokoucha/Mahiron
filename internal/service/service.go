@@ -14,9 +14,13 @@ type Service struct {
 }
 
 type EPGStatus struct {
-	LastAttemptAt *int64
-	LastSuccessAt *int64
-	LastError     string
+	LastAttemptAt    *int64
+	LastSuccessAt    *int64
+	LastError        string
+	BasicUpdatedAt   *int64
+	ExtendedProbeAt  *int64
+	ExtendedObserved bool
+	PartialAt        *int64
 }
 
 // CommonDataAnnouncement is a stored announcement of the all-receivers
@@ -38,3 +42,13 @@ func (s *Service) ItemId() int64 {
 }
 
 // Event payloads and API shapes are built in internal/mirakurun from Services.
+
+// EPGReception records acquisition evidence independently of full completion.
+type EPGReception struct {
+	UpdatedAt        int64
+	BasicComplete    bool
+	ExtendedObserved bool
+	ExtendedProbed   bool
+	Partial          bool
+	PreserveOutcome  bool
+}

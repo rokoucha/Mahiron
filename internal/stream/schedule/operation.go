@@ -143,6 +143,7 @@ func (c *Collector) observeOperation(network uint16, descriptors []operationDesc
 				continue
 			}
 			update := state.current
+			update.ExtendedRequired = required != nil && required[media]
 			update.ExtendedComplete = state.tracker.ExtendedComplete() && (state.tracker.HasExtended() || required != nil && !required[media])
 			update.Reception = nil
 			updates = append(updates, update)

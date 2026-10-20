@@ -14,7 +14,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 )
 
-func gatherNetwork(ctx context.Context, events ScheduleWriter, programStore ProgramStore, serviceStore ServiceStore, streams StreamManager, networkID uint16, candidates []Candidate, serviceKeys []model.ServiceKey, retrievalTime time.Duration) (err error) {
+func gatherNetwork(ctx context.Context, events ScheduleWriter, programStore ProgramStore, serviceStore ServiceStore, streams StreamManager, networkID uint16, candidates []Candidate, serviceKeys []model.ServiceKey, retrievalTime time.Duration, options ...CollectOptions) (err error) {
 	ctx, span := observability.StartSpan(ctx, observability.SpanEPGGatherNetwork,
 		observability.AttrEPGNetworkID.Int(int(networkID)),
 		observability.AttrEPGCandidates.Int(len(candidates)),
@@ -43,16 +43,26 @@ func gatherNetwork(ctx context.Context, events ScheduleWriter, programStore Prog
 	items := make([]run.Item, 0, len(ordered)+len(serviceKeys))
 	warnings := []string{}
 	partial := false
+	incompleteTotal, deferredTotal := 0, 0
+	partialError := func() error {
+		if result == nil && incompleteTotal > 0 && incompleteTotal == deferredTotal {
+			return ErrPartial
+		}
+		return errors.Join(result, ErrIncomplete)
+	}
 	onlyUnavailable := true
 	observedTotal := 0
 	programTotal := 0
 	for _, candidate := range ordered {
 		if len(remaining) == 0 {
 			report := epgGatherResult(networkID, len(candidates), len(serviceKeys), observedTotal, len(remaining), programTotal, items, warnings)
+			if partial && incompleteTotal == deferredTotal && result == nil {
+				report.Kind = "epg_partial"
+			}
 			run.Set(ctx, report)
 			span.SetAttributes(epgGatherAttributes(report)...)
 			if partial {
-				return errors.Join(result, ErrIncomplete)
+				return partialError()
 			}
 			return result
 		}
@@ -83,12 +93,14 @@ func gatherNetwork(ctx context.Context, events ScheduleWriter, programStore Prog
 			if listStored != nil {
 				collectResult, candidateErr = syncStoredPrograms(candidateCtx, programStore, serviceStore, listStored, targets, retrievalTime)
 			} else {
-				collectResult, candidateErr = CollectServiceSnapshots(candidateCtx, events, serviceStore, collect, targets, retrievalTime)
+				collectResult, candidateErr = CollectServiceSnapshots(candidateCtx, events, serviceStore, collect, targets, retrievalTime, options...)
 			}
 		}
 		endReason := ""
 		if collectResult != nil {
 			endReason = collectResult.EndReason
+			incompleteTotal += len(collectResult.Incomplete) - len(collectResult.Unobserved)
+			deferredTotal += len(collectResult.DeferredExtended)
 			partial = partial || len(collectResult.Incomplete) > len(collectResult.Unobserved)
 		}
 		if collectResult == nil && candidateErr != nil {
@@ -151,10 +163,13 @@ func gatherNetwork(ctx context.Context, events ScheduleWriter, programStore Prog
 		if candidateErr == nil && len(remaining) == 0 {
 			slog.Debug("finished network EPG collection", "networkId", networkID, "type", candidate.Type, "channel", candidate.Channel)
 			report := epgGatherResult(networkID, len(candidates), len(serviceKeys), observedTotal, len(remaining), programTotal, items, warnings)
+			if partial && incompleteTotal == deferredTotal && result == nil {
+				report.Kind = "epg_partial"
+			}
 			run.Set(ctx, report)
 			span.SetAttributes(epgGatherAttributes(report)...)
 			if partial {
-				return ErrIncomplete
+				return partialError()
 			}
 			return nil
 		}
@@ -195,6 +210,7 @@ func gatherNetwork(ctx context.Context, events ScheduleWriter, programStore Prog
 			})
 		}
 	}
+
 	run.Set(ctx, report)
 	span.SetAttributes(epgGatherAttributes(report)...)
 	return result

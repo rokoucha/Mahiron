@@ -20,11 +20,15 @@ func MarshalService(svc *apigen.Service) []byte {
 // broadcast service. web/api fills it from the stored service.
 type ServiceState struct {
 	// Channel is attached to the service when set.
-	Channel          *apigen.Channel
-	HasLogoData      bool
-	EPGLastAttemptAt *int64
-	EPGLastSuccessAt *int64
-	EPGLastError     string
+	Channel             *apigen.Channel
+	HasLogoData         bool
+	EPGLastAttemptAt    *int64
+	EPGLastSuccessAt    *int64
+	EPGLastError        string
+	EPGBasicUpdatedAt   *int64
+	EPGExtendedProbeAt  *int64
+	EPGExtendedObserved bool
+	EPGPartialAt        *int64
 }
 
 // ServiceToAPI converts a broadcast service and its state to the
@@ -51,6 +55,19 @@ func ServiceToAPI(svc *model.Service, state ServiceState) apigen.Service {
 		result.EpgUpdatedAt = apigen.NewOptUnixtimeMS(apigen.UnixtimeMS(*state.EPGLastSuccessAt))
 	} else {
 		result.EpgReady = apigen.NewOptBool(false)
+	}
+	if state.EPGBasicUpdatedAt != nil {
+		result.EpgReady = apigen.NewOptBool(true)
+		result.EpgBasicUpdatedAt = apigen.NewOptUnixtimeMS(apigen.UnixtimeMS(*state.EPGBasicUpdatedAt))
+	}
+	if state.EPGExtendedProbeAt != nil {
+		result.EpgExtendedProbeAt = apigen.NewOptUnixtimeMS(apigen.UnixtimeMS(*state.EPGExtendedProbeAt))
+	}
+	if state.EPGPartialAt != nil {
+		result.EpgPartialAt = apigen.NewOptUnixtimeMS(apigen.UnixtimeMS(*state.EPGPartialAt))
+	}
+	if state.EPGBasicUpdatedAt != nil || state.EPGExtendedProbeAt != nil || state.EPGExtendedObserved {
+		result.EpgExtendedObserved = apigen.NewOptBool(state.EPGExtendedObserved)
 	}
 	if state.EPGLastAttemptAt != nil {
 		result.EpgLastAttemptAt = apigen.NewOptUnixtimeMS(apigen.UnixtimeMS(*state.EPGLastAttemptAt))

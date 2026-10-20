@@ -192,6 +192,7 @@ func (c *Collector) observeSchedule(section Section, now time.Time) (model.Sched
 		},
 		BasicObserved:    schedule.tracker.HasBasic(),
 		ExtendedObserved: schedule.tracker.HasExtended(),
+		ExtendedRequired: c.operations[operationService{section.Service.NetworkID, section.Service.ServiceID}],
 		BasicComplete:    schedule.tracker.BasicComplete(),
 		ExtendedComplete: schedule.tracker.ExtendedComplete() && (schedule.tracker.HasExtended() || c.extendedNotTransmitted(section.Service)),
 		ObservedAt:       now.UnixMilli(),

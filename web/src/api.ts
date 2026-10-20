@@ -41,6 +41,10 @@ export type Service = {
   eitPresentFollowing?: boolean
   remoteControlKeyId?: number
   epgReady?: boolean
+  epgBasicUpdatedAt?: number
+  epgExtendedProbeAt?: number
+  epgExtendedObserved?: boolean
+  epgPartialAt?: number
   epgUpdatedAt?: number
   epgLastAttemptAt?: number
   epgLastError?: string

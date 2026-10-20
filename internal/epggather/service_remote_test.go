@@ -216,3 +216,7 @@ func TestGatherGroupSyncsStoredProgramsAcrossStreams(t *testing.T) {
 func (s *remoteSyncProgramStore) UpsertSchedule(ctx context.Context, snapshot model.ScheduleSnapshot) error {
 	return s.UpsertEvents(ctx, snapshot.Events)
 }
+
+func (s *remoteSyncServiceStore) SetEPGReception(context.Context, uint16, uint16, service.EPGReception) error {
+	return nil
+}

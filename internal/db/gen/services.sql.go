@@ -121,6 +121,7 @@ SELECT COUNT(CASE
        END) AS stale,
        COUNT(CASE
          WHEN epg.last_error IS NOT NULL AND epg.last_error != ''
+           AND (epg.partial_at IS NULL OR epg.partial_at != epg.last_attempt_at)
          THEN 1
        END) AS failed,
        MAX(epg.last_success_at) AS last_success_at
@@ -179,7 +180,7 @@ SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.provid
          WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
            AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
        ) AS has_logo_data,
-       epg.last_attempt_at, epg.last_success_at, epg.last_error
+       epg.last_attempt_at, epg.last_success_at, epg.last_error, epg.basic_updated_at, epg.extended_probe_at, epg.extended_observed, epg.partial_at
 FROM services s
 LEFT JOIN epg_service_status epg
   ON epg.network_id = s.network_id AND epg.service_id = s.service_id
@@ -192,7 +193,7 @@ SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.provid
          WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
            AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
        ) AS has_logo_data,
-       epg.last_attempt_at, epg.last_success_at, epg.last_error
+       epg.last_attempt_at, epg.last_success_at, epg.last_error, epg.basic_updated_at, epg.extended_probe_at, epg.extended_observed, epg.partial_at
 FROM services s
 LEFT JOIN epg_service_status epg
   ON epg.network_id = s.network_id AND epg.service_id = s.service_id
@@ -211,11 +212,15 @@ type GetServiceByChannelAndIDParams struct {
 }
 
 type GetServiceByChannelAndIDRow struct {
-	Service       Service `json:"service"`
-	HasLogoData   bool    `json:"has_logo_data"`
-	LastAttemptAt *int64  `json:"last_attempt_at"`
-	LastSuccessAt *int64  `json:"last_success_at"`
-	LastError     *string `json:"last_error"`
+	Service          Service `json:"service"`
+	HasLogoData      bool    `json:"has_logo_data"`
+	LastAttemptAt    *int64  `json:"last_attempt_at"`
+	LastSuccessAt    *int64  `json:"last_success_at"`
+	LastError        *string `json:"last_error"`
+	BasicUpdatedAt   *int64  `json:"basic_updated_at"`
+	ExtendedProbeAt  *int64  `json:"extended_probe_at"`
+	ExtendedObserved *int64  `json:"extended_observed"`
+	PartialAt        *int64  `json:"partial_at"`
 }
 
 func (q *Queries) GetServiceByChannelAndID(ctx context.Context, arg GetServiceByChannelAndIDParams) (GetServiceByChannelAndIDRow, error) {
@@ -249,6 +254,10 @@ func (q *Queries) GetServiceByChannelAndID(ctx context.Context, arg GetServiceBy
 		&i.LastAttemptAt,
 		&i.LastSuccessAt,
 		&i.LastError,
+		&i.BasicUpdatedAt,
+		&i.ExtendedProbeAt,
+		&i.ExtendedObserved,
+		&i.PartialAt,
 	)
 	return i, err
 }
@@ -259,7 +268,7 @@ SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.provid
          WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
            AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
        ) AS has_logo_data,
-       epg.last_attempt_at, epg.last_success_at, epg.last_error
+       epg.last_attempt_at, epg.last_success_at, epg.last_error, epg.basic_updated_at, epg.extended_probe_at, epg.extended_observed, epg.partial_at
 FROM services s
 LEFT JOIN epg_service_status epg
   ON epg.network_id = s.network_id AND epg.service_id = s.service_id
@@ -267,11 +276,15 @@ WHERE s.id = ?
 `
 
 type GetServiceByIDRow struct {
-	Service       Service `json:"service"`
-	HasLogoData   bool    `json:"has_logo_data"`
-	LastAttemptAt *int64  `json:"last_attempt_at"`
-	LastSuccessAt *int64  `json:"last_success_at"`
-	LastError     *string `json:"last_error"`
+	Service          Service `json:"service"`
+	HasLogoData      bool    `json:"has_logo_data"`
+	LastAttemptAt    *int64  `json:"last_attempt_at"`
+	LastSuccessAt    *int64  `json:"last_success_at"`
+	LastError        *string `json:"last_error"`
+	BasicUpdatedAt   *int64  `json:"basic_updated_at"`
+	ExtendedProbeAt  *int64  `json:"extended_probe_at"`
+	ExtendedObserved *int64  `json:"extended_observed"`
+	PartialAt        *int64  `json:"partial_at"`
 }
 
 func (q *Queries) GetServiceByID(ctx context.Context, id string) (GetServiceByIDRow, error) {
@@ -300,6 +313,10 @@ func (q *Queries) GetServiceByID(ctx context.Context, id string) (GetServiceByID
 		&i.LastAttemptAt,
 		&i.LastSuccessAt,
 		&i.LastError,
+		&i.BasicUpdatedAt,
+		&i.ExtendedProbeAt,
+		&i.ExtendedObserved,
+		&i.PartialAt,
 	)
 	return i, err
 }
@@ -310,7 +327,7 @@ SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.provid
          WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
            AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
        ) AS has_logo_data,
-       epg.last_attempt_at, epg.last_success_at, epg.last_error
+       epg.last_attempt_at, epg.last_success_at, epg.last_error, epg.basic_updated_at, epg.extended_probe_at, epg.extended_observed, epg.partial_at
 FROM services s
 LEFT JOIN epg_service_status epg
   ON epg.network_id = s.network_id AND epg.service_id = s.service_id
@@ -318,11 +335,15 @@ WHERE s.network_id * 100000 + s.service_id = ?
 `
 
 type GetServiceByItemIDRow struct {
-	Service       Service `json:"service"`
-	HasLogoData   bool    `json:"has_logo_data"`
-	LastAttemptAt *int64  `json:"last_attempt_at"`
-	LastSuccessAt *int64  `json:"last_success_at"`
-	LastError     *string `json:"last_error"`
+	Service          Service `json:"service"`
+	HasLogoData      bool    `json:"has_logo_data"`
+	LastAttemptAt    *int64  `json:"last_attempt_at"`
+	LastSuccessAt    *int64  `json:"last_success_at"`
+	LastError        *string `json:"last_error"`
+	BasicUpdatedAt   *int64  `json:"basic_updated_at"`
+	ExtendedProbeAt  *int64  `json:"extended_probe_at"`
+	ExtendedObserved *int64  `json:"extended_observed"`
+	PartialAt        *int64  `json:"partial_at"`
 }
 
 func (q *Queries) GetServiceByItemID(ctx context.Context, networkID int64) (GetServiceByItemIDRow, error) {
@@ -351,6 +372,10 @@ func (q *Queries) GetServiceByItemID(ctx context.Context, networkID int64) (GetS
 		&i.LastAttemptAt,
 		&i.LastSuccessAt,
 		&i.LastError,
+		&i.BasicUpdatedAt,
+		&i.ExtendedProbeAt,
+		&i.ExtendedObserved,
+		&i.PartialAt,
 	)
 	return i, err
 }
@@ -361,7 +386,7 @@ SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.provid
          WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
            AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
        ) AS has_logo_data,
-       epg.last_attempt_at, epg.last_success_at, epg.last_error
+       epg.last_attempt_at, epg.last_success_at, epg.last_error, epg.basic_updated_at, epg.extended_probe_at, epg.extended_observed, epg.partial_at
 FROM services s
 LEFT JOIN epg_service_status epg
   ON epg.network_id = s.network_id AND epg.service_id = s.service_id
@@ -374,11 +399,15 @@ type GetServiceByNetworkServiceIDParams struct {
 }
 
 type GetServiceByNetworkServiceIDRow struct {
-	Service       Service `json:"service"`
-	HasLogoData   bool    `json:"has_logo_data"`
-	LastAttemptAt *int64  `json:"last_attempt_at"`
-	LastSuccessAt *int64  `json:"last_success_at"`
-	LastError     *string `json:"last_error"`
+	Service          Service `json:"service"`
+	HasLogoData      bool    `json:"has_logo_data"`
+	LastAttemptAt    *int64  `json:"last_attempt_at"`
+	LastSuccessAt    *int64  `json:"last_success_at"`
+	LastError        *string `json:"last_error"`
+	BasicUpdatedAt   *int64  `json:"basic_updated_at"`
+	ExtendedProbeAt  *int64  `json:"extended_probe_at"`
+	ExtendedObserved *int64  `json:"extended_observed"`
+	PartialAt        *int64  `json:"partial_at"`
 }
 
 func (q *Queries) GetServiceByNetworkServiceID(ctx context.Context, arg GetServiceByNetworkServiceIDParams) (GetServiceByNetworkServiceIDRow, error) {
@@ -407,6 +436,10 @@ func (q *Queries) GetServiceByNetworkServiceID(ctx context.Context, arg GetServi
 		&i.LastAttemptAt,
 		&i.LastSuccessAt,
 		&i.LastError,
+		&i.BasicUpdatedAt,
+		&i.ExtendedProbeAt,
+		&i.ExtendedObserved,
+		&i.PartialAt,
 	)
 	return i, err
 }
@@ -417,7 +450,7 @@ SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.provid
          WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
            AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
        ) AS has_logo_data,
-       epg.last_attempt_at, epg.last_success_at, epg.last_error
+       epg.last_attempt_at, epg.last_success_at, epg.last_error, epg.basic_updated_at, epg.extended_probe_at, epg.extended_observed, epg.partial_at
 FROM services s
 LEFT JOIN epg_service_status epg
   ON epg.network_id = s.network_id AND epg.service_id = s.service_id
@@ -431,11 +464,15 @@ type GetServiceByTripletParams struct {
 }
 
 type GetServiceByTripletRow struct {
-	Service       Service `json:"service"`
-	HasLogoData   bool    `json:"has_logo_data"`
-	LastAttemptAt *int64  `json:"last_attempt_at"`
-	LastSuccessAt *int64  `json:"last_success_at"`
-	LastError     *string `json:"last_error"`
+	Service          Service `json:"service"`
+	HasLogoData      bool    `json:"has_logo_data"`
+	LastAttemptAt    *int64  `json:"last_attempt_at"`
+	LastSuccessAt    *int64  `json:"last_success_at"`
+	LastError        *string `json:"last_error"`
+	BasicUpdatedAt   *int64  `json:"basic_updated_at"`
+	ExtendedProbeAt  *int64  `json:"extended_probe_at"`
+	ExtendedObserved *int64  `json:"extended_observed"`
+	PartialAt        *int64  `json:"partial_at"`
 }
 
 func (q *Queries) GetServiceByTriplet(ctx context.Context, arg GetServiceByTripletParams) (GetServiceByTripletRow, error) {
@@ -464,6 +501,10 @@ func (q *Queries) GetServiceByTriplet(ctx context.Context, arg GetServiceByTripl
 		&i.LastAttemptAt,
 		&i.LastSuccessAt,
 		&i.LastError,
+		&i.BasicUpdatedAt,
+		&i.ExtendedProbeAt,
+		&i.ExtendedObserved,
+		&i.PartialAt,
 	)
 	return i, err
 }
@@ -474,7 +515,7 @@ SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.provid
          WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
            AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
        ) AS has_logo_data,
-       epg.last_attempt_at, epg.last_success_at, epg.last_error
+       epg.last_attempt_at, epg.last_success_at, epg.last_error, epg.basic_updated_at, epg.extended_probe_at, epg.extended_observed, epg.partial_at
 FROM services s
 LEFT JOIN epg_service_status epg
   ON epg.network_id = s.network_id AND epg.service_id = s.service_id
@@ -487,11 +528,15 @@ type GetServicesByChannelParams struct {
 }
 
 type GetServicesByChannelRow struct {
-	Service       Service `json:"service"`
-	HasLogoData   bool    `json:"has_logo_data"`
-	LastAttemptAt *int64  `json:"last_attempt_at"`
-	LastSuccessAt *int64  `json:"last_success_at"`
-	LastError     *string `json:"last_error"`
+	Service          Service `json:"service"`
+	HasLogoData      bool    `json:"has_logo_data"`
+	LastAttemptAt    *int64  `json:"last_attempt_at"`
+	LastSuccessAt    *int64  `json:"last_success_at"`
+	LastError        *string `json:"last_error"`
+	BasicUpdatedAt   *int64  `json:"basic_updated_at"`
+	ExtendedProbeAt  *int64  `json:"extended_probe_at"`
+	ExtendedObserved *int64  `json:"extended_observed"`
+	PartialAt        *int64  `json:"partial_at"`
 }
 
 func (q *Queries) GetServicesByChannel(ctx context.Context, arg GetServicesByChannelParams) ([]GetServicesByChannelRow, error) {
@@ -526,6 +571,10 @@ func (q *Queries) GetServicesByChannel(ctx context.Context, arg GetServicesByCha
 			&i.LastAttemptAt,
 			&i.LastSuccessAt,
 			&i.LastError,
+			&i.BasicUpdatedAt,
+			&i.ExtendedProbeAt,
+			&i.ExtendedObserved,
+			&i.PartialAt,
 		); err != nil {
 			return nil, err
 		}
@@ -584,18 +633,22 @@ SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.provid
          WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
            AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
        ) AS has_logo_data,
-       epg.last_attempt_at, epg.last_success_at, epg.last_error
+       epg.last_attempt_at, epg.last_success_at, epg.last_error, epg.basic_updated_at, epg.extended_probe_at, epg.extended_observed, epg.partial_at
 FROM services s
 LEFT JOIN epg_service_status epg
   ON epg.network_id = s.network_id AND epg.service_id = s.service_id
 `
 
 type ListServicesRow struct {
-	Service       Service `json:"service"`
-	HasLogoData   bool    `json:"has_logo_data"`
-	LastAttemptAt *int64  `json:"last_attempt_at"`
-	LastSuccessAt *int64  `json:"last_success_at"`
-	LastError     *string `json:"last_error"`
+	Service          Service `json:"service"`
+	HasLogoData      bool    `json:"has_logo_data"`
+	LastAttemptAt    *int64  `json:"last_attempt_at"`
+	LastSuccessAt    *int64  `json:"last_success_at"`
+	LastError        *string `json:"last_error"`
+	BasicUpdatedAt   *int64  `json:"basic_updated_at"`
+	ExtendedProbeAt  *int64  `json:"extended_probe_at"`
+	ExtendedObserved *int64  `json:"extended_observed"`
+	PartialAt        *int64  `json:"partial_at"`
 }
 
 func (q *Queries) ListServices(ctx context.Context) ([]ListServicesRow, error) {
@@ -630,6 +683,10 @@ func (q *Queries) ListServices(ctx context.Context) ([]ListServicesRow, error) {
 			&i.LastAttemptAt,
 			&i.LastSuccessAt,
 			&i.LastError,
+			&i.BasicUpdatedAt,
+			&i.ExtendedProbeAt,
+			&i.ExtendedObserved,
+			&i.PartialAt,
 		); err != nil {
 			return nil, err
 		}
@@ -665,6 +722,53 @@ func (q *Queries) SetEPGAttempt(ctx context.Context, arg SetEPGAttemptParams) er
 		arg.ServiceID,
 		arg.LastAttemptAt,
 		arg.LastError,
+	)
+	return err
+}
+
+const setEPGExtendedObserved = `-- name: SetEPGExtendedObserved :exec
+INSERT INTO epg_service_status (network_id, service_id, extended_observed)
+VALUES (?, ?, 1)
+ON CONFLICT(network_id, service_id) DO UPDATE SET extended_observed = 1
+`
+
+type SetEPGExtendedObservedParams struct {
+	NetworkID int64 `json:"network_id"`
+	ServiceID int64 `json:"service_id"`
+}
+
+func (q *Queries) SetEPGExtendedObserved(ctx context.Context, arg SetEPGExtendedObservedParams) error {
+	_, err := q.db.ExecContext(ctx, setEPGExtendedObserved, arg.NetworkID, arg.ServiceID)
+	return err
+}
+
+const setEPGReception = `-- name: SetEPGReception :exec
+INSERT INTO epg_service_status (network_id, service_id, basic_updated_at, extended_probe_at, extended_observed, partial_at)
+VALUES (?, ?, ?, ?, ?, ?)
+ON CONFLICT(network_id, service_id) DO UPDATE SET
+ basic_updated_at = COALESCE(excluded.basic_updated_at, basic_updated_at),
+ extended_probe_at = COALESCE(excluded.extended_probe_at, extended_probe_at),
+ extended_observed = MAX(extended_observed, excluded.extended_observed),
+ partial_at = excluded.partial_at
+`
+
+type SetEPGReceptionParams struct {
+	NetworkID        int64  `json:"network_id"`
+	ServiceID        int64  `json:"service_id"`
+	BasicUpdatedAt   *int64 `json:"basic_updated_at"`
+	ExtendedProbeAt  *int64 `json:"extended_probe_at"`
+	ExtendedObserved int64  `json:"extended_observed"`
+	PartialAt        *int64 `json:"partial_at"`
+}
+
+func (q *Queries) SetEPGReception(ctx context.Context, arg SetEPGReceptionParams) error {
+	_, err := q.db.ExecContext(ctx, setEPGReception,
+		arg.NetworkID,
+		arg.ServiceID,
+		arg.BasicUpdatedAt,
+		arg.ExtendedProbeAt,
+		arg.ExtendedObserved,
+		arg.PartialAt,
 	)
 	return err
 }

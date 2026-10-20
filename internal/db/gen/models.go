@@ -16,11 +16,15 @@ type CommonDataAnnouncement struct {
 }
 
 type EpgServiceStatus struct {
-	NetworkID     int64   `json:"network_id"`
-	ServiceID     int64   `json:"service_id"`
-	LastAttemptAt *int64  `json:"last_attempt_at"`
-	LastSuccessAt *int64  `json:"last_success_at"`
-	LastError     *string `json:"last_error"`
+	NetworkID        int64   `json:"network_id"`
+	ServiceID        int64   `json:"service_id"`
+	LastAttemptAt    *int64  `json:"last_attempt_at"`
+	LastSuccessAt    *int64  `json:"last_success_at"`
+	LastError        *string `json:"last_error"`
+	BasicUpdatedAt   *int64  `json:"basic_updated_at"`
+	ExtendedProbeAt  *int64  `json:"extended_probe_at"`
+	ExtendedObserved int64   `json:"extended_observed"`
+	PartialAt        *int64  `json:"partial_at"`
 }
 
 type Metadata struct {

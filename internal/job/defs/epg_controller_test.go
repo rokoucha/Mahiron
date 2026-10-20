@@ -249,3 +249,28 @@ func TestContinuousEPGRetryDoesNotStarveEarlierFreshnessDeadline(t *testing.T) {
 		})
 	}
 }
+
+func TestContinuousEPGPartialUsesPersistedNextDeadline(t *testing.T) {
+	mgr := controllerManager(t)
+	key := epggather.GroupKey{NetworkID: 65534, StreamID: 1}
+	now := time.Now()
+	service := &scheduledEPG{groups: map[epggather.GroupKey]*epggather.Group{key: {NextDueAt: now.Add(-time.Second).UnixMilli()}}, gather: func(context.Context, epggather.GroupKey) error { return epggather.ErrPartial }}
+	c := NewEPGController(mgr, service, 30*time.Minute, 1)
+	states := map[epggather.GroupKey]*epgDeadline{}
+	c.reconcile(t.Context(), states, now)
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	result, err := mgr.Wait(ctx, states[key].id)
+	if err != nil || result.HasFailed {
+		t.Fatalf("partial=%+v error=%v", result, err)
+	}
+	service.groups[key].NextDueAt = now.Add(30 * time.Minute).UnixMilli()
+	c.reconcile(t.Context(), states, now.Add(time.Second))
+	if states[key].id != "" || states[key].failures != 0 {
+		t.Fatalf("partial retried immediately: %+v", states[key])
+	}
+	c.reconcile(t.Context(), states, now.Add(30*time.Minute))
+	if states[key].id == "" {
+		t.Fatal("basic deadline missed")
+	}
+}

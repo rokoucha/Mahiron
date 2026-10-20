@@ -251,6 +251,11 @@ func buildRuntime(cfg *config.Config, database *db.DB, obs observability.SetupRe
 		if interval <= 0 {
 			interval = 30 * time.Minute
 		}
+		epgGatherer.SetReceptionPolicy(epggather.ReceptionPolicy{
+			RefreshInterval:       interval,
+			ExtendedProbeInterval: time.Duration(cfg.System.EpgExtendedProbeInterval) * time.Millisecond,
+			UnknownExtendedIdle:   time.Duration(cfg.System.EpgUnknownExtendedIdleTime) * time.Millisecond,
+		})
 		controller = defs.NewEPGController(jobs, epgGatherer, interval, cfg.System.MaxConcurrentJobs)
 		controller.SetCleaner(programs, cfg.System.EpgRetentionDays)
 		controller.SetResourceChanges(tuners.Changes)

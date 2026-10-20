@@ -179,6 +179,9 @@ func (c *EPGController) reconcile(ctx context.Context, states map[epggather.Grou
 			state.next = time.Time{}
 		}
 		due := time.UnixMilli(group.OldestSuccessAt).Add(c.interval)
+		if group.NextDueAt != 0 {
+			due = time.UnixMilli(group.NextDueAt)
+		}
 		if state.forced || state.failures > 0 || state.deferred {
 			due = time.Time{}
 		}
@@ -228,6 +231,9 @@ func (c *EPGController) reconcile(ctx context.Context, states map[epggather.Grou
 		handler := def.Handler
 		def.Handler = func(ctx context.Context) error {
 			err := handler(ctx)
+			if errors.Is(err, epggather.ErrPartial) {
+				return nil
+			}
 			if errors.Is(err, epggather.ErrDeferred) {
 				run.Set(ctx, run.Result{Kind: "epg_deferred", Summary: "waiting for an available tuner"})
 				return nil

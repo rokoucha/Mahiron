@@ -33,6 +33,8 @@ type SystemConfig struct {
 	DataBroadcastSnapshotDisabled    *bool  `json:"dataBroadcastSnapshotDisabled,omitempty"`
 	DataBroadcastSnapshotMaxAgeHours int    `json:"dataBroadcastSnapshotMaxAgeHours,omitempty"`
 	EpgGatheringMode                 string `json:"epgGatheringMode,omitempty"`
+	EpgUnknownExtendedIdleTime       int    `json:"epgUnknownExtendedIdleTime,omitempty"`
+	EpgExtendedProbeInterval         int    `json:"epgExtendedProbeInterval,omitempty"`
 	EpgRefreshInterval               int    `json:"epgRefreshInterval,omitempty"`
 	EpgRetentionDays                 int    `json:"epgRetentionDays,omitempty"`
 	EpgRetrievalTime                 int    `json:"epgRetrievalTime,omitempty"`
@@ -92,6 +94,8 @@ func LoadAndParseSystemConfig(filePath string) (*SystemConfig, error) {
 		DataBroadcastSnapshotMaxAgeHours: 6,
 		MaxConcurrentJobs:                1,
 		EpgRefreshInterval:               1800000,
+		EpgUnknownExtendedIdleTime:       30000,
+		EpgExtendedProbeInterval:         21600000,
 		EpgRetentionDays:                 3,
 		EpgRetrievalTime:                 600000,
 		EpgStaleAfter:                    7200000,
@@ -151,6 +155,9 @@ func LoadAndParseSystemConfig(filePath string) (*SystemConfig, error) {
 	}
 	if config.EpgRefreshInterval <= 0 {
 		return nil, errors.New("epgRefreshInterval must be > 0")
+	}
+	if config.EpgUnknownExtendedIdleTime < 0 || config.EpgUnknownExtendedIdleTime > 0 && config.EpgUnknownExtendedIdleTime < 1000 || config.EpgExtendedProbeInterval <= 0 {
+		return nil, errors.New("epgUnknownExtendedIdleTime must be 0 or >= 1000 and epgExtendedProbeInterval must be > 0")
 	}
 	if config.EpgGatheringMode != "" && config.EpgGatheringMode != "continuous" && config.EpgGatheringMode != "scheduled" && config.EpgGatheringMode != "disabled" {
 		return nil, errors.New("epgGatheringMode must be continuous, scheduled or disabled")

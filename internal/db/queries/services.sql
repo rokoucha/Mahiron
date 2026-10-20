@@ -4,7 +4,7 @@ SELECT sqlc.embed(s), EXISTS (
          WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
            AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
        ) AS has_logo_data,
-       epg.last_attempt_at, epg.last_success_at, epg.last_error
+       epg.last_attempt_at, epg.last_success_at, epg.last_error, epg.basic_updated_at, epg.extended_probe_at, epg.extended_observed, epg.partial_at
 FROM services s
 LEFT JOIN epg_service_status epg
   ON epg.network_id = s.network_id AND epg.service_id = s.service_id;
@@ -15,7 +15,7 @@ SELECT sqlc.embed(s), EXISTS (
          WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
            AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
        ) AS has_logo_data,
-       epg.last_attempt_at, epg.last_success_at, epg.last_error
+       epg.last_attempt_at, epg.last_success_at, epg.last_error, epg.basic_updated_at, epg.extended_probe_at, epg.extended_observed, epg.partial_at
 FROM services s
 LEFT JOIN epg_service_status epg
   ON epg.network_id = s.network_id AND epg.service_id = s.service_id
@@ -27,7 +27,7 @@ SELECT sqlc.embed(s), EXISTS (
          WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
            AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
        ) AS has_logo_data,
-       epg.last_attempt_at, epg.last_success_at, epg.last_error
+       epg.last_attempt_at, epg.last_success_at, epg.last_error, epg.basic_updated_at, epg.extended_probe_at, epg.extended_observed, epg.partial_at
 FROM services s
 LEFT JOIN epg_service_status epg
   ON epg.network_id = s.network_id AND epg.service_id = s.service_id
@@ -39,7 +39,7 @@ SELECT sqlc.embed(s), EXISTS (
          WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
            AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
        ) AS has_logo_data,
-       epg.last_attempt_at, epg.last_success_at, epg.last_error
+       epg.last_attempt_at, epg.last_success_at, epg.last_error, epg.basic_updated_at, epg.extended_probe_at, epg.extended_observed, epg.partial_at
 FROM services s
 LEFT JOIN epg_service_status epg
   ON epg.network_id = s.network_id AND epg.service_id = s.service_id
@@ -51,7 +51,7 @@ SELECT sqlc.embed(s), EXISTS (
          WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
            AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
        ) AS has_logo_data,
-       epg.last_attempt_at, epg.last_success_at, epg.last_error
+       epg.last_attempt_at, epg.last_success_at, epg.last_error, epg.basic_updated_at, epg.extended_probe_at, epg.extended_observed, epg.partial_at
 FROM services s
 LEFT JOIN epg_service_status epg
   ON epg.network_id = s.network_id AND epg.service_id = s.service_id
@@ -63,7 +63,7 @@ SELECT sqlc.embed(s), EXISTS (
          WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
            AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
        ) AS has_logo_data,
-       epg.last_attempt_at, epg.last_success_at, epg.last_error
+       epg.last_attempt_at, epg.last_success_at, epg.last_error, epg.basic_updated_at, epg.extended_probe_at, epg.extended_observed, epg.partial_at
 FROM services s
 LEFT JOIN epg_service_status epg
   ON epg.network_id = s.network_id AND epg.service_id = s.service_id
@@ -76,7 +76,7 @@ SELECT sqlc.embed(s), EXISTS (
          WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
            AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
        ) AS has_logo_data,
-       epg.last_attempt_at, epg.last_success_at, epg.last_error
+       epg.last_attempt_at, epg.last_success_at, epg.last_error, epg.basic_updated_at, epg.extended_probe_at, epg.extended_observed, epg.partial_at
 FROM services s
 LEFT JOIN epg_service_status epg
   ON epg.network_id = s.network_id AND epg.service_id = s.service_id
@@ -97,6 +97,7 @@ SELECT COUNT(CASE
        END) AS stale,
        COUNT(CASE
          WHEN epg.last_error IS NOT NULL AND epg.last_error != ''
+           AND (epg.partial_at IS NULL OR epg.partial_at != epg.last_attempt_at)
          THEN 1
        END) AS failed,
        MAX(epg.last_success_at) AS last_success_at
@@ -188,7 +189,7 @@ SELECT sqlc.embed(s), EXISTS (
          WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
            AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
        ) AS has_logo_data,
-       epg.last_attempt_at, epg.last_success_at, epg.last_error
+       epg.last_attempt_at, epg.last_success_at, epg.last_error, epg.basic_updated_at, epg.extended_probe_at, epg.extended_observed, epg.partial_at
 FROM services s
 LEFT JOIN epg_service_status epg
   ON epg.network_id = s.network_id AND epg.service_id = s.service_id
@@ -223,3 +224,17 @@ ON CONFLICT(network_id, service_id) DO UPDATE SET
   last_attempt_at=excluded.last_attempt_at,
   last_success_at=excluded.last_success_at,
   last_error=NULL;
+
+-- name: SetEPGReception :exec
+INSERT INTO epg_service_status (network_id, service_id, basic_updated_at, extended_probe_at, extended_observed, partial_at)
+VALUES (?, ?, ?, ?, ?, ?)
+ON CONFLICT(network_id, service_id) DO UPDATE SET
+ basic_updated_at = COALESCE(excluded.basic_updated_at, basic_updated_at),
+ extended_probe_at = COALESCE(excluded.extended_probe_at, extended_probe_at),
+ extended_observed = MAX(extended_observed, excluded.extended_observed),
+ partial_at = excluded.partial_at;
+
+-- name: SetEPGExtendedObserved :exec
+INSERT INTO epg_service_status (network_id, service_id, extended_observed)
+VALUES (?, ?, 1)
+ON CONFLICT(network_id, service_id) DO UPDATE SET extended_observed = 1;
