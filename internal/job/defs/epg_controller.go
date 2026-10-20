@@ -152,20 +152,8 @@ func (c *EPGController) reconcile(ctx context.Context, states map[epggather.Grou
 		}
 	}
 	keys := make([]epggather.GroupKey, 0, len(groups))
-	for key := range groups {
-		keys = append(keys, key)
-	}
-	slices.SortFunc(keys, func(a, b epggather.GroupKey) int {
-		if groups[a].OldestSuccessAt < groups[b].OldestSuccessAt {
-			return -1
-		}
-		if groups[a].OldestSuccessAt > groups[b].OldestSuccessAt {
-			return 1
-		}
-		return compareGroupKeys(a, b)
-	})
-	for _, key := range keys {
-		group := groups[key]
+	deadlines := make(map[epggather.GroupKey]time.Time, len(groups))
+	for key, group := range groups {
 		state := states[key]
 		if state == nil {
 			state = &epgDeadline{lastSuccess: group.OldestSuccessAt}
@@ -190,16 +178,27 @@ func (c *EPGController) reconcile(ctx context.Context, states map[epggather.Grou
 			state.forced = true
 			state.next = time.Time{}
 		}
+		due := time.UnixMilli(group.OldestSuccessAt).Add(c.interval)
+		if state.forced || state.failures > 0 || state.deferred {
+			due = time.Time{}
+		}
+		deadlines[key] = maxTime(due, state.next)
+		keys = append(keys, key)
+	}
+	// Retry deadlines must compete with freshness deadlines; an old success
+	// alone would let repeatedly incomplete streams starve overdue peers.
+	slices.SortFunc(keys, func(a, b epggather.GroupKey) int {
+		if order := deadlines[a].Compare(deadlines[b]); order != 0 {
+			return order
+		}
+		return compareGroupKeys(a, b)
+	})
+	for _, key := range keys {
+		state, group := states[key], groups[key]
 		if state.id != "" {
 			continue
 		}
-		due := time.UnixMilli(group.OldestSuccessAt).Add(c.interval)
-		if state.forced || state.failures > 0 || state.deferred {
-			due = now
-		}
-		if state.next.After(due) {
-			due = state.next
-		}
+		due := deadlines[key]
 		if due.After(now) {
 			if due.Before(next) {
 				next = due
