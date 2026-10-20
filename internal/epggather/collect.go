@@ -9,16 +9,18 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/observability"
+	"github.com/21S1298001/mahiron/internal/service"
 	"go.opentelemetry.io/otel/attribute"
 )
 
 type CollectResult struct {
-	Observed     []model.ServiceKey
-	Unobserved   []model.ServiceKey
-	ProgramCount int
-	Incomplete   []model.ServiceKey
-	EndReason    string
-	ReceiveError string
+	Observed         []model.ServiceKey
+	Unobserved       []model.ServiceKey
+	ProgramCount     int
+	Incomplete       []model.ServiceKey
+	EndReason        string
+	ReceiveError     string
+	DeferredExtended []model.ServiceKey
 }
 
 const eitsCollectionBuffer = 4096
@@ -182,7 +184,7 @@ func (c *collectionSchedule) snapshot(key model.ServiceKey, events []model.Event
 // services are complete, the stream turns out dead or retrievalTime passes.
 type CollectSchedule = func(context.Context, func(model.ScheduleUpdate) error, func(model.PresentFollowing) error) error
 
-func CollectServiceSnapshots(ctx context.Context, events ScheduleWriter, serviceStore ServiceStore, collect CollectSchedule, expected []model.ServiceKey, retrievalTime time.Duration) (result *CollectResult, err error) {
+func CollectServiceSnapshots(ctx context.Context, events ScheduleWriter, serviceStore ServiceStore, collect CollectSchedule, expected []model.ServiceKey, retrievalTime time.Duration, options ...CollectOptions) (result *CollectResult, err error) {
 	ctx, span := observability.StartSpan(ctx, observability.SpanEPGCollectServiceSnapshots,
 		observability.AttrEPGServices.Int(len(expected)),
 		observability.AttrEPGRetrievalTimeMS.Int64(retrievalTime.Milliseconds()),
@@ -191,6 +193,10 @@ func CollectServiceSnapshots(ctx context.Context, events ScheduleWriter, service
 
 	if len(expected) == 0 {
 		return nil, errors.New("collectServiceSnapshots: expected is empty")
+	}
+	var option CollectOptions
+	if len(options) > 0 {
+		option = options[0]
 	}
 	result = &CollectResult{}
 	index := newExpectedServiceIndex(expected)
@@ -253,6 +259,10 @@ func CollectServiceSnapshots(ctx context.Context, events ScheduleWriter, service
 	stableTimer.Stop()
 	defer stableTimer.Stop()
 	var stableC <-chan time.Time
+	idleTimer := time.NewTimer(time.Hour)
+	idleTimer.Stop()
+	defer idleTimer.Stop()
+	var idleC <-chan time.Time
 	dirtyServices := make(map[model.ServiceKey]struct{})
 	observedServices := make(map[model.ServiceKey]struct{})
 	var pfUpdates, scheduleUpdates, received int
@@ -267,6 +277,12 @@ func CollectServiceSnapshots(ctx context.Context, events ScheduleWriter, service
 		key = schedule.observe(update, target)
 		telemetry.observe(update, previous, target)
 		if target {
+			idleTimer.Stop()
+			idleC = nil
+			if option.canYield(schedule, expected) {
+				idleTimer.Reset(option.UnknownExtendedIdle)
+				idleC = idleTimer.C
+			}
 			stableTimer.Stop()
 			stableC = nil
 			if targetTablesComplete(schedule, expected) {
@@ -311,6 +327,15 @@ func CollectServiceSnapshots(ctx context.Context, events ScheduleWriter, service
 			}
 			if schedule.stableFor(eitsStableStopDuration) && shouldStopEITSCollection(schedule, expected) {
 				endReason = "complete"
+				finished = true
+			}
+		case <-idleC:
+			idleC = nil
+			for pending := len(updateCh); pending > 0; pending-- {
+				handleUpdate(<-updateCh)
+			}
+			if option.canYield(schedule, expected) && schedule.stableFor(option.UnknownExtendedIdle) {
+				endReason = "unknown_extended_idle"
 				finished = true
 			}
 		case <-deadStreamTimer.C:
@@ -395,7 +420,8 @@ func CollectServiceSnapshots(ctx context.Context, events ScheduleWriter, service
 		persistCtx, persistCancel = context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer persistCancel()
 	}
-	collectErr := persistObservedSnapshots(persistCtx, events, serviceStore, schedule, expected, observedServices, schedule.nowMillis(), result, receiveErr)
+	result.EndReason = endReason
+	collectErr := persistObservedSnapshots(persistCtx, events, serviceStore, schedule, expected, observedServices, schedule.nowMillis(), result, receiveErr, option)
 	if ctx.Err() != nil {
 		endReason = "canceled"
 	}
@@ -412,7 +438,7 @@ func CollectServiceSnapshots(ctx context.Context, events ScheduleWriter, service
 // persistObservedSnapshots stores the observed schedules, records
 // per-service EPG attempt/success state, and populates result.Observed /
 // result.Unobserved. It returns the joined error of the persist stage.
-func persistObservedSnapshots(ctx context.Context, writer ScheduleWriter, serviceStore ServiceStore, schedule *collectionSchedule, expected []model.ServiceKey, observedServices map[model.ServiceKey]struct{}, updatedAt int64, result *CollectResult, receiveErr error) error {
+func persistObservedSnapshots(ctx context.Context, writer ScheduleWriter, serviceStore ServiceStore, schedule *collectionSchedule, expected []model.ServiceKey, observedServices map[model.ServiceKey]struct{}, updatedAt int64, result *CollectResult, receiveErr error, option CollectOptions) error {
 	var collectErr error
 	index := newExpectedServiceIndex(expected)
 	expectedObserved := 0
@@ -486,6 +512,23 @@ func persistObservedSnapshots(ctx context.Context, writer ScheduleWriter, servic
 			if !inTargetStream {
 				continue
 			}
+			if !isExpected && incomplete {
+				if update.ExtendedObserved {
+					if err := serviceStore.SetEPGReception(ctx, key.NetworkID, key.ServiceID, service.EPGReception{UpdatedAt: updatedAt, ExtendedObserved: true, PreserveOutcome: true}); err != nil {
+						collectErr = errors.Join(collectErr, err)
+					}
+				}
+				continue
+			}
+			plannedPartial := isExpected && receiveErr == nil && (result.EndReason == "unknown_extended_idle" || result.EndReason == "deadline") && option.unknownExtended(update, key)
+			reception := service.EPGReception{UpdatedAt: updatedAt, BasicComplete: update.BasicComplete, ExtendedObserved: update.ExtendedObserved, ExtendedProbed: !incomplete || option.ProbeExtended && result.EndReason == "deadline" && receiveErr == nil && update.BasicComplete, Partial: plannedPartial}
+			if err := serviceStore.SetEPGReception(ctx, key.NetworkID, key.ServiceID, reception); err != nil {
+				collectErr = errors.Join(collectErr, err)
+				plannedPartial = false
+			}
+			if plannedPartial {
+				result.DeferredExtended = append(result.DeferredExtended, key)
+			}
 			if incomplete {
 				warning := "EPG reception incomplete: " + schedule.diagnosis(key)
 				if quality := lowQualityEventWarning(events); quality != "" {
@@ -510,6 +553,11 @@ func persistObservedSnapshots(ctx context.Context, writer ScheduleWriter, servic
 				}
 			}
 		} else if isExpected {
+			if schedule.updates[key].ExtendedObserved {
+				if err := serviceStore.SetEPGReception(ctx, key.NetworkID, key.ServiceID, service.EPGReception{UpdatedAt: updatedAt, ExtendedObserved: true, PreserveOutcome: true}); err != nil {
+					collectErr = errors.Join(collectErr, err)
+				}
+			}
 			result.Unobserved = append(result.Unobserved, key)
 			result.Incomplete = append(result.Incomplete, key)
 			slog.Warn("target EPG not received",

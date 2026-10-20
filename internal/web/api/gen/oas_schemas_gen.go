@@ -7782,6 +7782,10 @@ type Service struct {
 	RemoteControlKeyId  OptInt               `json:"remoteControlKeyId"`
 	EpgReady            OptBool              `json:"epgReady"`
 	EpgUpdatedAt        OptUnixtimeMS        `json:"epgUpdatedAt"`
+	EpgBasicUpdatedAt   OptUnixtimeMS        `json:"epgBasicUpdatedAt"`
+	EpgExtendedProbeAt  OptUnixtimeMS        `json:"epgExtendedProbeAt"`
+	EpgExtendedObserved OptBool              `json:"epgExtendedObserved"`
+	EpgPartialAt        OptUnixtimeMS        `json:"epgPartialAt"`
 	EpgLastAttemptAt    OptUnixtimeMS        `json:"epgLastAttemptAt"`
 	EpgLastError        OptString            `json:"epgLastError"`
 	Channel             OptChannel           `json:"channel"`
@@ -7851,6 +7855,26 @@ func (s *Service) GetEpgReady() OptBool {
 // GetEpgUpdatedAt returns the value of EpgUpdatedAt.
 func (s *Service) GetEpgUpdatedAt() OptUnixtimeMS {
 	return s.EpgUpdatedAt
+}
+
+// GetEpgBasicUpdatedAt returns the value of EpgBasicUpdatedAt.
+func (s *Service) GetEpgBasicUpdatedAt() OptUnixtimeMS {
+	return s.EpgBasicUpdatedAt
+}
+
+// GetEpgExtendedProbeAt returns the value of EpgExtendedProbeAt.
+func (s *Service) GetEpgExtendedProbeAt() OptUnixtimeMS {
+	return s.EpgExtendedProbeAt
+}
+
+// GetEpgExtendedObserved returns the value of EpgExtendedObserved.
+func (s *Service) GetEpgExtendedObserved() OptBool {
+	return s.EpgExtendedObserved
+}
+
+// GetEpgPartialAt returns the value of EpgPartialAt.
+func (s *Service) GetEpgPartialAt() OptUnixtimeMS {
+	return s.EpgPartialAt
 }
 
 // GetEpgLastAttemptAt returns the value of EpgLastAttemptAt.
@@ -7936,6 +7960,26 @@ func (s *Service) SetEpgReady(val OptBool) {
 // SetEpgUpdatedAt sets the value of EpgUpdatedAt.
 func (s *Service) SetEpgUpdatedAt(val OptUnixtimeMS) {
 	s.EpgUpdatedAt = val
+}
+
+// SetEpgBasicUpdatedAt sets the value of EpgBasicUpdatedAt.
+func (s *Service) SetEpgBasicUpdatedAt(val OptUnixtimeMS) {
+	s.EpgBasicUpdatedAt = val
+}
+
+// SetEpgExtendedProbeAt sets the value of EpgExtendedProbeAt.
+func (s *Service) SetEpgExtendedProbeAt(val OptUnixtimeMS) {
+	s.EpgExtendedProbeAt = val
+}
+
+// SetEpgExtendedObserved sets the value of EpgExtendedObserved.
+func (s *Service) SetEpgExtendedObserved(val OptBool) {
+	s.EpgExtendedObserved = val
+}
+
+// SetEpgPartialAt sets the value of EpgPartialAt.
+func (s *Service) SetEpgPartialAt(val OptUnixtimeMS) {
+	s.EpgPartialAt = val
 }
 
 // SetEpgLastAttemptAt sets the value of EpgLastAttemptAt.

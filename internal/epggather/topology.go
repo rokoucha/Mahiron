@@ -4,6 +4,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/service"
+	"time"
 )
 
 type Candidate struct {
@@ -27,9 +28,10 @@ type Group struct {
 	// Zero means at least one service has never been gathered.
 	OldestSuccessAt int64
 	LastFailureAt   int64
+	NextDueAt       int64
 }
 
-func groupServices(services []*service.Service, channels config.ChannelsConfig, storedEPG func(string, string) bool) map[GroupKey]*Group {
+func groupServices(services []*service.Service, channels config.ChannelsConfig, storedEPG func(string, string) bool, policies ...ReceptionPolicy) map[GroupKey]*Group {
 	enabled := make(map[Candidate]bool)
 	for _, ch := range channels {
 		if !config.IsChannelDisabled(ch) {
@@ -78,11 +80,26 @@ func groupServices(services []*service.Service, channels config.ChannelsConfig, 
 		if svc.EPG.LastSuccessAt != nil {
 			success = *svc.EPG.LastSuccessAt
 		}
-		if svc.EPG.LastError != "" && svc.EPG.LastAttemptAt != nil && *svc.EPG.LastAttemptAt > success {
+		if svc.EPG.LastError != "" && svc.EPG.LastAttemptAt != nil && *svc.EPG.LastAttemptAt > success && (svc.EPG.PartialAt == nil || *svc.EPG.PartialAt != *svc.EPG.LastAttemptAt) {
 			group.LastFailureAt = max(group.LastFailureAt, *svc.EPG.LastAttemptAt)
 		}
 		if len(group.Services) == 0 || success < group.OldestSuccessAt {
 			group.OldestSuccessAt = success
+		}
+		if len(policies) > 0 && policies[0].RefreshInterval > 0 {
+			policy := policies[0]
+			due := time.UnixMilli(success).Add(policy.RefreshInterval).UnixMilli()
+			if !isStored && svc.EPG.PartialAt != nil && svc.EPG.BasicUpdatedAt != nil && !svc.EPG.ExtendedObserved {
+				due = time.UnixMilli(*svc.EPG.BasicUpdatedAt).Add(policy.RefreshInterval).UnixMilli()
+				probe := int64(0)
+				if svc.EPG.ExtendedProbeAt != nil {
+					probe = time.UnixMilli(*svc.EPG.ExtendedProbeAt).Add(policy.ExtendedProbeInterval).UnixMilli()
+				}
+				due = min(due, probe)
+			}
+			if len(group.Services) == 0 || due < group.NextDueAt {
+				group.NextDueAt = due
+			}
 		}
 		group.Services = append(group.Services, svc.Key)
 	}

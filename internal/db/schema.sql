@@ -75,5 +75,9 @@ CREATE TABLE IF NOT EXISTS epg_service_status (
     last_attempt_at INTEGER,
     last_success_at INTEGER,
     last_error TEXT,
+    basic_updated_at INTEGER,
+    extended_probe_at INTEGER,
+    extended_observed INTEGER NOT NULL DEFAULT 0,
+    partial_at INTEGER,
     PRIMARY KEY (network_id, service_id)
 );

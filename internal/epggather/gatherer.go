@@ -15,6 +15,7 @@ type ServiceStore interface {
 	GetServices(context.Context) ([]*service.Service, error)
 	SetEPGAttempt(context.Context, uint16, uint16, int64, string) error
 	SetEPGSuccess(context.Context, uint16, uint16, int64) error
+	SetEPGReception(context.Context, uint16, uint16, service.EPGReception) error
 }
 
 // ListStoredPrograms lists a remote server's stored programs of a service.
@@ -34,6 +35,7 @@ type StreamManager interface {
 }
 
 type Gatherer struct {
+	policy        ReceptionPolicy
 	channels      config.ChannelsConfig
 	events        ScheduleWriter
 	programStore  ProgramStore
@@ -61,7 +63,7 @@ func (s *Gatherer) Groups(ctx context.Context) (map[GroupKey]*Group, error) {
 	if len(storedServices) == 0 {
 		return nil, errors.New("EPG gathering requires scanned services")
 	}
-	return groupServices(storedServices, s.channels, s.streams.StoredEPG), nil
+	return groupServices(storedServices, s.channels, s.streams.StoredEPG, s.policy), nil
 }
 
 func (s *Gatherer) GatherGroup(ctx context.Context, key GroupKey) error {
@@ -70,15 +72,33 @@ func (s *Gatherer) GatherGroup(ctx context.Context, key GroupKey) error {
 	if err != nil {
 		return fmt.Errorf("get services: %w", err)
 	}
-	group := groupServices(storedServices, s.channels, s.streams.StoredEPG)[key]
+	group := groupServices(storedServices, s.channels, s.streams.StoredEPG, s.policy)[key]
 	if group == nil {
 		return nil
 	}
-	return gatherNetwork(ctx, s.events, s.programStore, s.serviceStore, s.streams, key.NetworkID, group.Candidates, group.Services, s.retrievalTime)
+	return gatherNetwork(ctx, s.events, s.programStore, s.serviceStore, s.streams, key.NetworkID, group.Candidates, group.Services, s.retrievalTime, s.collectOptions(storedServices, group))
+}
+
+func (s *Gatherer) SetReceptionPolicy(policy ReceptionPolicy) { s.policy = policy }
+
+func (s *Gatherer) collectOptions(services []*service.Service, group *Group) CollectOptions {
+	option := CollectOptions{UnknownExtendedIdle: s.policy.UnknownExtendedIdle, PreviouslyExtended: make(map[model.ServiceKey]bool)}
+	for _, svc := range services {
+		for _, key := range group.Services {
+			if svc.Key != key {
+				continue
+			}
+			option.PreviouslyExtended[key] = option.PreviouslyExtended[key] || svc.EPG.ExtendedObserved
+			if svc.EPG.ExtendedProbeAt == nil || time.UnixMilli(*svc.EPG.ExtendedProbeAt).Add(s.policy.ExtendedProbeInterval).Before(time.Now()) {
+				option.ProbeExtended = true
+			}
+		}
+	}
+	return option
 }
 
 func RetryableError(err error) bool {
-	return err != nil && !errors.Is(err, ErrIncomplete)
+	return err != nil && !errors.Is(err, ErrIncomplete) && !errors.Is(err, ErrPartial)
 }
 
 // CheckGroup is only a hint; OpenSchedule must still acquire without waiting.
@@ -116,3 +136,5 @@ func (s *Gatherer) CheckGroup(ctx context.Context, key GroupKey) error {
 
 var ErrIncomplete = errors.New("EPG reception incomplete")
 var ErrDeferred = errors.New("EPG acquisition deferred: no available tuner")
+
+var ErrPartial = errors.New("basic EPG updated; extended transmission remains unknown")

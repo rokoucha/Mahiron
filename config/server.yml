@@ -13,6 +13,8 @@ dataBroadcastSnapshotMaxAgeHours: 6
 maxConcurrentJobs: 1
 epgGatheringMode: continuous
 epgRefreshInterval: 1800000
+epgUnknownExtendedIdleTime: 30000
+epgExtendedProbeInterval: 21600000
 epgRetentionDays: 3
 epgRetrievalTime: 600000
 epgStaleAfter: 7200000

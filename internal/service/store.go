@@ -19,6 +19,7 @@ type Store interface {
 	PruneChannels(ctx context.Context, active []ChannelKey) error
 	SetEPGAttempt(ctx context.Context, networkID, serviceID uint16, attemptedAt int64, lastError string) error
 	SetEPGSuccess(ctx context.Context, networkID, serviceID uint16, succeededAt int64) error
+	SetEPGReception(context.Context, uint16, uint16, EPGReception) error
 	UpdateServiceLogoMetadata(ctx context.Context, networkID, transportStreamID, serviceID uint16, logoID, logoVersion, downloadDataID int64) (bool, error)
 	DeleteLogo(ctx context.Context, networkID, transportStreamID, serviceID uint16, logoID int64, logoType int64, logoVersion int64, downloadDataID int64) error
 	UpsertLogo(ctx context.Context, networkID, transportStreamID, serviceID uint16, logoID int64, logoType int64, logoVersion int64, downloadDataID int64, data []byte, updatedAt int64) error

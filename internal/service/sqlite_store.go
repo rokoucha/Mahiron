@@ -186,6 +186,27 @@ func (s *sqliteStore) SetEPGAttempt(ctx context.Context, networkID, serviceID ui
 	})
 }
 
+func (s *sqliteStore) SetEPGReception(ctx context.Context, networkID, serviceID uint16, reception EPGReception) error {
+	if reception.PreserveOutcome {
+		if !reception.ExtendedObserved {
+			return nil
+		}
+		return s.wq.SetEPGExtendedObserved(ctx, gen.SetEPGExtendedObservedParams{NetworkID: int64(networkID), ServiceID: int64(serviceID)})
+	}
+
+	var basic, probe, partial *int64
+	if reception.BasicComplete {
+		basic = &reception.UpdatedAt
+	}
+	if reception.ExtendedProbed {
+		probe = &reception.UpdatedAt
+	}
+	if reception.Partial {
+		partial = &reception.UpdatedAt
+	}
+	return s.wq.SetEPGReception(ctx, gen.SetEPGReceptionParams{NetworkID: int64(networkID), ServiceID: int64(serviceID), BasicUpdatedAt: basic, ExtendedProbeAt: probe, ExtendedObserved: boolToInt64(reception.ExtendedObserved), PartialAt: partial})
+}
+
 func (s *sqliteStore) SetEPGSuccess(ctx context.Context, networkID, serviceID uint16, succeededAt int64) error {
 	return s.wq.SetEPGSuccess(ctx, gen.SetEPGSuccessParams{
 		NetworkID:     int64(networkID),
@@ -437,11 +458,15 @@ func (s *sqliteStore) PruneChannels(ctx context.Context, active []ChannelKey) (e
 }
 
 type serviceRow struct {
-	service       gen.Service
-	hasLogoData   bool
-	lastAttemptAt *int64
-	lastSuccessAt *int64
-	lastError     *string
+	service          gen.Service
+	hasLogoData      bool
+	lastAttemptAt    *int64
+	lastSuccessAt    *int64
+	lastError        *string
+	basicUpdatedAt   *int64
+	extendedProbeAt  *int64
+	extendedObserved *int64
+	partialAt        *int64
 }
 
 func fromServiceRow(row serviceRow) *Service {
@@ -489,6 +514,10 @@ func fromServiceRow(row serviceRow) *Service {
 		}
 		result.Logo = logo
 	}
+	result.EPG.BasicUpdatedAt = row.basicUpdatedAt
+	result.EPG.ExtendedProbeAt = row.extendedProbeAt
+	result.EPG.ExtendedObserved = row.extendedObserved != nil && *row.extendedObserved != 0
+	result.EPG.PartialAt = row.partialAt
 	if row.lastError != nil {
 		result.EPG.LastError = *row.lastError
 	}
@@ -496,31 +525,31 @@ func fromServiceRow(row serviceRow) *Service {
 }
 
 func listServicesRow(s gen.ListServicesRow) serviceRow {
-	return serviceRow{s.Service, s.HasLogoData, s.LastAttemptAt, s.LastSuccessAt, s.LastError}
+	return serviceRow{s.Service, s.HasLogoData, s.LastAttemptAt, s.LastSuccessAt, s.LastError, s.BasicUpdatedAt, s.ExtendedProbeAt, s.ExtendedObserved, s.PartialAt}
 }
 
 func getServiceByIDRow(s gen.GetServiceByIDRow) serviceRow {
-	return serviceRow{s.Service, s.HasLogoData, s.LastAttemptAt, s.LastSuccessAt, s.LastError}
+	return serviceRow{s.Service, s.HasLogoData, s.LastAttemptAt, s.LastSuccessAt, s.LastError, s.BasicUpdatedAt, s.ExtendedProbeAt, s.ExtendedObserved, s.PartialAt}
 }
 
 func getServiceByItemIDRow(s gen.GetServiceByItemIDRow) serviceRow {
-	return serviceRow{s.Service, s.HasLogoData, s.LastAttemptAt, s.LastSuccessAt, s.LastError}
+	return serviceRow{s.Service, s.HasLogoData, s.LastAttemptAt, s.LastSuccessAt, s.LastError, s.BasicUpdatedAt, s.ExtendedProbeAt, s.ExtendedObserved, s.PartialAt}
 }
 
 func getServiceByNetworkServiceIDRow(s gen.GetServiceByNetworkServiceIDRow) serviceRow {
-	return serviceRow{s.Service, s.HasLogoData, s.LastAttemptAt, s.LastSuccessAt, s.LastError}
+	return serviceRow{s.Service, s.HasLogoData, s.LastAttemptAt, s.LastSuccessAt, s.LastError, s.BasicUpdatedAt, s.ExtendedProbeAt, s.ExtendedObserved, s.PartialAt}
 }
 
 func getServicesByChannelRow(s gen.GetServicesByChannelRow) serviceRow {
-	return serviceRow{s.Service, s.HasLogoData, s.LastAttemptAt, s.LastSuccessAt, s.LastError}
+	return serviceRow{s.Service, s.HasLogoData, s.LastAttemptAt, s.LastSuccessAt, s.LastError, s.BasicUpdatedAt, s.ExtendedProbeAt, s.ExtendedObserved, s.PartialAt}
 }
 
 func getServiceByChannelAndIDRow(s gen.GetServiceByChannelAndIDRow) serviceRow {
-	return serviceRow{s.Service, s.HasLogoData, s.LastAttemptAt, s.LastSuccessAt, s.LastError}
+	return serviceRow{s.Service, s.HasLogoData, s.LastAttemptAt, s.LastSuccessAt, s.LastError, s.BasicUpdatedAt, s.ExtendedProbeAt, s.ExtendedObserved, s.PartialAt}
 }
 
 func getServiceByTripletRow(s gen.GetServiceByTripletRow) serviceRow {
-	return serviceRow{s.Service, s.HasLogoData, s.LastAttemptAt, s.LastSuccessAt, s.LastError}
+	return serviceRow{s.Service, s.HasLogoData, s.LastAttemptAt, s.LastSuccessAt, s.LastError, s.BasicUpdatedAt, s.ExtendedProbeAt, s.ExtendedObserved, s.PartialAt}
 }
 
 func boolToInt64(value bool) int64 {

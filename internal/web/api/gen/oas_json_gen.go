@@ -10302,6 +10302,30 @@ func (s *Service) encodeFields(e *jx.Encoder) {
 		}
 	}
 	{
+		if s.EpgBasicUpdatedAt.Set {
+			e.FieldStart("epgBasicUpdatedAt")
+			s.EpgBasicUpdatedAt.Encode(e)
+		}
+	}
+	{
+		if s.EpgExtendedProbeAt.Set {
+			e.FieldStart("epgExtendedProbeAt")
+			s.EpgExtendedProbeAt.Encode(e)
+		}
+	}
+	{
+		if s.EpgExtendedObserved.Set {
+			e.FieldStart("epgExtendedObserved")
+			s.EpgExtendedObserved.Encode(e)
+		}
+	}
+	{
+		if s.EpgPartialAt.Set {
+			e.FieldStart("epgPartialAt")
+			s.EpgPartialAt.Encode(e)
+		}
+	}
+	{
 		if s.EpgLastAttemptAt.Set {
 			e.FieldStart("epgLastAttemptAt")
 			s.EpgLastAttemptAt.Encode(e)
@@ -10327,7 +10351,7 @@ func (s *Service) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfService = [17]string{
+var jsonFieldsNameOfService = [21]string{
 	0:  "id",
 	1:  "serviceId",
 	2:  "networkId",
@@ -10341,10 +10365,14 @@ var jsonFieldsNameOfService = [17]string{
 	10: "remoteControlKeyId",
 	11: "epgReady",
 	12: "epgUpdatedAt",
-	13: "epgLastAttemptAt",
-	14: "epgLastError",
-	15: "channel",
-	16: "logoData",
+	13: "epgBasicUpdatedAt",
+	14: "epgExtendedProbeAt",
+	15: "epgExtendedObserved",
+	16: "epgPartialAt",
+	17: "epgLastAttemptAt",
+	18: "epgLastError",
+	19: "channel",
+	20: "logoData",
 }
 
 // Decode decodes Service from json.
@@ -10489,6 +10517,46 @@ func (s *Service) Decode(d *jx.Decoder) error {
 				return nil
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"epgUpdatedAt\"")
+			}
+		case "epgBasicUpdatedAt":
+			if err := func() error {
+				s.EpgBasicUpdatedAt.Reset()
+				if err := s.EpgBasicUpdatedAt.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"epgBasicUpdatedAt\"")
+			}
+		case "epgExtendedProbeAt":
+			if err := func() error {
+				s.EpgExtendedProbeAt.Reset()
+				if err := s.EpgExtendedProbeAt.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"epgExtendedProbeAt\"")
+			}
+		case "epgExtendedObserved":
+			if err := func() error {
+				s.EpgExtendedObserved.Reset()
+				if err := s.EpgExtendedObserved.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"epgExtendedObserved\"")
+			}
+		case "epgPartialAt":
+			if err := func() error {
+				s.EpgPartialAt.Reset()
+				if err := s.EpgPartialAt.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"epgPartialAt\"")
 			}
 		case "epgLastAttemptAt":
 			if err := func() error {

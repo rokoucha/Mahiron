@@ -1029,3 +1029,7 @@ func TestIncompleteQualityWarningPreservesBothReasons(t *testing.T) {
 		t.Fatalf("lost diagnostic: %s", warning)
 	}
 }
+
+func (s *staticEPGServiceStore) SetEPGReception(context.Context, uint16, uint16, servicepkg.EPGReception) error {
+	return nil
+}

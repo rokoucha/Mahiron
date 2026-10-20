@@ -37,6 +37,8 @@ func TestLoadAndParseSystemConfig(t *testing.T) {
 				DataBroadcastCacheBytes:          1024 * 1024 * 1024,
 				DataBroadcastCacheMaxAgeDays:     14,
 				DataBroadcastSnapshotMaxAgeHours: 6,
+				EpgUnknownExtendedIdleTime:       30000,
+				EpgExtendedProbeInterval:         21600000,
 				EpgRefreshInterval:               1800000,
 				EpgRetentionDays:                 3,
 				EpgRetrievalTime:                 600000,
@@ -71,6 +73,8 @@ func TestLoadAndParseSystemConfig(t *testing.T) {
 				DataBroadcastCacheBytes:          1024 * 1024 * 1024,
 				DataBroadcastCacheMaxAgeDays:     14,
 				DataBroadcastSnapshotMaxAgeHours: 6,
+				EpgUnknownExtendedIdleTime:       30000,
+				EpgExtendedProbeInterval:         21600000,
 				EpgRefreshInterval:               1800000,
 				EpgRetentionDays:                 3,
 				EpgRetrievalTime:                 600000,
@@ -105,6 +109,8 @@ func TestLoadAndParseSystemConfig(t *testing.T) {
 				DataBroadcastCacheBytes:          1024 * 1024 * 1024,
 				DataBroadcastCacheMaxAgeDays:     14,
 				DataBroadcastSnapshotMaxAgeHours: 6,
+				EpgUnknownExtendedIdleTime:       30000,
+				EpgExtendedProbeInterval:         21600000,
 				EpgRefreshInterval:               1800000,
 				EpgRetentionDays:                 3,
 				EpgRetrievalTime:                 600000,
@@ -141,6 +147,8 @@ func TestLoadAndParseSystemConfig(t *testing.T) {
 				DataBroadcastCacheBytes:          1024 * 1024 * 1024,
 				DataBroadcastCacheMaxAgeDays:     14,
 				DataBroadcastSnapshotMaxAgeHours: 6,
+				EpgUnknownExtendedIdleTime:       30000,
+				EpgExtendedProbeInterval:         21600000,
 				EpgRefreshInterval:               1800000,
 				EpgRetentionDays:                 3,
 				EpgRetrievalTime:                 600000,
@@ -191,6 +199,8 @@ func TestLoadAndParseSystemConfig(t *testing.T) {
 				DataBroadcastCacheBytes:          1024 * 1024 * 1024,
 				DataBroadcastCacheMaxAgeDays:     14,
 				DataBroadcastSnapshotMaxAgeHours: 6,
+				EpgUnknownExtendedIdleTime:       30000,
+				EpgExtendedProbeInterval:         21600000,
 				EpgRefreshInterval:               1800000,
 				EpgRetentionDays:                 3,
 				EpgRetrievalTime:                 600000,
@@ -205,8 +215,10 @@ func TestLoadAndParseSystemConfig(t *testing.T) {
 			want: &SystemConfig{
 				Addresses: []ServerAddress{{Http: "localhost:40772"}}, LogLevel: "info",
 				Observability: ObservabilityConfig{ServiceName: "mahiron"}, MaxConcurrentJobs: 1, DatabasePath: "./db/mahiron.db", DataBroadcastCachePath: "./db/data-broadcast-cache.db", DataBroadcastCacheBytes: 1024 * 1024 * 1024, DataBroadcastCacheMaxAgeDays: 14, DataBroadcastSnapshotMaxAgeHours: 6,
-				EpgRefreshInterval: 1800000,
-				EpgRetentionDays:   3, EpgRetrievalTime: 600000, EpgStaleAfter: 7200000, LogoGatherTimeout: 600000, ServiceScanTimeout: 30000,
+				EpgUnknownExtendedIdleTime: 30000,
+				EpgExtendedProbeInterval:   21600000,
+				EpgRefreshInterval:         1800000,
+				EpgRetentionDays:           3, EpgRetrievalTime: 600000, EpgStaleAfter: 7200000, LogoGatherTimeout: 600000, ServiceScanTimeout: 30000,
 			},
 		},
 		{
@@ -219,6 +231,8 @@ func TestLoadAndParseSystemConfig(t *testing.T) {
 				DataBroadcastCacheBytes:          32 * 1024 * 1024,
 				DataBroadcastCacheMaxAgeDays:     2,
 				DataBroadcastSnapshotMaxAgeHours: 6,
+				EpgUnknownExtendedIdleTime:       30000,
+				EpgExtendedProbeInterval:         21600000,
 				EpgRefreshInterval:               1800000,
 				EpgRetentionDays:                 3, EpgRetrievalTime: 600000, EpgStaleAfter: 7200000, LogoGatherTimeout: 1200000, ServiceScanTimeout: 30000,
 			},
@@ -234,6 +248,8 @@ func TestLoadAndParseSystemConfig(t *testing.T) {
 				DataBroadcastCacheMaxAgeDays:     14,
 				DataBroadcastSnapshotDisabled:    boolPtr(true),
 				DataBroadcastSnapshotMaxAgeHours: 6,
+				EpgUnknownExtendedIdleTime:       30000,
+				EpgExtendedProbeInterval:         21600000,
 				EpgRefreshInterval:               1800000,
 				EpgRetentionDays:                 3, EpgRetrievalTime: 600000, EpgStaleAfter: 7200000, LogoGatherTimeout: 1200000, ServiceScanTimeout: 30000,
 			},
@@ -248,6 +264,8 @@ func TestLoadAndParseSystemConfig(t *testing.T) {
 				DataBroadcastCacheBytes:          1024 * 1024 * 1024,
 				DataBroadcastCacheMaxAgeDays:     14,
 				DataBroadcastSnapshotMaxAgeHours: 1,
+				EpgUnknownExtendedIdleTime:       30000,
+				EpgExtendedProbeInterval:         21600000,
 				EpgRefreshInterval:               1800000,
 				EpgRetentionDays:                 3, EpgRetrievalTime: 600000, EpgStaleAfter: 7200000, LogoGatherTimeout: 1200000, ServiceScanTimeout: 30000,
 			},
@@ -258,8 +276,10 @@ func TestLoadAndParseSystemConfig(t *testing.T) {
 			want: &SystemConfig{
 				Addresses: []ServerAddress{{Http: "localhost:40772"}}, LogLevel: "info",
 				Observability: ObservabilityConfig{ServiceName: "mahiron"}, MaxConcurrentJobs: 4, DatabasePath: "./db/mahiron.db", DataBroadcastCachePath: "./db/data-broadcast-cache.db", DataBroadcastCacheBytes: 1024 * 1024 * 1024, DataBroadcastCacheMaxAgeDays: 14, DataBroadcastSnapshotMaxAgeHours: 6,
-				EpgRefreshInterval: 1800000,
-				EpgRetentionDays:   3, EpgRetrievalTime: 600000, EpgStaleAfter: 7200000, LogoGatherTimeout: 1200000, ServiceScanTimeout: 30000,
+				EpgUnknownExtendedIdleTime: 30000,
+				EpgExtendedProbeInterval:   21600000,
+				EpgRefreshInterval:         1800000,
+				EpgRetentionDays:           3, EpgRetrievalTime: 600000, EpgStaleAfter: 7200000, LogoGatherTimeout: 1200000, ServiceScanTimeout: 30000,
 			},
 		},
 		{
@@ -268,8 +288,10 @@ func TestLoadAndParseSystemConfig(t *testing.T) {
 			want: &SystemConfig{
 				Addresses: []ServerAddress{{Http: "localhost:40772"}}, LogLevel: "info",
 				Observability: ObservabilityConfig{ServiceName: "mahiron"}, MaxConcurrentJobs: 1, DatabasePath: "./db/mahiron.db", DataBroadcastCachePath: "./db/data-broadcast-cache.db", DataBroadcastCacheBytes: 1024 * 1024 * 1024, DataBroadcastCacheMaxAgeDays: 14, DataBroadcastSnapshotMaxAgeHours: 6,
-				EpgRefreshInterval: 1800000,
-				EpgRetentionDays:   3, EpgRetrievalTime: 600000, EpgStaleAfter: 7200000, LogoGatherTimeout: 1200000, ServiceScanTimeout: 45000,
+				EpgUnknownExtendedIdleTime: 30000,
+				EpgExtendedProbeInterval:   21600000,
+				EpgRefreshInterval:         1800000,
+				EpgRetentionDays:           3, EpgRetrievalTime: 600000, EpgStaleAfter: 7200000, LogoGatherTimeout: 1200000, ServiceScanTimeout: 45000,
 			},
 		},
 		{
@@ -361,6 +383,18 @@ func TestEPGModeRejectsAmbiguousSchedules(t *testing.T) {
 		}
 		if _, err := LoadAndParseSystemConfig(path); err == nil {
 			t.Fatalf("invalid config accepted: %s", body)
+		}
+	}
+}
+
+func TestEPGReceptionBudgetValidation(t *testing.T) {
+	for _, text := range []string{"epgUnknownExtendedIdleTime: -1\n", "epgUnknownExtendedIdleTime: 999\n", "epgExtendedProbeInterval: 0\n"} {
+		path := filepath.Join(t.TempDir(), "server.yml")
+		if err := os.WriteFile(path, []byte(text), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := LoadAndParseSystemConfig(path); err == nil {
+			t.Fatalf("accepted invalid budget %q", text)
 		}
 	}
 }

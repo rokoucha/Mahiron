@@ -2220,6 +2220,14 @@ components:
           type: boolean
         epgUpdatedAt:
           $ref: "#/components/schemas/UnixtimeMS"
+        epgBasicUpdatedAt:
+          $ref: "#/components/schemas/UnixtimeMS"
+        epgExtendedProbeAt:
+          $ref: "#/components/schemas/UnixtimeMS"
+        epgExtendedObserved:
+          type: boolean
+        epgPartialAt:
+          $ref: "#/components/schemas/UnixtimeMS"
         epgLastAttemptAt:
           $ref: "#/components/schemas/UnixtimeMS"
         epgLastError:

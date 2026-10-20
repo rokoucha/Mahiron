@@ -66,6 +66,14 @@ func (s *Manager) SetEPGSuccess(ctx context.Context, networkID, serviceID uint16
 	return nil
 }
 
+func (s *Manager) SetEPGReception(ctx context.Context, networkID, serviceID uint16, reception EPGReception) error {
+	if err := s.store.SetEPGReception(ctx, networkID, serviceID, reception); err != nil {
+		return err
+	}
+	s.publishServiceByKey(ctx, eventTypeUpdate, networkID, serviceID)
+	return nil
+}
+
 func (s *Manager) EPGSummary(ctx context.Context, staleAfter int64, now int64) (stale, failed int, lastSuccess *int64, err error) {
 	return s.store.EPGSummary(ctx, staleAfter, now)
 }

@@ -257,6 +257,7 @@ type ScheduleUpdate struct {
 	BasicObserved    bool
 	BasicComplete    bool
 	ExtendedObserved bool
+	ExtendedRequired bool
 	ExtendedComplete bool
 	Reception        *ScheduleReception
 	// ObservedAt is the broadcast clock (TOT) of the update in Unix

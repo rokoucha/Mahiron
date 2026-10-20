@@ -259,10 +259,14 @@ func apiService(h *Handler, svc *service.Service, includeChannel bool) *apigen.S
 // service. The channel is attached when it is known.
 func apiServiceState(svc *service.Service, channel *config.ChannelConfig) mirakurun.ServiceState {
 	state := mirakurun.ServiceState{
-		HasLogoData:      svc.HasLogoData,
-		EPGLastAttemptAt: svc.EPG.LastAttemptAt,
-		EPGLastSuccessAt: svc.EPG.LastSuccessAt,
-		EPGLastError:     svc.EPG.LastError,
+		HasLogoData:         svc.HasLogoData,
+		EPGLastAttemptAt:    svc.EPG.LastAttemptAt,
+		EPGLastSuccessAt:    svc.EPG.LastSuccessAt,
+		EPGLastError:        svc.EPG.LastError,
+		EPGBasicUpdatedAt:   svc.EPG.BasicUpdatedAt,
+		EPGExtendedProbeAt:  svc.EPG.ExtendedProbeAt,
+		EPGExtendedObserved: svc.EPG.ExtendedObserved,
+		EPGPartialAt:        svc.EPG.PartialAt,
 	}
 	if channel != nil {
 		apiChannel := apiChannel(*channel)

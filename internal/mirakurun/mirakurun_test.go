@@ -160,3 +160,11 @@ func TestScanServiceModelFromAPI(t *testing.T) {
 		t.Fatalf("EIT flags = %v/%v, want true/true", got.EITSchedule, got.EITPresentFollow)
 	}
 }
+
+func TestBasicOnlyEPGIsReadyWithoutClaimingFullCompletion(t *testing.T) {
+	basic, probe, partial := int64(1000), int64(900), int64(1000)
+	api := ServiceToAPI(&model.Service{Key: model.ServiceKey{NetworkID: 1, ServiceID: 1}}, ServiceState{EPGBasicUpdatedAt: &basic, EPGExtendedProbeAt: &probe, EPGPartialAt: &partial})
+	if !api.EpgReady.Value || api.EpgUpdatedAt.Set || api.EpgBasicUpdatedAt.Value != apigen.UnixtimeMS(basic) || api.EpgExtendedObserved.Value {
+		t.Fatalf("basic-only API=%+v", api)
+	}
+}
