@@ -213,3 +213,39 @@ func (s *completingEPG) GatherGroup(ctx context.Context, key epggather.GroupKey)
 	}
 	return nil
 }
+
+func TestContinuousEPGRetryDoesNotStarveEarlierFreshnessDeadline(t *testing.T) {
+	for _, persisted := range []bool{false, true} {
+		t.Run(map[bool]string{false: "running controller", true: "restart"}[persisted], func(t *testing.T) {
+			mgr := controllerManager(t)
+			now := time.Now()
+			retry := epggather.GroupKey{NetworkID: 1, StreamID: 1}
+			overdue := epggather.GroupKey{NetworkID: 2, StreamID: 2}
+			started := make(chan epggather.GroupKey, 1)
+			service := &scheduledEPG{groups: map[epggather.GroupKey]*epggather.Group{
+				retry:   {OldestSuccessAt: now.Add(-2 * time.Hour).UnixMilli()},
+				overdue: {OldestSuccessAt: now.Add(-40 * time.Minute).UnixMilli()},
+			}, gather: func(ctx context.Context, key epggather.GroupKey) error {
+				started <- key
+				<-ctx.Done()
+				return ctx.Err()
+			}}
+			states := map[epggather.GroupKey]*epgDeadline{}
+			if persisted {
+				service.groups[retry].LastFailureAt = now.Add(-2 * time.Minute).UnixMilli()
+			} else {
+				states[retry] = &epgDeadline{failures: 2, next: now.Add(-time.Minute)}
+			}
+			c := NewEPGController(mgr, service, 30*time.Minute, 1)
+			c.reconcile(t.Context(), states, now)
+			select {
+			case key := <-started:
+				if key != overdue {
+					t.Fatalf("started %v before earlier freshness deadline %v", key, overdue)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("overdue stream not started")
+			}
+		})
+	}
+}
