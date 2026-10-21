@@ -78,9 +78,6 @@ func gatherNetwork(ctx context.Context, events ScheduleWriter, programStore Prog
 		sessionCtx, cancel := context.WithTimeout(candidateCtx, retrievalTime)
 		collect, listStored, candidateErr := streams.OpenSchedule(sessionCtx, candidate.Type, candidate.Channel)
 		cancel()
-		if !errors.Is(candidateErr, tuner.ErrTunerUnavailable) {
-			onlyUnavailable = false
-		}
 		if candidateErr != nil && ctx.Err() == nil && !errors.Is(candidateErr, tuner.ErrTunerUnavailable) {
 			for _, key := range targets {
 				if err := serviceStore.SetEPGAttempt(ctx, key.NetworkID, key.ServiceID, time.Now().UnixMilli(), candidateErr.Error()); err != nil {
@@ -95,6 +92,9 @@ func gatherNetwork(ctx context.Context, events ScheduleWriter, programStore Prog
 			} else {
 				collectResult, candidateErr = CollectServiceSnapshots(candidateCtx, events, serviceStore, collect, targets, retrievalTime, options...)
 			}
+		}
+		if !errors.Is(candidateErr, tuner.ErrTunerUnavailable) {
+			onlyUnavailable = false
 		}
 		endReason := ""
 		if collectResult != nil {
