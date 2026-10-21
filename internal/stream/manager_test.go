@@ -1334,3 +1334,41 @@ func TestEPGAcquisitionWaitIsModeSpecific(t *testing.T) {
 		}
 	}
 }
+
+func TestEPGSubscriptionPreservesPriority(t *testing.T) {
+	for _, explicit := range []bool{false, true} {
+		t.Run(map[bool]string{false: "background", true: "explicit"}[explicit], func(t *testing.T) {
+			previous := newRemoteClient
+			t.Cleanup(func() { newRemoteClient = previous })
+			var priority string
+			newRemoteClient = func(cfg config.RemoteConfig) *remote.Client {
+				return remote.NewClient(cfg, remote.WithHTTPClient(&http.Client{Transport: streamtest.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
+					if r.Method == http.MethodGet {
+						priority = r.Header.Get("X-Mirakurun-Priority")
+					}
+					return streamtest.StringResponse(http.StatusOK, ""), nil
+				})}))
+			}
+			manager := NewManager(ManagerConfig{
+				Channels: config.ChannelsConfig{{Type: "BS4K", Channel: "45328", Transport: config.TransportTLV, Routes: []config.ChannelRouteConfig{{Remote: "pix", Type: "BS4K", Channel: "45328"}}}},
+				Remotes:  config.RemotesConfig{{Name: "pix", URL: "http://remote.local/api"}},
+			})
+			collect, _, err := NewEPGGatherAdapter(manager).OpenSchedule(t.Context(), "BS4K", "45328")
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx := t.Context()
+			want := "-1"
+			if explicit {
+				ctx = tuner.WithUser(ctx, tuner.User{ID: "explicit", Priority: 42})
+				want = "42"
+			}
+			if err := collect(ctx, func(model.ScheduleUpdate) error { return nil }, nil); err != nil {
+				t.Fatal(err)
+			}
+			if priority != want {
+				t.Fatalf("stream priority=%q, want %q", priority, want)
+			}
+		})
+	}
+}
