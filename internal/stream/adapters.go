@@ -103,7 +103,9 @@ func (a *EPGGatherAdapter) OpenSchedule(ctx context.Context, channelType, channe
 	if remoteSession, ok := session.(*remote.Session); ok {
 		return nil, remoteSession.ListServicePrograms, nil
 	}
-	return session.CollectSchedule, nil, nil
+	return func(ctx context.Context, onSchedule func(model.ScheduleUpdate) error, onPresentFollowing func(model.PresentFollowing) error) error {
+		return session.CollectSchedule(ensureUserContext(ctx, channelType, channelID), onSchedule, onPresentFollowing)
+	}, nil, nil
 }
 
 func (a *EPGGatherAdapter) CheckAvailable(ctx context.Context, channelType, channelID string) error {
