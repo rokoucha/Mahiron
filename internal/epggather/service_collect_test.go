@@ -1033,3 +1033,24 @@ func TestIncompleteQualityWarningPreservesBothReasons(t *testing.T) {
 func (s *staticEPGServiceStore) SetEPGReception(context.Context, uint16, uint16, servicepkg.EPGReception) error {
 	return nil
 }
+
+type busyScheduleSession struct{}
+
+func (busyScheduleSession) CollectSchedule(context.Context, func(model.ScheduleUpdate) error, func(model.PresentFollowing) error) error {
+	return tuner.ErrTunerUnavailable
+}
+
+func TestTunerShortageAtSubscriptionIsDeferred(t *testing.T) {
+	key := model.ServiceKey{NetworkID: 11, ServiceID: 101}
+	candidate := Candidate{Type: "BS4K", Channel: "45328"}
+	streams := unavailableCandidateStreams{available: candidate, session: busyScheduleSession{}}
+	events := &collectProgramStore{}
+	status := newRemoteSyncServiceStore()
+	err := gatherNetwork(t.Context(), events, events, status, streams, 11, []Candidate{candidate}, []model.ServiceKey{key}, time.Second)
+	if !errors.Is(err, ErrDeferred) || !errors.Is(err, tuner.ErrTunerUnavailable) {
+		t.Fatalf("subscription shortage was not deferred: %v", err)
+	}
+	if status.errors[key] != "" || status.successes[key] != 0 {
+		t.Fatalf("shortage changed reception outcome: %+v", status)
+	}
+}

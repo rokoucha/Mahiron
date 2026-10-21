@@ -3,10 +3,12 @@ package epggather
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/21S1298001/mahiron/internal/config"
+	"github.com/21S1298001/mahiron/internal/db"
 	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/internal/program"
@@ -219,4 +221,49 @@ func (s *remoteSyncProgramStore) UpsertSchedule(ctx context.Context, snapshot mo
 
 func (s *remoteSyncServiceStore) SetEPGReception(context.Context, uint16, uint16, service.EPGReception) error {
 	return nil
+}
+
+func TestStoredSyncAdvancesBasicFreshnessAndClearsPartial(t *testing.T) {
+	for _, fail := range []bool{false, true} {
+		t.Run(fmt.Sprint(fail), func(t *testing.T) {
+			database, err := db.OpenInMemory()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = database.Close() }()
+			status := service.NewSQLiteStore(database)
+			key := model.ServiceKey{NetworkID: 4, ServiceID: 101}
+			if err := status.ReplaceChannelServices(t.Context(), "BS", "A", []*service.Service{{Id: "test", Service: model.Service{Key: key}, ChannelType: "BS", ChannelId: "A"}}); err != nil {
+				t.Fatal(err)
+			}
+			if err := status.SetEPGReception(t.Context(), 4, 101, service.EPGReception{UpdatedAt: 100, BasicComplete: true, ExtendedProbed: true, Partial: true}); err != nil {
+				t.Fatal(err)
+			}
+			list := func(context.Context, uint16, uint16) ([]model.Event, error) {
+				if fail {
+					return nil, errors.New("remote unavailable")
+				}
+				return []model.Event{{Key: key, EventID: 1}}, nil
+			}
+			_, err = syncStoredPrograms(t.Context(), newRemoteSyncProgramStore(), service.NewManager(status, nil), list, []model.ServiceKey{key}, time.Second)
+			if (err != nil) != fail {
+				t.Fatalf("sync error=%v", err)
+			}
+			services, err := status.List(t.Context())
+			if err != nil {
+				t.Fatal(err)
+			}
+			epg := services[0].EPG
+			if fail {
+				if *epg.BasicUpdatedAt != 100 || epg.PartialAt == nil || epg.LastSuccessAt != nil {
+					t.Fatalf("failed sync advanced freshness: %+v", epg)
+				}
+			} else if epg.LastSuccessAt == nil || epg.BasicUpdatedAt == nil || *epg.BasicUpdatedAt != *epg.LastSuccessAt || epg.PartialAt != nil {
+				t.Fatalf("successful sync left inconsistent freshness: %+v", epg)
+			}
+			if epg.ExtendedObserved || *epg.ExtendedProbeAt != 100 {
+				t.Fatalf("stored sync invented broadcast evidence: %+v", epg)
+			}
+		})
+	}
 }

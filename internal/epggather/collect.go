@@ -10,6 +10,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/internal/service"
+	"github.com/21S1298001/mahiron/internal/tuner"
 	"go.opentelemetry.io/otel/attribute"
 )
 
@@ -402,6 +403,10 @@ func CollectServiceSnapshots(ctx context.Context, events ScheduleWriter, service
 		if collectorResult.collectErr != nil && !expectedCancellation {
 			receiveErr = collectorResult.collectErr
 			endReason = "receive_error"
+			if scheduleUpdates == 0 && pfUpdates == 0 && errors.Is(receiveErr, tuner.ErrTunerUnavailable) {
+				result.EndReason = "unavailable"
+				return result, receiveErr
+			}
 			slog.Warn("EPG reception failed", "err", receiveErr)
 		}
 		if pfErr := pfUpserts.Err(); pfErr != nil {

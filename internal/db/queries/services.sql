@@ -218,11 +218,13 @@ ON CONFLICT(network_id, service_id) DO UPDATE SET
   last_error=excluded.last_error;
 
 -- name: SetEPGSuccess :exec
-INSERT INTO epg_service_status (network_id, service_id, last_attempt_at, last_success_at, last_error)
-VALUES (?, ?, ?, ?, NULL)
+INSERT INTO epg_service_status (network_id, service_id, last_attempt_at, last_success_at, last_error, basic_updated_at)
+VALUES (?, ?, ?, ?, NULL, ?)
 ON CONFLICT(network_id, service_id) DO UPDATE SET
   last_attempt_at=excluded.last_attempt_at,
   last_success_at=excluded.last_success_at,
+  basic_updated_at=excluded.basic_updated_at,
+  partial_at=NULL,
   last_error=NULL;
 
 -- name: SetEPGReception :exec

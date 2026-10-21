@@ -17,6 +17,9 @@ import (
 )
 
 type remoteTuner struct {
+	Users []struct {
+		Priority int `json:"priority"`
+	} `json:"users"`
 	Index              int      `json:"index"`
 	Name               string   `json:"name"`
 	Types              []string `json:"types"`

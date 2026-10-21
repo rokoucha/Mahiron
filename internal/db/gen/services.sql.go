@@ -774,19 +774,22 @@ func (q *Queries) SetEPGReception(ctx context.Context, arg SetEPGReceptionParams
 }
 
 const setEPGSuccess = `-- name: SetEPGSuccess :exec
-INSERT INTO epg_service_status (network_id, service_id, last_attempt_at, last_success_at, last_error)
-VALUES (?, ?, ?, ?, NULL)
+INSERT INTO epg_service_status (network_id, service_id, last_attempt_at, last_success_at, last_error, basic_updated_at)
+VALUES (?, ?, ?, ?, NULL, ?)
 ON CONFLICT(network_id, service_id) DO UPDATE SET
   last_attempt_at=excluded.last_attempt_at,
   last_success_at=excluded.last_success_at,
+  basic_updated_at=excluded.basic_updated_at,
+  partial_at=NULL,
   last_error=NULL
 `
 
 type SetEPGSuccessParams struct {
-	NetworkID     int64  `json:"network_id"`
-	ServiceID     int64  `json:"service_id"`
-	LastAttemptAt *int64 `json:"last_attempt_at"`
-	LastSuccessAt *int64 `json:"last_success_at"`
+	NetworkID      int64  `json:"network_id"`
+	ServiceID      int64  `json:"service_id"`
+	LastAttemptAt  *int64 `json:"last_attempt_at"`
+	LastSuccessAt  *int64 `json:"last_success_at"`
+	BasicUpdatedAt *int64 `json:"basic_updated_at"`
 }
 
 func (q *Queries) SetEPGSuccess(ctx context.Context, arg SetEPGSuccessParams) error {
@@ -795,6 +798,7 @@ func (q *Queries) SetEPGSuccess(ctx context.Context, arg SetEPGSuccessParams) er
 		arg.ServiceID,
 		arg.LastAttemptAt,
 		arg.LastSuccessAt,
+		arg.BasicUpdatedAt,
 	)
 	return err
 }

@@ -209,10 +209,11 @@ func (s *sqliteStore) SetEPGReception(ctx context.Context, networkID, serviceID 
 
 func (s *sqliteStore) SetEPGSuccess(ctx context.Context, networkID, serviceID uint16, succeededAt int64) error {
 	return s.wq.SetEPGSuccess(ctx, gen.SetEPGSuccessParams{
-		NetworkID:     int64(networkID),
-		ServiceID:     int64(serviceID),
-		LastAttemptAt: &succeededAt,
-		LastSuccessAt: &succeededAt,
+		NetworkID:      int64(networkID),
+		ServiceID:      int64(serviceID),
+		LastAttemptAt:  &succeededAt,
+		LastSuccessAt:  &succeededAt,
+		BasicUpdatedAt: &succeededAt,
 	})
 }
 

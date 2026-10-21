@@ -103,6 +103,9 @@ func (c *Client) CheckAvailableForRoute(ctx context.Context, channelType, channe
 	if err != nil {
 		return err
 	}
+	if user, ok := tuner.UserFromContext(ctx); ok {
+		req.Header.Set("X-Mirakurun-Priority", fmt.Sprint(user.Priority))
+	}
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return err
@@ -110,6 +113,10 @@ func (c *Client) CheckAvailableForRoute(ctx context.Context, channelType, channe
 	defer resp.Body.Close()
 	switch resp.StatusCode {
 	case http.StatusOK:
+		// mirakc HEAD validates the channel without checking tuner availability.
+		if strings.HasPrefix(resp.Header.Get("Server"), "mirakc/") {
+			return c.checkAvailableFromTuners(checkCtx, channelType, channel)
+		}
 		return nil
 	case http.StatusNotFound:
 		return ErrChannelNotFound
@@ -142,9 +149,14 @@ func (c *Client) checkAvailableFromTuners(ctx context.Context, channelType, chan
 	if err := json.NewDecoder(resp.Body).Decode(&tuners); err != nil {
 		return err
 	}
+	user, hasUser := tuner.UserFromContext(ctx)
 	for _, item := range tuners {
+		canPreempt := hasUser && len(item.Users) > 0
+		for _, current := range item.Users {
+			canPreempt = canPreempt && user.Priority > current.Priority
+		}
 		if slices.Contains(item.Types, channelType) && item.IsAvailable && !item.IsFault &&
-			(item.IsFree || item.matchesRoute(channelType, channel)) {
+			(item.IsFree || item.matchesRoute(channelType, channel) || canPreempt) {
 			return nil
 		}
 	}
@@ -360,6 +372,14 @@ func (c *Client) stream(ctx context.Context, operation string, decode bool, dst 
 		return err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound && operation == remoteOperationChannelStream && strings.HasPrefix(resp.Header.Get("Server"), "mirakc/") {
+		// mirakc also returns 404 when a known channel has no available tuner.
+		checkCtx, cancel := context.WithTimeout(ctx, c.availabilityTimeout)
+		defer cancel()
+		if err := c.CheckAvailableForRoute(checkCtx, elems[1], elems[2]); errors.Is(err, tuner.ErrTunerUnavailable) {
+			return err
+		}
+	}
 	if err := remoteStatusError(resp.StatusCode, resp.Status); err != nil {
 		return err
 	}

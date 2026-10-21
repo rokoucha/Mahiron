@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"image"
 	"image/color"
 	"image/png"
@@ -886,4 +887,78 @@ func programsOf(events []model.Event) []*program.Program {
 		programs[i] = program.FromEvent(events[i])
 	}
 	return programs
+}
+
+func TestMirakcAvailabilityChecksTunersAfterPositiveHead(t *testing.T) {
+	for _, free := range []bool{false, true} {
+		t.Run(fmt.Sprint(free), func(t *testing.T) {
+			client := NewClient(config.RemoteConfig{URL: "http://remote.local/api"})
+			client.httpClient = &http.Client{Transport: streamtest.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
+				if r.Method == http.MethodHead {
+					if r.Header.Get("X-Mirakurun-Priority") != "-1" {
+						t.Fatal("availability probe lost EPG priority")
+					}
+					resp := streamtest.StringResponse(http.StatusOK, "")
+					resp.Header.Set("Server", "mirakc/4.0.0-dev.0")
+					return resp, nil
+				}
+				if r.URL.Path != "/api/tuners" {
+					t.Fatalf("unexpected request: %s", r.URL)
+				}
+				return streamtest.StringResponse(http.StatusOK, fmt.Sprintf(`[{"types":["BS4K"],"isAvailable":true,"isFree":%t}]`, free)), nil
+			})}
+			ctx := tuner.WithUser(t.Context(), tuner.User{Priority: -1})
+			err := client.CheckAvailableForRoute(ctx, "BS4K", "45328")
+			if free && err != nil || !free && !errors.Is(err, tuner.ErrTunerUnavailable) {
+				t.Fatalf("free=%v err=%v", free, err)
+			}
+		})
+	}
+}
+
+func TestMirakcChannelStreamDistinguishesBusyTunerFromMissingChannel(t *testing.T) {
+	for _, known := range []bool{false, true} {
+		t.Run(fmt.Sprint(known), func(t *testing.T) {
+			client := NewClient(config.RemoteConfig{URL: "http://remote.local/api"})
+			client.httpClient = &http.Client{Transport: streamtest.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
+				if r.URL.Path == "/api/tuners" {
+					return streamtest.StringResponse(http.StatusOK, `[{"types":["BS4K"],"isAvailable":true,"isFree":false}]`), nil
+				}
+				status := http.StatusNotFound
+				if r.Method == http.MethodHead && known {
+					status = http.StatusOK
+				}
+				resp := streamtest.StringResponse(status, "")
+				resp.Header.Set("Server", "mirakc/4.0.0-dev.0")
+				return resp, nil
+			})}
+			err := client.ChannelStream(t.Context(), "BS4K", "45328", false, io.Discard)
+			want := ErrChannelNotFound
+			if known {
+				want = tuner.ErrTunerUnavailable
+			}
+			if !errors.Is(err, want) {
+				t.Fatalf("error=%v, want %v", err, want)
+			}
+		})
+	}
+}
+
+func TestMirakcAvailabilityPreservesHigherPriorityPreemption(t *testing.T) {
+	client := NewClient(config.RemoteConfig{URL: "http://remote.local/api"})
+	client.httpClient = &http.Client{Transport: streamtest.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.Method == http.MethodHead {
+			resp := streamtest.StringResponse(http.StatusOK, "")
+			resp.Header.Set("Server", "mirakc/4.0.0-dev.0")
+			return resp, nil
+		}
+		return streamtest.StringResponse(http.StatusOK, `[{"types":["BS4K"],"isAvailable":true,"isFree":false,"users":[{"priority":-1}]}]`), nil
+	})}
+	for _, priority := range []int{-1, 0} {
+		ctx := tuner.WithUser(t.Context(), tuner.User{Priority: priority})
+		err := client.CheckAvailableForRoute(ctx, "BS4K", "45328")
+		if priority == 0 && err != nil || priority == -1 && !errors.Is(err, tuner.ErrTunerUnavailable) {
+			t.Fatalf("priority=%d err=%v", priority, err)
+		}
+	}
 }
