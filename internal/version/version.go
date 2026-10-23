@@ -2,5 +2,5 @@ package version
 
 const (
 	Server  = "mahiron"
-	Current = "5.2.4"
+	Current = "5.3.0"
 )
