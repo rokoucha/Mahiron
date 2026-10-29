@@ -31,7 +31,7 @@ func (q *Queries) DeleteEndedAtBefore(ctx context.Context, startAt int64) error 
 }
 
 const deleteProgramsByServiceFrom = `-- name: DeleteProgramsByServiceFrom :exec
-DELETE FROM programs WHERE network_id = ? AND service_id = ? AND start_at + duration >= ?
+DELETE FROM programs WHERE network_id = ? AND service_id = ? AND (start_at + duration >= ? OR duration = 0)
 `
 
 type DeleteProgramsByServiceFromParams struct {
@@ -154,7 +154,7 @@ const listProgramsByServiceFrom = `-- name: ListProgramsByServiceFrom :many
 SELECT id, event_id, service_id, network_id, start_at, duration, is_free,
        name, description, stream_id, event
 FROM programs
-WHERE network_id = ? AND service_id = ? AND start_at >= ?
+WHERE network_id = ? AND service_id = ? AND (start_at + duration >= ? OR duration = 0)
 ORDER BY start_at, id
 `
 

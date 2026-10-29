@@ -14,7 +14,7 @@ ORDER BY start_at, id;
 SELECT id, event_id, service_id, network_id, start_at, duration, is_free,
        name, description, stream_id, event
 FROM programs
-WHERE network_id = ? AND service_id = ? AND start_at >= ?
+WHERE network_id = ? AND service_id = ? AND (start_at + duration >= ? OR duration = 0)
 ORDER BY start_at, id;
 
 -- name: UpsertProgram :exec
@@ -34,7 +34,7 @@ ON CONFLICT(id) DO UPDATE SET
   event=excluded.event;
 
 -- name: DeleteProgramsByServiceFrom :exec
-DELETE FROM programs WHERE network_id = ? AND service_id = ? AND start_at + duration >= ?;
+DELETE FROM programs WHERE network_id = ? AND service_id = ? AND (start_at + duration >= ? OR duration = 0);
 
 -- name: DeleteEndedAtBefore :exec
 DELETE FROM programs WHERE start_at + duration < ?;

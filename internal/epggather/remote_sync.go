@@ -16,6 +16,7 @@ import (
 // is empty. It is used as the lower bound for ReplaceServicePrograms so a
 // sync only rewrites the window of programs actually received from the
 // remote, instead of unconditionally replacing everything from time zero.
+// Undefined-duration rows are also reconciled, regardless of this bound.
 func minStartAt(programs []*program.Program) int64 {
 	var min int64
 	first := true

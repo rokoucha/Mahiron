@@ -80,6 +80,12 @@ func readRemoteProgramEvents(ctx context.Context, src io.Reader, updater Program
 			slog.Debug("failed to decode remote program event", "err", err)
 			continue
 		}
+		if event.Resource == "program" && event.Type == "remove" {
+			if err := removeRemoteProgram(ctx, updater, event.Data); err != nil {
+				return err
+			}
+			continue
+		}
 		if event.Resource != "program" || event.Type != "update" && event.Type != "create" {
 			continue
 		}
@@ -173,6 +179,16 @@ func readRemoteEventsBatched(ctx context.Context, src io.Reader, updater Program
 			}
 			switch event.Resource {
 			case "program":
+				if updater != nil && event.Type == "remove" {
+					// Flush earlier writes before deletion; later creates may reuse the ID.
+					if err := flush(); err != nil {
+						return err
+					}
+					if err := removeRemoteProgram(ctx, updater, event.Data); err != nil {
+						return err
+					}
+					continue
+				}
 				if updater == nil || event.Type != "update" && event.Type != "create" {
 					continue
 				}
@@ -299,4 +315,18 @@ func decodeRemoteProgram(data json.RawMessage) (model.Event, error) {
 		return model.Event{}, err
 	}
 	return mirakurun.EventFromAPI(&api.Program), nil
+}
+
+func removeRemoteProgram(ctx context.Context, updater ProgramUpdater, data json.RawMessage) error {
+	var item struct {
+		ID int64 `json:"id"`
+	}
+	if json.Unmarshal(data, &item) != nil || item.ID <= 0 {
+		return nil
+	}
+	remover, ok := updater.(ProgramRemover)
+	if !ok {
+		return errors.New("remote program updater does not support removals")
+	}
+	return remover.RemovePrograms(ctx, []int64{item.ID})
 }
