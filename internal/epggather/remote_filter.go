@@ -15,7 +15,7 @@ type ServiceLister interface {
 }
 
 type knownServiceProgramUpdater struct {
-	inner  EventWriter
+	inner  RemoteEventWriter
 	loader ServiceLister
 
 	mu     sync.Mutex
@@ -28,11 +28,16 @@ type serviceKey struct {
 	serviceID uint16
 }
 
+type RemoteEventWriter interface {
+	EventWriter
+	RemovePrograms(context.Context, []int64) error
+}
+
 // NewKnownServiceProgramUpdater stores only the programs of scanned
 // services. A remote server pushes the programs of all its services, which
 // would otherwise add services this server never scanned. An unknown
 // service reloads the service list once, so that a fresh scan is picked up.
-func NewKnownServiceProgramUpdater(inner EventWriter, loader ServiceLister) EventWriter {
+func NewKnownServiceProgramUpdater(inner RemoteEventWriter, loader ServiceLister) RemoteEventWriter {
 	return &knownServiceProgramUpdater{inner: inner, loader: loader}
 }
 
@@ -102,4 +107,37 @@ func (u *knownServiceProgramUpdater) filter(programs []model.Event) ([]model.Eve
 		slog.Debug("ignoring remote program event for unknown service", "networkId", item.Key.NetworkID, "serviceId", item.Key.ServiceID, "eventId", item.EventID)
 	}
 	return filtered, unknown
+}
+
+func (u *knownServiceProgramUpdater) RemovePrograms(ctx context.Context, ids []int64) error {
+	events := make([]model.Event, 0, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			continue
+		}
+		key := model.ServiceKey{NetworkID: uint16(id / 10000000000), ServiceID: uint16(id / 100000 % 100000)}
+		eventID := uint16(id % 100000)
+		if model.ProgramID(key, eventID) != id {
+			continue
+		}
+		events = append(events, model.Event{Key: key, EventID: eventID})
+	}
+	if err := u.ensureLoaded(ctx); err != nil {
+		return err
+	}
+	filtered, unknown := u.filter(events)
+	if unknown {
+		if err := u.refresh(ctx); err != nil {
+			return err
+		}
+		filtered, _ = u.filter(events)
+	}
+	if len(filtered) == 0 {
+		return nil
+	}
+	knownIDs := make([]int64, 0, len(filtered))
+	for _, e := range filtered {
+		knownIDs = append(knownIDs, model.ProgramID(e.Key, e.EventID))
+	}
+	return u.inner.RemovePrograms(ctx, knownIDs)
 }

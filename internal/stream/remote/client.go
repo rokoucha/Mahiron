@@ -53,6 +53,10 @@ type Client struct {
 	statusTimeout       time.Duration
 }
 
+type ProgramRemover interface {
+	RemovePrograms(context.Context, []int64) error
+}
+
 type ProgramUpdater interface {
 	UpsertEvents(context.Context, []model.Event) error
 }

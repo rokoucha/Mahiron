@@ -811,7 +811,7 @@ func TestReadRemoteProgramEventsUpsertsProgramUpdates(t *testing.T) {
 	}
 }
 
-func TestReadRemoteProgramEventsIgnoresMalformedAndFilteredEvents(t *testing.T) {
+func TestReadRemoteProgramEventsHandlesRemovalAndIgnoresMalformedEvents(t *testing.T) {
 	src := strings.NewReader(`[
 not-json
 {"resource":"service","type":"update","data":{"id":1}}
@@ -823,6 +823,9 @@ not-json
 
 	if err := readRemoteProgramEvents(context.Background(), src, updater); err != nil {
 		t.Fatal(err)
+	}
+	if len(updater.removed) != 1 || updater.removed[0] != 401010001 {
+		t.Fatalf("removals=%v", updater.removed)
 	}
 	if got, want := len(updater.programs), 1; got != want {
 		t.Fatalf("upserted programs = %d, want %d", got, want)
@@ -851,6 +854,7 @@ func TestReadRemoteProgramEventsStopsCleanlyOnCanceledContextAndEOF(t *testing.T
 }
 
 type recordingProgramUpdater struct {
+	removed  []int64
 	programs []*program.Program
 }
 
@@ -961,4 +965,9 @@ func TestMirakcAvailabilityPreservesHigherPriorityPreemption(t *testing.T) {
 			t.Fatalf("priority=%d err=%v", priority, err)
 		}
 	}
+}
+
+func (u *recordingProgramUpdater) RemovePrograms(_ context.Context, ids []int64) error {
+	u.removed = append(u.removed, ids...)
+	return nil
 }

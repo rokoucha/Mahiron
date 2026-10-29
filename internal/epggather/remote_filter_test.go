@@ -62,6 +62,7 @@ func TestKnownServiceProgramUpdaterRefreshesUnknownOnce(t *testing.T) {
 }
 
 type recordingProgramUpdater struct {
+	removed  []int64
 	programs []model.Event
 }
 
@@ -82,4 +83,23 @@ func (l *recordingServiceLister) GetServices(context.Context) ([]*service.Servic
 		return l.refreshServices, nil
 	}
 	return l.services, nil
+}
+
+func (u *recordingProgramUpdater) RemovePrograms(_ context.Context, ids []int64) error {
+	u.removed = append(u.removed, ids...)
+	return nil
+}
+
+func TestRemoteRemovalsFilterUnknownServices(t *testing.T) {
+	inner := &recordingProgramUpdater{}
+	loader := &recordingServiceLister{services: []*service.Service{{Service: model.Service{Key: model.ServiceKey{NetworkID: 1, ServiceID: 2}}}}}
+	updater := NewKnownServiceProgramUpdater(inner, loader)
+	known := model.ProgramID(model.ServiceKey{NetworkID: 1, ServiceID: 2}, 1)
+	unknown := model.ProgramID(model.ServiceKey{NetworkID: 2, ServiceID: 2}, 1)
+	if err := updater.RemovePrograms(t.Context(), []int64{known, unknown, -1, 999999999999999999}); err != nil {
+		t.Fatal(err)
+	}
+	if len(inner.removed) != 1 || inner.removed[0] != known {
+		t.Fatalf("removed=%v", inner.removed)
+	}
 }
