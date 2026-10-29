@@ -6,6 +6,7 @@ import (
 	"log/slog"
 
 	"github.com/21S1298001/mahiron/internal/model"
+	"github.com/21S1298001/mahiron/internal/stream/presentfollowing"
 	"github.com/21S1298001/mahiron/ts"
 )
 
@@ -86,13 +87,16 @@ func (s *Session) runSectionUpdates(ctx context.Context, done chan struct{}) {
 
 func (s *Session) updateSection(ctx context.Context, section ts.Section) {
 	if ts.IsEITPF(section.TableID()) && s.eitUpdater != nil {
+		if len(section) > 5 && section[5]&1 == 0 {
+			return
+		}
 		key, fingerprint, coalesced := eitPFSectionFingerprint(section)
 		eit, err := ts.ParseEIT(section)
 		if err != nil {
 			if coalesced {
 				s.releaseEITPFSection(key, fingerprint)
 			}
-		} else if err := s.eitUpdater.UpsertEvents(ctx, EventsFromEIT(eit)); err != nil {
+		} else if err := s.updatePresentFollowing(ctx, eit); err != nil {
 			if coalesced {
 				s.releaseEITPFSection(key, fingerprint)
 			}
@@ -184,4 +188,21 @@ func (s *Session) releaseEITPFSection(key eitPFSectionKey, fingerprint uint32) {
 	if current, ok := s.eitPFFingerprints[key]; ok && current == fingerprint {
 		delete(s.eitPFFingerprints, key)
 	}
+}
+
+func (s *Session) updatePresentFollowing(ctx context.Context, eit *ts.EIT) error {
+	updater, ok := s.eitUpdater.(presentfollowing.Updater)
+	if !ok {
+		return s.eitUpdater.UpsertEvents(ctx, EventsFromEIT(eit))
+	}
+	// Actual p/f is authoritative; other-TS p/f must not retire its events.
+	if eit.TableID != ts.TableIDEITPF0 {
+		return nil
+	}
+	key := model.ServiceKey{NetworkID: eit.OriginalNetworkID, StreamID: eit.TransportStreamID, ServiceID: eit.ServiceID}
+	snapshot := s.presentFollowing.Observe(key, eit.TableID, eit.VersionNumber, eit.SectionNumber, eit.LastSectionNumber, EventsFromEIT(eit))
+	if snapshot == nil {
+		return nil
+	}
+	return updater.UpsertPresentFollowing(ctx, *snapshot)
 }

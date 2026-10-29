@@ -13,6 +13,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/isdb"
 	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/stream/demux"
+	"github.com/21S1298001/mahiron/internal/stream/presentfollowing"
 	"github.com/21S1298001/mahiron/internal/stream/schedule"
 	"github.com/21S1298001/mahiron/internal/stream/source"
 	"github.com/21S1298001/mahiron/internal/tuner"
@@ -21,6 +22,7 @@ import (
 )
 
 type Session struct {
+	presentFollowing  presentfollowing.Collector
 	input             source.ChannelInput
 	handle            source.InputHandle
 	channel           string

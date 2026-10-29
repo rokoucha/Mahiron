@@ -14,6 +14,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/isdb"
 	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/stream/fanout"
+	"github.com/21S1298001/mahiron/internal/stream/presentfollowing"
 	"github.com/21S1298001/mahiron/internal/stream/programstream"
 	"github.com/21S1298001/mahiron/internal/stream/schedule"
 	"github.com/21S1298001/mahiron/internal/stream/source"
@@ -46,13 +47,14 @@ type LogoUpdater interface {
 // through the ACAS descrambler, so one b61Decoder process serves every
 // decode=1 subscriber.
 type Session struct {
-	input        source.ChannelInput
-	handle       source.InputHandle
-	channel      string
-	typ          string
-	descrambler  source.Descrambler
-	eventUpdater EventUpdater
-	logoUpdater  LogoUpdater
+	presentFollowing presentfollowing.Collector
+	input            source.ChannelInput
+	handle           source.InputHandle
+	channel          string
+	typ              string
+	descrambler      source.Descrambler
+	eventUpdater     EventUpdater
+	logoUpdater      LogoUpdater
 
 	mu            sync.Mutex
 	stopped       bool

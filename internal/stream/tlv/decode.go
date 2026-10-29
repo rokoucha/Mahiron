@@ -34,6 +34,8 @@ func eventsFromMHEIT(eit *mmt.MHEIT) []model.Event {
 	events := make([]model.Event, 0, len(eit.Events))
 	for _, entry := range eit.Events {
 		event := model.Event{
+			EITPresent:    mmt.IsMHEITPF(eit.TableID) && eit.SectionNumber == 0,
+			EITFollowing:  mmt.IsMHEITPF(eit.TableID) && eit.SectionNumber == 1,
 			Key:           key,
 			EventID:       entry.EventID,
 			RunningStatus: entry.RunningStatus,

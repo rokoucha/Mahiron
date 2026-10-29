@@ -118,7 +118,7 @@ func (m *Manager) UpsertSchedule(ctx context.Context, snapshot model.ScheduleSna
 	for i := range snapshot.Events {
 		programs[i] = FromEvent(snapshot.Events[i])
 	}
-	return m.upsertPrograms(ctx, programs)
+	return m.upsertPrograms(ctx, programs, nil)
 }
 
 func preferPending(previous, incoming *Program) *Program {
