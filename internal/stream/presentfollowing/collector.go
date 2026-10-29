@@ -3,6 +3,7 @@ package presentfollowing
 
 import (
 	"context"
+	"time"
 
 	"github.com/21S1298001/mahiron/internal/model"
 )
@@ -55,5 +56,5 @@ func (c *Collector) Observe(service model.ServiceKey, tableID, version, section,
 	}
 	all := append([]model.Event{}, t.events[0]...)
 	all = append(all, t.events[1]...)
-	return &model.PresentFollowingSnapshot{Service: service, Events: all}
+	return &model.PresentFollowingSnapshot{Service: service, Events: all, ObservedAt: time.Now().UnixMilli()}
 }

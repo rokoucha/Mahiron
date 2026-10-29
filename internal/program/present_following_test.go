@@ -2,6 +2,7 @@ package program
 
 import (
 	"context"
+	"time"
 
 	"github.com/21S1298001/mahiron/internal/model"
 	"testing"
@@ -176,5 +177,116 @@ func TestEmptyPresentFollowingRetiresOnlyItsService(t *testing.T) {
 	}
 	if _, ok, err := m.Get(ctx, ProgramID(2, 2, 1)); err != nil || !ok {
 		t.Fatalf("another service was changed: %v", err)
+	}
+}
+
+func TestPresentFollowingReconsidersOrphanedUndefinedEvents(t *testing.T) {
+	ctx := context.Background()
+	m := newTestManager(t)
+	pub := &fakeProgramEventPublisher{}
+	m.events = pub
+	key := model.ServiceKey{NetworkID: 32736, ServiceID: 1024}
+	start := int64(100000000)
+	old := model.Event{Key: key, EventID: 6473, StartAt: &start, EITFollowing: true}
+	update := func(at int64, events ...model.Event) {
+		t.Helper()
+		if err := m.UpsertPresentFollowing(ctx, model.PresentFollowingSnapshot{Service: key, ObservedAt: at, Events: events}); err != nil {
+			t.Fatal(err)
+		}
+		m.flushEvents()
+	}
+	update(start, old)
+	next := model.Event{Key: key, EventID: 4572, StartAt: testPtr(start + 1000), DurationMS: testPtr(1000), EITPresent: true}
+	// A following event disappearing is not immediate proof of cancellation.
+	update(start+2000, next)
+	p, ok, err := m.Get(ctx, model.ProgramID(key, 6473))
+	if err != nil || !ok || p.EITFollowing || p.EITPresent {
+		t.Fatalf("orphan state=%+v %v", p, err)
+	}
+	// Re-read the persisted row, just as after restarting the manager.
+	m = NewManager(m.store, pub)
+	update(start+int64((3*time.Hour)/time.Millisecond), next)
+	if _, ok, err := m.Get(ctx, model.ProgramID(key, 6473)); err != nil || !ok {
+		t.Fatal("retired at the three-hour boundary")
+	}
+	pub.events = nil
+	update(start+int64((3*time.Hour)/time.Millisecond)+1, next)
+	if _, ok, err := m.Get(ctx, model.ProgramID(key, 6473)); err != nil || ok {
+		t.Fatalf("orphan survived the cancellation grace: found=%v err=%v", ok, err)
+	}
+	if len(pub.events) != 1 || !pub.events[0].isRemove || pub.events[0].removeID != model.ProgramID(key, 6473) {
+		t.Fatalf("notifications=%+v", pub.events)
+	}
+}
+
+func TestOrphanRetirementProtectsCurrentFutureAndKnownEvents(t *testing.T) {
+	ctx := context.Background()
+	m := newTestManager(t)
+	key := model.ServiceKey{NetworkID: 1, ServiceID: 2}
+	now := int64(100000000)
+	past := now - int64(4*time.Hour/time.Millisecond)
+	event := func(id uint16, start *int64, duration *int) model.Event {
+		return model.Event{Key: key, EventID: id, StartAt: start, DurationMS: duration}
+	}
+	current := event(1, &past, nil)
+	current.EITPresent = true
+	suspended := event(2, &past, nil)
+	suspended.EITFollowing = true
+	suspended.EITSuspended = true
+	future := event(3, testPtr(now+1000), nil)
+	unknown := event(4, nil, testPtr(1000))
+	history := event(5, &past, testPtr(1000))
+	orphan := event(6, &past, nil)
+	other := event(7, &past, nil)
+	other.Key.NetworkID = 2
+	rows := []*Program{}
+	for _, e := range []model.Event{current, suspended, future, unknown, history, orphan, other} {
+		rows = append(rows, FromEvent(e))
+	}
+	if err := m.store.UpsertAll(ctx, rows); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.UpsertPresentFollowing(ctx, model.PresentFollowingSnapshot{Service: key, ObservedAt: now, Events: []model.Event{current, suspended}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range rows {
+		_, ok, err := m.Get(ctx, p.ID)
+		if err != nil || ok == (p.EventID == 6) {
+			t.Fatalf("event %d found=%v err=%v", p.EventID, ok, err)
+		}
+	}
+}
+
+func TestOrphanRetirementRollsBackAndPublishesAfterCommit(t *testing.T) {
+	ctx := context.Background()
+	m := newTestManager(t)
+	pub := &fakeProgramEventPublisher{}
+	m.events = pub
+	key := model.ServiceKey{NetworkID: 1, ServiceID: 2}
+	old := FromEvent(model.Event{Key: key, EventID: 1, StartAt: testPtr[int64](1)})
+	if err := m.store.UpsertAll(ctx, []*Program{old}); err != nil {
+		t.Fatal(err)
+	}
+	write := m.store.(*sqliteStore).write
+	if _, err := write.ExecContext(ctx, `CREATE TRIGGER reject_orphan BEFORE DELETE ON programs BEGIN SELECT RAISE(ABORT, 'test failure'); END`); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := model.PresentFollowingSnapshot{Service: key, ObservedAt: int64(4 * time.Hour / time.Millisecond)}
+	if err := m.UpsertPresentFollowing(ctx, snapshot); err == nil {
+		t.Fatal("delete unexpectedly succeeded")
+	}
+	m.flushEvents()
+	if _, ok, err := m.Get(ctx, old.ID); err != nil || !ok || len(pub.events) != 0 {
+		t.Fatalf("failed retirement mutated state: found=%v err=%v events=%v", ok, err, pub.events)
+	}
+	if _, err := write.ExecContext(ctx, `DROP TRIGGER reject_orphan`); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.UpsertPresentFollowing(ctx, snapshot); err != nil {
+		t.Fatal(err)
+	}
+	m.flushEvents()
+	if len(pub.events) != 1 || !pub.events[0].isRemove || pub.events[0].removeID != old.ID {
+		t.Fatalf("notifications=%v", pub.events)
 	}
 }

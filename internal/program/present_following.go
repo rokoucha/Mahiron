@@ -2,6 +2,7 @@ package program
 
 import (
 	"context"
+	"time"
 
 	"github.com/21S1298001/mahiron/internal/model"
 )
@@ -27,13 +28,18 @@ func (m *Manager) reconcilePresentFollowing(ctx context.Context, programs []*Pro
 	}
 	retired := make(map[int64]bool)
 	for _, p := range stored {
-		if current[p.ID] || (!p.EITPresent && !p.EITFollowing) {
+		if current[p.ID] {
 			continue
 		}
-		// Keep known history, but do not invent an end time for an undefined event
-		// that disappeared from both slots (TR-B14 19.3, C.5.7).
-		if p.DurationOrZero() <= 0 && (p.EITPresent || p.EITSuspended) {
+		// Reconsider unlabelled orphans too: a following event can disappear
+		// before we ever observe it as present (TR-B14 19.3 cancellation grace).
+		overdue := snapshot.ObservedAt > 0 && p.StartAt != nil &&
+			*p.StartAt < snapshot.ObservedAt-int64(3*time.Hour/time.Millisecond)
+		if p.DurationOrZero() <= 0 && (p.EITPresent || p.EITSuspended || overdue) {
 			retired[p.ID] = true
+			continue
+		}
+		if !p.EITPresent && !p.EITFollowing {
 			continue
 		}
 		p.EITPresent = false

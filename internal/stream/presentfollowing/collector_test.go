@@ -19,7 +19,7 @@ func TestCollectorWaitsForCompleteVersion(t *testing.T) {
 		t.Fatal("versions mixed at wraparound")
 	}
 	got := c.Observe(key, 0x4e, 0, 0, 1, []model.Event{next})
-	if got == nil || len(got.Events) != 2 || !got.Events[0].EITPresent || !got.Events[1].EITFollowing || got.Events[1].EventID != 1 {
+	if got == nil || got.ObservedAt <= 0 || len(got.Events) != 2 || !got.Events[0].EITPresent || !got.Events[1].EITFollowing || got.Events[1].EventID != 1 {
 		t.Fatalf("interruption snapshot=%+v", got)
 	}
 	// Re-observation must return the complete snapshot so failed writes can retry.
