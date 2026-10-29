@@ -64,10 +64,18 @@ func (m *Manager) UpsertEvents(ctx context.Context, events []model.Event) error 
 func (m *Manager) UpsertPrograms(ctx context.Context, programs []*Program) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.upsertPrograms(ctx, programs)
+	return m.upsertPrograms(ctx, programs, nil)
 }
 
-func (m *Manager) upsertPrograms(ctx context.Context, programs []*Program) error {
+func (m *Manager) upsertPrograms(ctx context.Context, programs []*Program, pf *model.PresentFollowingSnapshot) error {
+	retired := make(map[int64]bool)
+	if pf != nil {
+		var err error
+		programs, retired, err = m.reconcilePresentFollowing(ctx, programs, pf)
+		if err != nil {
+			return err
+		}
+	}
 	source := observability.EPGMetricSource(ctx)
 	attempted := nonNilProgramCount(programs)
 	pending := make(map[int64]*Program, len(programs))
@@ -120,6 +128,9 @@ func (m *Manager) upsertPrograms(ctx context.Context, programs []*Program) error
 		var after *Program
 		if m.acceptEIT(p, tableRevisions, existing) {
 			after = mergeUpsertProgram(existing, p)
+			if pf == nil && p.EITRevision != nil && existing != nil && (existing.EITPresent || existing.EITFollowing) {
+				after = mergeUpsertProgram(p, existing)
+			}
 			accepted[id] = after
 		} else {
 			if !ok {
@@ -145,6 +156,11 @@ func (m *Manager) upsertPrograms(ctx context.Context, programs []*Program) error
 			}
 		}
 
+		if pf != nil {
+			after.EITPresent = p.EITPresent
+			after.EITFollowing = p.EITFollowing
+			after.EITSuspended = p.EITFollowing && existing != nil && (existing.EITPresent || existing.EITSuspended)
+		}
 		if ok && sameProgram(existing, after) {
 			continue
 		}
@@ -156,13 +172,13 @@ func (m *Manager) upsertPrograms(ctx context.Context, programs []*Program) error
 		}
 	}
 
-	if len(toWrite) == 0 {
+	if len(toWrite) == 0 && len(retired) == 0 {
 		m.recordEIT(accepted)
 		observability.RecordEPGProgramsUpserted(ctx, source, "success", 0)
 		return nil
 	}
 
-	removed := map[int64]bool{}
+	removed := retired
 	blockedWrites := map[int64]bool{}
 	writtenByService := make(map[[2]uint16]map[int64]*Program)
 	for _, p := range toWrite {
@@ -198,6 +214,11 @@ func (m *Manager) upsertPrograms(ctx context.Context, programs []*Program) error
 		for _, other := range latest {
 			if other.ID == p.ID || other.Key.NetworkID != p.Key.NetworkID || other.Key.ServiceID != p.Key.ServiceID || other.StartAt == nil || other.DurationOrZero() <= 0 {
 				continue
+			}
+			if pf != nil && (other.EITPresent || other.EITFollowing) {
+				if slot := pending[other.ID]; slot != nil && (slot.EITPresent || slot.EITFollowing) {
+					continue
+				}
 			}
 			if (other.EITPresent || other.EITFollowing) && !pending[p.ID].EITPresent {
 				continue

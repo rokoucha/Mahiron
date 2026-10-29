@@ -5,6 +5,8 @@ import (
 	"encoding/binary"
 	"log/slog"
 
+	"github.com/21S1298001/mahiron/internal/model"
+	"github.com/21S1298001/mahiron/internal/stream/presentfollowing"
 	"github.com/21S1298001/mahiron/mmt"
 )
 
@@ -128,7 +130,10 @@ func (s *Session) update(ctx context.Context, sig signal) {
 			s.releaseSection(key, fingerprint)
 			return
 		}
-		if err := s.eventUpdater.UpsertEvents(ctx, s.fillCodecs(eventsFromMHEIT(eit))); err != nil {
+		if !eit.CurrentNextIndicator {
+			return
+		}
+		if err := s.updatePresentFollowing(ctx, eit); err != nil {
 			s.releaseSection(key, fingerprint)
 			slog.Error("failed to update MH-EIT p/f", "type", s.typ, "channel", s.channel, "err", err)
 		}
@@ -139,4 +144,18 @@ func (s *Session) update(ctx context.Context, sig signal) {
 			slog.Error("failed to update logo", "type", s.typ, "channel", s.channel, "err", err)
 		}
 	}
+}
+
+func (s *Session) updatePresentFollowing(ctx context.Context, eit *mmt.MHEIT) error {
+	events := s.fillCodecs(eventsFromMHEIT(eit))
+	updater, ok := s.eventUpdater.(presentfollowing.Updater)
+	if !ok {
+		return s.eventUpdater.UpsertEvents(ctx, events)
+	}
+	key := model.ServiceKey{NetworkID: eit.OriginalNetworkID, StreamID: eit.TLVStreamID, ServiceID: eit.ServiceID}
+	snapshot := s.presentFollowing.Observe(key, eit.TableID, eit.VersionNumber, eit.SectionNumber, eit.LastSectionNumber, events)
+	if snapshot == nil {
+		return nil
+	}
+	return updater.UpsertPresentFollowing(ctx, *snapshot)
 }

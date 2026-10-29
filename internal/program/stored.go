@@ -13,6 +13,7 @@ type storedEvent struct {
 	EITRevision         *storedEITRevision `json:"eitRevision,omitempty"`
 	EITPresent          bool               `json:"eitPresent,omitempty"`
 	EITFollowing        bool               `json:"eitFollowing,omitempty"`
+	EITSuspended        bool               `json:"eitSuspended,omitempty"`
 	Language            string             `json:"language,omitempty"`
 	RunningStatus       uint8              `json:"runningStatus,omitempty"`
 	Genres              []storedGenre      `json:"genres,omitempty"`
@@ -101,7 +102,7 @@ type storedSeries struct {
 }
 
 func toStoredEvent(e *model.Event) storedEvent {
-	out := storedEvent{EITPresent: e.EITPresent, EITFollowing: e.EITFollowing, Language: e.Language, RunningStatus: e.RunningStatus}
+	out := storedEvent{EITPresent: e.EITPresent, EITFollowing: e.EITFollowing, EITSuspended: e.EITSuspended, Language: e.Language, RunningStatus: e.RunningStatus}
 	if r := e.EITExtendedRevision; r != nil {
 		out.EITExtendedRevision = &storedEITRevision{Source: r.Source, TableID: r.TableID, Version: r.Version}
 	}
@@ -159,6 +160,7 @@ func (s storedEvent) applyTo(e *model.Event) {
 	}
 	e.EITPresent = s.EITPresent
 	e.EITFollowing = s.EITFollowing
+	e.EITSuspended = s.EITSuspended
 	e.Language = s.Language
 	e.RunningStatus = s.RunningStatus
 	for _, g := range s.Genres {

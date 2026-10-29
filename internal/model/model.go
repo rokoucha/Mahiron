@@ -222,6 +222,7 @@ type Event struct {
 	EITRevision         *EITRevision `json:"-"`
 	EITPresent          bool         `json:"-"`
 	EITFollowing        bool         `json:"-"`
+	EITSuspended        bool         `json:"-"`
 	Key                 ServiceKey
 	EventID             uint16
 	StartAt             *int64

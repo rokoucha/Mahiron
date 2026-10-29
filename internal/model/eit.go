@@ -31,3 +31,10 @@ type ScheduleSnapshot struct {
 	Revisions []EITRevision
 	Events    []Event
 }
+
+// PresentFollowingSnapshot contains both sections of one p/f subtable version.
+// Empty sections are significant: absence from both slots ends an event.
+type PresentFollowingSnapshot struct {
+	Service ServiceKey
+	Events  []Event
+}
