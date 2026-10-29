@@ -35,6 +35,8 @@ type ScheduleSnapshot struct {
 // PresentFollowingSnapshot contains both sections of one p/f subtable version.
 // Empty sections are significant: absence from both slots ends an event.
 type PresentFollowingSnapshot struct {
-	Service ServiceKey
-	Events  []Event
+	// ObservedAt is the reception time in Unix milliseconds, not event time.
+	ObservedAt int64
+	Service    ServiceKey
+	Events     []Event
 }
