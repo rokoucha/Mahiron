@@ -4,7 +4,7 @@ go 1.26.4
 
 require (
 	ariga.io/atlas v1.3.0
-	github.com/go-co-op/gocron/v2 v2.22.0
+	github.com/go-co-op/gocron/v2 v2.23.0
 	github.com/go-faster/errors v0.8.0
 	github.com/go-faster/jx v1.2.0
 	github.com/google/go-cmp v0.7.0
