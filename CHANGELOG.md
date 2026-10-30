@@ -1,5 +1,20 @@
 # Changelog
 
+## [v5.3.1](https://github.com/rokoucha/Mahiron/compare/v5.3.0...v5.3.1) - 2026-10-30
+
+- Update dependency golangci/golangci-lint to v2.15.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/252
+- Update dependency vite to v8.3.5 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/251
+- Update Songmu/tagpr action to v1.21.4 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/254
+- Update dependency typescript-eslint to v8.72.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/255
+- Update module golang.org/x/net to v0.61.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/257
+- Update docker/login-action action to v4.7.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/256
+- Update module modernc.org/sqlite to v1.61.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/258
+- Handle undefined EIT p/f event lifecycles by @rokoucha in https://github.com/rokoucha/Mahiron/pull/259
+- Reconcile remote program removals and undefined events by @rokoucha in https://github.com/rokoucha/Mahiron/pull/260
+- Retire orphaned undefined p/f events after cancellation grace by @rokoucha in https://github.com/rokoucha/Mahiron/pull/261
+- Update dependency typescript-eslint to v8.72.1 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/262
+- Update module github.com/go-co-op/gocron/v2 to v2.23.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/263
+
 ## [v5.2.4](https://github.com/rokoucha/Mahiron/compare/v5.2.3...v5.2.4) - 2026-10-22
 
 - Update module golang.org/x/text to v0.43.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/222
