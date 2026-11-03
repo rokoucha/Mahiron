@@ -27,6 +27,7 @@ type connection struct {
 	*control
 	generation string
 	instance   string
+	bootID     string
 }
 
 type tunerKey struct{ agent, tuner string }
@@ -125,8 +126,11 @@ func (h *Hub) serveControl(id string, w http.ResponseWriter, r *http.Request) {
 		}
 		c.control = ctl
 		c.instance = hello.Instance
+		c.bootID = hello.BootID
 		for key, previous := range h.quarantined {
-			if key.agent == id && previous.instance == hello.Instance && previous.generation == hello.RecoveredGeneration {
+			recovered := previous.instance == hello.Instance && previous.generation == hello.RecoveredGeneration
+			rebooted := previous.bootID != "" && hello.BootID != "" && previous.bootID != hello.BootID
+			if key.agent == id && (recovered || rebooted) {
 				delete(h.quarantined, key)
 			}
 		}

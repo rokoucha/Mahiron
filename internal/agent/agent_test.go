@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -595,5 +596,64 @@ func TestAgentDecoderPrimesTSMFInput(t *testing.T) {
 	}
 	if !bytes.Equal(append(first, rest...), want) {
 		t.Fatal("decoder output differs from separated TS")
+	}
+}
+
+func TestAgentReconnectRecovery(t *testing.T) {
+	for _, tc := range []struct {
+		name, oldBoot, newBoot, instance, recovered string
+		available                                   bool
+	}{
+		{"OS reboot", "boot-old", "boot-new", "new-process", "", true},
+		{"process restart", "boot-old", "boot-old", "new-process", "", false},
+		{"missing old boot", "", "boot-new", "new-process", "", false},
+		{"missing new boot", "boot-old", "", "new-process", "", false},
+		{"legacy agent restart", "", "", "new-process", "", false},
+		{"confirmed cleanup", "boot-old", "boot-old", "old-process", "old-generation", true},
+		{"unconfirmed cleanup", "boot-old", "boot-old", "old-process", "wrong-generation", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			const token = "test-token"
+			hub := NewHub(map[string]string{"living": fmt.Sprintf("%x", sha256.Sum256([]byte(token)))})
+			previous := &connection{instance: "old-process", generation: "old-generation", bootID: tc.oldBoot}
+			hub.quarantined[tunerKey{"living", "catv"}] = previous
+			hub.quarantined[tunerKey{"other", "catv"}] = previous
+			server := httptest.NewServer(hub)
+			defer server.Close()
+			base, err := url.Parse(server.URL)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			defer cancel()
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				_ = connect(ctx, base, token, &clientState{instance: tc.instance, bootID: tc.newBoot, recoveredGeneration: tc.recovered})
+			}()
+			defer func() { cancel(); hub.Close(); <-done }()
+			for {
+				changed := hub.Changed()
+				hub.mu.Lock()
+				c := hub.connections["living"]
+				connected := c != nil && c.control != nil
+				otherQuarantined := hub.quarantined[tunerKey{"other", "catv"}] != nil
+				hub.mu.Unlock()
+				if connected {
+					if got := hub.Available("living", "catv"); got != tc.available {
+						t.Fatalf("available = %v, want %v", got, tc.available)
+					}
+					if !otherQuarantined {
+						t.Fatal("cleared another agent's quarantine")
+					}
+					break
+				}
+				select {
+				case <-changed:
+				case <-ctx.Done():
+					t.Fatal("agent did not reconnect")
+				}
+			}
+		})
 	}
 }

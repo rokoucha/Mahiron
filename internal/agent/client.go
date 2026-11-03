@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -28,7 +29,8 @@ func Run(ctx context.Context, server, token string) error {
 	if token == "" {
 		return errors.New("agent token is required")
 	}
-	state := &clientState{instance: cryptorand.Text()}
+	bootID, _ := os.ReadFile("/proc/sys/kernel/random/boot_id")
+	state := &clientState{instance: cryptorand.Text(), bootID: strings.TrimSpace(string(bootID))}
 	backoff := time.Second
 	for ctx.Err() == nil {
 		err = connect(ctx, u, token, state)
@@ -60,6 +62,7 @@ type worker struct {
 
 type clientState struct {
 	instance            string
+	bootID              string
 	recoveredGeneration string
 }
 
@@ -85,7 +88,7 @@ func connect(ctx context.Context, base *url.URL, token string, state *clientStat
 	defer func() { _ = conn.Close() }()
 	conn.MaxPayloadBytes = 64 << 10
 	ctl := &control{conn: conn}
-	if err = ctl.send(message{Type: "hello", Version: Version, Instance: state.instance, RecoveredGeneration: state.recoveredGeneration}); err != nil {
+	if err = ctl.send(message{Type: "hello", Version: Version, Instance: state.instance, BootID: state.bootID, RecoveredGeneration: state.recoveredGeneration}); err != nil {
 		return err
 	}
 	var welcome message
