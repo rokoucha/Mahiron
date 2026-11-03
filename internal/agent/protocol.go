@@ -33,6 +33,7 @@ type message struct {
 	Version             int      `json:"version,omitempty"`
 	Generation          string   `json:"generation,omitempty"`
 	Instance            string   `json:"instance,omitempty"`
+	BootID              string   `json:"bootId,omitempty"`
 	RecoveredGeneration string   `json:"recoveredGeneration,omitempty"`
 	Session             string   `json:"session,omitempty"`
 	Request             *Request `json:"request,omitempty"`
