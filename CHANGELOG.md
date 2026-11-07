@@ -1,5 +1,14 @@
 # Changelog
 
+## [v5.3.2](https://github.com/rokoucha/Mahiron/compare/v5.3.1...v5.3.2) - 2026-11-07
+
+- Recover agent tuners after host reboot by @rokoucha in https://github.com/rokoucha/Mahiron/pull/267
+- Update dependency globals to v17.14.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/270
+- Update module modernc.org/sqlite to v1.61.1 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/269
+- Update dependency vitest to v5.1.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/272
+- Update dependency @vitejs/plugin-react to v6.2.1 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/271
+- Update Songmu/tagpr action to v1.22.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/273
+
 ## [v5.3.1](https://github.com/rokoucha/Mahiron/compare/v5.3.0...v5.3.1) - 2026-11-02
 
 - Update dependency golangci/golangci-lint to v2.15.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/252
