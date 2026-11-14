@@ -1,5 +1,16 @@
 # Changelog
 
+## [v5.3.3](https://github.com/rokoucha/Mahiron/compare/v5.3.2...v5.3.3) - 2026-11-14
+
+- Update dependency vite to v8.3.6 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/274
+- Update docker/login-action action to v4.8.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/275
+- Update module modernc.org/sqlite to v1.62.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/277
+- Update module golang.org/x/sync to v0.25.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/278
+- Update dependency typescript-eslint to v8.72.2 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/279
+- Update module github.com/go-co-op/gocron/v2 to v2.23.1 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/280
+- Update dependency @vitejs/plugin-react to v6.3.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/282
+- Update dependency vite to v8.3.8 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/281
+
 ## [v5.3.2](https://github.com/rokoucha/Mahiron/compare/v5.3.1...v5.3.2) - 2026-11-07
 
 - Recover agent tuners after host reboot by @rokoucha in https://github.com/rokoucha/Mahiron/pull/267
