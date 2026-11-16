@@ -276,3 +276,46 @@ func TestContinuousEPGPartialUsesPersistedNextDeadline(t *testing.T) {
 }
 
 func (*completingEPG) CheckGroup(context.Context, epggather.GroupKey) error { return nil }
+
+type failingGroupsEPG struct{ *scheduledEPG }
+
+func (*failingGroupsEPG) Groups(context.Context) (map[epggather.GroupKey]*epggather.Group, error) {
+	return nil, errors.New("services unavailable")
+}
+
+func TestContinuousEPGGroupReadFailurePreservesState(t *testing.T) {
+	mgr := controllerManager(t)
+	c := NewEPGController(mgr, &failingGroupsEPG{&scheduledEPG{}}, 30*time.Minute, 1)
+	c.forceAll = true
+	key := epggather.GroupKey{NetworkID: 4}
+	before := epgDeadline{id: "missing job", next: time.Now(), failures: 2, forced: true, lastFailure: 123, lastSuccess: 456, deferred: true, deferrals: 3}
+	state := before
+	states := map[epggather.GroupKey]*epgDeadline{key: &state}
+	delay := c.reconcile(t.Context(), states, time.Now())
+	if delay != time.Minute || !c.forceAll || len(states) != 1 || *states[key] != before {
+		t.Fatalf("delay=%v force=%v states=%+v", delay, c.forceAll, states)
+	}
+}
+
+func TestContinuousEPGRetainsRemovedRunningGroup(t *testing.T) {
+	mgr := controllerManager(t)
+	removed := epggather.GroupKey{NetworkID: 4}
+	peer := epggather.GroupKey{NetworkID: 5}
+	started := make(chan struct{})
+	service := &scheduledEPG{groups: map[epggather.GroupKey]*epggather.Group{removed: {Services: []model.ServiceKey{{NetworkID: 4, ServiceID: 1}}}}, gather: func(ctx context.Context, _ epggather.GroupKey) error { close(started); <-ctx.Done(); return ctx.Err() }}
+	c := NewEPGController(mgr, service, 30*time.Minute, 1)
+	states := map[epggather.GroupKey]*epgDeadline{}
+	c.reconcile(t.Context(), states, time.Now())
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("job did not start")
+	}
+	id := states[removed].id
+	delete(service.groups, removed)
+	service.groups[peer] = &epggather.Group{Services: []model.ServiceKey{{NetworkID: 5, ServiceID: 1}}}
+	c.reconcile(t.Context(), states, time.Now())
+	if states[removed] == nil || states[removed].id != id || states[peer].id != "" || len(mgr.GetJobs()) != 1 {
+		t.Fatalf("running removed group lost its slot: %+v", states)
+	}
+}

@@ -76,7 +76,7 @@ func (s *Gatherer) GatherGroup(ctx context.Context, key GroupKey) error {
 	if group == nil {
 		return nil
 	}
-	return gatherNetwork(ctx, s.events, s.programStore, s.serviceStore, s.streams, key.NetworkID, group.Candidates, group.Services, s.retrievalTime, s.collectOptions(storedServices, group))
+	return s.gatherNetwork(ctx, key.NetworkID, group, s.collectOptions(storedServices, group))
 }
 
 func (s *Gatherer) SetReceptionPolicy(policy ReceptionPolicy) { s.policy = policy }
