@@ -465,9 +465,9 @@ func (blockingEPGStreams) HasSession(string, string) bool { return false }
 
 func (blockingEPGStreams) StoredEPG(string, string) bool { return false }
 
-func (blockingEPGStreams) OpenSchedule(ctx context.Context, _, _ string) (CollectSchedule, ListStoredPrograms, error) {
+func (blockingEPGStreams) OpenSchedule(ctx context.Context, _, _ string) (schedule.Source, error) {
 	<-ctx.Done()
-	return nil, nil, ctx.Err()
+	return schedule.Source{}, ctx.Err()
 }
 
 type staticEPGStreams struct {
@@ -478,11 +478,11 @@ func (staticEPGStreams) HasSession(string, string) bool { return false }
 
 func (staticEPGStreams) StoredEPG(string, string) bool { return false }
 
-func (s staticEPGStreams) OpenSchedule(ctx context.Context, _, _ string) (CollectSchedule, ListStoredPrograms, error) {
+func (s staticEPGStreams) OpenSchedule(ctx context.Context, _, _ string) (schedule.Source, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, nil, err
+		return schedule.Source{}, err
 	}
-	return s.session.CollectSchedule, nil, nil
+	return schedule.LiveSource(s.session.CollectSchedule), nil
 }
 
 type keyedEPGStreams struct {
@@ -493,15 +493,15 @@ func (keyedEPGStreams) HasSession(string, string) bool { return false }
 
 func (keyedEPGStreams) StoredEPG(string, string) bool { return false }
 
-func (s keyedEPGStreams) OpenSchedule(ctx context.Context, typ, ch string) (CollectSchedule, ListStoredPrograms, error) {
+func (s keyedEPGStreams) OpenSchedule(ctx context.Context, typ, ch string) (schedule.Source, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, nil, err
+		return schedule.Source{}, err
 	}
 	session := s.sessions[Candidate{Type: typ, Channel: ch}]
 	if session == nil {
-		return nil, nil, errors.New("missing test session")
+		return schedule.Source{}, errors.New("missing test session")
 	}
-	return session.CollectSchedule, nil, nil
+	return schedule.LiveSource(session.CollectSchedule), nil
 }
 
 // eitFeeder passes TS EIT sections through the session-side schedule
@@ -989,11 +989,11 @@ type unavailableCandidateStreams struct {
 
 func (unavailableCandidateStreams) HasSession(string, string) bool { return false }
 func (unavailableCandidateStreams) StoredEPG(string, string) bool  { return false }
-func (s unavailableCandidateStreams) OpenSchedule(_ context.Context, kind, channel string) (CollectSchedule, ListStoredPrograms, error) {
+func (s unavailableCandidateStreams) OpenSchedule(_ context.Context, kind, channel string) (schedule.Source, error) {
 	if (Candidate{Type: kind, Channel: channel}) == s.available && s.session != nil {
-		return s.session.CollectSchedule, nil, nil
+		return schedule.LiveSource(s.session.CollectSchedule), nil
 	}
-	return nil, nil, tuner.ErrTunerUnavailable
+	return schedule.Source{}, tuner.ErrTunerUnavailable
 }
 
 func TestOnlyPureTunerShortageIsDeferred(t *testing.T) {
@@ -1054,3 +1054,11 @@ func TestTunerShortageAtSubscriptionIsDeferred(t *testing.T) {
 		t.Fatalf("shortage changed reception outcome: %+v", status)
 	}
 }
+
+func (blockingEPGStreams) CheckAvailable(context.Context, string, string) error { return nil }
+
+func (staticEPGStreams) CheckAvailable(context.Context, string, string) error { return nil }
+
+func (keyedEPGStreams) CheckAvailable(context.Context, string, string) error { return nil }
+
+func (unavailableCandidateStreams) CheckAvailable(context.Context, string, string) error { return nil }

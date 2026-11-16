@@ -18,6 +18,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/internal/stream/channel"
 	"github.com/21S1298001/mahiron/internal/stream/remote"
+	"github.com/21S1298001/mahiron/internal/stream/schedule"
 	"github.com/21S1298001/mahiron/internal/stream/source"
 	"github.com/21S1298001/mahiron/internal/tuner"
 	"github.com/google/uuid"
@@ -64,11 +65,11 @@ type ManagerConfig struct {
 }
 
 type Session interface {
+	ScheduleSource() schedule.Source
 	ChannelStream(context.Context, bool, io.Writer) error
 	ProgramStream(context.Context, model.Event, bool, io.Writer) error
 	ServiceStream(context.Context, uint16, bool, io.Writer) error
 	ScanServices(context.Context) ([]model.Service, error)
-	CollectSchedule(context.Context, func(model.ScheduleUpdate) error, func(model.PresentFollowing) error) error
 	ObserveLogos(context.Context, func(model.Logo) error) error
 	Stop(context.Context) error
 }

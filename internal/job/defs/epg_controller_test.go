@@ -274,3 +274,5 @@ func TestContinuousEPGPartialUsesPersistedNextDeadline(t *testing.T) {
 		t.Fatal("basic deadline missed")
 	}
 }
+
+func (*completingEPG) CheckGroup(context.Context, epggather.GroupKey) error { return nil }

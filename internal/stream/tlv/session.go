@@ -445,3 +445,5 @@ func (s *Session) observeCodecs(table mmt.Table) {
 	s.codecs[mpt.ServiceID()] = codecs
 	s.codecMu.Unlock()
 }
+
+func (s *Session) ScheduleSource() schedule.Source { return schedule.LiveSource(s.CollectSchedule) }

@@ -13,6 +13,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/service"
+	"github.com/21S1298001/mahiron/internal/stream/schedule"
 )
 
 // syncRemote gathers through a channel served by a remote, which OpenSchedule
@@ -165,8 +166,8 @@ func (remoteEPGStreams) HasSession(string, string) bool { return false }
 
 func (remoteEPGStreams) StoredEPG(string, string) bool { return true }
 
-func (s remoteEPGStreams) OpenSchedule(context.Context, string, string) (CollectSchedule, ListStoredPrograms, error) {
-	return s.session.CollectSchedule, s.session.ListServicePrograms, nil
+func (s remoteEPGStreams) OpenSchedule(context.Context, string, string) (schedule.Source, error) {
+	return schedule.StoredSource(s.session.ListServicePrograms), nil
 }
 
 func (s *remoteSyncSession) ListServicePrograms(_ context.Context, networkID, serviceID uint16) ([]model.Event, error) {
@@ -267,3 +268,5 @@ func TestStoredSyncAdvancesBasicFreshnessAndClearsPartial(t *testing.T) {
 		})
 	}
 }
+
+func (remoteEPGStreams) CheckAvailable(context.Context, string, string) error { return nil }

@@ -474,3 +474,5 @@ func waitContext(ctx context.Context) error {
 	}
 	return nil
 }
+
+func (s *Session) ScheduleSource() schedule.Source { return schedule.LiveSource(s.CollectSchedule) }

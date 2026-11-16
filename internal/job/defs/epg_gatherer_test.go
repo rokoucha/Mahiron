@@ -161,3 +161,5 @@ func TestEPGJobNamesUseChannelsWithoutChangingKeys(t *testing.T) {
 		})
 	}
 }
+
+func (*scheduledEPG) CheckGroup(context.Context, epggather.GroupKey) error { return nil }

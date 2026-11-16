@@ -9,6 +9,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/service"
+	"github.com/21S1298001/mahiron/internal/stream/schedule"
 )
 
 type ServiceStore interface {
@@ -21,17 +22,16 @@ type ServiceStore interface {
 // ListStoredPrograms lists a remote server's stored programs of a service.
 type ListStoredPrograms = func(ctx context.Context, networkID, serviceID uint16) ([]model.Event, error)
 
-// StreamManager gives EPG gathering access to channel sessions. It uses only
-// model and standard types (the aliases above), so that gathering does not
-// depend on the stream package; stream.EPGGatherAdapter implements it.
+// StreamManager gives EPG gathering access to schedule sources.
+// stream.EPGGatherAdapter implements it.
 type StreamManager interface {
 	HasSession(channelType, channelID string) bool
+	CheckAvailable(context.Context, string, string) error
 	// StoredEPG reports whether every enabled route reads stored programs.
 	StoredEPG(channelType, channelID string) bool
 	// OpenSchedule acquires the channel. A channel served by a remote
-	// Mahiron or Mirakurun returns listStored, whose stored programs are
-	// copied; any other channel returns collect.
-	OpenSchedule(ctx context.Context, channelType, channelID string) (collect CollectSchedule, listStored ListStoredPrograms, err error)
+	// Mahiron or Mirakurun returns stored programs; other channels collect live EIT.
+	OpenSchedule(ctx context.Context, channelType, channelID string) (schedule.Source, error)
 }
 
 type Gatherer struct {
@@ -106,12 +106,6 @@ func (s *Gatherer) CheckGroup(ctx context.Context, key GroupKey) error {
 	if key.Stored {
 		return nil
 	}
-	checker, ok := s.streams.(interface {
-		CheckAvailable(context.Context, string, string) error
-	})
-	if !ok {
-		return nil
-	}
 	groups, err := s.Groups(ctx)
 	if err != nil {
 		return err
@@ -125,7 +119,7 @@ func (s *Gatherer) CheckGroup(ctx context.Context, key GroupKey) error {
 		if s.streams.HasSession(candidate.Type, candidate.Channel) {
 			return nil
 		}
-		if err := checker.CheckAvailable(ctx, candidate.Type, candidate.Channel); err == nil {
+		if err := s.streams.CheckAvailable(ctx, candidate.Type, candidate.Channel); err == nil {
 			return nil
 		} else {
 			result = errors.Join(result, err)
