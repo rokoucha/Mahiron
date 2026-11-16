@@ -1,186 +1,41 @@
-export type Status = {
-  version?: string
-  process?: {
-    pid?: number
-    memoryUsage?: {
-      rss?: number
-      heapTotal?: number
-      heapUsed?: number
-    }
-  }
-  epg?: {
-    gatheringNetworks?: number[]
-    storedEvents?: number
-    staleServices?: number
-    failedServices?: number
-    lastUpdatedAt?: number
-  }
-  streamCount?: {
-    tunerDevice?: number
-    tsFilter?: number
-    decoder?: number
-  }
-  errorCount?: Record<string, number>
-  timerAccuracy?: Record<string, unknown>
-}
+import type {
+  Event,
+  EventType,
+  Program as APIProgram,
+  Status,
+  Channel,
+  Service,
+  TunerDevice as Tuner,
+  JobItem as Job,
+  JobScheduleItem as JobSchedule,
+} from './generated/types.gen'
 
-export type Channel = {
-  type: string
-  channel: string
-  name?: string
-}
+export type {
+  Status,
+  Channel,
+  Service,
+  TunerDevice as Tuner,
+  JobItem as Job,
+  JobResult,
+  JobResultItem,
+  JobScheduleItem as JobSchedule,
+} from './generated/types.gen'
 
-export type Service = {
-  id: number
-  serviceId: number
-  networkId: number
-  transportStreamId?: number
-  name: string
-  type: number
-  eitScheduleFlag?: boolean
-  eitPresentFollowing?: boolean
-  remoteControlKeyId?: number
-  epgReady?: boolean
-  epgBasicUpdatedAt?: number
-  epgExtendedProbeAt?: number
-  epgExtendedObserved?: boolean
-  epgPartialAt?: number
-  epgUpdatedAt?: number
-  epgLastAttemptAt?: number
-  epgLastError?: string
-  channel?: Channel
-  hasLogoData?: boolean
-}
-
-export type Program = {
-  id: number
-  eventId: number
-  serviceId: number
-  networkId: number
-  startAt: number
-  duration: number
-  isFree: boolean
-  name?: string
-  description?: string
-  genres?: Array<{ lv1?: number; lv2?: number; un1?: number; un2?: number }>
-  video?: {
-    type?: string
-    resolution?: string
-    streamContent?: number
-    componentType?: number
-  }
-  audios?: Array<{
-    componentType: number
-    componentTag?: number
-    isMain?: boolean
-    samplingRate?: number
-    langs?: string[]
-  }>
+// The schema leaves extended untyped so Go preserves broadcast item order.
+// The server encodes it as an object of strings (see api.yml).
+export type Program = Omit<APIProgram, 'extended'> & {
   extended?: Record<string, string>
-  relatedItems?: Array<{
-    type?: 'shared' | 'relay' | 'movement' | string
-    networkId?: number
-    transportStreamId?: number
-    serviceId?: number
-    eventId?: number
-  }>
-  series?: {
-    id?: number
-    repeat?: number
-    pattern?: number
-    episode?: number
-    lastEpisode?: number
-    expiresAt?: number
-    name?: string
-  }
 }
-
-export type Tuner = {
-  index: number
-  name: string
-  types: string[]
-  command?: string
-  pid?: number
-  isAvailable: boolean
-  isRemote: boolean
-  isFree: boolean
-  isUsing: boolean
-  isFault: boolean
-  currentChannelType?: string
-  currentChannel?: string
-  tunedChannelType?: string
-  tunedChannel?: string
-  users: Array<{
-    id: string
-    priority: number
-    agent?: string
-    url?: string
-    disableDecoder?: boolean
-    streamSetting?: {
-      channel?: Channel
-      networkId?: number
-      serviceId?: number
-      eventId?: number
-      noProvide?: boolean
-      parseNIT?: boolean
-      parseSDT?: boolean
-      parseEIT?: boolean
-    }
-    streamInfo?: Record<string, { packet: number; drop: number }>
-  }>
-}
-
-export type Job = {
-  id: string
-  key: string
-  name: string
-  status: 'queued' | 'standby' | 'running' | 'finished'
-  retryCount: number
-  isAborting: boolean
-  hasAborted?: boolean
-  hasFailed?: boolean
-  createdAt: number
-  updatedAt: number
-  startedAt?: number
-  finishedAt?: number
-  nextRunAt?: number
-  duration?: number
-  error?: string
-  result?: JobResult
-}
-
-export type JobResult = {
-  kind: string
-  summary?: string
-  counts?: Record<string, number>
-  items?: JobResultItem[]
-  warnings?: string[]
-}
-
-export type JobResultItem = {
-  kind: string
-  summary?: string
-  data?: Record<string, unknown>
-}
-
-export type JobSchedule = {
-  key: string
-  schedule: string
-  job: {
-    key: string
-    name: string
-  }
-}
-
-export type ProgramEventType = 'create' | 'update' | 'remove'
-export type ProgramRemoveEventData = { id: number }
+export type ProgramEventType = EventType
+export type ProgramRemoveEventData = Pick<Program, 'id'>
 export type ProgramEventData = Program | ProgramRemoveEventData
 
-export type EventItem = {
+// Stream input is untrusted and may contain future event kinds or malformed data.
+// Empty server event payloads can also be null.
+export type EventItem = Omit<Event, 'resource' | 'type' | 'data'> & {
   resource: string
-  type: string | ProgramEventType
+  type: string
   data: unknown
-  time: number
 }
 
 export function parseProgramEventData(

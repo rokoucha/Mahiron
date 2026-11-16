@@ -60,6 +60,8 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm ci
+      - name: Check generated API types
+        run: npm run generate:check
       - run: npm run lint
       - run: npm test
       - run: npm run build

@@ -13,7 +13,9 @@
     "lint:prettier": "prettier --check .",
     "lint:eslint": "eslint .",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "generate": "openapi-ts && prettier --write src/generated",
+    "generate:check": "npm run generate && git diff --exit-code -- src/generated && test -z \"$(git ls-files --others --exclude-standard -- src/generated)\""
   },
   "dependencies": {
     "react": "^19.2.3",
@@ -21,6 +23,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@hey-api/openapi-ts": "0.99.0",
     "@types/node": "^26.0.0",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",

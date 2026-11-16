@@ -1,4 +1,4 @@
-.PHONY: build generate test test-race verify web-build web-test
+.PHONY: build generate test test-race verify web-build web-test web-generate
 
 TEST_ENV := $(if $(CI),,GOCACHE=/private/tmp/mahiron-gocache)
 
@@ -14,6 +14,10 @@ web-build:
 web-test:
 	npm --prefix web install
 	npm --prefix web test
+
+web-generate:
+	npm --prefix web ci
+	npm --prefix web run generate
 
 generate:
 	go generate ./internal/web/api
