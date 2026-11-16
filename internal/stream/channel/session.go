@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/21S1298001/mahiron/internal/bml"
-	"github.com/21S1298001/mahiron/internal/bml/cache"
 	"github.com/21S1298001/mahiron/internal/isdb"
 	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/stream/demux"
@@ -57,7 +56,7 @@ type Config struct {
 	LogoUpdater LogoUpdater
 	OnStop      func()
 	Type        string
-	ModuleCache *cache.ModuleCache
+	// ModuleStore shares retained modules across sessions. Nil disables shared caching.
 	ModuleStore bml.ModuleStore
 	// SnapshotStore persists raw PMT/DII sections so a provisional snapshot
 	// can be served before a tuner is acquired for this channel again. A nil
@@ -73,7 +72,7 @@ func NewSession(config Config) *Session {
 	} else if config.Broadcast != nil {
 		input = localBroadcastInput{config.Broadcast}
 	}
-	hub := bml.NewHub().WithMetricLabels(config.Type, config.Channel).WithModuleStore(moduleStore(config))
+	hub := bml.NewHub().WithMetricLabels(config.Type, config.Channel).WithModuleStore(config.ModuleStore)
 	session := &Session{
 		input:        input,
 		handle:       config.Handle,
@@ -100,13 +99,6 @@ func NewSession(config Config) *Session {
 	}, session.observeSection).WithPIDSections(session.observePIDSection).WithPackets(hub.ObservePacket).WithMetricLabels(config.Type, config.Channel)
 	session.decodedDemuxer = demux.New(session.subscribeDecodedMux, nil).WithMetricLabels(config.Type, config.Channel)
 	return session
-}
-
-func moduleStore(config Config) bml.ModuleStore {
-	if config.ModuleStore != nil {
-		return config.ModuleStore
-	}
-	return config.ModuleCache
 }
 
 func NewChannelSession(config Config) *ChannelSession { return NewSession(config) }

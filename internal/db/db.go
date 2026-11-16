@@ -64,19 +64,7 @@ func (d *DB) Close() error {
 // reacquired from the broadcast stream or a remote source, so that risk is
 // acceptable and buys back the fsync-per-commit cost that dominates writes on
 // our NFS-backed storage.
-//
-// OpenCache exists only for call-site compatibility with code that
-// distinguishes "cache" databases from the main one; both now run identical
-// pragmas.
 func Open(path string) (*DB, error) {
-	return open(path)
-}
-
-func OpenCache(path string) (*DB, error) {
-	return open(path)
-}
-
-func open(path string) (*DB, error) {
 	if isInMemory(path) {
 		database, err := openPool(path, "", 1)
 		if err != nil {

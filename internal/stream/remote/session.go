@@ -15,8 +15,9 @@ import (
 )
 
 type SessionConfig struct {
-	Client      *Client
-	Handle      source.InputHandle
+	Client *Client
+	Handle source.InputHandle
+	// ModuleStore shares retained modules across sessions. Nil disables shared caching.
 	ModuleStore bml.ModuleStore
 }
 
