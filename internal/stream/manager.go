@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/21S1298001/mahiron/internal/bml"
-	"github.com/21S1298001/mahiron/internal/bml/cache"
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/job/run"
 	"github.com/21S1298001/mahiron/internal/model"
@@ -56,7 +55,8 @@ type ManagerConfig struct {
 	LogoUpdater        channel.LogoUpdater
 	ProgramUpdater     ProgramUpdater
 	TunerManager       source.TunerManager
-	ModuleStore        bml.ModuleStore
+	// ModuleStore shares retained modules across sessions. Nil disables shared caching.
+	ModuleStore bml.ModuleStore
 	// SnapshotStore persists raw PMT/DII sections for provisional /state
 	// responses. A nil store disables the feature entirely, independent of
 	// whether ModuleStore supports the SnapshotStore interface.
@@ -121,16 +121,9 @@ func NewManager(cfg ManagerConfig) *Manager {
 		remoteTuners:       make(map[string]map[int]tuner.Status, len(remotes)),
 		registry:           newSessionRegistry(),
 		sources:            source.NewPool(cfg.Channels, cfg.TunerManager, descramblerFactory, remoteClients(remotes)),
-		dataBroadcastStore: moduleStoreOrDefault(cfg.ModuleStore),
+		dataBroadcastStore: cfg.ModuleStore,
 		snapshotStore:      cfg.SnapshotStore,
 	}
-}
-
-func moduleStoreOrDefault(store bml.ModuleStore) bml.ModuleStore {
-	if store != nil {
-		return store
-	}
-	return cache.NewModuleCache(0)
 }
 
 func remoteClients(clients map[string]*remote.Client) map[string]source.RemoteClient {

@@ -206,12 +206,12 @@ func TestSessionRestoresDataBroadcastModuleAcrossSessions(t *testing.T) {
 	base := append(streamSectionPackets(ts.PIDPAT, streamBuildPAT(1, serviceID, pmtPID), 0), streamSectionPackets(pmtPID, streamBuildDataBroadcastPMT(serviceID, carouselPID, componentTag), 1)...)
 	base = append(base, streamSectionPackets(carouselPID, streamBuildDSMCCDII(t, 1, uint16(len(moduleData)), 2, uint32(len(moduleData)), 1, []byte("index.bml")), 2)...)
 	firstInput := append(append([]byte(nil), base...), streamSectionPackets(carouselPID, streamBuildDSMCCDDB(t, 1, 2, 1, 0, moduleData), 3)...)
-	first := NewSession(Config{Broadcast: source.NewBroadcast(streamtest.NewFinitePacketSource(firstInput, streamtest.ClosedStart()), nil), Channel: "27", Type: "GR", ModuleCache: moduleCache})
+	first := NewSession(Config{Broadcast: source.NewBroadcast(streamtest.NewFinitePacketSource(firstInput, streamtest.ClosedStart()), nil), Channel: "27", Type: "GR", ModuleStore: moduleCache})
 	if err := first.ObserveDataBroadcast(t.Context(), serviceID, false, func(bml.Event) error { return nil }); err != nil {
 		t.Fatal(err)
 	}
 
-	second := NewSession(Config{Broadcast: source.NewBroadcast(streamtest.NewFinitePacketSource(base, streamtest.ClosedStart()), nil), Channel: "27", Type: "GR", ModuleCache: moduleCache})
+	second := NewSession(Config{Broadcast: source.NewBroadcast(streamtest.NewFinitePacketSource(base, streamtest.ClosedStart()), nil), Channel: "27", Type: "GR", ModuleStore: moduleCache})
 	restored := false
 	if err := second.ObserveDataBroadcast(t.Context(), serviceID, false, func(event bml.Event) error {
 		if event.Type == "moduleUpdated" && event.Module != nil && event.Module.ModuleID == 2 {

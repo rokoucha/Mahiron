@@ -4,10 +4,13 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
 
+	"github.com/21S1298001/mahiron/internal/bml/cache"
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/db"
 	"github.com/21S1298001/mahiron/internal/epggather"
@@ -538,5 +541,50 @@ func TestBuildRuntimeRejectsInvalidEPGBeforeOpeningResources(t *testing.T) {
 		if err == nil || runtime != nil || message != "invalid EPG configuration" {
 			t.Fatalf("buildRuntime = (%v, %q, %v), want invalid EPG configuration", runtime, message, err)
 		}
+	}
+}
+
+func TestOpenDataBroadcastStores(t *testing.T) {
+	for _, tt := range []struct {
+		name                             string
+		disabled, fail, snapshotDisabled bool
+	}{
+		{name: "sqlite"}, {name: "fallback", fail: true}, {name: "disabled", disabled: true}, {name: "snapshots disabled", snapshotDisabled: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			path := ":memory:"
+			if tt.fail {
+				path = filepath.Join(t.TempDir(), "file")
+				if err := os.WriteFile(path, nil, 0600); err != nil {
+					t.Fatal(err)
+				}
+				path = filepath.Join(path, "cache.db")
+			}
+			enabled := !tt.disabled
+			persistent, modules, snapshots := openDataBroadcastStores(&config.SystemConfig{DataBroadcastCachePath: path, DataBroadcastEnabled: &enabled, DataBroadcastSnapshotDisabled: &tt.snapshotDisabled})
+			if tt.disabled || tt.fail {
+				if persistent != nil || snapshots != nil {
+					t.Fatal("unexpected persistent stores")
+				}
+				if _, ok := modules.(*cache.ModuleCache); !ok {
+					t.Fatalf("fallback store = %T", modules)
+				}
+			} else {
+				if persistent == nil {
+					t.Fatal("missing SQLite store")
+				}
+				t.Cleanup(func() { _ = persistent.Close() })
+				if modules != persistent {
+					t.Fatal("module store differs from SQLite store")
+				}
+				if tt.snapshotDisabled {
+					if snapshots != nil {
+						t.Fatal("snapshots enabled")
+					}
+				} else if snapshots != persistent {
+					t.Fatal("snapshot store differs from SQLite store")
+				}
+			}
+		})
 	}
 }
