@@ -12,7 +12,7 @@ import (
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 )
 
-func GetEvents(ctx context.Context, h *Handler) (apigen.GetEventsRes, error) {
+func (h *Handler) GetEvents(ctx context.Context) (apigen.GetEventsRes, error) {
 	events := apiEvents(h.eventLog())
 	res := apigen.GetEventsOKApplicationJSON(events)
 	return &res, nil
@@ -67,7 +67,7 @@ func appendEventJSON(e *jx.Encoder, event event.Event) {
 	e.ObjEnd()
 }
 
-func GetEventsStream(ctx context.Context, h *Handler, params apigen.GetEventsStreamParams, w http.ResponseWriter) error {
+func (h *Handler) GetEventsStream(ctx context.Context, params apigen.GetEventsStreamParams, w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	return writeEventsOpenJSONArrayStream(ctx, flushWriter{w: w}, h, params)

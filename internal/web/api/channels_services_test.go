@@ -511,11 +511,11 @@ func TestApiServiceExposesMirakurunLogoFieldsAndImage(t *testing.T) {
 	}
 
 	smallData := []byte{0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a, 0x00}
-	if err := sm.UpsertLogo(ctx, 1, 0, 101, logoID, 0, logoVersion, downloadDataID, smallData, 1234); err != nil {
+	if err := sm.UpsertLogo(ctx, model.ServiceKey{NetworkID: 1, StreamID: 0, ServiceID: 101}, model.Logo{LogoID: uint16(logoID), LogoType: uint8(0), Version: uint16(logoVersion), DownloadDataID: uint16(downloadDataID), Data: smallData}, 1234); err != nil {
 		t.Fatal(err)
 	}
 	data := []byte{0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a, 0x05}
-	if err := sm.UpsertLogo(ctx, 1, 0, 101, logoID, 5, logoVersion, downloadDataID, data, 1234); err != nil {
+	if err := sm.UpsertLogo(ctx, model.ServiceKey{NetworkID: 1, StreamID: 0, ServiceID: 101}, model.Logo{LogoID: uint16(logoID), LogoType: uint8(5), Version: uint16(logoVersion), DownloadDataID: uint16(downloadDataID), Data: data}, 1234); err != nil {
 		t.Fatal(err)
 	}
 	res, err = handler.GetServices(ctx, apigen.GetServicesParams{})

@@ -13,7 +13,7 @@ import (
 
 const epgGatherJobKeyPrefix = "epg-gather:nid:"
 
-func GetStatus(ctx context.Context, h *Handler) (apigen.GetStatusRes, error) {
+func (h *Handler) GetStatus(ctx context.Context) (apigen.GetStatusRes, error) {
 	now := time.Now()
 	result := &apigen.Status{
 		Time:    apigen.NewOptInt(int(now.UnixMilli())),

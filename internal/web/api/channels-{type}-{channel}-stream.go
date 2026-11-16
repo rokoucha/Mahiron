@@ -10,7 +10,7 @@ import (
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 )
 
-func GetChannelStream(ctx context.Context, h *Handler, params apigen.GetChannelStreamParams) (apigen.GetChannelStreamRes, error) {
+func (h *Handler) GetChannelStream(ctx context.Context, params apigen.GetChannelStreamParams) (apigen.GetChannelStreamRes, error) {
 	decode := shouldDecode(params.Decode)
 	ctx, userID := tunerUserContext(ctx, params.XMirakurunPriority, decode, h.serviceManager.GetChannel(params.Type, params.Channel), nil, nil)
 	session, err := h.streamManager.GetOrCreate(ctx, params.Type, params.Channel)
@@ -42,7 +42,7 @@ func GetChannelStream(ctx context.Context, h *Handler, params apigen.GetChannelS
 	}, nil
 }
 
-func GetServiceStreamByChannel(ctx context.Context, h *Handler, params apigen.GetServiceStreamByChannelParams) (apigen.GetServiceStreamByChannelRes, error) {
+func (h *Handler) GetServiceStreamByChannel(ctx context.Context, params apigen.GetServiceStreamByChannelParams) (apigen.GetServiceStreamByChannelRes, error) {
 	decode := shouldDecode(params.Decode)
 	serviceID := uint16(params.ID)
 	ctx, userID := tunerUserContext(ctx, params.XMirakurunPriority, decode, h.serviceManager.GetChannel(params.Type, params.Channel), nil, &serviceID)
@@ -75,7 +75,7 @@ func GetServiceStreamByChannel(ctx context.Context, h *Handler, params apigen.Ge
 	}, nil
 }
 
-func ChannelsTypeChannelStreamHead(ctx context.Context, h *Handler, params apigen.ChannelsTypeChannelStreamHeadParams) (apigen.ChannelsTypeChannelStreamHeadRes, error) {
+func (h *Handler) ChannelsTypeChannelStreamHead(ctx context.Context, params apigen.ChannelsTypeChannelStreamHeadParams) (apigen.ChannelsTypeChannelStreamHeadRes, error) {
 	channel := h.serviceManager.GetChannel(params.Type, params.Channel)
 	if channel == nil {
 		return &apigen.ChannelsTypeChannelStreamHeadNotFound{}, nil
@@ -101,7 +101,7 @@ func ChannelsTypeChannelStreamHead(ctx context.Context, h *Handler, params apige
 	}, nil
 }
 
-func ChannelsTypeChannelServicesIDStreamHead(ctx context.Context, h *Handler, params apigen.ChannelsTypeChannelServicesIDStreamHeadParams) (apigen.ChannelsTypeChannelServicesIDStreamHeadRes, error) {
+func (h *Handler) ChannelsTypeChannelServicesIDStreamHead(ctx context.Context, params apigen.ChannelsTypeChannelServicesIDStreamHeadParams) (apigen.ChannelsTypeChannelServicesIDStreamHeadRes, error) {
 	channel := h.serviceManager.GetChannel(params.Type, params.Channel)
 	if channel == nil {
 		return &apigen.ChannelsTypeChannelServicesIDStreamHeadNotFound{}, nil

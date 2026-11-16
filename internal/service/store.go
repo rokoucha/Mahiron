@@ -1,6 +1,10 @@
 package service
 
-import "context"
+import (
+	"context"
+
+	"github.com/21S1298001/mahiron/internal/model"
+)
 
 type Store interface {
 	List(ctx context.Context) ([]*Service, error)
@@ -21,8 +25,10 @@ type Store interface {
 	SetEPGSuccess(ctx context.Context, networkID, serviceID uint16, succeededAt int64) error
 	SetEPGReception(context.Context, uint16, uint16, EPGReception) error
 	UpdateServiceLogoMetadata(ctx context.Context, networkID, transportStreamID, serviceID uint16, logoID, logoVersion, downloadDataID int64) (bool, error)
-	DeleteLogo(ctx context.Context, networkID, transportStreamID, serviceID uint16, logoID int64, logoType int64, logoVersion int64, downloadDataID int64) error
-	UpsertLogo(ctx context.Context, networkID, transportStreamID, serviceID uint16, logoID int64, logoType int64, logoVersion int64, downloadDataID int64, data []byte, updatedAt int64) error
+	// Logo writes use key as the service identity; image supplies logo metadata
+	// and PNG bytes only. Its NetworkID, Services and Deleted fields are ignored.
+	DeleteLogo(ctx context.Context, key model.ServiceKey, image model.Logo) error
+	UpsertLogo(ctx context.Context, key model.ServiceKey, image model.Logo, updatedAt int64) error
 }
 
 type ChannelKey struct {

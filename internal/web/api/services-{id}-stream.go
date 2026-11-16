@@ -11,7 +11,7 @@ import (
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 )
 
-func GetServiceStream(ctx context.Context, h *Handler, params apigen.GetServiceStreamParams) (apigen.GetServiceStreamRes, error) {
+func (h *Handler) GetServiceStream(ctx context.Context, params apigen.GetServiceStreamParams) (apigen.GetServiceStreamRes, error) {
 	service, err := h.serviceManager.GetServiceById(ctx, strconv.FormatInt(params.ID, 10))
 	if err != nil {
 		return nil, err
@@ -53,7 +53,7 @@ func GetServiceStream(ctx context.Context, h *Handler, params apigen.GetServiceS
 	}, nil
 }
 
-func ServicesIDStreamHead(ctx context.Context, h *Handler, params apigen.ServicesIDStreamHeadParams) (apigen.ServicesIDStreamHeadRes, error) {
+func (h *Handler) ServicesIDStreamHead(ctx context.Context, params apigen.ServicesIDStreamHeadParams) (apigen.ServicesIDStreamHeadRes, error) {
 	service, err := h.serviceManager.GetServiceById(ctx, strconv.FormatInt(params.ID, 10))
 	if err != nil {
 		return nil, err

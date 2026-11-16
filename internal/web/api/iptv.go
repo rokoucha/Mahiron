@@ -25,7 +25,7 @@ const (
 	iptvDeviceAuth      = "mahiron"
 )
 
-func IptvDiscoverJSONGet(ctx context.Context, h *Handler) (apigen.IptvDiscoverJSONGetRes, error) {
+func (h *Handler) IptvDiscoverJSONGet(ctx context.Context) (apigen.IptvDiscoverJSONGetRes, error) {
 	services, err := h.serviceManager.GetServices(ctx)
 	if err != nil {
 		return nil, err
@@ -45,7 +45,7 @@ func IptvDiscoverJSONGet(ctx context.Context, h *Handler) (apigen.IptvDiscoverJS
 	}, nil
 }
 
-func IptvLineupJSONGet(ctx context.Context, h *Handler) (apigen.IptvLineupJSONGetRes, error) {
+func (h *Handler) IptvLineupJSONGet(ctx context.Context) (apigen.IptvLineupJSONGetRes, error) {
 	services, err := h.serviceManager.GetServices(ctx)
 	if err != nil {
 		return nil, err
@@ -62,7 +62,7 @@ func IptvLineupJSONGet(ctx context.Context, h *Handler) (apigen.IptvLineupJSONGe
 	return &items, nil
 }
 
-func IptvLineupStatusJSONGet(ctx context.Context, h *Handler) (apigen.IptvLineupStatusJSONGetRes, error) {
+func (h *Handler) IptvLineupStatusJSONGet(ctx context.Context) (apigen.IptvLineupStatusJSONGetRes, error) {
 	return &apigen.IptvLineupStatus{
 		ScanInProgress: 0,
 		ScanPossible:   1,
@@ -71,7 +71,7 @@ func IptvLineupStatusJSONGet(ctx context.Context, h *Handler) (apigen.IptvLineup
 	}, nil
 }
 
-func IptvPlaylistGet(ctx context.Context, h *Handler) (apigen.IptvPlaylistGetRes, error) {
+func (h *Handler) IptvPlaylistGet(ctx context.Context) (apigen.IptvPlaylistGetRes, error) {
 	services, err := h.serviceManager.GetServices(ctx)
 	if err != nil {
 		return nil, err
@@ -104,7 +104,7 @@ func IptvPlaylistGet(ctx context.Context, h *Handler) (apigen.IptvPlaylistGetRes
 	return &apigen.IptvPlaylistGetOK{Data: strings.NewReader(b.String())}, nil
 }
 
-func IptvXmltvGet(ctx context.Context, h *Handler) (apigen.IptvXmltvGetRes, error) {
+func (h *Handler) IptvXmltvGet(ctx context.Context) (apigen.IptvXmltvGetRes, error) {
 	services, err := h.serviceManager.GetServices(ctx)
 	if err != nil {
 		return nil, err

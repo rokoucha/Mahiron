@@ -232,28 +232,28 @@ func (s *sqliteStore) UpdateServiceLogoMetadata(ctx context.Context, networkID, 
 	return rows > 0, nil
 }
 
-func (s *sqliteStore) DeleteLogo(ctx context.Context, networkID, transportStreamID, serviceID uint16, logoID int64, logoType int64, logoVersion int64, downloadDataID int64) error {
+func (s *sqliteStore) DeleteLogo(ctx context.Context, key model.ServiceKey, image model.Logo) error {
 	return s.wq.DeleteServiceLogo(ctx, gen.DeleteServiceLogoParams{
-		NetworkID:         int64(networkID),
-		TransportStreamID: int64(transportStreamID),
-		ServiceID:         int64(serviceID),
-		LogoID:            logoID,
-		LogoType:          logoType,
-		LogoVersion:       logoVersion,
-		DownloadDataID:    downloadDataID,
+		NetworkID:         int64(key.NetworkID),
+		TransportStreamID: int64(key.StreamID),
+		ServiceID:         int64(key.ServiceID),
+		LogoID:            int64(image.LogoID),
+		LogoType:          int64(image.LogoType),
+		LogoVersion:       int64(image.Version),
+		DownloadDataID:    int64(image.DownloadDataID),
 	})
 }
 
-func (s *sqliteStore) UpsertLogo(ctx context.Context, networkID, transportStreamID, serviceID uint16, logoID int64, logoType int64, logoVersion int64, downloadDataID int64, data []byte, updatedAt int64) error {
+func (s *sqliteStore) UpsertLogo(ctx context.Context, key model.ServiceKey, image model.Logo, updatedAt int64) error {
 	return s.wq.UpsertServiceLogo(ctx, gen.UpsertServiceLogoParams{
-		NetworkID:         int64(networkID),
-		TransportStreamID: int64(transportStreamID),
-		ServiceID:         int64(serviceID),
-		LogoID:            logoID,
-		LogoType:          logoType,
-		LogoVersion:       logoVersion,
-		DownloadDataID:    downloadDataID,
-		Data:              data,
+		NetworkID:         int64(key.NetworkID),
+		TransportStreamID: int64(key.StreamID),
+		ServiceID:         int64(key.ServiceID),
+		LogoID:            int64(image.LogoID),
+		LogoType:          int64(image.LogoType),
+		LogoVersion:       int64(image.Version),
+		DownloadDataID:    int64(image.DownloadDataID),
+		Data:              image.Data,
 		UpdatedAt:         updatedAt,
 	})
 }

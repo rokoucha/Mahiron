@@ -9,7 +9,7 @@ import (
 
 const currentVersion = version.Current
 
-func CheckVersion(ctx context.Context, h *Handler) (apigen.CheckVersionRes, error) {
+func (h *Handler) CheckVersion(ctx context.Context) (apigen.CheckVersionRes, error) {
 	return &apigen.Version{
 		Current: apigen.NewOptString(currentVersion),
 		Latest:  apigen.NewOptString(""),

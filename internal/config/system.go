@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/url"
 	"os"
+	"time"
 
 	"sigs.k8s.io/yaml"
 )
@@ -86,7 +87,19 @@ func LoadAndParseSystemConfig(filePath string) (*SystemConfig, error) {
 		return nil, err
 	}
 
-	config := SystemConfig{
+	config := defaultSystemConfig()
+	if err := yaml.Unmarshal(file, &config); err != nil {
+		return nil, err
+	}
+	config.applyDefaults()
+	if err := config.validate(); err != nil {
+		return nil, err
+	}
+	return &config, nil
+}
+
+func defaultSystemConfig() SystemConfig {
+	return SystemConfig{
 		DatabasePath:                     "./db/mahiron.db",
 		DataBroadcastCachePath:           "./db/data-broadcast-cache.db",
 		DataBroadcastCacheBytes:          1024 * 1024 * 1024,
@@ -102,36 +115,16 @@ func LoadAndParseSystemConfig(filePath string) (*SystemConfig, error) {
 		LogoGatherTimeout:                1200000,
 		ServiceScanTimeout:               30000,
 	}
-	err = yaml.Unmarshal(file, &config)
-	if err != nil {
-		return nil, err
-	}
+}
 
-	seenAgents := map[string]bool{}
-	seenHashes := map[string]bool{}
-	for _, a := range config.Agents {
-		hash, err := hex.DecodeString(a.TokenHash)
-		if a.Name == "" || seenAgents[a.Name] || err != nil || len(hash) != 32 || seenHashes[string(hash)] {
-			return nil, errors.New("agents require unique names and unique SHA-256 token hashes")
-		}
-		seenAgents[a.Name] = true
-		seenHashes[string(hash)] = true
-	}
-
+// applyDefaults fills empty values that also default when explicitly configured.
+// Numeric defaults are applied before decoding so explicit zero values survive.
+func (config *SystemConfig) applyDefaults() {
 	if len(config.Addresses) == 0 {
 		config.Addresses = []ServerAddress{
 			{
 				Http: "localhost:40772",
 			},
-		}
-	}
-
-	for _, addr := range config.Addresses {
-		if addr.Http == "" && addr.Unix == "" {
-			return nil, errors.New("at least one address is required")
-		}
-		if addr.Http != "" && addr.Unix != "" {
-			return nil, errors.New("only one address type is allowed")
 		}
 	}
 
@@ -141,51 +134,104 @@ func LoadAndParseSystemConfig(filePath string) (*SystemConfig, error) {
 	if config.Observability.ServiceName == "" {
 		config.Observability.ServiceName = "mahiron"
 	}
+}
+
+func (config SystemConfig) validate() error {
+	seenAgents := map[string]bool{}
+	seenHashes := map[string]bool{}
+	for _, a := range config.Agents {
+		hash, err := hex.DecodeString(a.TokenHash)
+		if a.Name == "" || seenAgents[a.Name] || err != nil || len(hash) != 32 || seenHashes[string(hash)] {
+			return errors.New("agents require unique names and unique SHA-256 token hashes")
+		}
+		seenAgents[a.Name] = true
+		seenHashes[string(hash)] = true
+	}
+
+	for _, addr := range config.Addresses {
+		if addr.Http == "" && addr.Unix == "" {
+			return errors.New("at least one address is required")
+		}
+		if addr.Http != "" && addr.Unix != "" {
+			return errors.New("only one address type is allowed")
+		}
+	}
+
 	if config.Observability.Endpoint != "" {
 		u, err := url.Parse(config.Observability.Endpoint)
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-			return nil, errors.New("observability endpoint must be a URL like http://localhost:4318")
+			return errors.New("observability endpoint must be a URL like http://localhost:4318")
 		}
 	}
 
 	switch config.LogLevel {
 	case "debug", "info", "warn", "error":
 	default:
-		return nil, errors.New("invalid log level")
+		return errors.New("invalid log level")
 	}
 	if config.EpgRefreshInterval <= 0 {
-		return nil, errors.New("epgRefreshInterval must be > 0")
+		return errors.New("epgRefreshInterval must be > 0")
 	}
 	if config.EpgUnknownExtendedIdleTime < 0 || config.EpgUnknownExtendedIdleTime > 0 && config.EpgUnknownExtendedIdleTime < 1000 || config.EpgExtendedProbeInterval <= 0 {
-		return nil, errors.New("epgUnknownExtendedIdleTime must be 0 or >= 1000 and epgExtendedProbeInterval must be > 0")
+		return errors.New("epgUnknownExtendedIdleTime must be 0 or >= 1000 and epgExtendedProbeInterval must be > 0")
 	}
 	if _, err := config.ResolveEPG(); err != nil {
-		return nil, err
+		return err
 	}
 	if config.MaxConcurrentJobs < 1 || config.MaxConcurrentJobs > 100 {
-		return nil, errors.New("maxConcurrentJobs must be between 1 and 100")
+		return errors.New("maxConcurrentJobs must be between 1 and 100")
 	}
 	if config.EpgRetentionDays < 0 {
-		return nil, errors.New("epgRetentionDays must be >= 0 (0 = unlimited)")
+		return errors.New("epgRetentionDays must be >= 0 (0 = unlimited)")
 	}
 	if config.DataBroadcastCacheMaxAgeDays < 0 {
-		return nil, errors.New("dataBroadcastCacheMaxAgeDays must be >= 0 (0 = unlimited)")
+		return errors.New("dataBroadcastCacheMaxAgeDays must be >= 0 (0 = unlimited)")
 	}
 	if config.DataBroadcastSnapshotMaxAgeHours < 0 {
-		return nil, errors.New("dataBroadcastSnapshotMaxAgeHours must be >= 0 (0 = unlimited)")
+		return errors.New("dataBroadcastSnapshotMaxAgeHours must be >= 0 (0 = unlimited)")
 	}
 	if config.EpgRetrievalTime < 5000 {
-		return nil, errors.New("epgRetrievalTime must be >= 5000")
+		return errors.New("epgRetrievalTime must be >= 5000")
 	}
 	if config.EpgStaleAfter <= 0 {
-		return nil, errors.New("epgStaleAfter must be > 0")
+		return errors.New("epgStaleAfter must be > 0")
 	}
 	if config.LogoGatherTimeout <= 0 {
-		return nil, errors.New("logoGatherTimeout must be > 0")
+		return errors.New("logoGatherTimeout must be > 0")
 	}
 	if config.ServiceScanTimeout < 5000 {
-		return nil, errors.New("serviceScanTimeout must be >= 5000")
+		return errors.New("serviceScanTimeout must be >= 5000")
 	}
 
-	return &config, nil
+	return nil
+}
+
+func (config SystemConfig) EpgUnknownExtendedIdleTimeDuration() time.Duration {
+	return time.Duration(config.EpgUnknownExtendedIdleTime) * time.Millisecond
+}
+
+func (config SystemConfig) EpgExtendedProbeIntervalDuration() time.Duration {
+	return time.Duration(config.EpgExtendedProbeInterval) * time.Millisecond
+}
+
+func (config SystemConfig) EpgRefreshIntervalDuration() time.Duration {
+	return time.Duration(config.EpgRefreshInterval) * time.Millisecond
+}
+
+func (config SystemConfig) EpgRetrievalTimeDuration() time.Duration {
+	return time.Duration(config.EpgRetrievalTime) * time.Millisecond
+}
+
+// EpgStaleAfterDuration returns the timeout as a duration. Timestamp comparisons
+// use EpgStaleAfter directly as int64 milliseconds to avoid duration overflow.
+func (config SystemConfig) EpgStaleAfterDuration() time.Duration {
+	return time.Duration(config.EpgStaleAfter) * time.Millisecond
+}
+
+func (config SystemConfig) LogoGatherTimeoutDuration() time.Duration {
+	return time.Duration(config.LogoGatherTimeout) * time.Millisecond
+}
+
+func (config SystemConfig) ServiceScanTimeoutDuration() time.Duration {
+	return time.Duration(config.ServiceScanTimeout) * time.Millisecond
 }

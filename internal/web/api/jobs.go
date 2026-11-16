@@ -9,7 +9,7 @@ import (
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 )
 
-func GetJobs(ctx context.Context, h *Handler) (apigen.GetJobsRes, error) {
+func (h *Handler) GetJobs(ctx context.Context) (apigen.GetJobsRes, error) {
 	jobs := h.jobManager.GetJobs()
 	result := make(apigen.GetJobsOKApplicationJSON, len(jobs))
 	for i, j := range jobs {
@@ -18,7 +18,7 @@ func GetJobs(ctx context.Context, h *Handler) (apigen.GetJobsRes, error) {
 	return &result, nil
 }
 
-func GetJobSchedules(ctx context.Context, h *Handler) (apigen.GetJobSchedulesRes, error) {
+func (h *Handler) GetJobSchedules(ctx context.Context) (apigen.GetJobSchedulesRes, error) {
 	schedules := h.jobManager.GetJobSchedules()
 	result := make(apigen.GetJobSchedulesOKApplicationJSON, len(schedules))
 	for i, s := range schedules {
@@ -34,14 +34,14 @@ func GetJobSchedules(ctx context.Context, h *Handler) (apigen.GetJobSchedulesRes
 	return &result, nil
 }
 
-func AbortJob(ctx context.Context, h *Handler, params apigen.AbortJobParams) (apigen.AbortJobRes, error) {
+func (h *Handler) AbortJob(ctx context.Context, params apigen.AbortJobParams) (apigen.AbortJobRes, error) {
 	if err := h.jobManager.Abort(params.ID); err != nil {
 		return conflict(err.Error()), nil
 	}
 	return &apigen.AbortJobAccepted{}, nil
 }
 
-func RerunJob(ctx context.Context, h *Handler, params apigen.RerunJobParams) (apigen.RerunJobRes, error) {
+func (h *Handler) RerunJob(ctx context.Context, params apigen.RerunJobParams) (apigen.RerunJobRes, error) {
 	if err := h.jobManager.Rerun(params.ID); err != nil {
 		if e, ok := err.(*job.JobError); ok && e.Code == "JOB_NOT_FOUND" {
 			return notFound("job not found"), nil
@@ -51,7 +51,7 @@ func RerunJob(ctx context.Context, h *Handler, params apigen.RerunJobParams) (ap
 	return &apigen.RerunJobAccepted{}, nil
 }
 
-func RunJobSchedule(ctx context.Context, h *Handler, params apigen.RunJobScheduleParams) (apigen.RunJobScheduleRes, error) {
+func (h *Handler) RunJobSchedule(ctx context.Context, params apigen.RunJobScheduleParams) (apigen.RunJobScheduleRes, error) {
 	if err := h.jobManager.RunSchedule(params.Key); err != nil {
 		if e, ok := err.(*job.JobError); ok && (e.Code == "DEFINITION_NOT_FOUND" || e.Code == "JOB_NOT_FOUND") {
 			return notFound("job schedule not found"), nil

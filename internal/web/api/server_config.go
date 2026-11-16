@@ -8,6 +8,6 @@ import (
 
 // GetServerConfig returns an empty object. Mahiron does not expose its server
 // configuration through the API.
-func GetServerConfig(context.Context, *Handler) (apigen.GetServerConfigRes, error) {
+func (h *Handler) GetServerConfig(context.Context) (apigen.GetServerConfigRes, error) {
 	return &apigen.ConfigServer{}, nil
 }

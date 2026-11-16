@@ -241,19 +241,21 @@ func (s *Manager) CommonDataAnnouncements(ctx context.Context) ([]model.CommonDa
 	return announcements, nil
 }
 
-func (s *Manager) UpsertLogo(ctx context.Context, networkID, transportStreamID, serviceID uint16, logoID int64, logoType int64, logoVersion int64, downloadDataID int64, data []byte, updatedAt int64) error {
-	if err := s.store.UpsertLogo(ctx, networkID, transportStreamID, serviceID, logoID, logoType, logoVersion, downloadDataID, data, updatedAt); err != nil {
+// UpsertLogo stores image metadata and bytes for key, regardless of image.NetworkID.
+func (s *Manager) UpsertLogo(ctx context.Context, key model.ServiceKey, image model.Logo, updatedAt int64) error {
+	if err := s.store.UpsertLogo(ctx, key, image, updatedAt); err != nil {
 		return err
 	}
-	s.publishServiceByKey(ctx, eventTypeUpdate, networkID, serviceID)
+	s.publishServiceByKey(ctx, eventTypeUpdate, key.NetworkID, key.ServiceID)
 	return nil
 }
 
-func (s *Manager) DeleteLogo(ctx context.Context, networkID, transportStreamID, serviceID uint16, logoID int64, logoType int64, logoVersion int64, downloadDataID int64) error {
-	if err := s.store.DeleteLogo(ctx, networkID, transportStreamID, serviceID, logoID, logoType, logoVersion, downloadDataID); err != nil {
+// DeleteLogo deletes the exact logo version and type for key.
+func (s *Manager) DeleteLogo(ctx context.Context, key model.ServiceKey, image model.Logo) error {
+	if err := s.store.DeleteLogo(ctx, key, image); err != nil {
 		return err
 	}
-	s.publishServiceByKey(ctx, eventTypeUpdate, networkID, serviceID)
+	s.publishServiceByKey(ctx, eventTypeUpdate, key.NetworkID, key.ServiceID)
 	return nil
 }
 
@@ -276,9 +278,9 @@ func (s *Manager) UpsertLogoImage(ctx context.Context, image model.Logo) error {
 			continue
 		}
 		if image.Deleted {
-			err = s.DeleteLogo(ctx, svc.Key.NetworkID, svc.Key.StreamID, svc.Key.ServiceID, int64(image.LogoID), int64(image.LogoType), int64(image.Version), int64(image.DownloadDataID))
+			err = s.DeleteLogo(ctx, svc.Key, image)
 		} else {
-			err = s.UpsertLogo(ctx, svc.Key.NetworkID, svc.Key.StreamID, svc.Key.ServiceID, int64(image.LogoID), int64(image.LogoType), int64(image.Version), int64(image.DownloadDataID), image.Data, now)
+			err = s.UpsertLogo(ctx, svc.Key, image, now)
 		}
 		if err != nil {
 			return err
@@ -292,7 +294,6 @@ func (s *Manager) UpsertLogoImage(ctx context.Context, image model.Logo) error {
 // store keeps the old logo.
 func (s *Manager) upsertAssignedLogo(ctx context.Context, image model.Logo) error {
 	logoID := int64(image.LogoID)
-	logoType := int64(image.LogoType)
 	logoVersion := int64(image.Version)
 	downloadID := int64(image.DownloadDataID)
 	now := time.Now().UnixMilli()
@@ -305,12 +306,12 @@ func (s *Manager) upsertAssignedLogo(ctx context.Context, image model.Logo) erro
 			continue
 		}
 		if image.Deleted {
-			if err := s.DeleteLogo(ctx, key.NetworkID, key.StreamID, key.ServiceID, logoID, logoType, logoVersion, downloadID); err != nil {
+			if err := s.DeleteLogo(ctx, key, image); err != nil {
 				return err
 			}
 			continue
 		}
-		if err := s.UpsertLogo(ctx, key.NetworkID, key.StreamID, key.ServiceID, logoID, logoType, logoVersion, downloadID, image.Data, now); err != nil {
+		if err := s.UpsertLogo(ctx, key, image, now); err != nil {
 			return err
 		}
 		updated, err := s.store.UpdateServiceLogoMetadata(ctx, key.NetworkID, key.StreamID, key.ServiceID, logoID, logoVersion, downloadID)
