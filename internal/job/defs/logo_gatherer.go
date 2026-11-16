@@ -6,15 +6,16 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/job"
 	"github.com/21S1298001/mahiron/internal/job/run"
 	"github.com/21S1298001/mahiron/internal/logogather"
 )
 
 const (
-	LogoGathererKey             = "logo-gatherer"
+	LogoGathererKey             = config.LogoGathererKey
 	LogoGathererName            = "Logo Gatherer"
-	LogoGathererDefaultSchedule = "5 3 * * *"
+	LogoGathererDefaultSchedule = config.LogoGathererDefaultSchedule
 )
 
 func RegisterLogoGatherer(registry Registry, gatherer LogoGatherer) {

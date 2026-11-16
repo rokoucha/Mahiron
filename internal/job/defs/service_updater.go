@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/job"
 	"github.com/21S1298001/mahiron/internal/job/run"
 	"github.com/21S1298001/mahiron/internal/servicescan"
@@ -14,9 +15,9 @@ import (
 )
 
 const (
-	ServiceUpdaterKey             = "service-updater"
+	ServiceUpdaterKey             = config.ServiceUpdaterKey
 	ServiceUpdaterName            = "Service Updater"
-	ServiceUpdaterDefaultSchedule = "5 6 * * *"
+	ServiceUpdaterDefaultSchedule = config.ServiceUpdaterDefaultSchedule
 	serviceUpdateEPGGathererKey   = "epg-gather-after-service-update"
 )
 

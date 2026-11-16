@@ -358,7 +358,7 @@ func boolPtr(v bool) *bool { return &v }
 func TestEPGModePreservesExplicitLegacySchedules(t *testing.T) {
 	for _, tc := range []struct {
 		config SystemConfig
-		want   string
+		want   EPGMode
 	}{
 		{SystemConfig{}, "continuous"},
 		{SystemConfig{Jobs: []JobScheduleConfig{{Key: "epg-gatherer", Schedule: "0 3 * * *"}}}, "scheduled"},
