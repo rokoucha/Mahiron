@@ -17,6 +17,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/stream/channel"
 	"github.com/21S1298001/mahiron/internal/stream/internal/streamtest"
 	"github.com/21S1298001/mahiron/internal/stream/remote"
+	"github.com/21S1298001/mahiron/internal/stream/schedule"
 	"github.com/21S1298001/mahiron/internal/stream/source"
 	"github.com/21S1298001/mahiron/internal/tuner"
 	"github.com/21S1298001/mahiron/ts"
@@ -640,6 +641,15 @@ func TestManagerSelectsRemoteRouteWhenLocalUnavailable(t *testing.T) {
 	if _, ok := session.(*remote.Session); !ok {
 		t.Fatalf("session type = %T, want *remote.Session", session)
 	}
+	adapter := NewEPGGatherAdapter(manager)
+	if adapter.StoredEPG("GR", "27") {
+		t.Fatal("mixed routes must acquire a session")
+	}
+	scheduleSource, err := adapter.OpenSchedule(t.Context(), "GR", "27")
+	if err != nil || !scheduleSource.IsStored() {
+		t.Fatalf("mixed remote schedule: stored=%v err=%v", scheduleSource.IsStored(), err)
+	}
+
 	var out bytes.Buffer
 	if err := session.ChannelStream(context.Background(), false, &out); err != nil {
 		t.Fatal(err)
@@ -1292,11 +1302,11 @@ func TestStoredEPGDoesNotCheckOrAcquireRemoteTuner(t *testing.T) {
 	}
 	manager := NewManager(ManagerConfig{Channels: config.ChannelsConfig{{Type: "CUSTOM", Channel: "A", Routes: []config.ChannelRouteConfig{{Remote: "remote", Type: "GR", Channel: "27"}}}}, Remotes: config.RemotesConfig{{Name: "remote", URL: "http://remote.local/api"}}})
 	adapter := NewEPGGatherAdapter(manager)
-	collect, list, err := adapter.OpenSchedule(t.Context(), "CUSTOM", "A")
-	if err != nil || collect != nil || list == nil {
-		t.Fatalf("open stored: collect=%v list=%v err=%v", collect != nil, list != nil, err)
+	source, err := adapter.OpenSchedule(t.Context(), "CUSTOM", "A")
+	if err != nil || !source.IsStored() {
+		t.Fatalf("open stored: stored=%v err=%v", source.IsStored(), err)
 	}
-	if _, err := list(t.Context(), 4, 101); err != nil {
+	if _, err := source.List(t.Context(), 4, 101); err != nil {
 		t.Fatal(err)
 	}
 	if calls != 1 {
@@ -1324,7 +1334,7 @@ func TestEPGAcquisitionWaitIsModeSpecific(t *testing.T) {
 		adapter := NewEPGGatherAdapter(manager)
 		adapter.WaitForTuner = wait
 		ctx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
-		_, _, err := adapter.OpenSchedule(ctx, "GR", "27")
+		_, err := adapter.OpenSchedule(ctx, "GR", "27")
 		cancel()
 		if err == nil || len(devices.waits) == 0 || devices.waits[0] != wait {
 			t.Fatalf("wait=%v acquisitions=%v err=%v", wait, devices.waits, err)
@@ -1353,7 +1363,9 @@ func TestEPGSubscriptionPreservesPriority(t *testing.T) {
 				Channels: config.ChannelsConfig{{Type: "BS4K", Channel: "45328", Transport: config.TransportTLV, Routes: []config.ChannelRouteConfig{{Remote: "pix", Type: "BS4K", Channel: "45328"}}}},
 				Remotes:  config.RemotesConfig{{Name: "pix", URL: "http://remote.local/api"}},
 			})
-			collect, _, err := NewEPGGatherAdapter(manager).OpenSchedule(t.Context(), "BS4K", "45328")
+			acquireCtx, cancelAcquire := context.WithCancel(t.Context())
+			source, err := NewEPGGatherAdapter(manager).OpenSchedule(acquireCtx, "BS4K", "45328")
+			cancelAcquire()
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1363,7 +1375,7 @@ func TestEPGSubscriptionPreservesPriority(t *testing.T) {
 				ctx = tuner.WithUser(ctx, tuner.User{ID: "explicit", Priority: 42})
 				want = "42"
 			}
-			if err := collect(ctx, func(model.ScheduleUpdate) error { return nil }, nil); err != nil {
+			if err := source.Collect(ctx, func(model.ScheduleUpdate) error { return nil }, nil); err != nil {
 				t.Fatal(err)
 			}
 			if priority != want {
@@ -1372,3 +1384,39 @@ func TestEPGSubscriptionPreservesPriority(t *testing.T) {
 		})
 	}
 }
+
+func (s fakeDeadSession) ScheduleSource() schedule.Source {
+	return schedule.LiveSource(s.CollectSchedule)
+}
+
+// This wrapper deliberately has no remote.Session concrete type. Mixed-route
+// acquisition must use the selected session's declared schedule source.
+type storedScheduleSession struct{ fakeDeadSession }
+
+func (storedScheduleSession) ScheduleSource() schedule.Source {
+	return schedule.StoredSource(func(_ context.Context, nid, sid uint16) ([]model.Event, error) {
+		return []model.Event{{Key: model.ServiceKey{NetworkID: nid, ServiceID: sid}, EventID: 42}}, nil
+	})
+}
+
+func TestEPGSelectedSessionDeclaresStoredSource(t *testing.T) {
+	manager := NewManager(ManagerConfig{Channels: config.ChannelsConfig{{Type: "GR", Channel: "27"}}})
+	manager.registry.sessions[sessionKey{typ: "GR", channel: "27"}] = sessionEntry{session: storedScheduleSession{}}
+	adapter := NewEPGGatherAdapter(manager)
+	if adapter.StoredEPG("GR", "27") {
+		t.Fatal("test requires session acquisition")
+	}
+	source, err := adapter.OpenSchedule(t.Context(), "GR", "27")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !source.IsStored() {
+		t.Fatal("selected session's stored source was lost")
+	}
+	events, err := source.List(t.Context(), 4, 101)
+	if err != nil || len(events) != 1 || events[0].EventID != 42 || events[0].Key.NetworkID != 4 || events[0].Key.ServiceID != 101 {
+		t.Fatalf("events=%v err=%v", events, err)
+	}
+}
+
+func (storedScheduleSession) Alive() bool { return true }

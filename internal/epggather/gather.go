@@ -76,7 +76,7 @@ func gatherNetwork(ctx context.Context, events ScheduleWriter, programStore Prog
 		)
 		var candidateErr error
 		sessionCtx, cancel := context.WithTimeout(candidateCtx, retrievalTime)
-		collect, listStored, candidateErr := streams.OpenSchedule(sessionCtx, candidate.Type, candidate.Channel)
+		source, candidateErr := streams.OpenSchedule(sessionCtx, candidate.Type, candidate.Channel)
 		cancel()
 		if candidateErr != nil && ctx.Err() == nil && !errors.Is(candidateErr, tuner.ErrTunerUnavailable) {
 			for _, key := range targets {
@@ -87,10 +87,10 @@ func gatherNetwork(ctx context.Context, events ScheduleWriter, programStore Prog
 		}
 		var collectResult *CollectResult
 		if candidateErr == nil {
-			if listStored != nil {
-				collectResult, candidateErr = syncStoredPrograms(candidateCtx, programStore, serviceStore, listStored, targets, retrievalTime)
+			if source.IsStored() {
+				collectResult, candidateErr = syncStoredPrograms(candidateCtx, programStore, serviceStore, source.List, targets, retrievalTime)
 			} else {
-				collectResult, candidateErr = CollectServiceSnapshots(candidateCtx, events, serviceStore, collect, targets, retrievalTime, options...)
+				collectResult, candidateErr = CollectServiceSnapshots(candidateCtx, events, serviceStore, source.Collect, targets, retrievalTime, options...)
 			}
 		}
 		if !errors.Is(candidateErr, tuner.ErrTunerUnavailable) {

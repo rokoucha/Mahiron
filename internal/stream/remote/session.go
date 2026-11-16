@@ -10,6 +10,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/mirakurun"
 	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/stream/channel"
+	"github.com/21S1298001/mahiron/internal/stream/schedule"
 	"github.com/21S1298001/mahiron/internal/stream/source"
 	"github.com/21S1298001/mahiron/internal/tuner"
 )
@@ -100,4 +101,8 @@ func (s *Session) ObserveLogos(ctx context.Context, observe func(model.Logo) err
 		}
 	}
 	return nil
+}
+
+func (s *Session) ScheduleSource() schedule.Source {
+	return schedule.StoredSource(s.ListServicePrograms)
 }

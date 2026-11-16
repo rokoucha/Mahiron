@@ -6,7 +6,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/isdb"
 	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/stream/channel"
-	"github.com/21S1298001/mahiron/internal/stream/remote"
+	"github.com/21S1298001/mahiron/internal/stream/schedule"
 )
 
 type LogoGatherAdapter struct {
@@ -64,9 +64,8 @@ func (a *ServiceScanAdapter) ScanServices(scanCtx, acquireCtx context.Context, c
 	return session.ScanServices(scanCtx)
 }
 
-// EPGGatherAdapter gives EPG gathering its channel sessions in model and
-// standard types only. A channel served by a remote yields the remote's
-// stored-program lister instead of EIT collection.
+// EPGGatherAdapter exposes schedule sources to EPG gathering. A channel
+// served by a remote yields stored programs instead of live EIT updates.
 type EPGGatherAdapter struct {
 	// Legacy scheduled gathers may wait; continuous acquisition must not.
 	WaitForTuner bool
@@ -87,25 +86,23 @@ func (a *EPGGatherAdapter) StoredEPG(channelType, channelID string) bool {
 	return a.manager.sources.StoredEPG(channelType, channelID)
 }
 
-func (a *EPGGatherAdapter) OpenSchedule(ctx context.Context, channelType, channelID string) (func(context.Context, func(model.ScheduleUpdate) error, func(model.PresentFollowing) error) error, func(context.Context, uint16, uint16) ([]model.Event, error), error) {
+func (a *EPGGatherAdapter) OpenSchedule(ctx context.Context, channelType, channelID string) (schedule.Source, error) {
 	if a.StoredEPG(channelType, channelID) {
-		return nil, func(ctx context.Context, nid, sid uint16) ([]model.Event, error) {
+		return schedule.StoredSource(func(ctx context.Context, nid, sid uint16) ([]model.Event, error) {
 			return a.manager.sources.ListStoredPrograms(ctx, channelType, channelID, nid, sid)
-		}, nil
+		}), nil
 	}
 	session, err := a.manager.getOrCreate(ctx, channelType, channelID, a.WaitForTuner)
 	if err != nil {
-		return nil, nil, err
+		return schedule.Source{}, err
 	}
-	// A remote session is the one kind that lists stored programs; checking
-	// the type keeps a signature change from silently turning it into EIT
-	// collection.
-	if remoteSession, ok := session.(*remote.Session); ok {
-		return nil, remoteSession.ListServicePrograms, nil
+	source := session.ScheduleSource()
+	if source.IsStored() {
+		return source, nil
 	}
-	return func(ctx context.Context, onSchedule func(model.ScheduleUpdate) error, onPresentFollowing func(model.PresentFollowing) error) error {
-		return session.CollectSchedule(ensureUserContext(ctx, channelType, channelID), onSchedule, onPresentFollowing)
-	}, nil, nil
+	return schedule.LiveSource(func(ctx context.Context, onSchedule func(model.ScheduleUpdate) error, onPresentFollowing func(model.PresentFollowing) error) error {
+		return source.Collect(ensureUserContext(ctx, channelType, channelID), onSchedule, onPresentFollowing)
+	}), nil
 }
 
 func (a *EPGGatherAdapter) CheckAvailable(ctx context.Context, channelType, channelID string) error {

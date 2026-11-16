@@ -18,9 +18,14 @@ const (
 	EPGStoredGroup = "epg-stored"
 )
 
+type ContinuousEPGGatherer interface {
+	EPGGatherer
+	CheckGroup(context.Context, epggather.GroupKey) error
+}
+
 // EPGController owns deadlines and retries; each acquisition remains a finite job.
 type EPGController struct {
-	EPGGatherer
+	ContinuousEPGGatherer
 	jobs            *job.Manager
 	interval        time.Duration
 	liveLimit       int
@@ -43,8 +48,8 @@ type epgDeadline struct {
 	deferrals   int
 }
 
-func NewEPGController(jobs *job.Manager, service EPGGatherer, interval time.Duration, liveLimit int) *EPGController {
-	return &EPGController{EPGGatherer: service, jobs: jobs, interval: interval, liveLimit: liveLimit, refresh: make(chan struct{}, 1)}
+func NewEPGController(jobs *job.Manager, service ContinuousEPGGatherer, interval time.Duration, liveLimit int) *EPGController {
+	return &EPGController{ContinuousEPGGatherer: service, jobs: jobs, interval: interval, liveLimit: liveLimit, refresh: make(chan struct{}, 1)}
 }
 
 func (c *EPGController) Refresh() {
@@ -211,23 +216,19 @@ func (c *EPGController) reconcile(ctx context.Context, states map[epggather.Grou
 		if key.Stored && stored >= 1 || !key.Stored && live >= c.liveLimit {
 			continue
 		}
-		if checker, ok := c.EPGGatherer.(interface {
-			CheckGroup(context.Context, epggather.GroupKey) error
-		}); ok {
-			if err := checker.CheckGroup(ctx, key); err != nil {
-				delay := time.Minute
-				if errors.Is(err, tuner.ErrTunerUnavailable) {
-					state.deferred = true
-					delay = state.deferDelay()
-				}
-				state.next = now.Add(delay)
-				if state.next.Before(next) {
-					next = state.next
-				}
-				continue
+		if err := c.CheckGroup(ctx, key); err != nil {
+			delay := time.Minute
+			if errors.Is(err, tuner.ErrTunerUnavailable) {
+				state.deferred = true
+				delay = state.deferDelay()
 			}
+			state.next = now.Add(delay)
+			if state.next.Before(next) {
+				next = state.next
+			}
+			continue
 		}
-		def := epgGatherDefinition(c.EPGGatherer, key, group)
+		def := epgGatherDefinition(c.ContinuousEPGGatherer, key, group)
 		handler := def.Handler
 		def.Handler = func(ctx context.Context) error {
 			err := handler(ctx)
