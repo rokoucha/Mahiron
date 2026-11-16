@@ -5,6 +5,7 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/isdb"
 	"github.com/21S1298001/mahiron/internal/model"
+	"github.com/21S1298001/mahiron/internal/stream/internal/logoref"
 	"github.com/21S1298001/mahiron/ts"
 )
 
@@ -140,11 +141,7 @@ func (s *serviceScan) handlePAT() {
 
 func (s *serviceScan) handleSDT() {
 	services := map[uint16]*model.Service{}
-	type directLogo struct {
-		version        uint16
-		downloadDataID uint16
-	}
-	directLogos := map[uint16]directLogo{}
+	directLogos := map[uint16]logoref.Direct{}
 	indirectServices := map[uint16]uint16{}
 	for _, section := range s.sdtSections.ordered() {
 		sdt, err := ts.ParseSDT(section)
@@ -170,6 +167,7 @@ func (s *serviceScan) handleSDT() {
 				EITSchedule:      svc.EITScheduleFlag,
 				EITPresentFollow: svc.EITPresentFollowing,
 			}
+			delete(indirectServices, svc.ServiceID)
 			if logo := ts.LogoDescriptorFromDescriptors(svc.Descriptors); logo != nil {
 				ref := &model.LogoRef{LogoID: logo.LogoID}
 				switch logo.TransmissionType {
@@ -178,7 +176,7 @@ func (s *serviceScan) handleSDT() {
 					downloadDataID := logo.DownloadDataID
 					ref.Version = &version
 					ref.DownloadDataID = &downloadDataID
-					directLogos[logo.LogoID] = directLogo{version: logo.LogoVersion, downloadDataID: logo.DownloadDataID}
+					directLogos[logo.LogoID] = logoref.Direct{Version: logo.LogoVersion, DownloadDataID: logo.DownloadDataID}
 				case ts.LogoTransmissionTypeCDTIndirect:
 					indirectServices[svc.ServiceID] = logo.LogoID
 				case ts.LogoTransmissionTypeSimple:
@@ -189,20 +187,7 @@ func (s *serviceScan) handleSDT() {
 			services[svc.ServiceID] = info
 		}
 	}
-	for serviceID, logoID := range indirectServices {
-		logo, ok := directLogos[logoID]
-		if !ok {
-			continue
-		}
-		info, ok := services[serviceID]
-		if !ok || info.Logo == nil {
-			continue
-		}
-		version := logo.version
-		downloadDataID := logo.downloadDataID
-		info.Logo.Version = &version
-		info.Logo.DownloadDataID = &downloadDataID
-	}
+	logoref.Resolve(services, directLogos, indirectServices)
 	s.services = services
 	s.sdtReady = true
 	s.applyRemoteKeys()

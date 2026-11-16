@@ -5,6 +5,7 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/isdb"
 	"github.com/21S1298001/mahiron/internal/model"
+	"github.com/21S1298001/mahiron/internal/stream/internal/logoref"
 	"github.com/21S1298001/mahiron/mmt"
 )
 
@@ -114,7 +115,7 @@ func (s *serviceScan) handleSDT() {
 	services := map[uint16]*model.Service{}
 	// Logos referred to through logo_id (CDT type 2) take the version and
 	// download data ID of a service that refers to the same logo directly.
-	direct := map[uint16]*mmt.MHLogoTransmissionDescriptor{}
+	direct := map[uint16]logoref.Direct{}
 	indirect := map[uint16]uint16{}
 	for _, section := range s.sdt.ordered() {
 		sdt, err := mmt.ParseMHSDT(section)
@@ -150,13 +151,14 @@ func (s *serviceScan) handleSDT() {
 			if service == nil {
 				continue
 			}
+			delete(indirect, entry.ServiceID)
 			if logo != nil {
 				ref := &model.LogoRef{LogoID: logo.LogoID}
 				switch logo.TransmissionType {
 				case mmt.LogoTransmissionTypeCDT1:
 					version, downloadDataID := logo.LogoVersion, logo.DownloadDataID
 					ref.Version, ref.DownloadDataID = &version, &downloadDataID
-					direct[logo.LogoID] = logo
+					direct[logo.LogoID] = logoref.Direct{Version: logo.LogoVersion, DownloadDataID: logo.DownloadDataID}
 				case mmt.LogoTransmissionTypeCDT2:
 					indirect[entry.ServiceID] = logo.LogoID
 				case mmt.LogoTransmissionTypeSimple:
@@ -167,14 +169,7 @@ func (s *serviceScan) handleSDT() {
 			services[entry.ServiceID] = service
 		}
 	}
-	for serviceID, logoID := range indirect {
-		logo, ok := direct[logoID]
-		if !ok {
-			continue
-		}
-		version, downloadDataID := logo.LogoVersion, logo.DownloadDataID
-		services[serviceID].Logo.Version, services[serviceID].Logo.DownloadDataID = &version, &downloadDataID
-	}
+	logoref.Resolve(services, direct, indirect)
 	s.services = services
 	s.sdtReady = true
 	s.applyRemoteControlKeys()
