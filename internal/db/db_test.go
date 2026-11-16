@@ -53,44 +53,34 @@ func TestOpenEnablesForeignKeys(t *testing.T) {
 // file, so this must be checked on both the Write and Read pools to confirm
 // the DSN reaches every connection.
 func TestOpenUsesNormalSynchronousAndWAL(t *testing.T) {
-	for _, tc := range []struct {
+	database, err := Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("open() = %v", err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+
+	for _, pool := range []struct {
 		name string
-		open func(string) (*DB, error)
+		db   *sql.DB
 	}{
-		{name: "Open", open: Open},
-		{name: "OpenCache", open: OpenCache},
+		{"Write", database.Write},
+		{"Read", database.Read},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
-			database, err := tc.open(filepath.Join(t.TempDir(), "test.db"))
-			if err != nil {
-				t.Fatalf("open() = %v", err)
-			}
-			t.Cleanup(func() { _ = database.Close() })
+		var got int
+		if err := pool.db.QueryRow("PRAGMA synchronous").Scan(&got); err != nil {
+			t.Fatalf("%s: PRAGMA synchronous = %v", pool.name, err)
+		}
+		if got != 1 {
+			t.Fatalf("%s: PRAGMA synchronous = %d, want 1 (NORMAL)", pool.name, got)
+		}
 
-			for _, pool := range []struct {
-				name string
-				db   *sql.DB
-			}{
-				{"Write", database.Write},
-				{"Read", database.Read},
-			} {
-				var got int
-				if err := pool.db.QueryRow("PRAGMA synchronous").Scan(&got); err != nil {
-					t.Fatalf("%s: PRAGMA synchronous = %v", pool.name, err)
-				}
-				if got != 1 {
-					t.Fatalf("%s: PRAGMA synchronous = %d, want 1 (NORMAL)", pool.name, got)
-				}
-
-				var journal string
-				if err := pool.db.QueryRow("PRAGMA journal_mode").Scan(&journal); err != nil {
-					t.Fatalf("%s: PRAGMA journal_mode = %v", pool.name, err)
-				}
-				if journal != "wal" {
-					t.Fatalf("%s: PRAGMA journal_mode = %q, want %q", pool.name, journal, "wal")
-				}
-			}
-		})
+		var journal string
+		if err := pool.db.QueryRow("PRAGMA journal_mode").Scan(&journal); err != nil {
+			t.Fatalf("%s: PRAGMA journal_mode = %v", pool.name, err)
+		}
+		if journal != "wal" {
+			t.Fatalf("%s: PRAGMA journal_mode = %q, want %q", pool.name, journal, "wal")
+		}
 	}
 }
 

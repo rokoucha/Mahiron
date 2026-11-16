@@ -182,42 +182,8 @@ func buildRuntime(cfg *config.Config, database *db.DB, obs observability.SetupRe
 
 	programs := program.NewManager(programStore, apiEvents)
 
-	var dataBroadcastStore *cache.SQLiteModuleStore
-	var moduleStore bml.ModuleStore
-	var snapshotStore bml.SnapshotStore
 	dataBroadcastEnabled := config.IsDataBroadcastEnabled(*cfg.System)
-	if dataBroadcastEnabled {
-		// Opening the cache migrates and prunes it, the only startup step whose
-		// cost grows with stored data. Report how long it took so a slow start is
-		// attributable from the log alone.
-		cachePath := cfg.System.DataBroadcastCachePath
-		slog.Info("opening data broadcast cache", "path", cachePath)
-		cacheOpenedAt := time.Now()
-		var err error
-		dataBroadcastStore, err = cache.NewSQLiteModuleStoreWithOptions(cachePath, cache.SQLiteModuleStoreOptions{
-			MaxBytes:       cfg.System.DataBroadcastCacheBytes,
-			MaxAge:         time.Duration(cfg.System.DataBroadcastCacheMaxAgeDays) * 24 * time.Hour,
-			SnapshotMaxAge: time.Duration(cfg.System.DataBroadcastSnapshotMaxAgeHours) * time.Hour,
-		})
-		if err != nil {
-			slog.Warn("failed to open data broadcast cache; using memory cache", "err", err, "elapsed", time.Since(cacheOpenedAt))
-		} else {
-			slog.Info("data broadcast cache opened", "elapsed", time.Since(cacheOpenedAt))
-			moduleStore = dataBroadcastStore
-			if config.IsDataBroadcastSnapshotEnabled(*cfg.System) {
-				snapshotStore = dataBroadcastStore
-			}
-		}
-	} else {
-		slog.Info("data broadcast API disabled")
-	}
-	if dataBroadcastEnabled && moduleStore == nil {
-		// The SQLite cache failed to open (warned above). Sessions and the
-		// BML API share this in-memory fallback so retained modules stay
-		// readable without a tuner, matching the previous stream-manager
-		// default.
-		moduleStore = cache.NewModuleCache(0)
-	}
+	dataBroadcastStore, moduleStore, snapshotStore := openDataBroadcastStores(cfg.System)
 	streams := stream.NewManager(stream.ManagerConfig{
 		Channels:       cfg.Channels,
 		Remotes:        cfg.Remotes,
@@ -289,6 +255,10 @@ func buildRuntime(cfg *config.Config, database *db.DB, obs observability.SetupRe
 		}
 	}
 
+	var apiModuleStore bml.ModuleStore
+	if dataBroadcastEnabled {
+		apiModuleStore = moduleStore
+	}
 	handler, err := web.NewWeb(web.WebConfig{
 		ServiceManager:        services,
 		ProgramManager:        programs,
@@ -299,7 +269,7 @@ func buildRuntime(cfg *config.Config, database *db.DB, obs observability.SetupRe
 		EventHub:              events,
 		EpgStaleAfter:         int64(cfg.System.EpgStaleAfter),
 		DataBroadcastDisabled: !dataBroadcastEnabled,
-		BMLStore:              moduleStore,
+		BMLStore:              apiModuleStore,
 		BMLSnapshotStore:      snapshotStore,
 		MeterProvider:         obs.MeterProvider,
 		TracerProvider:        obs.TracerProvider,
@@ -563,4 +533,43 @@ func writeMetadata(ctx context.Context, db *sql.DB, key, value string) error {
 		Key:   key,
 		Value: value,
 	})
+}
+
+// openDataBroadcastStores owns cache selection for the application.
+func openDataBroadcastStores(system *config.SystemConfig) (*cache.SQLiteModuleStore, bml.ModuleStore, bml.SnapshotStore) {
+	var dataBroadcastStore *cache.SQLiteModuleStore
+	var moduleStore bml.ModuleStore
+	var snapshotStore bml.SnapshotStore
+	dataBroadcastEnabled := config.IsDataBroadcastEnabled(*system)
+	if dataBroadcastEnabled {
+		// Opening the cache migrates and prunes it, the only startup step whose
+		// cost grows with stored data. Report how long it took so a slow start is
+		// attributable from the log alone.
+		cachePath := system.DataBroadcastCachePath
+		slog.Info("opening data broadcast cache", "path", cachePath)
+		cacheOpenedAt := time.Now()
+		var err error
+		dataBroadcastStore, err = cache.NewSQLiteModuleStoreWithOptions(cachePath, cache.SQLiteModuleStoreOptions{
+			MaxBytes:       system.DataBroadcastCacheBytes,
+			MaxAge:         time.Duration(system.DataBroadcastCacheMaxAgeDays) * 24 * time.Hour,
+			SnapshotMaxAge: time.Duration(system.DataBroadcastSnapshotMaxAgeHours) * time.Hour,
+		})
+		if err != nil {
+			slog.Warn("failed to open data broadcast cache; using memory cache", "err", err, "elapsed", time.Since(cacheOpenedAt))
+		} else {
+			slog.Info("data broadcast cache opened", "elapsed", time.Since(cacheOpenedAt))
+			moduleStore = dataBroadcastStore
+			if config.IsDataBroadcastSnapshotEnabled(*system) {
+				snapshotStore = dataBroadcastStore
+			}
+		}
+	} else {
+		slog.Info("data broadcast API disabled")
+	}
+	if moduleStore == nil {
+		// Keep one shared fallback for streams and the enabled BML API.
+		// Streams retain modules even when the API is disabled.
+		moduleStore = cache.NewModuleCache(0)
+	}
+	return dataBroadcastStore, moduleStore, snapshotStore
 }

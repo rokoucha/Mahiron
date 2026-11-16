@@ -246,7 +246,7 @@ func NewSQLiteModuleStoreWithOptions(path string, options SQLiteModuleStoreOptio
 }
 
 func openSQLiteModuleStore(path string, maxBytes uint64, maxAge, snapshotMaxAge time.Duration) (*SQLiteModuleStore, error) {
-	handle, err := mahirondb.OpenCache(path)
+	handle, err := mahirondb.Open(path)
 	if err != nil {
 		return nil, err
 	}
