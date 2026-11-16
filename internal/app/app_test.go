@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"reflect"
 	"testing"
 	"time"
 
@@ -368,5 +369,160 @@ func TestContinuousControllerWiresPeriodicCleanup(t *testing.T) {
 			<-done
 			t.Fatal("controller cleaner not wired")
 		}
+	}
+}
+
+// Keep mode selection and application wiring covered together: schedules can
+// select a mode even when epgGatheringMode is omitted.
+func TestBuildRuntimeEPGModes(t *testing.T) {
+	customEPG := []config.JobScheduleConfig{{Key: defs.EPGGathererKey, Schedule: "15 * * * *"}}
+	customOther := []config.JobScheduleConfig{{Key: defs.LogoGathererKey, Schedule: "10 * * * *"}}
+	defaults := map[string]string{
+		defs.ServiceUpdaterKey: defs.ServiceUpdaterDefaultSchedule,
+		defs.LogoGathererKey:   defs.LogoGathererDefaultSchedule,
+	}
+	tests := []struct {
+		name        string
+		mode        string
+		jobs        []config.JobScheduleConfig
+		controller  bool
+		epgSchedule string
+		automatic   bool
+		startup     bool
+	}{
+		{name: "implicit continuous", controller: true, epgSchedule: "continuous", automatic: true},
+		{name: "continuous", mode: "continuous", controller: true, epgSchedule: "continuous", automatic: true},
+		{name: "scheduled defaults", mode: "scheduled", epgSchedule: defs.EPGGathererDefaultSchedule, automatic: true, startup: true},
+		{name: "disabled", mode: "disabled"},
+		{name: "implicit scheduled", jobs: customEPG, epgSchedule: "15 * * * *", automatic: true, startup: true},
+		{name: "scheduled custom", mode: "scheduled", jobs: customEPG, epgSchedule: "15 * * * *", automatic: true, startup: true},
+		{name: "implicit disabled", jobs: customOther},
+		{name: "disabled custom", mode: "disabled", jobs: customOther},
+		{name: "continuous custom", mode: "continuous", jobs: customOther, controller: true, epgSchedule: "continuous", automatic: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			database, err := db.OpenInMemory()
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = database.Close() })
+			if err := db.Migrate(t.Context(), database); err != nil {
+				t.Fatal(err)
+			}
+			cfg := &config.Config{Channels: config.ChannelsConfig{{Type: "GR", Channel: "27"}}, System: &config.SystemConfig{
+				Addresses:              []config.ServerAddress{{Http: "127.0.0.1:0"}},
+				DataBroadcastCachePath: ":memory:", MaxConcurrentJobs: 1,
+				EpgGatheringMode: tt.mode, Jobs: tt.jobs,
+				EpgRetrievalTime: 5000, EpgStaleAfter: 7200000, EpgRetentionDays: 3,
+				LogoGatherTimeout: 1200000, ServiceScanTimeout: 30000,
+			}}
+			runtime, message, err := buildRuntime(cfg, database, observability.Setup(t.Context(), config.ObservabilityConfig{}, nil))
+			if err != nil {
+				t.Fatalf("buildRuntime(): %s: %v", message, err)
+			}
+			t.Cleanup(runtime.shutdown)
+			if got := runtime.epgController != nil; got != tt.controller {
+				t.Errorf("controller = %v, want %v", got, tt.controller)
+			}
+			wantSchedules := make(map[string]string)
+			if len(tt.jobs) == 0 {
+				for key, schedule := range defaults {
+					wantSchedules[key] = schedule
+				}
+			} else {
+				for _, schedule := range tt.jobs {
+					wantSchedules[schedule.Key] = schedule.Schedule
+				}
+			}
+			if tt.epgSchedule != "" {
+				wantSchedules[defs.EPGGathererKey] = tt.epgSchedule
+			}
+			gotSchedules := make(map[string]string)
+			for _, schedule := range runtime.jobs.GetJobSchedules() {
+				gotSchedules[schedule.Key] = schedule.Schedule
+			}
+			if !reflect.DeepEqual(gotSchedules, wantSchedules) {
+				t.Errorf("schedules = %v, want %v", gotSchedules, wantSchedules)
+			}
+
+			// Manual collection remains registered even in disabled mode.
+			// Abort before waiting: without a tuner collection may retry.
+			id, err := runtime.jobs.Enqueue(defs.EPGGathererKey)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := runtime.jobs.Abort(id); err != nil && !errors.Is(err, job.ErrJobNotRunning) {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			defer cancel()
+			if _, err := runtime.jobs.Wait(ctx, id); err != nil {
+				t.Fatal(err)
+			}
+			waitJob := func(key string) {
+				t.Helper()
+				id, err := runtime.jobs.Enqueue(key)
+				if err != nil {
+					t.Fatal(err)
+				}
+				ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+				defer cancel()
+				item, err := runtime.jobs.Wait(ctx, id)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if item.Error != "" {
+					t.Fatalf("%s failed: %s", key, item.Error)
+				}
+			}
+			waitJob(defs.ServiceUpdaterKey)
+			found := false
+			for _, item := range runtime.jobs.GetJobs() {
+				if item.Key == "epg-gather-after-service-update" {
+					found = true
+				}
+			}
+			if found != tt.automatic {
+				t.Errorf("automatic EPG after service update = %v, want %v", found, tt.automatic)
+			}
+
+			for _, item := range runtime.jobs.GetJobs() {
+				if item.Status != job.StatusFinished {
+					if err := runtime.jobs.Abort(item.ID); err != nil && !errors.Is(err, job.ErrJobNotRunning) {
+						t.Fatal(err)
+					}
+					waitCtx, stopWait := context.WithTimeout(t.Context(), 5*time.Second)
+					_, err := runtime.jobs.Wait(waitCtx, item.ID)
+					stopWait()
+					if err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+
+			// Isolate startup dispatch from the collector's execution, while
+			// exercising runStartupTasks with a populated but stale service DB.
+			if err := service.NewSQLiteStore(database).ReplaceChannelServices(t.Context(), "GR", "27", []*service.Service{
+				{Id: "0000100101", Service: model.Service{Key: model.ServiceKey{ServiceID: 101, NetworkID: 1}, Name: "NHK"}, ChannelType: "GR", ChannelId: "27"},
+			}); err != nil {
+				t.Fatal(err)
+			}
+			count, err := runtime.services.CountServices(t.Context())
+			if err != nil || count != 1 {
+				t.Fatalf("startup service count = %d, err = %v; want 1", count, err)
+			}
+			stale, _, _, err := runtime.services.EPGSummary(t.Context(), int64(cfg.System.EpgStaleAfter), time.Now().UnixMilli())
+			if err != nil || stale != 1 {
+				t.Fatalf("startup stale services = %d, err = %v; want 1", stale, err)
+			}
+			runtime.jobs.Register(job.JobDefinition{Key: defs.EPGGathererKey, Handler: func(ctx context.Context) error { <-ctx.Done(); return ctx.Err() }})
+			if err := runStartupTasks(t.Context(), runtime.services, runtime.programs, runtime.jobs, runtime.serviceScanner, runtime.epgGatherer, database, cfg); err != nil {
+				t.Fatal(err)
+			}
+			if got := containsKey(runtime.jobs.GetActiveJobKeysByPrefix(""), defs.EPGGathererKey); got != tt.startup {
+				t.Errorf("startup EPG queued = %v, want %v", got, tt.startup)
+			}
+		})
 	}
 }
