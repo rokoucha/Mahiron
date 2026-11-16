@@ -102,12 +102,7 @@ func (c *EPGController) reconcile(ctx context.Context, states map[epggather.Grou
 	// This also recovers missed external tuner/service notifications without
 	// polling idle controllers at the refresh frequency.
 	next := now.Add(time.Minute)
-	if c.cleaner != nil && !c.nextCleanup.After(now) {
-		_, err := c.jobs.EnqueueDefinition(job.JobDefinition{Key: "epg-cleanup", Name: "EPG Cleanup", Handler: func(ctx context.Context) error { return c.cleaner.DeleteExpired(ctx, time.Now(), c.retentionDays) }})
-		if err == nil {
-			c.nextCleanup = now.Add(time.Hour)
-		}
-	}
+	c.enqueueCleanup(now)
 	// Read executions before their persisted success times so a just-finished
 	// job cannot be paired with an older service snapshot and queued again.
 	jobs := make(map[string]*job.Job)
@@ -119,6 +114,64 @@ func (c *EPGController) reconcile(ctx context.Context, states map[epggather.Grou
 		slog.Debug("EPG reconciliation postponed", "err", err)
 		return time.Minute
 	}
+	live, stored := c.reflectExecutions(states, jobs, groups, now)
+	keys, deadlines := c.updateDeadlines(states, groups)
+	for _, key := range keys {
+		state, group := states[key], groups[key]
+		if state.id != "" {
+			continue
+		}
+		due := deadlines[key]
+		if due.After(now) {
+			if due.Before(next) {
+				next = due
+			}
+			continue
+		}
+		if key.Stored && stored >= 1 || !key.Stored && live >= c.liveLimit {
+			continue
+		}
+		if err := c.CheckGroup(ctx, key); err != nil {
+			delay := time.Minute
+			if errors.Is(err, tuner.ErrTunerUnavailable) {
+				state.deferred = true
+				delay = state.deferDelay()
+			}
+			state.next = now.Add(delay)
+			if state.next.Before(next) {
+				next = state.next
+			}
+			continue
+		}
+		id, err := c.enqueueGroup(key, group)
+		if err != nil {
+			continue
+		}
+		state.id = id
+		state.deferred = false
+		state.forced = false
+		if key.Stored {
+			stored++
+		} else {
+			live++
+		}
+	}
+	c.forceAll = false
+	return max(time.Millisecond, time.Until(next))
+}
+
+func (c *EPGController) enqueueCleanup(now time.Time) {
+	if c.cleaner != nil && !c.nextCleanup.After(now) {
+		_, err := c.jobs.EnqueueDefinition(job.JobDefinition{Key: "epg-cleanup", Name: "EPG Cleanup", Handler: func(ctx context.Context) error { return c.cleaner.DeleteExpired(ctx, time.Now(), c.retentionDays) }})
+		if err == nil {
+			c.nextCleanup = now.Add(time.Hour)
+		}
+	}
+}
+
+// reflectExecutions runs only after Groups succeeds, preserving state on read
+// failure and retaining removed groups while their jobs are still running.
+func (c *EPGController) reflectExecutions(states map[epggather.GroupKey]*epgDeadline, jobs map[string]*job.Job, groups map[epggather.GroupKey]*epggather.Group, now time.Time) (int, int) {
 	live, stored := 0, 0
 	for key, state := range states {
 		if state.id != "" {
@@ -156,6 +209,11 @@ func (c *EPGController) reconcile(ctx context.Context, states map[epggather.Grou
 			delete(states, key)
 		}
 	}
+	return live, stored
+}
+
+// updateDeadlines advances persisted freshness/retry state once per pass.
+func (c *EPGController) updateDeadlines(states map[epggather.GroupKey]*epgDeadline, groups map[epggather.GroupKey]*epggather.Group) ([]epggather.GroupKey, map[epggather.GroupKey]time.Time) {
 	keys := make([]epggather.GroupKey, 0, len(groups))
 	deadlines := make(map[epggather.GroupKey]time.Time, len(groups))
 	for key, group := range groups {
@@ -201,68 +259,31 @@ func (c *EPGController) reconcile(ctx context.Context, states map[epggather.Grou
 		}
 		return compareGroupKeys(a, b)
 	})
-	for _, key := range keys {
-		state, group := states[key], groups[key]
-		if state.id != "" {
-			continue
+	return keys, deadlines
+}
+
+func (c *EPGController) enqueueGroup(key epggather.GroupKey, group *epggather.Group) (string, error) {
+	def := epgGatherDefinition(c.ContinuousEPGGatherer, key, group)
+	handler := def.Handler
+	def.Handler = func(ctx context.Context) error {
+		err := handler(ctx)
+		if errors.Is(err, epggather.ErrPartial) {
+			return nil
 		}
-		due := deadlines[key]
-		if due.After(now) {
-			if due.Before(next) {
-				next = due
-			}
-			continue
+		if errors.Is(err, epggather.ErrDeferred) {
+			run.Set(ctx, run.Result{Kind: "epg_deferred", Summary: "waiting for an available tuner"})
+			return nil
 		}
-		if key.Stored && stored >= 1 || !key.Stored && live >= c.liveLimit {
-			continue
-		}
-		if err := c.CheckGroup(ctx, key); err != nil {
-			delay := time.Minute
-			if errors.Is(err, tuner.ErrTunerUnavailable) {
-				state.deferred = true
-				delay = state.deferDelay()
-			}
-			state.next = now.Add(delay)
-			if state.next.Before(next) {
-				next = state.next
-			}
-			continue
-		}
-		def := epgGatherDefinition(c.ContinuousEPGGatherer, key, group)
-		handler := def.Handler
-		def.Handler = func(ctx context.Context) error {
-			err := handler(ctx)
-			if errors.Is(err, epggather.ErrPartial) {
-				return nil
-			}
-			if errors.Is(err, epggather.ErrDeferred) {
-				run.Set(ctx, run.Result{Kind: "epg_deferred", Summary: "waiting for an available tuner"})
-				return nil
-			}
-			return err
-		}
-		def.RetryDelays = nil
-		def.RetryIf = nil
-		if key.Stored {
-			def.ConcurrencyGroup = EPGStoredGroup
-		} else {
-			def.ConcurrencyGroup = EPGLiveGroup
-		}
-		id, err := c.jobs.EnqueueDefinition(def)
-		if err != nil {
-			continue
-		}
-		state.id = id
-		state.deferred = false
-		state.forced = false
-		if key.Stored {
-			stored++
-		} else {
-			live++
-		}
+		return err
 	}
-	c.forceAll = false
-	return max(time.Millisecond, time.Until(next))
+	def.RetryDelays = nil
+	def.RetryIf = nil
+	if key.Stored {
+		def.ConcurrencyGroup = EPGStoredGroup
+	} else {
+		def.ConcurrencyGroup = EPGLiveGroup
+	}
+	return c.jobs.EnqueueDefinition(def)
 }
 
 func (c *EPGController) SetCleaner(cleaner ProgramCleaner, retentionDays int) {
