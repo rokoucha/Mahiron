@@ -450,7 +450,7 @@ func TestSQLiteStorePreservesLogoRowsWhenServiceLogoMetadataChanges(t *testing.T
 	if err := store.ReplaceChannelServices(ctx, "GR", "27", []*Service{service}); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.UpsertLogo(ctx, 1, service.Key.StreamID, 101, logoID, 5, oldVersion, downloadDataID, []byte{0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a}, 1000); err != nil {
+	if err := store.UpsertLogo(ctx, model.ServiceKey{NetworkID: 1, StreamID: service.Key.StreamID, ServiceID: 101}, model.Logo{LogoID: uint16(logoID), LogoType: uint8(5), Version: uint16(oldVersion), DownloadDataID: uint16(downloadDataID), Data: []byte{0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a}}, 1000); err != nil {
 		t.Fatal(err)
 	}
 	service.Logo.Version = new(uint16(newVersion))
@@ -499,7 +499,7 @@ func TestSQLiteStorePreservesExistingLogoMetadataWhenScanOmitsLogo(t *testing.T)
 	}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.UpsertLogo(ctx, 4, 0x4010, 101, logoID, 5, logoVersion, downloadDataID, []byte("png"), 1000); err != nil {
+	if err := store.UpsertLogo(ctx, model.ServiceKey{NetworkID: 4, StreamID: 0x4010, ServiceID: 101}, model.Logo{LogoID: uint16(logoID), LogoType: uint8(5), Version: uint16(logoVersion), DownloadDataID: uint16(downloadDataID), Data: []byte("png")}, 1000); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.ReplaceChannelServices(ctx, "BS", "BS01", []*Service{{
@@ -545,13 +545,13 @@ func TestHasLogoDataTracksExactStoredVersion(t *testing.T) {
 	if got, err := store.GetByItemID(ctx, 100101); err != nil || got.HasLogoData {
 		t.Fatalf("service before upsert = %#v, err=%v, want no logo data", got, err)
 	}
-	if err := store.UpsertLogo(ctx, 1, service.Key.StreamID, 101, logoID, 5, version-1, downloadID, []byte("old"), 1000); err != nil {
+	if err := store.UpsertLogo(ctx, model.ServiceKey{NetworkID: 1, StreamID: service.Key.StreamID, ServiceID: 101}, model.Logo{LogoID: uint16(logoID), LogoType: uint8(5), Version: uint16(version - 1), DownloadDataID: uint16(downloadID), Data: []byte("old")}, 1000); err != nil {
 		t.Fatal(err)
 	}
 	if got, err := store.GetByItemID(ctx, 100101); err != nil || got.HasLogoData {
 		t.Fatalf("service with another version stored = %#v, err=%v, want no logo data", got, err)
 	}
-	if err := store.UpsertLogo(ctx, 1, service.Key.StreamID, 101, logoID, 5, version, downloadID, []byte("png"), 1000); err != nil {
+	if err := store.UpsertLogo(ctx, model.ServiceKey{NetworkID: 1, StreamID: service.Key.StreamID, ServiceID: 101}, model.Logo{LogoID: uint16(logoID), LogoType: uint8(5), Version: uint16(version), DownloadDataID: uint16(downloadID), Data: []byte("png")}, 1000); err != nil {
 		t.Fatal(err)
 	}
 	if got, err := store.GetByItemID(ctx, 100101); err != nil || !got.HasLogoData {
@@ -643,7 +643,7 @@ func TestServiceManagerUpsertAssignedLogoKeepsOldMetadataWhenLogoStoreFails(t *t
 	}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.UpsertLogo(ctx, 4, 0x4010, 101, oldLogoID, 5, oldVersion, oldDownloadID, buildServiceTestPalettePNG(true), 1000); err != nil {
+	if err := store.UpsertLogo(ctx, model.ServiceKey{NetworkID: 4, StreamID: 0x4010, ServiceID: 101}, model.Logo{LogoID: uint16(oldLogoID), LogoType: uint8(5), Version: uint16(oldVersion), DownloadDataID: uint16(oldDownloadID), Data: buildServiceTestPalettePNG(true)}, 1000); err != nil {
 		t.Fatal(err)
 	}
 	manager := NewManager(failingLogoStore{Store: store, err: errors.New("store failed")}, config.ChannelsConfig{})
@@ -669,7 +669,7 @@ type failingLogoStore struct {
 	err error
 }
 
-func (s failingLogoStore) UpsertLogo(context.Context, uint16, uint16, uint16, int64, int64, int64, int64, []byte, int64) error {
+func (s failingLogoStore) UpsertLogo(context.Context, model.ServiceKey, model.Logo, int64) error {
 	return s.err
 }
 
@@ -753,5 +753,47 @@ func TestSQLiteStoreDoesNotAttachOldCDTLogoToSimpleLogo(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got.Logo, svc.Logo) {
 		t.Fatalf("logo = %#v, want %#v", got.Logo, svc.Logo)
+	}
+}
+
+func TestServiceManagerAssignedLogoUsesEachServiceNetwork(t *testing.T) {
+	database, err := db.OpenInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = database.Close() }()
+	store := NewSQLiteStore(database)
+	manager := NewManager(store, config.ChannelsConfig{})
+	keys := []model.ServiceKey{
+		{NetworkID: 4, StreamID: 0x4010, ServiceID: 101},
+		{NetworkID: 6, StreamID: 0x6010, ServiceID: 101},
+	}
+	if err := store.ReplaceChannelServices(t.Context(), "sat", "a", []*Service{
+		{Id: "0000400101", Service: model.Service{Key: keys[0]}, ChannelType: "sat", ChannelId: "a"},
+		{Id: "0000600101", Service: model.Service{Key: keys[1]}, ChannelType: "sat", ChannelId: "a"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	image := model.Logo{
+		NetworkID: 4, LogoID: 12, LogoType: 5, Version: 2, DownloadDataID: 0x1234,
+		Data: buildServiceTestPalettePNG(true), Services: keys,
+	}
+	for _, deleted := range []bool{false, true} {
+		image.Deleted = deleted
+		if deleted {
+			image.Data = nil
+		}
+		if err := manager.UpsertLogoImage(t.Context(), image); err != nil {
+			t.Fatal(err)
+		}
+		for _, key := range keys {
+			svc, err := store.GetByTriplet(t.Context(), key.NetworkID, key.StreamID, key.ServiceID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if svc == nil || svc.HasLogoData == deleted {
+				t.Fatalf("service %v after deleted=%v: %#v", key, deleted, svc)
+			}
+		}
 	}
 }

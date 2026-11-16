@@ -8,14 +8,14 @@ import (
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 )
 
-func GetLog(_ context.Context, h *Handler) (apigen.GetLogRes, error) {
+func (h *Handler) GetLog(_ context.Context) (apigen.GetLogRes, error) {
 	if h.logStore == nil {
 		return &apigen.GetLogDef{StatusCode: http.StatusServiceUnavailable}, nil
 	}
 	return &apigen.GetLogOK{Data: bytes.NewReader(h.logStore.Snapshot())}, nil
 }
 
-func GetLogStream(ctx context.Context, h *Handler) (apigen.GetLogStreamRes, error) {
+func (h *Handler) GetLogStream(ctx context.Context) (apigen.GetLogStreamRes, error) {
 	if h.logStore == nil {
 		return &apigen.GetLogStreamDef{StatusCode: http.StatusServiceUnavailable}, nil
 	}

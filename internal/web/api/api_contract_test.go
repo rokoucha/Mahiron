@@ -77,7 +77,7 @@ func TestXMirakurunPriorityHeaderAcceptsNegativeOne(t *testing.T) {
 // nil guard (`[...p.parameters, ...(p.get.parameters || [])]`), so every path
 // item must carry a parameters array even when it is empty.
 func TestOpenAPIPathItemsAlwaysDeclareParameters(t *testing.T) {
-	res, err := GetApiDocumentation(context.Background(), nil)
+	res, err := (&Handler{}).GetApiDocumentation(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}

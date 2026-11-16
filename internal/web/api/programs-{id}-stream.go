@@ -11,7 +11,7 @@ import (
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 )
 
-func GetProgramStream(ctx context.Context, h *Handler, params apigen.GetProgramStreamParams) (apigen.GetProgramStreamRes, error) {
+func (h *Handler) GetProgramStream(ctx context.Context, params apigen.GetProgramStreamParams) (apigen.GetProgramStreamRes, error) {
 	p, ok, err := h.programManager.Get(ctx, params.ID)
 	if err != nil {
 		return nil, err
@@ -62,7 +62,7 @@ func GetProgramStream(ctx context.Context, h *Handler, params apigen.GetProgramS
 	}, nil
 }
 
-func ProgramsIDStreamHead(ctx context.Context, h *Handler, params apigen.ProgramsIDStreamHeadParams) (apigen.ProgramsIDStreamHeadRes, error) {
+func (h *Handler) ProgramsIDStreamHead(ctx context.Context, params apigen.ProgramsIDStreamHeadParams) (apigen.ProgramsIDStreamHeadRes, error) {
 	p, ok, err := h.programManager.Get(ctx, params.ID)
 	if err != nil {
 		return nil, err

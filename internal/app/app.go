@@ -199,8 +199,8 @@ func buildRuntime(cfg *config.Config, database *db.DB, obs observability.SetupRe
 		ModuleStore:    moduleStore,
 	})
 	scanAdapter := stream.NewServiceScanAdapter(streams)
-	logoGatherer := logogather.NewGatherer(services, stream.NewLogoGatherAdapter(streams), time.Duration(cfg.System.LogoGatherTimeout)*time.Millisecond)
-	serviceScanner := servicescan.NewScanner(services, scanAdapter, cfg.Channels, time.Duration(cfg.System.ServiceScanTimeout)*time.Millisecond)
+	logoGatherer := logogather.NewGatherer(services, stream.NewLogoGatherAdapter(streams), cfg.System.LogoGatherTimeoutDuration())
+	serviceScanner := servicescan.NewScanner(services, scanAdapter, cfg.Channels, cfg.System.ServiceScanTimeoutDuration())
 	epgGatherer := buildEPGGatherer(cfg, epg.Mode, programs, services, streams)
 	runtime := &applicationRuntime{
 		dataBroadcastStore: dataBroadcastStore,
@@ -491,7 +491,7 @@ func writeMetadata(ctx context.Context, db *sql.DB, key, value string) error {
 func buildEPGGatherer(cfg *config.Config, mode config.EPGMode, programs *program.Manager, services *service.Manager, streams *stream.Manager) *epggather.Gatherer {
 	epgAdapter := stream.NewEPGGatherAdapter(streams)
 	epgAdapter.WaitForTuner = mode != config.EPGContinuous
-	epgGatherer := epggather.NewGatherer(programs, programs, services, epgAdapter, cfg.Channels, time.Duration(cfg.System.EpgRetrievalTime)*time.Millisecond)
+	epgGatherer := epggather.NewGatherer(programs, programs, services, epgAdapter, cfg.Channels, cfg.System.EpgRetrievalTimeDuration())
 
 	return epgGatherer
 }
@@ -509,14 +509,14 @@ func (r *applicationRuntime) buildJobs(system *config.SystemConfig, epg config.E
 	var scheduledEPG defs.EPGGatherer = r.epgGatherer
 	var controller *defs.EPGController
 	if epg.Mode == config.EPGContinuous {
-		interval := time.Duration(system.EpgRefreshInterval) * time.Millisecond
+		interval := system.EpgRefreshIntervalDuration()
 		if interval <= 0 {
 			interval = 30 * time.Minute
 		}
 		r.epgGatherer.SetReceptionPolicy(epggather.ReceptionPolicy{
 			RefreshInterval:       interval,
-			ExtendedProbeInterval: time.Duration(system.EpgExtendedProbeInterval) * time.Millisecond,
-			UnknownExtendedIdle:   time.Duration(system.EpgUnknownExtendedIdleTime) * time.Millisecond,
+			ExtendedProbeInterval: system.EpgExtendedProbeIntervalDuration(),
+			UnknownExtendedIdle:   system.EpgUnknownExtendedIdleTimeDuration(),
 		})
 		controller = defs.NewEPGController(jobs, r.epgGatherer, interval, system.MaxConcurrentJobs)
 		controller.SetCleaner(r.programs, system.EpgRetentionDays)

@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"slices"
 
 	"github.com/21S1298001/mahiron/internal/config"
@@ -12,7 +13,7 @@ import (
 	"github.com/go-faster/jx"
 )
 
-func GetTuners(ctx context.Context, h *Handler, params apigen.GetTunersParams) (apigen.GetTunersRes, error) {
+func (h *Handler) GetTuners(ctx context.Context, params apigen.GetTunersParams) (apigen.GetTunersRes, error) {
 	statuses := h.tunerManager.Statuses()
 	result := make(apigen.GetTunersOKApplicationJSON, 0, len(statuses))
 	for i := range statuses {
@@ -74,7 +75,7 @@ func apiRemoteTuner(remote stream.RemoteTunerStatus, position int, channels conf
 	return result
 }
 
-func GetTuner(_ context.Context, h *Handler, params apigen.GetTunerParams) (apigen.GetTunerRes, error) {
+func (h *Handler) GetTuner(_ context.Context, params apigen.GetTunerParams) (apigen.GetTunerRes, error) {
 	status, ok := h.tunerManager.Status(params.Index)
 	if !ok {
 		return notFound("tuner not found"), nil
@@ -82,7 +83,7 @@ func GetTuner(_ context.Context, h *Handler, params apigen.GetTunerParams) (apig
 	return apiTuner(status), nil
 }
 
-func GetTunerProcess(_ context.Context, h *Handler, params apigen.GetTunerProcessParams) (apigen.GetTunerProcessRes, error) {
+func (h *Handler) GetTunerProcess(_ context.Context, params apigen.GetTunerProcessParams) (apigen.GetTunerProcessRes, error) {
 	status, ok := h.tunerManager.Status(params.Index)
 	if !ok {
 		return notFound("tuner not found"), nil
@@ -234,4 +235,14 @@ func apiRawJSON(value any) jx.Raw {
 		return jx.Raw("null")
 	}
 	return jx.Raw(data)
+}
+
+func (h *Handler) KillTunerProcess(ctx context.Context, params apigen.KillTunerProcessParams) (apigen.KillTunerProcessRes, error) {
+	if err := h.tunerManager.KillProcess(ctx, params.Index); err != nil {
+		if errors.Is(err, tuner.ErrTunerNotFound) {
+			return notFound("tuner not found"), nil
+		}
+		return nil, err
+	}
+	return &apigen.KillTunerProcessNoContent{}, nil
 }

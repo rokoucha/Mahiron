@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 )
@@ -396,5 +397,109 @@ func TestEPGReceptionBudgetValidation(t *testing.T) {
 		if _, err := LoadAndParseSystemConfig(path); err == nil {
 			t.Fatalf("accepted invalid budget %q", text)
 		}
+	}
+}
+
+func TestSystemConfigDurations(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "server.yml")
+	if err := os.WriteFile(path, []byte(`epgUnknownExtendedIdleTime: 1234
+epgExtendedProbeInterval: 2345
+epgRefreshInterval: 3456
+epgRetrievalTime: 5678
+epgStaleAfter: 6789
+logoGatherTimeout: 7890
+serviceScanTimeout: 8901
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	config, err := LoadAndParseSystemConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name string
+		got  time.Duration
+		want time.Duration
+	}{
+		{"unknown idle", config.EpgUnknownExtendedIdleTimeDuration(), 1234 * time.Millisecond},
+		{"extended probe", config.EpgExtendedProbeIntervalDuration(), 2345 * time.Millisecond},
+		{"refresh", config.EpgRefreshIntervalDuration(), 3456 * time.Millisecond},
+		{"retrieval", config.EpgRetrievalTimeDuration(), 5678 * time.Millisecond},
+		{"stale", config.EpgStaleAfterDuration(), 6789 * time.Millisecond},
+		{"logo", config.LogoGatherTimeoutDuration(), 7890 * time.Millisecond},
+		{"scan", config.ServiceScanTimeoutDuration(), 8901 * time.Millisecond},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if test.got != test.want {
+				t.Fatalf("duration = %v, want %v", test.got, test.want)
+			}
+		})
+	}
+}
+
+func TestSystemConfigExplicitZeroAndEmptyDefaults(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "server.yml")
+	if err := os.WriteFile(path, []byte(`addresses: []
+logLevel: ""
+observability:
+  serviceName: ""
+epgUnknownExtendedIdleTime: 0
+epgRetentionDays: 0
+dataBroadcastCacheBytes: 0
+dataBroadcastCacheMaxAgeDays: 0
+dataBroadcastSnapshotMaxAgeHours: 0
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	config, err := LoadAndParseSystemConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if diff := cmp.Diff([]ServerAddress{{Http: "localhost:40772"}}, config.Addresses); diff != "" {
+		t.Fatal(diff)
+	}
+	if config.LogLevel != "info" || config.Observability.ServiceName != "mahiron" {
+		t.Fatalf("empty string defaults missing: %+v", config)
+	}
+	if config.EpgUnknownExtendedIdleTimeDuration() != 0 || config.EpgRetentionDays != 0 || config.DataBroadcastCacheBytes != 0 || config.DataBroadcastCacheMaxAgeDays != 0 || config.DataBroadcastSnapshotMaxAgeHours != 0 {
+		t.Fatalf("explicit zero replaced by defaults: %+v", config)
+	}
+}
+
+func TestSystemConfigNullPreservesNumericDefaults(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "server.yml")
+	if err := os.WriteFile(path, []byte(`epgUnknownExtendedIdleTime: null
+epgRetentionDays: null
+dataBroadcastCacheBytes: null
+dataBroadcastCacheMaxAgeDays: null
+dataBroadcastSnapshotMaxAgeHours: null
+maxConcurrentJobs: null
+epgStaleAfter: null
+logoGatherTimeout: null
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	config, err := LoadAndParseSystemConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := defaultSystemConfig()
+	want.applyDefaults()
+	if diff := cmp.Diff(&want, config); diff != "" {
+		t.Fatal(diff)
+	}
+}
+
+func TestSystemConfigRejectsExplicitZeroDurationsAndConcurrency(t *testing.T) {
+	for _, field := range []string{"maxConcurrentJobs", "epgStaleAfter", "logoGatherTimeout", "epgRetrievalTime", "serviceScanTimeout"} {
+		t.Run(field, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "server.yml")
+			if err := os.WriteFile(path, []byte(field+": 0\n"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := LoadAndParseSystemConfig(path); err == nil {
+				t.Fatal("explicit zero accepted")
+			}
+		})
 	}
 }

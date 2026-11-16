@@ -60,10 +60,10 @@ func TestTargetsRefreshesKnownLogos(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.UpsertLogo(ctx, 4, 0, 101, remoteLogoID, 5, remoteVersion, remoteDownloadID, []byte("remote"), 1000); err != nil {
+	if err := store.UpsertLogo(ctx, model.ServiceKey{NetworkID: 4, StreamID: 0, ServiceID: 101}, model.Logo{LogoID: uint16(remoteLogoID), LogoType: uint8(5), Version: uint16(remoteVersion), DownloadDataID: uint16(remoteDownloadID), Data: []byte("remote")}, 1000); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.UpsertLogo(ctx, 4, 0, 102, localLogoID, 5, localVersion, localDownloadID, []byte("local"), 1000); err != nil {
+	if err := store.UpsertLogo(ctx, model.ServiceKey{NetworkID: 4, StreamID: 0, ServiceID: 102}, model.Logo{LogoID: uint16(localLogoID), LogoType: uint8(5), Version: uint16(localVersion), DownloadDataID: uint16(localDownloadID), Data: []byte("local")}, 1000); err != nil {
 		t.Fatal(err)
 	}
 
@@ -195,7 +195,7 @@ func TestTargetsRefreshesCommonDataWhenLogosArePresent(t *testing.T) {
 	}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.UpsertLogo(ctx, 4, 0x4010, 101, logoID, 5, logoVersion, downloadID, []byte("png"), 1000); err != nil {
+	if err := store.UpsertLogo(ctx, model.ServiceKey{NetworkID: 4, StreamID: 0x4010, ServiceID: 101}, model.Logo{LogoID: uint16(logoID), LogoType: uint8(5), Version: uint16(logoVersion), DownloadDataID: uint16(downloadID), Data: []byte("png")}, 1000); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.ReplaceChannelServices(ctx, "sat", "common", []*service.Service{{

@@ -9,7 +9,7 @@ import (
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 )
 
-func GetPrograms(ctx context.Context, h *Handler, params apigen.GetProgramsParams) (apigen.GetProgramsRes, error) {
+func (h *Handler) GetPrograms(ctx context.Context, params apigen.GetProgramsParams) (apigen.GetProgramsRes, error) {
 	programs, err := h.programManager.List(ctx, programQuery(params))
 	if err != nil {
 		return nil, err
@@ -18,7 +18,7 @@ func GetPrograms(ctx context.Context, h *Handler, params apigen.GetProgramsParam
 	return &res, nil
 }
 
-func GetProgram(ctx context.Context, h *Handler, params apigen.GetProgramParams) (apigen.GetProgramRes, error) {
+func (h *Handler) GetProgram(ctx context.Context, params apigen.GetProgramParams) (apigen.GetProgramRes, error) {
 	p, ok, err := h.programManager.Get(ctx, params.ID)
 	if err != nil {
 		return nil, err
@@ -30,7 +30,7 @@ func GetProgram(ctx context.Context, h *Handler, params apigen.GetProgramParams)
 	return &api, nil
 }
 
-func GetServicePrograms(ctx context.Context, h *Handler, params apigen.GetServiceProgramsParams) (apigen.GetServiceProgramsRes, error) {
+func (h *Handler) GetServicePrograms(ctx context.Context, params apigen.GetServiceProgramsParams) (apigen.GetServiceProgramsRes, error) {
 	service, err := h.serviceManager.GetServiceById(ctx, strconv.FormatInt(params.ID, 10))
 	if err != nil {
 		return nil, err

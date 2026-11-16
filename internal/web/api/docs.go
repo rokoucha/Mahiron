@@ -11,7 +11,7 @@ import (
 //go:embed api.yml
 var f embed.FS
 
-func GetApiDocumentation(ctx context.Context, h *Handler) (apigen.GetApiDocumentationRes, error) {
+func (h *Handler) GetApiDocumentation(ctx context.Context) (apigen.GetApiDocumentationRes, error) {
 	res := &apigen.GetApiDocumentationOK{}
 
 	schemaYaml, err := f.ReadFile("api.yml")

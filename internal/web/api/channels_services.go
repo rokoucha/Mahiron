@@ -14,7 +14,7 @@ import (
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 )
 
-func GetChannels(ctx context.Context, h *Handler, params apigen.GetChannelsParams) (apigen.GetChannelsRes, error) {
+func (h *Handler) GetChannels(ctx context.Context, params apigen.GetChannelsParams) (apigen.GetChannelsRes, error) {
 	channels := h.serviceManager.GetChannels()
 	items, err := apiChannels(ctx, h, filterChannels(channels, params.Type, params.Channel, params.Name))
 	if err != nil {
@@ -24,7 +24,7 @@ func GetChannels(ctx context.Context, h *Handler, params apigen.GetChannelsParam
 	return &res, nil
 }
 
-func GetChannelsByType(ctx context.Context, h *Handler, params apigen.GetChannelsByTypeParams) (apigen.GetChannelsByTypeRes, error) {
+func (h *Handler) GetChannelsByType(ctx context.Context, params apigen.GetChannelsByTypeParams) (apigen.GetChannelsByTypeRes, error) {
 	channels := h.serviceManager.GetChannels()
 	filtered := make(config.ChannelsConfig, 0, len(channels))
 	filtered = append(filtered, filterChannels(channels, apigen.NewOptString(params.Type), params.Channel, params.Name)...)
@@ -36,7 +36,7 @@ func GetChannelsByType(ctx context.Context, h *Handler, params apigen.GetChannel
 	return &res, nil
 }
 
-func GetChannel(ctx context.Context, h *Handler, params apigen.GetChannelParams) (apigen.GetChannelRes, error) {
+func (h *Handler) GetChannel(ctx context.Context, params apigen.GetChannelParams) (apigen.GetChannelRes, error) {
 	channel := h.serviceManager.GetChannel(params.Type, params.Channel)
 	if channel == nil {
 		return notFound("channel not found"), nil
@@ -44,7 +44,7 @@ func GetChannel(ctx context.Context, h *Handler, params apigen.GetChannelParams)
 	return apiChannelWithServices(ctx, h, *channel)
 }
 
-func GetServices(ctx context.Context, h *Handler, params apigen.GetServicesParams) (apigen.GetServicesRes, error) {
+func (h *Handler) GetServices(ctx context.Context, params apigen.GetServicesParams) (apigen.GetServicesRes, error) {
 	services, err := h.serviceManager.GetServices(ctx)
 	if err != nil {
 		return nil, err
@@ -54,7 +54,7 @@ func GetServices(ctx context.Context, h *Handler, params apigen.GetServicesParam
 	return &res, nil
 }
 
-func GetService(ctx context.Context, h *Handler, params apigen.GetServiceParams) (apigen.GetServiceRes, error) {
+func (h *Handler) GetService(ctx context.Context, params apigen.GetServiceParams) (apigen.GetServiceRes, error) {
 	service, err := h.serviceManager.GetServiceById(ctx, strconv.FormatInt(params.ID, 10))
 	if err != nil {
 		return nil, err
@@ -65,7 +65,7 @@ func GetService(ctx context.Context, h *Handler, params apigen.GetServiceParams)
 	return apiService(h, service, true), nil
 }
 
-func GetServicesByChannel(ctx context.Context, h *Handler, params apigen.GetServicesByChannelParams) (apigen.GetServicesByChannelRes, error) {
+func (h *Handler) GetServicesByChannel(ctx context.Context, params apigen.GetServicesByChannelParams) (apigen.GetServicesByChannelRes, error) {
 	if h.serviceManager.GetChannel(params.Type, params.Channel) == nil {
 		return notFound("channel not found"), nil
 	}
@@ -77,7 +77,7 @@ func GetServicesByChannel(ctx context.Context, h *Handler, params apigen.GetServ
 	return &res, nil
 }
 
-func GetServiceByChannel(ctx context.Context, h *Handler, params apigen.GetServiceByChannelParams) (apigen.GetServiceByChannelRes, error) {
+func (h *Handler) GetServiceByChannel(ctx context.Context, params apigen.GetServiceByChannelParams) (apigen.GetServiceByChannelRes, error) {
 	if h.serviceManager.GetChannel(params.Type, params.Channel) == nil {
 		return notFound("channel not found"), nil
 	}
@@ -91,7 +91,7 @@ func GetServiceByChannel(ctx context.Context, h *Handler, params apigen.GetServi
 	return apiService(h, svc, true), nil
 }
 
-func GetLogoImage(ctx context.Context, h *Handler, params apigen.GetLogoImageParams) (apigen.GetLogoImageRes, error) {
+func (h *Handler) GetLogoImage(ctx context.Context, params apigen.GetLogoImageParams) (apigen.GetLogoImageRes, error) {
 	svc, err := h.serviceManager.GetServiceByItemID(ctx, params.ID)
 	if err != nil {
 		return nil, err

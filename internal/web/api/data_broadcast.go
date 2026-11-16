@@ -23,7 +23,7 @@ func bmlUnsupportedChannel(h *Handler, channelType, channelID string) bool {
 	return channel != nil && config.IsTLVTransport(*channel)
 }
 
-func GetServiceDataBroadcastEvents(ctx context.Context, h *Handler, params apigen.GetServiceDataBroadcastEventsParams, w http.ResponseWriter) error {
+func (h *Handler) GetServiceDataBroadcastEvents(ctx context.Context, params apigen.GetServiceDataBroadcastEventsParams, w http.ResponseWriter) error {
 	if h.dataBroadcastDisabled {
 		w.WriteHeader(http.StatusNotFound)
 		return nil
@@ -76,7 +76,7 @@ func GetServiceDataBroadcastEvents(ctx context.Context, h *Handler, params apige
 // When no channel session currently exists, it falls back to a provisional
 // snapshot rebuilt from persisted PMT/DII state (origin "cache") unless the
 // caller passes allowCache=0.
-func GetServiceDataBroadcastState(ctx context.Context, h *Handler, params apigen.GetServiceDataBroadcastStateParams, w http.ResponseWriter) error {
+func (h *Handler) GetServiceDataBroadcastState(ctx context.Context, params apigen.GetServiceDataBroadcastStateParams, w http.ResponseWriter) error {
 	if h.dataBroadcastDisabled {
 		w.WriteHeader(http.StatusNotFound)
 		return nil
@@ -133,7 +133,7 @@ func provisionalDataBroadcastSnapshot(h *Handler, allowCache apigen.OptInt, chan
 	return bml.RestoreSnapshot(channelType, channelID, persisted, existence), persisted.StoredAt * 1000, true
 }
 
-func GetServiceDataBroadcastModuleVersion(ctx context.Context, h *Handler, params apigen.GetServiceDataBroadcastModuleVersionParams, w http.ResponseWriter) error {
+func (h *Handler) GetServiceDataBroadcastModuleVersion(ctx context.Context, params apigen.GetServiceDataBroadcastModuleVersionParams, w http.ResponseWriter) error {
 	if h.dataBroadcastDisabled {
 		w.WriteHeader(http.StatusNotFound)
 		return nil
@@ -160,7 +160,7 @@ func GetServiceDataBroadcastModuleVersion(ctx context.Context, h *Handler, param
 	return writeDataBroadcastJSON(w, &manifest)
 }
 
-func GetServiceDataBroadcastModuleRaw(ctx context.Context, h *Handler, params apigen.GetServiceDataBroadcastModuleRawParams, w http.ResponseWriter) error {
+func (h *Handler) GetServiceDataBroadcastModuleRaw(ctx context.Context, params apigen.GetServiceDataBroadcastModuleRawParams, w http.ResponseWriter) error {
 	if h.dataBroadcastDisabled {
 		w.WriteHeader(http.StatusNotFound)
 		return nil
@@ -183,7 +183,7 @@ func GetServiceDataBroadcastModuleRaw(ctx context.Context, h *Handler, params ap
 	return err
 }
 
-func GetServiceDataBroadcastModuleResource(ctx context.Context, h *Handler, params apigen.GetServiceDataBroadcastModuleResourceParams, w http.ResponseWriter) error {
+func (h *Handler) GetServiceDataBroadcastModuleResource(ctx context.Context, params apigen.GetServiceDataBroadcastModuleResourceParams, w http.ResponseWriter) error {
 	if h.dataBroadcastDisabled {
 		w.WriteHeader(http.StatusNotFound)
 		return nil
