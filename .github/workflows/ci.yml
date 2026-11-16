@@ -23,6 +23,11 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+      - name: Check generated code
+        run: |
+          make generate
+          git diff --exit-code -- internal/web/api/gen internal/db/gen internal/bml/cache/cachedb
+          test -z "$(git ls-files --others --exclude-standard -- internal/web/api/gen internal/db/gen internal/bml/cache/cachedb)"
       - run: go build ./...
       - run: make verify
 
