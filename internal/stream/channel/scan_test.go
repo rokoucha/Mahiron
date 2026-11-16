@@ -349,3 +349,16 @@ func TestScanResolvesIndirectLogoTransmissionDescriptor(t *testing.T) {
 		t.Fatalf("indirect logo service = %#v", got[1])
 	}
 }
+
+func TestScanIndirectLogoReplacedWithoutDescriptor(t *testing.T) {
+	scan := newServiceScan()
+	scan.Observe(testBuildSDT(t, 0x1234, 0x5678, []testSDTService{
+		{serviceID: 100, descriptors: append(testServiceDescriptor(1, nil, nil), ts.DescriptorTagLogoTransmission, 7, 1, 0, 5, 0, 2, 0, 9)},
+		{serviceID: 101, descriptors: append(testServiceDescriptor(1, nil, nil), ts.DescriptorTagLogoTransmission, 3, 2, 0, 5)},
+		{serviceID: 101, descriptors: testServiceDescriptor(1, nil, nil)},
+	}))
+	got := scan.Services()
+	if len(got) != 2 || got[1].Logo != nil {
+		t.Fatalf("services = %#v, want replacement without logo", got)
+	}
+}
