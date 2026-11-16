@@ -386,7 +386,7 @@ func TestBuildRuntimeEPGModes(t *testing.T) {
 	}
 	tests := []struct {
 		name        string
-		mode        string
+		mode        config.EPGMode
 		jobs        []config.JobScheduleConfig
 		controller  bool
 		epgSchedule string
@@ -527,6 +527,20 @@ func TestBuildRuntimeEPGModes(t *testing.T) {
 				t.Errorf("startup EPG queued = %v, want %v", got, tt.startup)
 			}
 		})
+	}
+}
+
+func TestBuildRuntimeRejectsInvalidEPGBeforeOpeningResources(t *testing.T) {
+	for _, system := range []config.SystemConfig{
+		{EpgGatheringMode: "invalid"},
+		{EpgGatheringMode: config.EPGDisabled, Jobs: []config.JobScheduleConfig{{Key: defs.EPGGathererKey, Schedule: "0 * * * *"}}},
+	} {
+		// No database or observability setup is needed: reject invalid EPG
+		// configuration before constructing managers or opening the cache.
+		runtime, message, err := buildRuntime(&config.Config{System: &system}, nil, observability.SetupResult{})
+		if err == nil || runtime != nil || message != "invalid EPG configuration" {
+			t.Fatalf("buildRuntime = (%v, %q, %v), want invalid EPG configuration", runtime, message, err)
+		}
 	}
 }
 

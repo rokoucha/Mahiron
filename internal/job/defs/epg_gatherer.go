@@ -9,16 +9,17 @@ import (
 	"slices"
 	"time"
 
+	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/epggather"
 	"github.com/21S1298001/mahiron/internal/job"
 	"github.com/21S1298001/mahiron/internal/job/run"
 )
 
 const (
-	EPGGathererKey  = "epg-gatherer"
+	EPGGathererKey  = config.EPGGathererKey
 	EPGGathererName = "EPG Gatherer"
 
-	EPGGathererDefaultSchedule = "20,50 * * * *"
+	EPGGathererDefaultSchedule = config.EPGGathererDefaultSchedule
 	epgRefreshInterval         = 30 * time.Minute
 )
 

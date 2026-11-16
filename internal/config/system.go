@@ -30,17 +30,17 @@ type SystemConfig struct {
 	DataBroadcastCacheMaxAgeDays int    `json:"dataBroadcastCacheMaxAgeDays,omitempty"`
 	// DataBroadcastSnapshotDisabled turns off persisting PMT/DII sections for
 	// provisional /state responses. Enabled (nil or false) by default.
-	DataBroadcastSnapshotDisabled    *bool  `json:"dataBroadcastSnapshotDisabled,omitempty"`
-	DataBroadcastSnapshotMaxAgeHours int    `json:"dataBroadcastSnapshotMaxAgeHours,omitempty"`
-	EpgGatheringMode                 string `json:"epgGatheringMode,omitempty"`
-	EpgUnknownExtendedIdleTime       int    `json:"epgUnknownExtendedIdleTime,omitempty"`
-	EpgExtendedProbeInterval         int    `json:"epgExtendedProbeInterval,omitempty"`
-	EpgRefreshInterval               int    `json:"epgRefreshInterval,omitempty"`
-	EpgRetentionDays                 int    `json:"epgRetentionDays,omitempty"`
-	EpgRetrievalTime                 int    `json:"epgRetrievalTime,omitempty"`
-	EpgStaleAfter                    int    `json:"epgStaleAfter,omitempty"`
-	LogoGatherTimeout                int    `json:"logoGatherTimeout,omitempty"`
-	ServiceScanTimeout               int    `json:"serviceScanTimeout,omitempty"`
+	DataBroadcastSnapshotDisabled    *bool   `json:"dataBroadcastSnapshotDisabled,omitempty"`
+	DataBroadcastSnapshotMaxAgeHours int     `json:"dataBroadcastSnapshotMaxAgeHours,omitempty"`
+	EpgGatheringMode                 EPGMode `json:"epgGatheringMode,omitempty"`
+	EpgUnknownExtendedIdleTime       int     `json:"epgUnknownExtendedIdleTime,omitempty"`
+	EpgExtendedProbeInterval         int     `json:"epgExtendedProbeInterval,omitempty"`
+	EpgRefreshInterval               int     `json:"epgRefreshInterval,omitempty"`
+	EpgRetentionDays                 int     `json:"epgRetentionDays,omitempty"`
+	EpgRetrievalTime                 int     `json:"epgRetrievalTime,omitempty"`
+	EpgStaleAfter                    int     `json:"epgStaleAfter,omitempty"`
+	LogoGatherTimeout                int     `json:"logoGatherTimeout,omitempty"`
+	ServiceScanTimeout               int     `json:"serviceScanTimeout,omitempty"`
 }
 
 type JobScheduleConfig struct {
@@ -159,24 +159,8 @@ func LoadAndParseSystemConfig(filePath string) (*SystemConfig, error) {
 	if config.EpgUnknownExtendedIdleTime < 0 || config.EpgUnknownExtendedIdleTime > 0 && config.EpgUnknownExtendedIdleTime < 1000 || config.EpgExtendedProbeInterval <= 0 {
 		return nil, errors.New("epgUnknownExtendedIdleTime must be 0 or >= 1000 and epgExtendedProbeInterval must be > 0")
 	}
-	if config.EpgGatheringMode != "" && config.EpgGatheringMode != "continuous" && config.EpgGatheringMode != "scheduled" && config.EpgGatheringMode != "disabled" {
-		return nil, errors.New("epgGatheringMode must be continuous, scheduled or disabled")
-	}
-	if config.EpgGatheringMode == "scheduled" && len(config.Jobs) > 0 {
-		found := false
-		for _, schedule := range config.Jobs {
-			if schedule.Key == "epg-gatherer" {
-				found = true
-			}
-		}
-		if !found {
-			return nil, errors.New("scheduled EPG gathering requires an epg-gatherer entry in jobs")
-		}
-	}
-	for _, schedule := range config.Jobs {
-		if schedule.Key == "epg-gatherer" && (config.EpgGatheringMode == "continuous" || config.EpgGatheringMode == "disabled") {
-			return nil, errors.New("remove epg-gatherer cron when using continuous or disabled EPG gathering")
-		}
+	if _, err := config.ResolveEPG(); err != nil {
+		return nil, err
 	}
 	if config.MaxConcurrentJobs < 1 || config.MaxConcurrentJobs > 100 {
 		return nil, errors.New("maxConcurrentJobs must be between 1 and 100")
@@ -204,20 +188,4 @@ func LoadAndParseSystemConfig(filePath string) (*SystemConfig, error) {
 	}
 
 	return &config, nil
-}
-
-// EPGMode preserves explicitly configured schedules, including omission of EPG.
-func (c SystemConfig) EPGMode() string {
-	if c.EpgGatheringMode != "" {
-		return c.EpgGatheringMode
-	}
-	if len(c.Jobs) == 0 {
-		return "continuous"
-	}
-	for _, schedule := range c.Jobs {
-		if schedule.Key == "epg-gatherer" {
-			return "scheduled"
-		}
-	}
-	return "disabled"
 }
