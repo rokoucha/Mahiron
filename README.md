@@ -87,6 +87,13 @@ EPG受信はスキャン・ロゴ取得などと `maxConcurrentJobs` の共通�
 - サーバー設定(`server.yml`)は非互換です
 - リモートMirakurun機能はありませんが、Mirakurun互換サーバーに接続する機能があります(`remotes.yml`)
 
+## フロントエンドのAPI型生成
+
+`internal/web/api/api.yml` を変更したら `make web-generate`（Node.js 26 / npm が必要）を実行し、`web/src/generated/` の差分もコミットしてください。依存を導入済みなら `npm --prefix web run generate` でも生成できます。CI は `npm --prefix web run generate:check` で生成漏れを検出します。
+
+型は Hey API の TypeScript プラグインだけで生成します。`web/src/api.ts` は公開名の互換性と、順序保持のため仕様書で型を開いている `Program.extended`、未検証のイベント入力の型を定義します。生成ファイルをコミットするため、通常の Vite / Vitest / Docker ビルドに生成処理は不要です。Go のコード生成は引き続き `make generate` を使います。
+
+
 ## ライセンス
 
 Copyright (c) 2026 Rokoucha
