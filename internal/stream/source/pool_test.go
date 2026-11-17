@@ -3,9 +3,11 @@ package source
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/job/run"
@@ -270,6 +272,86 @@ func TestStoredEPGFollowsEveryEnabledRouteAndTransport(t *testing.T) {
 			}
 			if pool.StoredEPG("CUSTOM", "missing") {
 				t.Fatal("unknown channel has stored EPG")
+			}
+		})
+	}
+}
+
+// Match the allocator's real waiting contract: wait=true never returns an
+// unavailable error while the first route's tuner is offline or occupied.
+type waitingRouteManager struct {
+	calls      int
+	readyAfter int
+	device     tuner.Device
+}
+
+func (m *waitingRouteManager) NewDeviceByType(string, *config.ChannelConfig) (tuner.Device, error) {
+	return nil, tuner.ErrTunerUnavailable
+}
+func (m *waitingRouteManager) AcquireDevice(ctx context.Context, _ string, _, _ *config.ChannelConfig, wait bool) (tuner.Device, tuner.DecoderCommands, error) {
+	m.calls++
+	if wait {
+		<-ctx.Done()
+		return nil, tuner.DecoderCommands{}, ctx.Err()
+	}
+	if m.readyAfter > 0 && m.calls >= m.readyAfter {
+		return m.device, tuner.DecoderCommands{}, nil
+	}
+	return nil, tuner.DecoderCommands{}, tuner.ErrTunerUnavailable
+}
+
+type availableRouteRemote struct{}
+
+func (availableRouteRemote) CheckAvailableForRoute(context.Context, string, string) error { return nil }
+func (availableRouteRemote) ChannelStream(context.Context, string, string, bool, io.Writer) error {
+	return nil
+}
+
+func TestWaitingAcquireTriesRemoteAfterUnavailableLocalRoute(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	manager := &waitingRouteManager{}
+	channel := config.ChannelConfig{Type: "GR", Channel: "27", Routes: []config.ChannelRouteConfig{{Type: "GR", Channel: "27"}, {Remote: "upstream", Type: "GR", Channel: "27"}}}
+	pool := NewPool(config.ChannelsConfig{channel}, manager, nil, map[string]RemoteClient{"upstream": availableRouteRemote{}})
+	handle, err := pool.Acquire(ctx, "GR", "27", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = handle.Release(t.Context()) }()
+	if handle.Metadata().Remote != "upstream" || manager.calls != 1 {
+		t.Fatalf("metadata=%+v local attempts=%d", handle.Metadata(), manager.calls)
+	}
+}
+
+func TestWaitingAcquireRetriesLocalRoutesUntilAvailable(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	manager := &waitingRouteManager{readyAfter: 3, device: &fakeAllocatorDevice{done: make(chan struct{})}}
+	pool := NewPool(config.ChannelsConfig{{Type: "GR", Channel: "27"}}, manager, nil, nil)
+	handle, err := pool.Acquire(ctx, "GR", "27", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = handle.Release(t.Context()) }()
+	if manager.calls != 3 {
+		t.Fatalf("attempts=%d", manager.calls)
+	}
+}
+
+func TestUnavailableRouteWaitHonorsContextAndNonWaitingAcquire(t *testing.T) {
+	for _, wait := range []bool{false, true} {
+		t.Run(fmt.Sprintf("wait=%t", wait), func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(t.Context(), 150*time.Millisecond)
+			defer cancel()
+			manager := &waitingRouteManager{}
+			pool := NewPool(config.ChannelsConfig{{Type: "GR", Channel: "27"}}, manager, nil, nil)
+			_, err := pool.Acquire(ctx, "GR", "27", wait)
+			if wait {
+				if !errors.Is(err, context.DeadlineExceeded) || manager.calls < 2 {
+					t.Fatalf("err=%v attempts=%d", err, manager.calls)
+				}
+			} else if !errors.Is(err, tuner.ErrTunerUnavailable) || manager.calls != 1 {
+				t.Fatalf("err=%v attempts=%d", err, manager.calls)
 			}
 		})
 	}
