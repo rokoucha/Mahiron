@@ -51,3 +51,39 @@ func TestGatherChannelTimeoutIsSuccessful(t *testing.T) {
 		t.Fatalf("timed out gathering failed: %v", err)
 	}
 }
+
+func TestRemoteImagesCompleteOnlyTheirNamedServices(t *testing.T) {
+	key := model.ServiceKey{NetworkID: 32736, StreamID: 32736, ServiceID: 1024}
+	other := key
+	other.ServiceID++
+	store := &recordingStore{}
+	logos := []model.Logo{
+		{NetworkID: key.NetworkID, LogoID: 0, Unversioned: true, Services: []model.ServiceKey{key}, Data: []byte("first")},
+		{NetworkID: key.NetworkID, LogoID: 0, Unversioned: true, Services: []model.ServiceKey{other}, Data: []byte("second")},
+	}
+	g := NewGatherer(store, testSources{logos: logos}, time.Second)
+	targets := []Target{{Service: key, LogoID: 0, Version: 2, DownloadDataID: 3}, {Service: other, LogoID: 0, Version: 2, DownloadDataID: 3}}
+	if err := g.GatherChannel(t.Context(), "GR", "27", targets); err != nil {
+		t.Fatal(err)
+	}
+	if len(store.images) != 2 {
+		t.Fatalf("stored %d images, want both services", len(store.images))
+	}
+}
+
+func TestUnresolvedTargetDoesNotBlockBroadcastCompletion(t *testing.T) {
+	logo := model.Logo{NetworkID: 32736, LogoID: 0, Version: 2, DownloadDataID: 1, Data: []byte("png")}
+	store := &recordingStore{}
+	g := NewGatherer(store, testSources{logos: []model.Logo{logo}}, time.Second)
+	targets := []Target{
+		{Service: model.ServiceKey{NetworkID: 32736, ServiceID: 1024}, LogoID: 0, Version: 2, DownloadDataID: 1},
+		{Service: model.ServiceKey{NetworkID: 32736, ServiceID: 1025}, LogoID: 0, Unresolved: true},
+	}
+	started := time.Now()
+	if err := g.GatherChannel(t.Context(), "GR", "27", targets); err != nil {
+		t.Fatal(err)
+	}
+	if time.Since(started) > time.Second/2 {
+		t.Fatal("unresolved target prevented early completion")
+	}
+}

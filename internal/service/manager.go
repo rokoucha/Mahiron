@@ -293,11 +293,21 @@ func (s *Manager) UpsertLogoImage(ctx context.Context, image model.Logo) error {
 // their logo reference at it, only after the image is stored, so a failed
 // store keeps the old logo.
 func (s *Manager) upsertAssignedLogo(ctx context.Context, image model.Logo) error {
-	logoID := int64(image.LogoID)
-	logoVersion := int64(image.Version)
-	downloadID := int64(image.DownloadDataID)
 	now := time.Now().UnixMilli()
 	for _, key := range image.Services {
+		if image.Unversioned {
+			if image.Deleted {
+				continue
+			} // The remote API has no versioned deletion notices.
+			updated, err := s.store.UpsertUnversionedLogo(ctx, key, image, now)
+			if err != nil {
+				return err
+			}
+			if updated {
+				s.publishServiceByKey(ctx, eventTypeUpdate, key.NetworkID, key.ServiceID)
+			}
+			continue
+		}
 		svc, err := s.store.GetByTriplet(ctx, key.NetworkID, key.StreamID, key.ServiceID)
 		if err != nil {
 			return err
@@ -314,7 +324,7 @@ func (s *Manager) upsertAssignedLogo(ctx context.Context, image model.Logo) erro
 		if err := s.UpsertLogo(ctx, key, image, now); err != nil {
 			return err
 		}
-		updated, err := s.store.UpdateServiceLogoMetadata(ctx, key.NetworkID, key.StreamID, key.ServiceID, logoID, logoVersion, downloadID)
+		updated, err := s.store.UpdateServiceLogoMetadata(ctx, key.NetworkID, key.StreamID, key.ServiceID, int64(image.LogoID), int64(image.Version), int64(image.DownloadDataID))
 		if err != nil {
 			return err
 		}

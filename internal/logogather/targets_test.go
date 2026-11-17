@@ -233,3 +233,21 @@ func hasLogoTarget(targets []Target, channelType, channelID string, logoID int64
 	}
 	return false
 }
+
+func TestTargetsIncludesUnresolvedRemoteReference(t *testing.T) {
+	database, err := db.OpenInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = database.Close() }()
+	store := service.NewSQLiteStore(database)
+	key := model.ServiceKey{NetworkID: 32736, StreamID: 32736, ServiceID: 1024}
+	if err := store.ReplaceChannelServices(t.Context(), "GR", "27", []*service.Service{{Id: "3273601024", Service: model.Service{Key: key, Logo: &model.LogoRef{LogoID: 0}}, ChannelType: "GR", ChannelId: "27"}}); err != nil {
+		t.Fatal(err)
+	}
+	g := NewGatherer(service.NewManager(store, nil), testSources{}, 0)
+	targets, err := g.Targets(t.Context())
+	if err != nil || len(targets) != 1 || targets[0].Service != key {
+		t.Fatalf("targets=%+v err=%v", targets, err)
+	}
+}

@@ -511,7 +511,7 @@ func TestRemoteSessionScanServicesUsesRemoteAPI(t *testing.T) {
 	if len(got) != 1 || got[0].Key != (model.ServiceKey{NetworkID: 32736, StreamID: 32736, ServiceID: 1024}) || got[0].Name != "remote service" || got[0].RemoteControlKey == nil || *got[0].RemoteControlKey != 5 {
 		t.Fatalf("services = %#v", got)
 	}
-	if got[0].Logo == nil || got[0].Logo.LogoID != 12 || got[0].Logo.Version == nil || *got[0].Logo.Version != 0 || got[0].Logo.DownloadDataID == nil || *got[0].Logo.DownloadDataID != 1024 {
+	if got[0].Logo == nil || got[0].Logo.LogoID != 12 || got[0].Logo.Version != nil || got[0].Logo.DownloadDataID != nil {
 		t.Fatalf("logo metadata = %#v", got[0])
 	}
 }
@@ -585,7 +585,7 @@ func TestRemoteSessionObserveLogosUsesRemoteAPI(t *testing.T) {
 	var observed int
 	err := session.ObserveLogos(context.Background(), func(image model.Logo) error {
 		observed++
-		if image.NetworkID != 4 || image.LogoID != 12 || image.Version != 0 || image.DownloadDataID != 101 || !bytes.Equal(image.Data, logoPNG) {
+		if image.NetworkID != 4 || image.LogoID != 12 || !image.Unversioned || len(image.Services) != 1 || image.Services[0] != (model.ServiceKey{NetworkID: 4, StreamID: 4, ServiceID: 101}) || !bytes.Equal(image.Data, logoPNG) {
 			t.Fatalf("image = %#v", image)
 		}
 		return nil

@@ -47,6 +47,7 @@ type Target struct {
 	ChannelID   string
 	// LogoID, Version and DownloadDataID are the service's logo reference.
 	// Common data targets have none: the common data names the services.
+	Unresolved     bool
 	LogoID         uint16
 	Version        uint16
 	DownloadDataID uint16
@@ -81,17 +82,23 @@ func (g *Gatherer) Targets(ctx context.Context) ([]Target, error) {
 	for _, svc := range services {
 		missing[svc.Key] = !svc.HasLogoData
 		logo := svc.Logo
-		if logo == nil || logo.Version == nil || logo.DownloadDataID == nil {
+		if logo == nil || logo.HasSimpleLogo {
 			continue
 		}
-		targets = append(targets, Target{
-			Service:        svc.Key,
-			ChannelType:    svc.ChannelType,
-			ChannelID:      svc.ChannelId,
-			LogoID:         logo.LogoID,
-			Version:        *logo.Version,
-			DownloadDataID: *logo.DownloadDataID,
-		})
+		target := Target{
+			Service:     svc.Key,
+			ChannelType: svc.ChannelType,
+			ChannelID:   svc.ChannelId,
+			LogoID:      logo.LogoID,
+			Unresolved:  logo.Version == nil || logo.DownloadDataID == nil,
+		}
+		if logo.Version != nil {
+			target.Version = *logo.Version
+		}
+		if logo.DownloadDataID != nil {
+			target.DownloadDataID = *logo.DownloadDataID
+		}
+		targets = append(targets, target)
 	}
 	// Missing logos first, then by channel, as they are dispatched.
 	slices.SortStableFunc(targets, func(a, b Target) int {
@@ -183,20 +190,16 @@ func ResolvedCommonData(targets []Target) []Target {
 
 var errTargetsComplete = errors.New("logo targets complete")
 
-type logoKey struct {
-	networkID, logoID, version, downloadDataID uint16
-}
-
 // GatherChannel stores the logos observed on a channel until every target
 // arrived or the timeout passed (not an error); common data targets never
 // complete early, since which services they cover is only known as they arrive.
 func (g *Gatherer) GatherChannel(ctx context.Context, channelType, channelID string, targets []Target) error {
 	gatherCtx, cancel := context.WithTimeout(ctx, g.timeout)
 	defer cancel()
-	remaining := make(map[logoKey]bool, len(targets))
+	remaining := make(map[Target]bool, len(targets))
 	for _, target := range targets {
-		if !target.CommonData {
-			remaining[logoKey{target.Service.NetworkID, target.LogoID, target.Version, target.DownloadDataID}] = true
+		if !target.CommonData && !target.Unresolved {
+			remaining[target] = true
 		}
 	}
 	waitsForTargets := len(remaining) > 0
@@ -212,7 +215,18 @@ func (g *Gatherer) GatherChannel(ctx context.Context, channelType, channelID str
 		}
 		count++
 		// A logo that arrived in any of its types completes the target.
-		delete(remaining, logoKey{logo.NetworkID, logo.LogoID, logo.Version, logo.DownloadDataID})
+		for target := range remaining {
+			if target.Service.NetworkID != logo.NetworkID || target.LogoID != logo.LogoID {
+				continue
+			}
+			if len(logo.Services) > 0 && !slices.Contains(logo.Services, target.Service) {
+				continue
+			}
+			if !logo.Unversioned && (target.Version != logo.Version || target.DownloadDataID != logo.DownloadDataID) {
+				continue
+			}
+			delete(remaining, target)
+		}
 		if waitsForTargets && len(remaining) == 0 {
 			return errTargetsComplete
 		}
@@ -241,6 +255,7 @@ func gatherResult(channelType, channelID string, targets []Target, logos, remain
 				"serviceId":      target.Service.ServiceID,
 				"logoId":         target.LogoID,
 				"logoVersion":    target.Version,
+				"unresolved":     target.Unresolved,
 				"downloadDataId": target.DownloadDataID,
 				"isCommonData":   target.CommonData,
 				"isSDTTProbe":    target.Probe,

@@ -153,7 +153,7 @@ SELECT l.data
 FROM services s
 JOIN service_logos l
   ON l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
-  AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
+  AND l.logo_version = COALESCE(s.logo_version, 0) AND l.download_data_id = COALESCE(s.logo_download_data_id, 0)
 WHERE s.network_id * 100000 + s.service_id = ?
 ORDER BY CASE l.logo_type
   WHEN 5 THEN 0
@@ -178,7 +178,7 @@ const getServiceByChannelAndID = `-- name: GetServiceByChannelAndID :one
 SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.provider_name, s.type, s.running_status, s.free_ca, s.eit_schedule_flag, s.eit_present_following, s.logo_id, s.logo_version, s.logo_download_data_id, s.simple_logo, s.remote_control_key_id, s.channel_type, s.channel_id, EXISTS (
          SELECT 1 FROM service_logos l
          WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
-           AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
+           AND l.logo_version = COALESCE(s.logo_version, 0) AND l.download_data_id = COALESCE(s.logo_download_data_id, 0)
        ) AS has_logo_data,
        epg.last_attempt_at, epg.last_success_at, epg.last_error, epg.basic_updated_at, epg.extended_probe_at, epg.extended_observed, epg.partial_at
 FROM services s
@@ -191,7 +191,7 @@ UNION ALL
 SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.provider_name, s.type, s.running_status, s.free_ca, s.eit_schedule_flag, s.eit_present_following, s.logo_id, s.logo_version, s.logo_download_data_id, s.simple_logo, s.remote_control_key_id, s.channel_type, s.channel_id, EXISTS (
          SELECT 1 FROM service_logos l
          WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
-           AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
+           AND l.logo_version = COALESCE(s.logo_version, 0) AND l.download_data_id = COALESCE(s.logo_download_data_id, 0)
        ) AS has_logo_data,
        epg.last_attempt_at, epg.last_success_at, epg.last_error, epg.basic_updated_at, epg.extended_probe_at, epg.extended_observed, epg.partial_at
 FROM services s
@@ -266,7 +266,7 @@ const getServiceByID = `-- name: GetServiceByID :one
 SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.provider_name, s.type, s.running_status, s.free_ca, s.eit_schedule_flag, s.eit_present_following, s.logo_id, s.logo_version, s.logo_download_data_id, s.simple_logo, s.remote_control_key_id, s.channel_type, s.channel_id, EXISTS (
          SELECT 1 FROM service_logos l
          WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
-           AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
+           AND l.logo_version = COALESCE(s.logo_version, 0) AND l.download_data_id = COALESCE(s.logo_download_data_id, 0)
        ) AS has_logo_data,
        epg.last_attempt_at, epg.last_success_at, epg.last_error, epg.basic_updated_at, epg.extended_probe_at, epg.extended_observed, epg.partial_at
 FROM services s
@@ -325,7 +325,7 @@ const getServiceByItemID = `-- name: GetServiceByItemID :one
 SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.provider_name, s.type, s.running_status, s.free_ca, s.eit_schedule_flag, s.eit_present_following, s.logo_id, s.logo_version, s.logo_download_data_id, s.simple_logo, s.remote_control_key_id, s.channel_type, s.channel_id, EXISTS (
          SELECT 1 FROM service_logos l
          WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
-           AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
+           AND l.logo_version = COALESCE(s.logo_version, 0) AND l.download_data_id = COALESCE(s.logo_download_data_id, 0)
        ) AS has_logo_data,
        epg.last_attempt_at, epg.last_success_at, epg.last_error, epg.basic_updated_at, epg.extended_probe_at, epg.extended_observed, epg.partial_at
 FROM services s
@@ -384,7 +384,7 @@ const getServiceByNetworkServiceID = `-- name: GetServiceByNetworkServiceID :one
 SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.provider_name, s.type, s.running_status, s.free_ca, s.eit_schedule_flag, s.eit_present_following, s.logo_id, s.logo_version, s.logo_download_data_id, s.simple_logo, s.remote_control_key_id, s.channel_type, s.channel_id, EXISTS (
          SELECT 1 FROM service_logos l
          WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
-           AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
+           AND l.logo_version = COALESCE(s.logo_version, 0) AND l.download_data_id = COALESCE(s.logo_download_data_id, 0)
        ) AS has_logo_data,
        epg.last_attempt_at, epg.last_success_at, epg.last_error, epg.basic_updated_at, epg.extended_probe_at, epg.extended_observed, epg.partial_at
 FROM services s
@@ -448,7 +448,7 @@ const getServiceByTriplet = `-- name: GetServiceByTriplet :one
 SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.provider_name, s.type, s.running_status, s.free_ca, s.eit_schedule_flag, s.eit_present_following, s.logo_id, s.logo_version, s.logo_download_data_id, s.simple_logo, s.remote_control_key_id, s.channel_type, s.channel_id, EXISTS (
          SELECT 1 FROM service_logos l
          WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
-           AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
+           AND l.logo_version = COALESCE(s.logo_version, 0) AND l.download_data_id = COALESCE(s.logo_download_data_id, 0)
        ) AS has_logo_data,
        epg.last_attempt_at, epg.last_success_at, epg.last_error, epg.basic_updated_at, epg.extended_probe_at, epg.extended_observed, epg.partial_at
 FROM services s
@@ -513,7 +513,7 @@ const getServicesByChannel = `-- name: GetServicesByChannel :many
 SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.provider_name, s.type, s.running_status, s.free_ca, s.eit_schedule_flag, s.eit_present_following, s.logo_id, s.logo_version, s.logo_download_data_id, s.simple_logo, s.remote_control_key_id, s.channel_type, s.channel_id, EXISTS (
          SELECT 1 FROM service_logos l
          WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
-           AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
+           AND l.logo_version = COALESCE(s.logo_version, 0) AND l.download_data_id = COALESCE(s.logo_download_data_id, 0)
        ) AS has_logo_data,
        epg.last_attempt_at, epg.last_success_at, epg.last_error, epg.basic_updated_at, epg.extended_probe_at, epg.extended_observed, epg.partial_at
 FROM services s
@@ -631,7 +631,7 @@ const listServices = `-- name: ListServices :many
 SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.provider_name, s.type, s.running_status, s.free_ca, s.eit_schedule_flag, s.eit_present_following, s.logo_id, s.logo_version, s.logo_download_data_id, s.simple_logo, s.remote_control_key_id, s.channel_type, s.channel_id, EXISTS (
          SELECT 1 FROM service_logos l
          WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
-           AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
+           AND l.logo_version = COALESCE(s.logo_version, 0) AND l.download_data_id = COALESCE(s.logo_download_data_id, 0)
        ) AS has_logo_data,
        epg.last_attempt_at, epg.last_success_at, epg.last_error, epg.basic_updated_at, epg.extended_probe_at, epg.extended_observed, epg.partial_at
 FROM services s
@@ -972,4 +972,46 @@ func (q *Queries) UpsertServiceLogo(ctx context.Context, arg UpsertServiceLogoPa
 		arg.UpdatedAt,
 	)
 	return err
+}
+
+const upsertUnversionedServiceLogo = `-- name: UpsertUnversionedServiceLogo :execrows
+INSERT INTO service_logos (network_id, transport_stream_id, service_id, logo_id, logo_type, logo_version, download_data_id, data, updated_at)
+SELECT s.network_id, s.transport_stream_id, s.service_id, s.logo_id, ?1,
+       COALESCE(s.logo_version, 0), COALESCE(s.logo_download_data_id, 0), ?2, ?3
+FROM services s
+WHERE s.network_id = ?4 AND s.transport_stream_id = ?5
+  AND s.service_id = ?6 AND s.logo_id = ?7 AND s.simple_logo IS NULL
+ON CONFLICT(network_id, transport_stream_id, service_id, logo_id, logo_type) DO UPDATE SET
+  logo_version=excluded.logo_version,
+  download_data_id=excluded.download_data_id,
+  data=excluded.data,
+  updated_at=excluded.updated_at
+`
+
+type UpsertUnversionedServiceLogoParams struct {
+	LogoType          int64  `json:"logo_type"`
+	Data              []byte `json:"data"`
+	UpdatedAt         int64  `json:"updated_at"`
+	NetworkID         int64  `json:"network_id"`
+	TransportStreamID int64  `json:"transport_stream_id"`
+	ServiceID         int64  `json:"service_id"`
+	LogoID            *int64 `json:"logo_id"`
+}
+
+// Bind API bytes to the current reference atomically with concurrent scans.
+// NULL metadata stays unknown on the service; zero keys the API-only image.
+func (q *Queries) UpsertUnversionedServiceLogo(ctx context.Context, arg UpsertUnversionedServiceLogoParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, upsertUnversionedServiceLogo,
+		arg.LogoType,
+		arg.Data,
+		arg.UpdatedAt,
+		arg.NetworkID,
+		arg.TransportStreamID,
+		arg.ServiceID,
+		arg.LogoID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
