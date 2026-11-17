@@ -258,6 +258,16 @@ func (s *sqliteStore) UpsertLogo(ctx context.Context, key model.ServiceKey, imag
 	})
 }
 
+// UpsertUnversionedLogo binds remote bytes to the current reference in one
+// statement, so a concurrent scan cannot be overwritten by a stale image.
+func (s *sqliteStore) UpsertUnversionedLogo(ctx context.Context, key model.ServiceKey, image model.Logo, updatedAt int64) (bool, error) {
+	rows, err := s.wq.UpsertUnversionedServiceLogo(ctx, gen.UpsertUnversionedServiceLogoParams{
+		NetworkID: int64(key.NetworkID), TransportStreamID: int64(key.StreamID), ServiceID: int64(key.ServiceID),
+		LogoID: new(int64(image.LogoID)), LogoType: int64(image.LogoType), Data: image.Data, UpdatedAt: updatedAt,
+	})
+	return rows > 0, err
+}
+
 func (s *sqliteStore) EPGSummary(ctx context.Context, staleAfter int64, now int64) (stale, failed int, lastSuccess *int64, err error) {
 	start := time.Now()
 	ctx, span := observability.StartSpan(ctx, observability.SpanDBServiceEPGSummary,
@@ -411,6 +421,9 @@ func preserveServiceLogoMetadata(svc *Service, existing map[model.ServiceKey]mod
 	}
 	if svc.Logo == nil {
 		svc.Logo = &previous
+		return
+	}
+	if svc.Logo.LogoID != previous.LogoID {
 		return
 	}
 	if svc.Logo.Version == nil {

@@ -101,3 +101,9 @@ Copyright (c) 2026 Rokoucha
 Licensed under the Apache License, Version 2.0.
 
 Mahiron's logo is licensed under a Creative Commons Attribution-ShareAlike 4.0 International License.
+
+### サービスとロゴの再取得
+
+サービススキャンが0件だった場合は失敗として記録し、既存サービスを保持します。放送休止や一時的なリモートの空応答でサービスを消さないためです。不要なチャンネルは設定から削除してください。
+
+リモートAPIが公開しないロゴの版番号とダウンロードIDは、スキャン時には不明のまま保持します。リモート画像は取得できた時点のサービス参照に結び付け、放送から解決済みの参照を維持します。同じ参照の画像は取得元ごとには分離せず、後から取得した画像で更新します。

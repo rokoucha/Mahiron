@@ -146,6 +146,10 @@ func (s *Scanner) ScanChannel(ctx context.Context, channelType string, channelID
 		services = filtered
 	}
 
+	if len(services) == 0 {
+		return nil, fmt.Errorf("service scan %s/%s returned no services; keeping existing services", channelType, channelID)
+	}
+
 	scanned := make([]*service.Service, len(services))
 	for i, svc := range services {
 		scanned[i] = &service.Service{

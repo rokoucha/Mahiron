@@ -10,8 +10,11 @@ type Logo struct {
 	DownloadDataID uint16
 	LogoType       uint8
 	Data           []byte
-	Deleted        bool
-	Services       []ServiceKey
+	// Unversioned images come from an API without broadcast metadata. They
+	// name their services and use each service's current logo reference.
+	Unversioned bool
+	Deleted     bool
+	Services    []ServiceKey
 }
 
 // CommonDataAnnouncement is an SDTT announcement that a service carries the

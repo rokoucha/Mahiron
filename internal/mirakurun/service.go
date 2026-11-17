@@ -86,12 +86,8 @@ func ServiceToAPI(svc *model.Service, state ServiceState) apigen.Service {
 	return result
 }
 
-// ScanServiceModelFromAPI converts a service received from a remote
-// Mirakurun-compatible server to the internal broadcast model. It carries
-// the same logo heuristics the remote scan applies: a logo counts only
-// when the remote reports both an ID and actual logo data, and the version
-// and download ID are synthesized because remotes do not expose the
-// broadcast values.
+// ScanServiceModelFromAPI converts a remote service without inventing the
+// broadcast logo version and download ID, which the API does not expose.
 func ScanServiceModelFromAPI(svc *apigen.Service) model.Service {
 	out := model.Service{
 		Key: model.ServiceKey{
@@ -118,13 +114,7 @@ func ScanServiceModelFromAPI(svc *apigen.Service) model.Service {
 	}
 	if logoIDValue, ok := svc.LogoId.Get(); ok {
 		if hasLogoData, _ := svc.HasLogoData.Get(); int64(logoIDValue) >= 0 && hasLogoData {
-			version := uint16(0)
-			downloadDataID := uint16(svc.ServiceId)
-			out.Logo = &model.LogoRef{
-				LogoID:         uint16(logoIDValue),
-				Version:        &version,
-				DownloadDataID: &downloadDataID,
-			}
+			out.Logo = &model.LogoRef{LogoID: uint16(logoIDValue)}
 		}
 	}
 	return out

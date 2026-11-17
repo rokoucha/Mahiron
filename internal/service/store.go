@@ -29,6 +29,7 @@ type Store interface {
 	// and PNG bytes only. Its NetworkID, Services and Deleted fields are ignored.
 	DeleteLogo(ctx context.Context, key model.ServiceKey, image model.Logo) error
 	UpsertLogo(ctx context.Context, key model.ServiceKey, image model.Logo, updatedAt int64) error
+	UpsertUnversionedLogo(ctx context.Context, key model.ServiceKey, image model.Logo, updatedAt int64) (bool, error)
 }
 
 type ChannelKey struct {

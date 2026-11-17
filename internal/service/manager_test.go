@@ -5,12 +5,14 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"hash/crc32"
 	"reflect"
 	"testing"
 
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/db"
+	"github.com/21S1298001/mahiron/internal/mirakurun"
 	"github.com/21S1298001/mahiron/internal/model"
 )
 
@@ -795,5 +797,101 @@ func TestServiceManagerAssignedLogoUsesEachServiceNetwork(t *testing.T) {
 				t.Fatalf("service %v after deleted=%v: %#v", key, deleted, svc)
 			}
 		}
+	}
+}
+
+// Exercise the local/remote transition against real SQLite joins, including
+// receiving the same logo from both sources after a remote service scan.
+func TestRemoteLogosPreserveBroadcastReferences(t *testing.T) {
+	for _, local := range []bool{false, true} {
+		t.Run(fmt.Sprintf("local=%t", local), func(t *testing.T) {
+			database, err := db.OpenInMemory()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = database.Close() }()
+			store := NewSQLiteStore(database)
+			manager := NewManager(store, nil)
+			key := model.ServiceKey{NetworkID: 32736, StreamID: 32736, ServiceID: 1024}
+			svc := &Service{Id: "3273601024", Service: model.Service{Key: key, Logo: &model.LogoRef{LogoID: 42}}, ChannelType: "GR", ChannelId: "27"}
+			if local {
+				svc.Logo.Version = new(uint16(3))
+				svc.Logo.DownloadDataID = new(uint16(7))
+			}
+			if err := store.ReplaceChannelServices(t.Context(), "GR", "27", []*Service{svc}); err != nil {
+				t.Fatal(err)
+			}
+			if local {
+				if err := manager.UpsertLogoImage(t.Context(), model.Logo{NetworkID: key.NetworkID, LogoID: 42, Version: 3, DownloadDataID: 7, LogoType: 5, Data: []byte("broadcast")}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			api := mirakurun.ServiceToAPI(&svc.Service, mirakurun.ServiceState{HasLogoData: true})
+			svc.Service = mirakurun.ScanServiceModelFromAPI(&api)
+			if err := store.ReplaceChannelServices(t.Context(), "GR", "27", []*Service{svc}); err != nil {
+				t.Fatal(err)
+			}
+			if local {
+				got, err := store.GetByItemID(t.Context(), key.MirakurunID())
+				if err != nil || !got.HasLogoData {
+					t.Fatalf("remote scan lost broadcast logo: %#v, %v", got, err)
+				}
+			}
+			remote := model.Logo{NetworkID: key.NetworkID, LogoID: 42, LogoType: 5, Data: []byte("remote"), Unversioned: true, Services: []model.ServiceKey{key}}
+			if err := manager.UpsertLogoImage(t.Context(), remote); err != nil {
+				t.Fatal(err)
+			}
+			got, err := store.GetByItemID(t.Context(), key.MirakurunID())
+			if err != nil || !got.HasLogoData {
+				t.Fatalf("remote logo not visible: %#v, %v", got, err)
+			}
+			if local {
+				if !logoMatches(got.Logo, 42, 3, 7) {
+					t.Fatalf("metadata changed: %#v", got.Logo)
+				}
+			} else if got.Logo.Version != nil || got.Logo.DownloadDataID != nil {
+				t.Fatalf("API-only metadata was invented: %#v", got.Logo)
+			}
+			// A later broadcast scan supplies real metadata even for an API-only start.
+			svc.Logo = &model.LogoRef{LogoID: 42, Version: new(uint16(4)), DownloadDataID: new(uint16(8))}
+			if err := store.ReplaceChannelServices(t.Context(), "GR", "27", []*Service{svc}); err != nil {
+				t.Fatal(err)
+			}
+			if err := manager.UpsertLogoImage(t.Context(), remote); err != nil {
+				t.Fatal(err)
+			}
+			got, err = store.GetByItemID(t.Context(), key.MirakurunID())
+			if err != nil || !got.HasLogoData || !logoMatches(got.Logo, 42, 4, 8) {
+				t.Fatalf("broadcast rescan/remote refresh: %#v, %v", got, err)
+			}
+			data, err := store.GetLogoByServiceItemID(t.Context(), key.MirakurunID())
+			if err != nil || string(data) != "remote" {
+				t.Fatalf("image=%q err=%v", data, err)
+			}
+			// A new logo ID must not inherit the previous ID's broadcast metadata.
+			svc.Logo = &model.LogoRef{LogoID: 43}
+			if err := store.ReplaceChannelServices(t.Context(), "GR", "27", []*Service{svc}); err != nil {
+				t.Fatal(err)
+			}
+			if svc.Logo.Version != nil || svc.Logo.DownloadDataID != nil {
+				t.Fatal("new logo inherited old metadata")
+			}
+			if err := manager.UpsertLogoImage(t.Context(), remote); err != nil {
+				t.Fatal(err)
+			}
+			got, err = store.GetByItemID(t.Context(), key.MirakurunID())
+			if err != nil || got.Logo.LogoID != 43 || got.HasLogoData {
+				t.Fatalf("stale remote image changed new reference: %#v, %v", got, err)
+			}
+			remote.LogoID = 43
+			remote.Services[0].StreamID++
+			if err := manager.UpsertLogoImage(t.Context(), remote); err != nil {
+				t.Fatal(err)
+			}
+			got, err = store.GetByItemID(t.Context(), key.MirakurunID())
+			if err != nil || got.HasLogoData {
+				t.Fatalf("other TSID image accepted: %#v, %v", got, err)
+			}
+		})
 	}
 }

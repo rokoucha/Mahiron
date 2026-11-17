@@ -2,7 +2,7 @@
 SELECT sqlc.embed(s), EXISTS (
          SELECT 1 FROM service_logos l
          WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
-           AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
+           AND l.logo_version = COALESCE(s.logo_version, 0) AND l.download_data_id = COALESCE(s.logo_download_data_id, 0)
        ) AS has_logo_data,
        epg.last_attempt_at, epg.last_success_at, epg.last_error, epg.basic_updated_at, epg.extended_probe_at, epg.extended_observed, epg.partial_at
 FROM services s
@@ -13,7 +13,7 @@ LEFT JOIN epg_service_status epg
 SELECT sqlc.embed(s), EXISTS (
          SELECT 1 FROM service_logos l
          WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
-           AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
+           AND l.logo_version = COALESCE(s.logo_version, 0) AND l.download_data_id = COALESCE(s.logo_download_data_id, 0)
        ) AS has_logo_data,
        epg.last_attempt_at, epg.last_success_at, epg.last_error, epg.basic_updated_at, epg.extended_probe_at, epg.extended_observed, epg.partial_at
 FROM services s
@@ -25,7 +25,7 @@ WHERE s.id = ?;
 SELECT sqlc.embed(s), EXISTS (
          SELECT 1 FROM service_logos l
          WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
-           AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
+           AND l.logo_version = COALESCE(s.logo_version, 0) AND l.download_data_id = COALESCE(s.logo_download_data_id, 0)
        ) AS has_logo_data,
        epg.last_attempt_at, epg.last_success_at, epg.last_error, epg.basic_updated_at, epg.extended_probe_at, epg.extended_observed, epg.partial_at
 FROM services s
@@ -37,7 +37,7 @@ WHERE s.network_id * 100000 + s.service_id = ?;
 SELECT sqlc.embed(s), EXISTS (
          SELECT 1 FROM service_logos l
          WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
-           AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
+           AND l.logo_version = COALESCE(s.logo_version, 0) AND l.download_data_id = COALESCE(s.logo_download_data_id, 0)
        ) AS has_logo_data,
        epg.last_attempt_at, epg.last_success_at, epg.last_error, epg.basic_updated_at, epg.extended_probe_at, epg.extended_observed, epg.partial_at
 FROM services s
@@ -49,7 +49,7 @@ WHERE s.network_id = ? AND s.service_id = ?;
 SELECT sqlc.embed(s), EXISTS (
          SELECT 1 FROM service_logos l
          WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
-           AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
+           AND l.logo_version = COALESCE(s.logo_version, 0) AND l.download_data_id = COALESCE(s.logo_download_data_id, 0)
        ) AS has_logo_data,
        epg.last_attempt_at, epg.last_success_at, epg.last_error, epg.basic_updated_at, epg.extended_probe_at, epg.extended_observed, epg.partial_at
 FROM services s
@@ -61,7 +61,7 @@ WHERE s.channel_type = ? AND s.channel_id = ?;
 SELECT sqlc.embed(s), EXISTS (
          SELECT 1 FROM service_logos l
          WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
-           AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
+           AND l.logo_version = COALESCE(s.logo_version, 0) AND l.download_data_id = COALESCE(s.logo_download_data_id, 0)
        ) AS has_logo_data,
        epg.last_attempt_at, epg.last_success_at, epg.last_error, epg.basic_updated_at, epg.extended_probe_at, epg.extended_observed, epg.partial_at
 FROM services s
@@ -74,7 +74,7 @@ UNION ALL
 SELECT sqlc.embed(s), EXISTS (
          SELECT 1 FROM service_logos l
          WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
-           AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
+           AND l.logo_version = COALESCE(s.logo_version, 0) AND l.download_data_id = COALESCE(s.logo_download_data_id, 0)
        ) AS has_logo_data,
        epg.last_attempt_at, epg.last_success_at, epg.last_error, epg.basic_updated_at, epg.extended_probe_at, epg.extended_observed, epg.partial_at
 FROM services s
@@ -170,7 +170,7 @@ SELECT l.data
 FROM services s
 JOIN service_logos l
   ON l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
-  AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
+  AND l.logo_version = COALESCE(s.logo_version, 0) AND l.download_data_id = COALESCE(s.logo_download_data_id, 0)
 WHERE s.network_id * 100000 + s.service_id = ?
 ORDER BY CASE l.logo_type
   WHEN 5 THEN 0
@@ -187,7 +187,7 @@ LIMIT 1;
 SELECT sqlc.embed(s), EXISTS (
          SELECT 1 FROM service_logos l
          WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
-           AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
+           AND l.logo_version = COALESCE(s.logo_version, 0) AND l.download_data_id = COALESCE(s.logo_download_data_id, 0)
        ) AS has_logo_data,
        epg.last_attempt_at, epg.last_success_at, epg.last_error, epg.basic_updated_at, epg.extended_probe_at, epg.extended_observed, epg.partial_at
 FROM services s
@@ -240,3 +240,18 @@ ON CONFLICT(network_id, service_id) DO UPDATE SET
 INSERT INTO epg_service_status (network_id, service_id, extended_observed)
 VALUES (?, ?, 1)
 ON CONFLICT(network_id, service_id) DO UPDATE SET extended_observed = 1;
+
+-- name: UpsertUnversionedServiceLogo :execrows
+-- Bind API bytes to the current reference atomically with concurrent scans.
+-- NULL metadata stays unknown on the service; zero keys the API-only image.
+INSERT INTO service_logos (network_id, transport_stream_id, service_id, logo_id, logo_type, logo_version, download_data_id, data, updated_at)
+SELECT s.network_id, s.transport_stream_id, s.service_id, s.logo_id, sqlc.arg(logo_type),
+       COALESCE(s.logo_version, 0), COALESCE(s.logo_download_data_id, 0), sqlc.arg(data), sqlc.arg(updated_at)
+FROM services s
+WHERE s.network_id = sqlc.arg(network_id) AND s.transport_stream_id = sqlc.arg(transport_stream_id)
+  AND s.service_id = sqlc.arg(service_id) AND s.logo_id = sqlc.arg(logo_id) AND s.simple_logo IS NULL
+ON CONFLICT(network_id, transport_stream_id, service_id, logo_id, logo_type) DO UPDATE SET
+  logo_version=excluded.logo_version,
+  download_data_id=excluded.download_data_id,
+  data=excluded.data,
+  updated_at=excluded.updated_at;

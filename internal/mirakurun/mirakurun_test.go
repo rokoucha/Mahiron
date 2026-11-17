@@ -139,8 +139,7 @@ func TestScanServiceModelFromAPI(t *testing.T) {
 	if got.Key != (model.ServiceKey{NetworkID: 32736, StreamID: 32736, ServiceID: 1024}) || got.Name != "remote service" {
 		t.Fatalf("scan = %#v", got)
 	}
-	if got.Logo == nil || got.Logo.LogoID != 12 || got.Logo.Version == nil || *got.Logo.Version != 0 ||
-		got.Logo.DownloadDataID == nil || *got.Logo.DownloadDataID != 1024 {
+	if got.Logo == nil || got.Logo.LogoID != 12 || got.Logo.Version != nil || got.Logo.DownloadDataID != nil {
 		t.Fatalf("logo = %#v", got.Logo)
 	}
 	if got.RemoteControlKey == nil || *got.RemoteControlKey != 5 {

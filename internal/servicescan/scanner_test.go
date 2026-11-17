@@ -469,3 +469,34 @@ func TestServiceChannelsIncludesTLVChannels(t *testing.T) {
 		t.Fatalf("channels = %#v, want GR/27 and BS4K/101", channels)
 	}
 }
+
+func TestEmptyScanKeepsExistingServices(t *testing.T) {
+	for _, filtered := range []bool{false, true} {
+		t.Run(fmt.Sprintf("filtered=%t", filtered), func(t *testing.T) {
+			database, err := db.OpenInMemory()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = database.Close() }()
+			store := service.NewSQLiteStore(database)
+			manager := service.NewManager(store, nil)
+			want := &service.Service{Id: idFor(4, 211), Service: model.Service{Key: model.ServiceKey{NetworkID: 4, StreamID: 16528, ServiceID: 211}, Name: "BS11"}, ChannelType: "BS", ChannelId: "BS09_0"}
+			if err := store.ReplaceChannelServices(t.Context(), "BS", "BS09_0", []*service.Service{want}); err != nil {
+				t.Fatal(err)
+			}
+			scanner := &staticScanner{}
+			var channels config.ChannelsConfig
+			if filtered {
+				scanner.services = []model.Service{{Key: model.ServiceKey{NetworkID: 4, ServiceID: 999}}}
+				channels = config.ChannelsConfig{{Type: "BS", Channel: "BS09_0", ServiceId: new(uint32(211))}}
+			}
+			if _, err := NewScanner(manager, scanner, channels, time.Second).ScanChannel(t.Context(), "BS", "BS09_0", false); err == nil {
+				t.Fatal("empty scan succeeded")
+			}
+			got, err := store.GetByChannel(t.Context(), "BS", "BS09_0")
+			if err != nil || len(got) != 1 || got[0].Id != want.Id || got[0].Name != want.Name {
+				t.Fatalf("services = %#v, err = %v", got, err)
+			}
+		})
+	}
+}

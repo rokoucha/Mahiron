@@ -2,6 +2,7 @@ package logogather
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/21S1298001/mahiron/internal/config"
@@ -232,4 +233,39 @@ func hasLogoTarget(targets []Target, channelType, channelID string, logoID int64
 		}
 	}
 	return false
+}
+
+func TestTargetsIncludesUnresolvedReferenceOnlyWithEnabledRemoteRoute(t *testing.T) {
+	for _, remote := range []bool{false, true} {
+		for _, disabled := range []bool{false, true} {
+			t.Run(fmt.Sprintf("remote=%t/disabled=%t", remote, disabled), func(t *testing.T) {
+				database, err := db.OpenInMemory()
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer func() { _ = database.Close() }()
+				store := service.NewSQLiteStore(database)
+				key := model.ServiceKey{NetworkID: 32736, StreamID: 32736, ServiceID: 1024}
+				if err := store.ReplaceChannelServices(t.Context(), "GR", "27", []*service.Service{{Id: "3273601024", Service: model.Service{Key: key, Logo: &model.LogoRef{LogoID: 0}}, ChannelType: "GR", ChannelId: "27"}}); err != nil {
+					t.Fatal(err)
+				}
+				channel := config.ChannelConfig{Type: "GR", Channel: "27"}
+				if remote {
+					channel.Routes = []config.ChannelRouteConfig{{Remote: "test", Type: "GR", Channel: "27", IsDisabled: &disabled}}
+				}
+				g := NewGatherer(service.NewManager(store, config.ChannelsConfig{channel}), testSources{}, 0)
+				targets, err := g.Targets(t.Context())
+				if err != nil {
+					t.Fatal(err)
+				}
+				if remote && !disabled {
+					if len(targets) != 1 || targets[0].Service != key || !targets[0].Unresolved {
+						t.Fatalf("targets=%+v", targets)
+					}
+				} else if len(targets) != 0 {
+					t.Fatalf("local-only unresolved targets=%+v", targets)
+				}
+			})
+		}
+	}
 }
