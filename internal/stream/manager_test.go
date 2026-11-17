@@ -350,18 +350,21 @@ func TestManagerPassesTunerUserPriorityToAllocator(t *testing.T) {
 	}
 }
 
-func TestManagerPassesBackgroundWaitToAllocator(t *testing.T) {
-	no := false
-	tuners := &priorityCapturingTunerManager{}
-	manager := NewManager(ManagerConfig{
-		Channels:     config.ChannelsConfig{{Name: "NHK", Type: "GR", Channel: "27", IsDisabled: &no}},
-		TunerManager: tuners,
-	})
-	if _, err := manager.GetOrCreateWait(context.Background(), "GR", "27"); err != nil {
-		t.Fatal(err)
+func TestBackgroundAcquireRetriesWithoutBlockingAllocator(t *testing.T) {
+	tuners := &recordingEPGAllocator{}
+	manager := NewManager(ManagerConfig{Channels: config.ChannelsConfig{{Type: "GR", Channel: "27"}}, TunerManager: tuners})
+	ctx, cancel := context.WithTimeout(t.Context(), 150*time.Millisecond)
+	defer cancel()
+	if _, err := manager.GetOrCreateWait(ctx, "GR", "27"); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("background acquisition: %v", err)
 	}
-	if !tuners.wait {
-		t.Fatal("allocator wait = false, want true for background acquisition")
+	if len(tuners.waits) < 2 {
+		t.Fatalf("attempts=%v", tuners.waits)
+	}
+	for _, wait := range tuners.waits {
+		if wait {
+			t.Fatal("one allocator blocked fallback routes")
+		}
 	}
 }
 
@@ -1336,8 +1339,11 @@ func TestEPGAcquisitionWaitIsModeSpecific(t *testing.T) {
 		ctx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
 		_, err := adapter.OpenSchedule(ctx, "GR", "27")
 		cancel()
-		if err == nil || len(devices.waits) == 0 || devices.waits[0] != wait {
+		if err == nil || len(devices.waits) == 0 || devices.waits[0] {
 			t.Fatalf("wait=%v acquisitions=%v err=%v", wait, devices.waits, err)
+		}
+		if wait && !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("waiting acquisition: %v", err)
 		}
 		if !wait && !errors.Is(err, tuner.ErrTunerUnavailable) {
 			t.Fatalf("nonblocking acquisition: %v", err)

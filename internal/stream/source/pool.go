@@ -404,7 +404,7 @@ func (p *Pool) tryRoute(ctx context.Context, channel *config.ChannelConfig, rout
 	if route.Remote != "" {
 		selected, err = p.tryRemoteRoute(routeCtx, route, routeChannel)
 	} else {
-		selected, err = p.tryLocalRoute(routeCtx, channel, route, routeChannel, wait)
+		selected, err = p.tryLocalRoute(routeCtx, channel, route, routeChannel)
 	}
 	if err != nil {
 		return routeSelection{}, err
@@ -424,7 +424,7 @@ func (p *Pool) tryRemoteRoute(ctx context.Context, route config.ChannelRouteConf
 	return routeSelection{route: route, channel: routeChannel}, nil
 }
 
-func (p *Pool) tryLocalRoute(ctx context.Context, channel *config.ChannelConfig, route config.ChannelRouteConfig, routeChannel config.ChannelConfig, wait bool) (routeSelection, error) {
+func (p *Pool) tryLocalRoute(ctx context.Context, channel *config.ChannelConfig, route config.ChannelRouteConfig, routeChannel config.ChannelConfig) (routeSelection, error) {
 	key := newRouteSourceKey(route)
 	source, finishCreate, err := p.beginRouteSourceCreate(ctx, key)
 	if err != nil {
@@ -439,7 +439,9 @@ func (p *Pool) tryLocalRoute(ctx context.Context, channel *config.ChannelConfig,
 	var device TunerDevice
 	var decoders tuner.DecoderCommands
 	if allocator, ok := p.tunerManager.(TunerAllocator); ok {
-		device, decoders, err = allocator.AcquireDevice(ctx, route.Type, channel, &routeChannel, wait)
+		// selectRoute owns waiting after trying every route. Waiting here
+		// would prevent an available fallback from ever being attempted.
+		device, decoders, err = allocator.AcquireDevice(ctx, route.Type, channel, &routeChannel, false)
 	} else {
 		device, err = p.tunerManager.NewDeviceByType(route.Type, &routeChannel)
 	}
