@@ -296,9 +296,10 @@ func (s *Manager) upsertAssignedLogo(ctx context.Context, image model.Logo) erro
 	now := time.Now().UnixMilli()
 	for _, key := range image.Services {
 		if image.Unversioned {
+			// The remote API has no versioned deletion notices.
 			if image.Deleted {
 				continue
-			} // The remote API has no versioned deletion notices.
+			}
 			updated, err := s.store.UpsertUnversionedLogo(ctx, key, image, now)
 			if err != nil {
 				return err

@@ -12,6 +12,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/job/run"
 	"github.com/21S1298001/mahiron/internal/model"
 	"github.com/21S1298001/mahiron/internal/service"
@@ -23,6 +24,7 @@ const DefaultTimeout = 20 * time.Minute
 
 // ServiceStore is where services and their logos live.
 type ServiceStore interface {
+	GetChannels() config.ChannelsConfig
 	GetServices(context.Context) ([]*service.Service, error)
 	CommonDataAnnouncements(context.Context) ([]model.CommonDataAnnouncement, error)
 	UpsertLogoImage(context.Context, model.Logo) error
@@ -77,6 +79,14 @@ func (g *Gatherer) Targets(ctx context.Context) ([]Target, error) {
 	if err != nil {
 		return nil, err
 	}
+	remoteChannels := map[service.ChannelKey]bool{}
+	for _, channel := range g.store.GetChannels() {
+		for _, route := range channel.RoutesOrDefault() {
+			if route.Remote != "" && (route.IsDisabled == nil || !*route.IsDisabled) {
+				remoteChannels[service.ChannelKey{Type: channel.Type, ID: channel.Channel}] = true
+			}
+		}
+	}
 	var targets []Target
 	missing := make(map[model.ServiceKey]bool, len(services))
 	for _, svc := range services {
@@ -91,6 +101,11 @@ func (g *Gatherer) Targets(ctx context.Context) ([]Target, error) {
 			ChannelID:   svc.ChannelId,
 			LogoID:      logo.LogoID,
 			Unresolved:  logo.Version == nil || logo.DownloadDataID == nil,
+		}
+		// Only an API can supply an image for an unresolved reference.
+		// Do not tune local-only channels that cannot store these images.
+		if target.Unresolved && !remoteChannels[service.ChannelKey{Type: svc.ChannelType, ID: svc.ChannelId}] {
+			continue
 		}
 		if logo.Version != nil {
 			target.Version = *logo.Version
