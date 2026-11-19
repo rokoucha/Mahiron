@@ -104,7 +104,9 @@ func TestSQLiteModuleStorePrunesExpiredModules(t *testing.T) {
 	if err := store.queries.SetAllLastAccessed(t.Context(), 0); err != nil {
 		t.Fatal(err)
 	}
-	store.prune()
+	if err := store.prune(t.Context(), true); err != nil {
+		t.Fatal(err)
+	}
 	if _, ok := store.Get(key); ok {
 		t.Fatal("expired module remained in cache")
 	}
@@ -190,12 +192,67 @@ func TestSQLiteModuleStoreMarksEvictedGeneration(t *testing.T) {
 	second := first
 	second.ModuleID = 3
 	store.Put(first, ts.DSMCCModule{Data: []byte("first")})
-	store.Put(second, ts.DSMCCModule{Data: []byte("next")})
+	if store.Put(second, ts.DSMCCModule{Data: []byte("next")}) {
+		t.Fatal("Put authorized releasing the live payload while the cache was over budget")
+	}
+	deadline := time.Now().Add(time.Second)
+	for !store.WasEvicted(first.VersionKey()) && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
 	if !store.WasEvicted(first.VersionKey()) {
 		t.Fatal("evicted module was not recorded")
 	}
 	if store.WasEvicted(second.VersionKey()) {
 		t.Fatal("retained module marked evicted")
+	}
+}
+
+func TestSQLiteModuleStorePrunesOversizedCacheInBatches(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "cache.sqlite3")
+	const moduleCount = 2*moduleCachePruneBatchSize + 20
+	store, err := NewSQLiteModuleStore(path, 1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	initialStore := store
+	t.Cleanup(func() { _ = initialStore.Close() })
+	for i := range moduleCount {
+		key := ModuleCacheKey{ModuleID: uint16(i), Size: 1}
+		if !store.Put(key, ts.DSMCCModule{Data: []byte{1}}) {
+			t.Fatalf("put module %d", i)
+		}
+	}
+	// Give the modules distinct recency keys independent of the wall clock.
+	if _, err := store.write.ExecContext(t.Context(), "UPDATE data_broadcast_modules SET last_accessed = module_id"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	store, err = NewSQLiteModuleStore(path, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		var count int
+		if err := store.db.QueryRowContext(t.Context(), "SELECT COUNT(*) FROM data_broadcast_modules").Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		if count == 18 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("retained modules = %d, want 18 at the low water mark", count)
+		}
+		time.Sleep(time.Millisecond)
+	}
+	lastEvicted := ModuleCacheKey{ModuleID: moduleCount - 19, Size: 1}
+	firstRetained := ModuleCacheKey{ModuleID: moduleCount - 18, Size: 1}
+	if !store.WasEvicted(lastEvicted.VersionKey()) || !store.Has(firstRetained) {
+		t.Fatal("prune did not retain the newest modules")
 	}
 }
 
@@ -230,6 +287,48 @@ func TestSQLiteModuleStorePersistsDecodedResources(t *testing.T) {
 	}
 	if want := int64(len(raw) + len("content")); storedBytes != want {
 		t.Fatalf("stored bytes = %d, want %d", storedBytes, want)
+	}
+}
+
+func TestSQLiteSharedModulesRemainReadableWhileWriterIsBusy(t *testing.T) {
+	store, err := NewSQLiteModuleStore(filepath.Join(t.TempDir(), "cache.sqlite3"), 1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	raw := []byte("Content-Type: text/bml\r\n\r\ncontent")
+	first := ModuleCacheKey{ServiceID: 101, ComponentTag: 0x40, DownloadID: 1, ModuleID: 2, Version: 3, Size: uint32(len(raw))}
+	second := first
+	second.ServiceID, second.ComponentTag = 102, 0x60
+	keys := []ModuleCacheKey{first, second}
+	if !store.PutModules(t.Context(), keys, ts.DSMCCModule{Data: raw}) {
+		t.Fatal("shared put did not retain both service keys")
+	}
+	writer, err := store.write.Conn(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = writer.Close() }()
+
+	done := make(chan bool, 1)
+	go func() {
+		for _, key := range keys {
+			module, ok := store.GetVersion(key.VersionKey())
+			resources, decoded := store.GetDecodedResources(key.VersionKey())
+			if !ok || string(module.Data) != string(raw) || !decoded || len(resources) != 1 || string(resources[0].Data) != "content" {
+				done <- false
+				return
+			}
+		}
+		done <- true
+	}()
+	select {
+	case ok := <-done:
+		if !ok {
+			t.Fatal("one of the shared service keys could not be read")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("cache read waited for the busy writer")
 	}
 }
 

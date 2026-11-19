@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -135,67 +136,140 @@ func TestSessionSectionUpdaterCoalescesRepeatedEITPF(t *testing.T) {
 	}
 }
 
-func TestSessionDataBroadcastDDBQueueIsBounded(t *testing.T) {
+func TestSessionDataBroadcastQueueReservesSpaceForSignaling(t *testing.T) {
 	worker := newBMLWorker("GR", "27", bml.NewHub(), nil)
-	worker.queue = make(chan ts.PIDSection, 1)
-	ddb := streamBuildDSMCCDDB(t, 1, 2, 1, 0, []byte("block"))
-	section := ts.PIDSection{PID: 0x0200, Section: ddb}
+	worker.queue = make(chan bmlUpdate, dataBroadcastSignalingReserve+1)
+	ddb := ts.PIDSection{PID: 0x0200, Section: streamBuildDSMCCDDB(t, 1, 2, 1, 0, []byte("block"))}
+	worker.observePIDSection(ddb)
+	worker.observePIDSection(ddb)
+	pmt := ts.PIDSection{PID: 0x0100, Section: streamBuildDataBroadcastPMT(101, 0x0200, 0x40)}
+	worker.observePIDSection(pmt)
+	worker.observePIDSection(pmt)
 
-	worker.observePIDSection(section)
-	worker.observePIDSection(section)
-
-	if got := len(worker.queue); got != 1 {
-		t.Fatalf("DDB queue length = %d, want 1", got)
+	if got := len(worker.queue); got != 2 {
+		t.Fatalf("queue length = %d, want first DDB and PMT", got)
 	}
-	// Balance the wait group for the accepted item because this focused test
-	// intentionally does not start the worker.
-	<-worker.queue
-	worker.wg.Done()
+	if got := worker.dropped.Load(); got != 1 {
+		t.Fatalf("dropped updates = %d, want 1", got)
+	}
+	if first, second := <-worker.queue, <-worker.queue; first.section.PID != 0x0200 || second.section.PID != 0x0100 {
+		t.Fatal("updates were reordered")
+	}
 }
 
-func TestSessionPrioritizesEntryDocumentDDB(t *testing.T) {
-	serviceID, pmtPID, carouselPID := uint16(101), uint16(0x0100), uint16(0x0200)
-	componentTag := byte(0x40)
-	hub := bml.NewHub()
-	hub.Observe(ts.PIDSection{PID: pmtPID, Section: streamBuildDataBroadcastPMT(serviceID, carouselPID, componentTag)})
-	moduleInfo := []byte{ts.DSMCCModuleDescriptorName, 9, 'i', 'n', 'd', 'e', 'x', '.', 'b', 'm', 'l'}
-	hub.Observe(ts.PIDSection{PID: carouselPID, Section: streamBuildDSMCCDII(t, 1, 4, 2, 4, 1, moduleInfo)})
-	worker := newBMLWorker("GR", "27", hub, nil)
-	worker.queue = make(chan ts.PIDSection, 1)
-	worker.priorityQueue = make(chan ts.PIDSection, 1)
+func TestSessionStreamsWhileDataBroadcastCacheIsBlocked(t *testing.T) {
+	const serviceID, pmtPID, carouselPID = 101, 0x0100, 0x0200
+	input := streamSectionPackets(ts.PIDPAT, streamBuildPAT(1, serviceID, pmtPID), 0)
+	input = append(input, streamSectionPackets(pmtPID, streamBuildDataBroadcastPMT(serviceID, carouselPID, 0x40), 0)...)
+	input = append(input, streamSectionPackets(carouselPID, streamBuildDSMCCDII(t, 1, 4, 2, 4, 1, nil), 0)...)
+	input = append(input, streamSectionPackets(carouselPID, streamBuildDSMCCDDB(t, 1, 2, 1, 0, []byte("data")), 1)...)
+	// PCR delivery must also continue during a blocked cache lookup.
+	pcr := make([]byte, ts.PacketSize)
+	copy(pcr, []byte{0x47, 0x01, 0x01, 0x20, 183, 0x10})
+	input = append(input, pcr...)
 
-	worker.observePIDSection(ts.PIDSection{PID: carouselPID, Section: streamBuildDSMCCDDB(t, 1, 2, 1, 0, []byte("bml!"))})
-
-	if got := len(worker.priorityQueue); got != 1 {
-		t.Fatalf("priority DDB queue length = %d, want 1", got)
+	store := &blockingModuleStore{
+		ModuleStore: cache.NewModuleCache(1024),
+		entered:     make(chan struct{}),
+		release:     make(chan struct{}),
 	}
-	if got := len(worker.queue); got != 0 {
-		t.Fatalf("normal DDB queue length = %d, want 0", got)
-	}
-	<-worker.priorityQueue
-	worker.wg.Done()
-}
+	session := NewSession(Config{
+		Broadcast: source.NewBroadcast(streamtest.NewFinitePacketSource(input, streamtest.ClosedStart()), nil),
+		Channel:   "27", Type: "GR", ModuleStore: store,
+	})
+	defer func() {
+		close(store.release)
+		_ = session.Stop(t.Context())
+	}()
 
-func TestSessionDataBroadcastPriorityQueueDoesNotStarveNormalQueue(t *testing.T) {
-	worker := newBMLWorker("GR", "27", bml.NewHub(), nil)
-	worker.queue = make(chan ts.PIDSection, 1)
-	worker.priorityQueue = make(chan ts.PIDSection, dataBroadcastPriorityBurst+1)
-	for i := range dataBroadcastPriorityBurst + 1 {
-		worker.priorityQueue <- ts.PIDSection{PID: uint16(i + 1)}
+	var output bytes.Buffer
+	done := make(chan error, 1)
+	go func() { done <- session.ChannelStream(t.Context(), false, &output) }()
+	select {
+	case <-store.entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("BML worker did not reach the module cache")
 	}
-	worker.queue <- ts.PIDSection{PID: 0x0200}
-
-	burst := 0
-	for i := range dataBroadcastPriorityBurst {
-		section, ok := worker.nextSection(t.Context(), &burst)
-		if !ok || section.PID != uint16(i+1) {
-			t.Fatalf("priority section %d = PID %#x, %v", i, section.PID, ok)
+	snapshotDone := make(chan bml.Snapshot, 1)
+	go func() { snapshotDone <- session.DataBroadcastSnapshot(serviceID) }()
+	select {
+	case snapshot := <-snapshotDone:
+		if len(snapshot.Components) != 1 || len(snapshot.Components[0].Modules) != 1 {
+			t.Fatalf("DII announcement is missing while cache is blocked: %#v", snapshot)
 		}
+	case <-time.After(time.Second):
+		t.Fatal("BML snapshot waited for the blocked cache")
 	}
-	section, ok := worker.nextSection(t.Context(), &burst)
-	if !ok || section.PID != 0x0200 {
-		t.Fatalf("section after priority burst = PID %#x, %v; want normal PID 0x0200", section.PID, ok)
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(output.Bytes(), input) {
+			t.Fatalf("delivered %d of %d TS bytes", output.Len(), len(input))
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("TS stream waited for the blocked BML cache")
 	}
+}
+
+type blockingModuleStore struct {
+	bml.ModuleStore
+	once    sync.Once
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (s *blockingModuleStore) Get(key bml.ModuleCacheKey) (ts.DSMCCModule, bool) {
+	s.once.Do(func() { close(s.entered) })
+	<-s.release
+	return s.ModuleStore.Get(key)
+}
+
+func TestBMLStopCancelsInFlightStoreRead(t *testing.T) {
+	store := &cancelableModuleStore{
+		ModuleStore: cache.NewModuleCache(1024),
+		entered:     make(chan struct{}),
+	}
+	worker := newBMLWorker("GR", "27", bml.NewHub().WithModuleStore(store), nil)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	worker.start(ctx)
+	defer worker.cancelWork()
+	worker.observePIDSection(ts.PIDSection{PID: 0x100, Section: streamBuildDataBroadcastPMT(101, 0x200, 0x40)})
+	worker.observePIDSection(ts.PIDSection{PID: 0x200, Section: streamBuildDSMCCDII(t, 1, 4, 2, 4, 1, nil)})
+	select {
+	case <-store.entered:
+	case <-time.After(time.Second):
+		t.Fatal("BML worker did not start the cache read")
+	}
+	cancel()
+	deadline, cancelDeadline := context.WithTimeout(t.Context(), 50*time.Millisecond)
+	defer cancelDeadline()
+	if err := worker.stop(deadline); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("stop error = %v, want deadline exceeded", err)
+	}
+	select {
+	case <-worker.done:
+	case <-time.After(time.Second):
+		t.Fatal("BML worker did not exit after canceling its lookup")
+	}
+}
+
+type cancelableModuleStore struct {
+	bml.ModuleStore
+	entered chan struct{}
+}
+
+func (s *cancelableModuleStore) GetContext(ctx context.Context, _ bml.ModuleCacheKey) (ts.DSMCCModule, bool) {
+	close(s.entered)
+	<-ctx.Done()
+	return ts.DSMCCModule{}, false
+}
+
+func (s *cancelableModuleStore) PutModules(ctx context.Context, keys []bml.ModuleCacheKey, module ts.DSMCCModule) bool {
+	return false
 }
 
 func TestSessionRestoresDataBroadcastModuleAcrossSessions(t *testing.T) {

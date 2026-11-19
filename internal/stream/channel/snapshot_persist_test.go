@@ -37,8 +37,8 @@ func TestSessionFlushDataBroadcastSnapshotsSkipsUnchangedState(t *testing.T) {
 	store := &countingSnapshotStore{}
 	worker := newBMLWorker("GR", "27", hub, store)
 
-	worker.flushSnapshots()
-	worker.flushSnapshots()
+	worker.flushSnapshots(t.Context())
+	worker.flushSnapshots(t.Context())
 	if store.puts != 1 {
 		t.Fatalf("PutSnapshot calls = %d, want 1 for repeated unchanged state", store.puts)
 	}
@@ -49,7 +49,7 @@ func TestSessionFlushDataBroadcastSnapshotsSkipsUnchangedState(t *testing.T) {
 	// A DII version bump changes the observed bytes, so the next flush must
 	// write again.
 	hub.Observe(ts.PIDSection{PID: carouselPID, Section: streamBuildDSMCCDII(t, 1, 4, 2, 4, 2, []byte("index.bml"))})
-	worker.flushSnapshots()
+	worker.flushSnapshots(t.Context())
 	if store.puts != 2 {
 		t.Fatalf("PutSnapshot calls = %d, want 2 after DII changed", store.puts)
 	}
@@ -60,7 +60,7 @@ func TestSessionFlushDataBroadcastSnapshotsNoopWithoutStore(t *testing.T) {
 	hub.Observe(ts.PIDSection{PID: 0x0100, Section: streamBuildDataBroadcastPMT(101, 0x0200, 0x40)})
 	worker := newBMLWorker("GR", "27", hub, nil)
 	// Must not panic when no snapshot store is configured.
-	worker.flushSnapshots()
+	worker.flushSnapshots(t.Context())
 }
 
 func TestSessionPersistsAndRestoresProvisionalDataBroadcastSnapshot(t *testing.T) {
@@ -147,7 +147,7 @@ func TestSessionSnapshotCarouselRemovedWhenComponentDropsFromPMT(t *testing.T) {
 	hub.Observe(ts.PIDSection{PID: pmtPID, Section: streamBuildTwoComponentPMT(serviceID, firstPID, firstTag, secondPID, secondTag)})
 	hub.Observe(ts.PIDSection{PID: firstPID, Section: streamBuildDSMCCDII(t, 1, 4, 2, 4, 1, []byte("index.bml"))})
 	hub.Observe(ts.PIDSection{PID: secondPID, Section: streamBuildDSMCCDII(t, 1, 4, 3, 4, 1, []byte("sub.bml"))})
-	worker.flushSnapshots()
+	worker.flushSnapshots(t.Context())
 
 	persisted, ok := store.GetSnapshot("GR", "27", serviceID)
 	if !ok || len(persisted.Carousels) != 2 {
@@ -156,7 +156,7 @@ func TestSessionSnapshotCarouselRemovedWhenComponentDropsFromPMT(t *testing.T) {
 
 	// The PMT no longer carries the second component.
 	hub.Observe(ts.PIDSection{PID: pmtPID, Section: streamBuildDataBroadcastPMT(serviceID, firstPID, firstTag)})
-	worker.flushSnapshots()
+	worker.flushSnapshots(t.Context())
 
 	persisted, ok = store.GetSnapshot("GR", "27", serviceID)
 	if !ok || len(persisted.Carousels) != 1 || persisted.Carousels[0].ComponentTag != firstTag {

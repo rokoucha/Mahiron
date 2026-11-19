@@ -38,6 +38,7 @@ type Manager struct {
 	registry              *sessionRegistry
 	sources               *source.Pool
 	dataBroadcastStore    bml.ModuleStore
+	dataBroadcastDisabled bool
 	snapshotStore         bml.SnapshotStore
 }
 
@@ -49,13 +50,14 @@ type RemoteTunerStatus struct {
 }
 
 type ManagerConfig struct {
-	Channels           config.ChannelsConfig
-	DescramblerFactory source.DescramblerFactory
-	EITUpdater         channel.EventUpdater
-	Remotes            config.RemotesConfig
-	LogoUpdater        channel.LogoUpdater
-	ProgramUpdater     ProgramUpdater
-	TunerManager       source.TunerManager
+	DataBroadcastDisabled bool
+	Channels              config.ChannelsConfig
+	DescramblerFactory    source.DescramblerFactory
+	EITUpdater            channel.EventUpdater
+	Remotes               config.RemotesConfig
+	LogoUpdater           channel.LogoUpdater
+	ProgramUpdater        ProgramUpdater
+	TunerManager          source.TunerManager
 	// ModuleStore shares retained modules across sessions. Nil disables shared caching.
 	ModuleStore bml.ModuleStore
 	// SnapshotStore persists raw PMT/DII sections for provisional /state
@@ -114,16 +116,17 @@ func NewManager(cfg ManagerConfig) *Manager {
 		}
 	}
 	return &Manager{
-		eitUpdater:         cfg.EITUpdater,
-		logoUpdater:        cfg.LogoUpdater,
-		programUpdater:     cfg.ProgramUpdater,
-		remotes:            remotes,
-		remoteTunerTypes:   remoteTunerTypes,
-		remoteTuners:       make(map[string]map[int]tuner.Status, len(remotes)),
-		registry:           newSessionRegistry(),
-		sources:            source.NewPool(cfg.Channels, cfg.TunerManager, descramblerFactory, remoteClients(remotes)),
-		dataBroadcastStore: cfg.ModuleStore,
-		snapshotStore:      cfg.SnapshotStore,
+		eitUpdater:            cfg.EITUpdater,
+		logoUpdater:           cfg.LogoUpdater,
+		programUpdater:        cfg.ProgramUpdater,
+		remotes:               remotes,
+		remoteTunerTypes:      remoteTunerTypes,
+		remoteTuners:          make(map[string]map[int]tuner.Status, len(remotes)),
+		registry:              newSessionRegistry(),
+		sources:               source.NewPool(cfg.Channels, cfg.TunerManager, descramblerFactory, remoteClients(remotes)),
+		dataBroadcastStore:    cfg.ModuleStore,
+		dataBroadcastDisabled: cfg.DataBroadcastDisabled,
+		snapshotStore:         cfg.SnapshotStore,
 	}
 }
 

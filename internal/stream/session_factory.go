@@ -37,18 +37,25 @@ func (m *Manager) createSession(ctx context.Context, key sessionKey, channelType
 	}
 	if metadata.Remote != "" {
 		client := m.remotes[metadata.Remote]
-		return remote.NewSession(remote.SessionConfig{Client: client, Handle: handle, ModuleStore: m.dataBroadcastStore}), handle.RouteType(), handle.SourceLabel(), nil
+		return remote.NewSession(remote.SessionConfig{
+			Client:                client,
+			Handle:                handle,
+			ModuleStore:           m.dataBroadcastStore,
+			DataBroadcastDisabled: m.dataBroadcastDisabled,
+		}), handle.RouteType(), handle.SourceLabel(), nil
 	}
 
-	session := channelstream.NewChannelSession(channelstream.Config{
-		Channel:       channel,
-		Handle:        handle,
-		EITUpdater:    m.eitUpdater,
-		LogoUpdater:   m.logoUpdater,
-		OnStop:        func() { m.remove(key) },
-		Type:          channelType,
-		ModuleStore:   m.dataBroadcastStore,
-		SnapshotStore: m.snapshotStore,
+	var session *channelstream.ChannelSession
+	session = channelstream.NewChannelSession(channelstream.Config{
+		Channel:               channel,
+		Handle:                handle,
+		EITUpdater:            m.eitUpdater,
+		LogoUpdater:           m.logoUpdater,
+		OnStop:                func() { m.registry.removeIfSame(key, session) },
+		Type:                  channelType,
+		ModuleStore:           m.dataBroadcastStore,
+		SnapshotStore:         m.snapshotStore,
+		DataBroadcastDisabled: m.dataBroadcastDisabled,
 	})
 	return session, handle.RouteType(), handle.SourceLabel(), nil
 }

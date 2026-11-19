@@ -82,12 +82,10 @@ func TestSubscriberOverflowClosesConnectionForSnapshotReconnect(t *testing.T) {
 
 // TestSharedCarouselPIDDeliversToAllServices reproduces the TOKYO MX layout
 // where sibling services (MX1/MX2) reference the same data-carousel ES PID in
-// their PMTs. Every DII/DDB section on that PID must reach every referencing
-// service's carousel: delivering each section to just one arbitrary service
-// splits the block stream between carousels, so no service ever assembles a
-// complete module.
+// their PMTs. Both service keys remain readable when they share one assembly.
 func TestSharedCarouselPIDDeliversToAllServices(t *testing.T) {
-	hub := NewHub()
+	store := &batchTestModuleStore{testModuleStore: newTestModuleStore()}
+	hub := NewHub().WithModuleStore(store)
 	const carouselPID uint16 = 2400
 	const componentTag byte = 0x60
 	serviceIDs := []uint16{23608, 23610}
@@ -95,12 +93,56 @@ func TestSharedCarouselPIDDeliversToAllServices(t *testing.T) {
 	hub.Observe(ts.PIDSection{PID: 0x103, Section: ts.Section(provisionalTestBuildPMT(serviceIDs[1], carouselPID, componentTag))})
 	hub.Observe(ts.PIDSection{PID: carouselPID, Section: ts.Section(provisionalTestBuildDII(1, 4, 2, 4, 3, nil))})
 	hub.Observe(ts.PIDSection{PID: carouselPID, Section: ts.Section(sharedPIDTestBuildDDB(1, 2, 3, 0, []byte("data")))})
+	if hub.services[serviceIDs[0]].carousels[componentTag] != hub.services[serviceIDs[1]].carousels[componentTag] {
+		t.Fatal("shared PID assembled separately")
+	}
+	if store.batches != 1 || len(store.modules) != 2 {
+		t.Fatalf("batches = %d, retained keys = %d, want 1 batch and 2 keys", store.batches, len(store.modules))
+	}
+
 	for _, serviceID := range serviceIDs {
 		got, ok := hub.ModuleVersion(serviceID, componentTag, 1, 2, 3)
 		if !ok || string(got.Data) != "data" {
 			t.Fatalf("service %d: module = %#v, found = %v, want completed module", serviceID, got, ok)
 		}
 	}
+}
+
+func TestSharedCarouselRemapDetachesOnlyThatService(t *testing.T) {
+	hub := NewHub()
+	const first, second, pid, newPID, tag = 101, 102, 0x200, 0x201, 0x40
+	observePMT := func(serviceID, carouselPID uint16) {
+		hub.Observe(ts.PIDSection{PID: 0x100 + serviceID, Section: ts.Section(provisionalTestBuildPMT(serviceID, carouselPID, tag))})
+	}
+	observePMT(first, pid)
+	observePMT(second, pid)
+	hub.Observe(ts.PIDSection{PID: pid, Section: ts.Section(provisionalTestBuildDII(1, 4, 2, 8, 3, nil))})
+	hub.Observe(ts.PIDSection{PID: pid, Section: ts.Section(sharedPIDTestBuildDDB(1, 2, 3, 0, []byte("data")))})
+	observePMT(first, newPID)
+	hub.Observe(ts.PIDSection{PID: pid, Section: ts.Section(sharedPIDTestBuildDDB(1, 2, 3, 1, []byte("rest")))})
+	if got, ok := hub.ModuleVersion(second, tag, 1, 2, 3); !ok || string(got.Data) != "datarest" {
+		t.Fatal("remapping one service lost the sibling's in-flight blocks")
+	}
+	if _, ok := hub.ModuleVersion(first, tag, 1, 2, 3); ok {
+		t.Fatal("remapped service still uses the original carousel")
+	}
+}
+
+type batchTestModuleStore struct {
+	*testModuleStore
+	batches int
+}
+
+func (s *batchTestModuleStore) GetContext(_ context.Context, key ModuleCacheKey) (ts.DSMCCModule, bool) {
+	return s.Get(key)
+}
+
+func (s *batchTestModuleStore) PutModules(_ context.Context, keys []ModuleCacheKey, module ts.DSMCCModule) bool {
+	s.batches++
+	for _, key := range keys {
+		s.Put(key, module)
+	}
+	return true
 }
 
 func sharedPIDTestBuildDDB(downloadID uint32, moduleID uint16, version byte, blockNumber uint16, data []byte) []byte {

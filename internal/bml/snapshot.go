@@ -29,19 +29,8 @@ func (h *Hub) snapshotLocked(serviceID uint16) Snapshot {
 			if carousel == nil {
 				continue
 			}
-			for _, announcement := range carousel.Announcements() {
-				module := apiModule(snapshot.Components[i].ComponentTag, announcement.Module, false)
-				module.Complete = announcement.Complete
-				module.ReceivedBlocks = announcement.ReceivedBlocks
-				module.TotalBlocks = announcement.TotalBlocks
-				if announcement.Complete {
-					module.Status = "complete"
-				} else if announcement.ReceivedBlocks > 0 {
-					module.Status = "receiving"
-				} else {
-					module.Status = "announced"
-				}
-				snapshot.Components[i].Modules = append(snapshot.Components[i].Modules, module)
+			for _, announcement := range carousel.AnnouncementMetadata() {
+				snapshot.Components[i].Modules = append(snapshot.Components[i].Modules, announcedModule(snapshot.Components[i].ComponentTag, announcement))
 			}
 			for _, rejection := range carousel.RejectedAnnouncements() {
 				downloadID := uint32(0)
@@ -53,6 +42,22 @@ func (h *Hub) snapshotLocked(serviceID uint16) Snapshot {
 		}
 	}
 	return snapshot
+}
+
+func announcedModule(componentTag byte, announcement ts.DSMCCModuleAnnouncement) Module {
+	module := apiModule(componentTag, announcement.Module, false)
+	module.Complete = announcement.Complete
+	module.ReceivedBlocks = announcement.ReceivedBlocks
+	module.TotalBlocks = announcement.TotalBlocks
+	switch {
+	case announcement.Complete:
+		module.Status = "complete"
+	case announcement.ReceivedBlocks > 0:
+		module.Status = "receiving"
+	default:
+		module.Status = "announced"
+	}
+	return module
 }
 
 func rejectedModule(componentTag byte, downloadID uint32, rejection ts.DSMCCModuleRejection) Module {

@@ -3,8 +3,9 @@ package channel
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"log/slog"
-	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/21S1298001/mahiron/internal/bml"
@@ -12,12 +13,19 @@ import (
 	"github.com/21S1298001/mahiron/ts"
 )
 
-// dataBroadcastQueueSize bounds completed DSM-CC section work without
-// blocking the TS demux loop. DII is handled synchronously so the carousel is
-// always registered before its DDB blocks enter this queue.
-const dataBroadcastQueueSize = 1024
-const dataBroadcastPriorityQueueSize = 256
-const dataBroadcastPriorityBurst = 8
+const (
+	dataBroadcastQueueSize = 1280
+	// Keep space for signaling when a burst of DDB blocks fills the queue.
+	dataBroadcastSignalingReserve = 256
+	dataBroadcastDrainTimeout     = 2 * time.Second
+)
+
+type bmlUpdate struct {
+	section ts.PIDSection
+	pcr     bml.PCR
+	pid     uint16
+	barrier chan struct{}
+}
 
 // dataBroadcastSnapshotFlushInterval bounds how stale a persisted provisional
 // snapshot can be. It is a periodic sweep rather than an event-driven queue:
@@ -26,16 +34,17 @@ const dataBroadcastPriorityBurst = 8
 const dataBroadcastSnapshotFlushInterval = 30 * time.Second
 
 // bmlWorker owns the BML (TS data broadcast) background work of a channel
-// session: the DDB queue pump feeding the Hub and the periodic persistence
+// session: the signaling and carousel queue pump feeding the Hub and the periodic persistence
 // of provisional snapshots. The session itself keeps only stream plumbing
 // (demuxers, EIT/logo updates) and delegates BMLSource to this worker.
 type bmlWorker struct {
 	hub           *bml.Hub
-	queue         chan ts.PIDSection
-	priorityQueue chan ts.PIDSection
-	wg            sync.WaitGroup
+	queue         chan bmlUpdate
+	lastPMT       map[uint16]ts.Section
+	dropped       atomic.Int64
 	done          chan struct{}
 	snapshotDone  chan struct{}
+	cancelWork    context.CancelFunc
 	snapshotStore bml.SnapshotStore
 	lastPersisted map[uint16]bml.PersistedService
 	typ           string
@@ -45,8 +54,8 @@ type bmlWorker struct {
 func newBMLWorker(typ, channelID string, hub *bml.Hub, snapshotStore bml.SnapshotStore) *bmlWorker {
 	return &bmlWorker{
 		hub:           hub,
-		queue:         make(chan ts.PIDSection, dataBroadcastQueueSize),
-		priorityQueue: make(chan ts.PIDSection, dataBroadcastPriorityQueueSize),
+		queue:         make(chan bmlUpdate, dataBroadcastQueueSize),
+		lastPMT:       make(map[uint16]ts.Section),
 		snapshotStore: snapshotStore,
 		lastPersisted: map[uint16]bml.PersistedService{},
 		typ:           typ,
@@ -55,35 +64,43 @@ func newBMLWorker(typ, channelID string, hub *bml.Hub, snapshotStore bml.Snapsho
 }
 
 func (w *bmlWorker) observePacket(packet ts.Packet) {
-	if w.hub == nil {
-		return
+	if base, extension, ok := packet.ProgramClockReference(); ok {
+		w.enqueue(bmlUpdate{pid: packet.PID(), pcr: bml.PCR{PCRBase: base, PCRExtension: extension}}, true)
 	}
-	w.hub.ObservePacket(packet)
 }
 
 func (w *bmlWorker) observePIDSection(section ts.PIDSection) {
-	if w.hub == nil {
-		return
+	// SectionAssembler gives each completed section its own backing storage.
+	update := bmlUpdate{section: section}
+	switch section.Section.TableID() {
+	case ts.TableIDPMT:
+		// A repeated PMT would be ignored by the Hub after parsing. Only
+		// remember accepted PMTs so an overflowed change can be retried.
+		if len(section.Section) < 5 {
+			return
+		}
+		serviceID := binary.BigEndian.Uint16(section.Section[3:5])
+		if !bytes.Equal(w.lastPMT[serviceID], section.Section) && w.enqueue(update, false) {
+			w.lastPMT[serviceID] = section.Section
+		}
+	case ts.TableIDDSMCCDDB:
+		w.enqueue(update, true)
+	case ts.TableIDDSMCCDII, ts.TableIDDSMCCStream,
+		ts.TableIDBIT, ts.TableIDEITPF0, ts.TableIDEITPF1, ts.TableIDTOT:
+		w.enqueue(update, false)
 	}
-	if section.Section.TableID() != ts.TableIDDSMCCDDB {
-		w.hub.Observe(section)
-		return
+}
+
+func (w *bmlWorker) enqueue(update bmlUpdate, bulk bool) bool {
+	if !bulk || len(w.queue) < cap(w.queue)-dataBroadcastSignalingReserve {
+		select {
+		case w.queue <- update:
+			return true
+		default:
+		}
 	}
-	priority, entryDocument := w.hub.DDBPriority(section)
-	queue := w.queue
-	operation := "ddb_queue"
-	if entryDocument || priority > 0 {
-		queue = w.priorityQueue
-		operation = "ddb_priority_queue"
-	}
-	w.wg.Add(1)
-	select {
-	case queue <- section:
-	default:
-		w.wg.Done()
-		observability.RecordDataBroadcastCarouselEvent(context.Background(), w.typ, w.channel, operation, "overflow")
-		slog.Warn("data broadcast DDB queue overflow", "type", w.typ, "channel", w.channel, "priority", priority, "entryDocument", entryDocument)
-	}
+	w.dropped.Add(1)
+	return false
 }
 
 func (w *bmlWorker) start(ctx context.Context) {
@@ -92,114 +109,136 @@ func (w *bmlWorker) start(ctx context.Context) {
 	}
 	w.done = make(chan struct{})
 	w.snapshotDone = make(chan struct{})
-	go w.runUpdates(ctx, w.done)
-	go w.runSnapshotPersist(ctx, w.snapshotDone)
+	workCtx, cancelWork := context.WithCancel(context.WithoutCancel(ctx))
+	w.cancelWork = cancelWork
+	go w.runUpdates(ctx, workCtx)
+	go w.runSnapshotPersist(ctx, workCtx)
 }
 
-func (w *bmlWorker) stop() {
-	if w.done != nil {
-		<-w.done
-	}
-	if w.snapshotDone != nil {
-		<-w.snapshotDone
+func (w *bmlWorker) stop(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, dataBroadcastDrainTimeout)
+	defer cancel()
+	defer w.cancelWork()
+	select {
+	case <-w.snapshotDone:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 }
 
-func (w *bmlWorker) runUpdates(ctx context.Context, done chan struct{}) {
-	defer close(done)
-	priorityBurst := 0
-	for {
-		section, ok := w.nextSection(ctx, &priorityBurst)
-		if !ok {
-			// Sections were already accepted from the demuxer. Finish the bounded
-			// backlog so a final module completion is not lost on input shutdown.
-			for {
+// waitForUpdates waits for events already accepted by the demuxer at EOF.
+func (w *bmlWorker) waitForUpdates(ctx context.Context) {
+	ctx, cancel := context.WithTimeout(ctx, dataBroadcastDrainTimeout)
+	defer cancel()
+	barrier := make(chan struct{})
+	select {
+	case w.queue <- bmlUpdate{barrier: barrier}:
+	case <-w.done:
+		return
+	case <-ctx.Done():
+		return
+	}
+	select {
+	case <-barrier:
+	case <-w.done:
+	case <-ctx.Done():
+	}
+}
+
+func (w *bmlWorker) runUpdates(stopCtx, workCtx context.Context) {
+	defer close(w.done)
+	for workCtx.Err() == nil {
+		select {
+		case <-workCtx.Done():
+			return
+		case <-stopCtx.Done():
+			// The demuxer stopped invoking hooks. Drain accepted work while
+			// the caller's shutdown budget permits.
+			for workCtx.Err() == nil {
 				select {
-				case section := <-w.priorityQueue:
-					w.observeQueuedDDB(section)
-				case section := <-w.queue:
-					w.observeQueuedDDB(section)
+				case update := <-w.queue:
+					w.observeUpdate(workCtx, update)
 				default:
 					return
 				}
 			}
+			return
+		case update := <-w.queue:
+			w.observeUpdate(workCtx, update)
 		}
-		w.observeQueuedDDB(section)
 	}
 }
 
-// nextSection favors entry/high-cache-priority modules, but
-// forces one normal section after a bounded burst. Emergency broadcasts can
-// keep the priority queue continuously non-empty; without this fairness bound,
-// ordinary modules remain announced forever and their HTTP URLs return 425.
-func (w *bmlWorker) nextSection(ctx context.Context, priorityBurst *int) (ts.PIDSection, bool) {
-	if *priorityBurst >= dataBroadcastPriorityBurst {
-		select {
-		case section := <-w.queue:
-			*priorityBurst = 0
-			return section, true
-		default:
-		}
-	}
-	select {
-	case section := <-w.priorityQueue:
-		*priorityBurst++
-		return section, true
+func (w *bmlWorker) observeUpdate(ctx context.Context, update bmlUpdate) {
+	switch {
+	case update.barrier != nil:
+		close(update.barrier)
+	case update.section.Section != nil:
+		w.hub.ObserveContext(ctx, update.section)
 	default:
-	}
-	select {
-	case <-ctx.Done():
-		return ts.PIDSection{}, false
-	case section := <-w.priorityQueue:
-		*priorityBurst++
-		return section, true
-	case section := <-w.queue:
-		*priorityBurst = 0
-		return section, true
+		w.hub.ObservePCR(update.pid, update.pcr)
 	}
 }
 
-func (w *bmlWorker) observeQueuedDDB(section ts.PIDSection) {
-	w.hub.Observe(section)
-	w.wg.Done()
-}
-
-// runSnapshotPersist periodically writes the current PMT/DII
-// state to the snapshot store so a future GetOrCreate for this channel can
-// serve a provisional /state response before a tuner is reacquired. It runs
-// even when no store is configured so its done channel is always closed,
-// keeping worker start/stop symmetric with the other two update workers.
-func (w *bmlWorker) runSnapshotPersist(ctx context.Context, done chan struct{}) {
-	defer close(done)
-	if w.snapshotStore == nil {
-		<-ctx.Done()
-		return
-	}
+func (w *bmlWorker) runSnapshotPersist(stopCtx, workCtx context.Context) {
+	defer func() {
+		<-w.done
+		close(w.snapshotDone)
+	}()
 	ticker := time.NewTicker(dataBroadcastSnapshotFlushInterval)
 	defer ticker.Stop()
 	for {
 		select {
-		case <-ctx.Done():
-			w.flushSnapshots()
+		case <-workCtx.Done():
+			return
+		case <-stopCtx.Done():
+			select {
+			case <-w.done:
+				w.reportDrops()
+				w.flushSnapshots(workCtx)
+			case <-workCtx.Done():
+			}
 			return
 		case <-ticker.C:
-			w.flushSnapshots()
+			w.reportDrops()
+			w.flushSnapshots(workCtx)
 		}
+	}
+}
+
+func (w *bmlWorker) reportDrops() {
+	if count := w.dropped.Swap(0); count > 0 {
+		observability.RecordDataBroadcastCarouselEvent(context.Background(), w.typ, w.channel, "update_queue", "overflow")
+		slog.Warn("data broadcast update queue overflow", "type", w.typ, "channel", w.channel, "dropped", count)
 	}
 }
 
 // flushSnapshots writes only services whose persisted state
 // changed since the last flush. It is called from a single goroutine
 // (runSnapshotPersist), so lastPersisted needs no lock.
-func (w *bmlWorker) flushSnapshots() {
+func (w *bmlWorker) flushSnapshots(ctx context.Context) {
 	if w.hub == nil || w.snapshotStore == nil {
 		return
 	}
+	store, contextual := w.snapshotStore.(bml.ContextSnapshotStore)
 	for _, persisted := range w.hub.PersistableState() {
+		if ctx.Err() != nil {
+			return
+		}
 		if previous, ok := w.lastPersisted[persisted.ServiceID]; ok && persistedServiceEqual(previous, persisted) {
 			continue
 		}
-		if err := w.snapshotStore.PutSnapshot(w.typ, w.channel, persisted); err != nil {
+		var err error
+		if contextual {
+			err = store.PutSnapshotContext(ctx, w.typ, w.channel, persisted)
+		} else {
+			err = w.snapshotStore.PutSnapshot(w.typ, w.channel, persisted)
+		}
+		if ctx.Err() != nil {
+			return
+		}
+		if err != nil {
 			slog.Warn("failed to persist data broadcast snapshot", "type", w.typ, "channel", w.channel, "serviceId", persisted.ServiceID, "err", err)
 			continue
 		}

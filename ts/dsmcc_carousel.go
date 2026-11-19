@@ -190,6 +190,15 @@ func (c *DSMCCCarousel) RejectedAnnouncements() []DSMCCModuleRejection {
 // Announcements returns all currently accepted DII modules, including
 // incomplete ones. No payload bytes are returned for incomplete modules.
 func (c *DSMCCCarousel) Announcements() []DSMCCModuleAnnouncement {
+	return c.announcements(true)
+}
+
+// AnnouncementMetadata reports progress without copying completed payloads.
+func (c *DSMCCCarousel) AnnouncementMetadata() []DSMCCModuleAnnouncement {
+	return c.announcements(false)
+}
+
+func (c *DSMCCCarousel) announcements(includeData bool) []DSMCCModuleAnnouncement {
 	result := make([]DSMCCModuleAnnouncement, 0, len(c.modules))
 	for _, state := range c.modules {
 		module := DSMCCModule{
@@ -199,7 +208,7 @@ func (c *DSMCCCarousel) Announcements() []DSMCCModuleAnnouncement {
 			Size:       state.info.ModuleSize,
 			Info:       append([]byte(nil), state.info.Info...),
 		}
-		if state.completed {
+		if includeData && state.completed {
 			module.Data = append([]byte(nil), state.data...)
 		}
 		announcement := DSMCCModuleAnnouncement{Module: module, Complete: state.completed, ReceivedBlocks: state.count, TotalBlocks: len(state.received)}
@@ -269,6 +278,16 @@ func (c *DSMCCCarousel) Module(moduleID uint16) (DSMCCModule, bool) {
 		return DSMCCModule{}, false
 	}
 	return state.module(), true
+}
+
+// ReleasedGeneration identifies a completed module whose payload lives only
+// in the cache. It lets a caller revalidate an eviction after an unlocked read.
+func (c *DSMCCCarousel) ReleasedGeneration(moduleID uint16, downloadID uint32, version byte) (uint64, bool) {
+	state := c.modules[moduleID]
+	if state == nil || !state.completed || state.data != nil || state.downloadID != downloadID || state.info.Version != version {
+		return 0, false
+	}
+	return state.generation, true
 }
 
 // Invalidate resets a completed module's assembly state back to in-flight

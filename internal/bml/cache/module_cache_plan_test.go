@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"database/sql"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -16,7 +17,12 @@ func TestSQLitePruneStatementsAvoidTableScans(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
-	if _, err := store.db.Exec(pruneCreateCandidates); err != nil {
+	conn, err := store.db.Conn(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+	if _, err := conn.ExecContext(t.Context(), pruneCreateCandidates); err != nil {
 		t.Fatal(err)
 	}
 
@@ -26,14 +32,12 @@ func TestSQLitePruneStatementsAvoidTableScans(t *testing.T) {
 		args  []any
 	}{
 		{"stored bytes", pruneStoredBytesQuery, nil},
-		{"expired check", pruneHasExpiredQuery, []any{0}},
-		{"collect expired", pruneCollectExpired, []any{0}},
-		{"collect over budget", pruneCollectOverBudget, []any{0}},
+		{"collect batch", pruneCollectBatch, []any{moduleCachePruneBatchSize, moduleCachePruneBatchBytes, 0, 0}},
 		{"delete resources", pruneDeleteResources, nil},
 		{"delete modules", pruneDeleteModules, nil},
 	} {
 		t.Run(statement.name, func(t *testing.T) {
-			plan := queryPlan(t, store, statement.query, statement.args...)
+			plan := queryPlan(t, conn, statement.query, statement.args...)
 			for _, table := range []string{"data_broadcast_modules", "data_broadcast_resources"} {
 				for _, line := range strings.Split(plan, "\n") {
 					if !strings.Contains(line, "SCAN") || !strings.Contains(line, table) {
@@ -49,9 +53,9 @@ func TestSQLitePruneStatementsAvoidTableScans(t *testing.T) {
 	}
 }
 
-func queryPlan(t *testing.T, store *SQLiteModuleStore, query string, args ...any) string {
+func queryPlan(t *testing.T, conn *sql.Conn, query string, args ...any) string {
 	t.Helper()
-	rows, err := store.db.QueryContext(t.Context(), "EXPLAIN QUERY PLAN "+query, args...)
+	rows, err := conn.QueryContext(t.Context(), "EXPLAIN QUERY PLAN "+query, args...)
 	if err != nil {
 		t.Fatal(err)
 	}

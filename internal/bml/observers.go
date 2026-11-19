@@ -1,6 +1,7 @@
 package bml
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
 	"slices"
@@ -11,13 +12,23 @@ import (
 )
 
 func (h *Hub) Observe(section ts.PIDSection) {
+	h.ObserveContext(context.Background(), section)
+}
+
+// ObserveContext serializes section state transitions separately from readers.
+func (h *Hub) ObserveContext(ctx context.Context, section ts.PIDSection) {
+	h.observeMu.Lock()
+	defer h.observeMu.Unlock()
+	if ctx.Err() != nil {
+		return
+	}
 	switch section.Section.TableID() {
 	case ts.TableIDPMT:
 		h.observePMT(section)
 	case ts.TableIDDSMCCDII:
-		h.observeDII(section)
+		h.observeDII(ctx, section)
 	case ts.TableIDDSMCCDDB:
-		h.observeDDB(section)
+		h.observeDDB(ctx, section)
 	case ts.TableIDDSMCCStream:
 		h.observeES(section)
 	case ts.TableIDBIT:
@@ -29,20 +40,15 @@ func (h *Hub) Observe(section ts.PIDSection) {
 	}
 }
 
-func (h *Hub) ObservePacket(packet ts.Packet) {
-	base, extension, ok := packet.ProgramClockReference()
-	if !ok {
-		return
-	}
+func (h *Hub) ObservePCR(pid uint16, pcr PCR) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	for serviceID, service := range h.services {
-		if service.pmt == nil || service.pmt.PCRPID != packet.PID() {
+		if service.pmt == nil || service.pmt.PCRPID != pid {
 			continue
 		}
-		pcr := &PCR{PCRBase: base, PCRExtension: extension}
-		service.pcr = pcr
-		h.broadcastLocked(serviceID, Event{Type: "pcr", PCR: clonePCR(pcr)})
+		service.pcr = &pcr
+		h.broadcastLocked(serviceID, Event{Type: "pcr", PCR: clonePCR(&pcr)})
 	}
 }
 
@@ -131,6 +137,16 @@ func (h *Hub) observePMT(section ts.PIDSection) {
 		h.mu.Unlock()
 		return
 	}
+	// Reset a component whose ES changed, even if the tag was reused.
+	if service.pmt != nil {
+		for _, previous := range service.pmt.Components {
+			if tag, ok := pidToTag[previous.PID]; !ok || tag != previous.ComponentTag {
+				delete(service.carousels, previous.ComponentTag)
+				delete(service.carouselStates, previous.ComponentTag)
+				delete(service.diiSections, previous.ComponentTag)
+			}
+		}
+	}
 	service.pmtSection = pmtSection
 	service.pmt = &PMT{
 		ServiceID:     pmt.ProgramNumber,
@@ -195,12 +211,13 @@ func (h *Hub) observeES(section ts.PIDSection) {
 	h.mu.Unlock()
 }
 
-func (h *Hub) observeDII(section ts.PIDSection) {
+func (h *Hub) observeDII(ctx context.Context, section ts.PIDSection) {
 	dii, err := ts.ParseDSMCCDII(section.Section)
 	if err != nil {
 		h.recordCarousel("dii", "invalid")
 		return
 	}
+	raw := string(section.Section)
 	h.mu.Lock()
 	refs := h.carouselsByPIDLocked(section.PID)
 	if len(refs) == 0 {
@@ -208,30 +225,53 @@ func (h *Hub) observeDII(section ts.PIDSection) {
 		h.recordCarousel("dii", "unmapped")
 		return
 	}
-	results := make([]string, 0, len(refs))
-	for _, ref := range refs {
-		results = append(results, h.observeDIIForServiceLocked(ref, dii, section))
+	// Merge peers starting this download together. A service appearing mid-
+	// download keeps its own state until a later download boundary so it
+	// cannot inherit a released payload stored only under a sibling's key.
+	if len(refs) > 1 {
+		canShare := true
+		for _, ref := range refs {
+			if state, ok := h.services[ref.serviceID].carouselStates[ref.componentTag]; ok && state.downloadID == dii.DownloadID {
+				canShare = false
+				break
+			}
+		}
+		if canShare {
+			for i := range refs {
+				ref := &refs[i]
+				ref.carousel = refs[0].carousel
+				h.services[ref.serviceID].carousels[ref.componentTag] = ref.carousel
+			}
+		}
 	}
+	groups := groupCarousels(refs)
 	h.mu.Unlock()
-	for _, result := range results {
-		h.recordCarousel("dii", result)
+	for _, group := range groups {
+		h.mu.Lock()
+		ref := group[0]
+		if h.services[ref.serviceID].diiSections[ref.componentTag] == raw {
+			h.mu.Unlock()
+			h.recordCarousel("dii", "duplicate")
+			continue
+		}
+		ref.carousel.ObserveDII(dii)
+		announcements := ref.carousel.AnnouncementMetadata()
+		for _, peer := range group {
+			h.announceDIILocked(peer, dii, raw, announcements)
+		}
+		h.mu.Unlock()
+		h.recordCarousel("dii", "accepted")
+		h.restoreModules(ctx, group, announcements)
 	}
 }
 
-// observeDIIForServiceLocked applies one parsed DII to a single service's
-// carousel and returns the metric result for that delivery.
-func (h *Hub) observeDIIForServiceLocked(ref dataBroadcastCarouselRef, dii *ts.DSMCCDII, section ts.PIDSection) string {
+func (h *Hub) announceDIILocked(ref dataBroadcastCarouselRef, dii *ts.DSMCCDII, raw string, announcements []ts.DSMCCModuleAnnouncement) {
 	serviceID, componentTag, carousel := ref.serviceID, ref.componentTag, ref.carousel
 	service := h.services[serviceID]
-	diiSection := string(section.Section)
-	if service.diiSections[componentTag] == diiSection {
-		return "duplicate"
-	}
-	service.diiSections[componentTag] = diiSection
-	infos := carousel.ObserveDII(dii)
+	service.diiSections[componentTag] = raw
 	rejections := carousel.RejectedAnnouncements()
 	status := "active"
-	if len(infos) == 0 {
+	if len(announcements) == 0 {
 		status = "empty"
 	}
 	for _, rejection := range rejections {
@@ -262,45 +302,16 @@ func (h *Hub) observeDIIForServiceLocked(ref dataBroadcastCarouselRef, dii *ts.D
 			delete(service.moduleStarts, key)
 		}
 	}
-	modules := make([]Module, 0, len(infos)+len(rejections))
-	restored := make([]Module, 0)
-	for _, info := range infos {
-		key := dataBroadcastModuleKey{componentTag: componentTag, downloadID: dii.DownloadID, moduleID: info.ModuleID, version: info.Version}
-		service.moduleStarts[key] = now
-		module := Module{
-			ComponentTag: componentTag,
-			ModuleID:     info.ModuleID,
-			DownloadID:   dii.DownloadID,
-			Version:      info.Version,
-			Size:         info.ModuleSize,
-			Info:         append([]byte(nil), info.Info...),
-			ETag:         moduleETag(dii.DownloadID, info.ModuleID, info.Version, info.ModuleSize),
-			Status:       "announced",
-			TotalBlocks:  int((info.ModuleSize + uint32(dii.BlockSize) - 1) / uint32(dii.BlockSize)),
+	modules := make([]Module, 0, len(announcements)+len(rejections))
+	for _, announcement := range announcements {
+		module := announcement.Module
+		if !announcement.Complete {
+			key := dataBroadcastModuleKey{componentTag: componentTag, downloadID: dii.DownloadID, moduleID: module.ModuleID, version: module.Version}
+			service.moduleStarts[key] = now
 		}
-		if metadata, ok := info.Metadata(); ok {
-			converted := ModuleMetadataFromTS(metadata)
-			module.Metadata = &converted
-		}
-		modules = append(modules, module)
-		cacheKey := h.moduleCacheKey(serviceID, componentTag, dii.DownloadID, info.ModuleID, info.Version, info.ModuleSize)
-		if h.moduleStore != nil {
-			cached, found := h.moduleStore.Get(cacheKey)
-			if found && carousel.Restore(cached) {
-				modules[len(modules)-1].Complete = true
-				modules[len(modules)-1].Status = "complete"
-				modules[len(modules)-1].ReceivedBlocks = modules[len(modules)-1].TotalBlocks
-				restored = append(restored, apiModule(componentTag, cached, false))
-				delete(service.moduleStarts, dataBroadcastModuleKey{componentTag: componentTag, downloadID: dii.DownloadID, moduleID: info.ModuleID, version: info.Version})
-				h.recordCarousel("cache", "hit")
-				if _, persistent := h.moduleStore.(PersistentModuleStore); persistent {
-					carousel.ReleaseCompletedPayload(info.ModuleID)
-				}
-			} else {
-				h.recordCarousel("cache", "miss")
-			}
-		}
+		modules = append(modules, announcedModule(componentTag, announcement))
 	}
+
 	for _, rejection := range rejections {
 		modules = append(modules, rejectedModule(componentTag, dii.DownloadID, rejection))
 	}
@@ -313,10 +324,63 @@ func (h *Hub) observeDIIForServiceLocked(ref dataBroadcastCarouselRef, dii *ts.D
 		Modules:       modules,
 	}}
 	h.broadcastLocked(serviceID, event)
-	for i := range restored {
-		h.broadcastLocked(serviceID, Event{Type: "moduleUpdated", Module: &restored[i]})
+}
+
+func (h *Hub) restoreModules(ctx context.Context, group []dataBroadcastCarouselRef, announcements []ts.DSMCCModuleAnnouncement) {
+	if h.moduleStore == nil {
+		return
 	}
-	return "accepted"
+	carousel := group[0].carousel
+	store, contextual := h.moduleStore.(ContextModuleStore)
+	_, persistent := h.moduleStore.(PersistentModuleStore)
+	for _, announcement := range announcements {
+		if announcement.Complete {
+			continue
+		}
+		info := announcement.Module
+		downloadID := info.DownloadID
+		var cached ts.DSMCCModule
+		allMatch := true
+		for i, peer := range group {
+			if ctx.Err() != nil {
+				return
+			}
+			key := h.moduleCacheKey(peer.serviceID, peer.componentTag, downloadID, info.ModuleID, info.Version, info.Size)
+			var candidate ts.DSMCCModule
+			var found bool
+			if contextual {
+				candidate, found = store.GetContext(ctx, key)
+			} else {
+				candidate, found = h.moduleStore.Get(key)
+			}
+			if !found || (i > 0 && (!bytes.Equal(cached.Data, candidate.Data) || !bytes.Equal(cached.Info, candidate.Info))) {
+				allMatch = false
+				break
+			}
+			cached = candidate
+		}
+		if !allMatch {
+			h.recordCarousel("cache", "miss")
+			continue
+		}
+		h.mu.Lock()
+		restored := carousel.Restore(cached)
+		if restored {
+			if persistent {
+				carousel.ReleaseCompletedPayload(info.ModuleID)
+			}
+			for _, ref := range group {
+				delete(h.services[ref.serviceID].moduleStarts, dataBroadcastModuleKey{componentTag: ref.componentTag, downloadID: downloadID, moduleID: info.ModuleID, version: info.Version})
+				h.broadcastLocked(ref.serviceID, Event{Type: "moduleUpdated", Module: ptr(apiModule(ref.componentTag, cached, false))})
+			}
+		}
+		h.mu.Unlock()
+		if restored {
+			h.recordCarousel("cache", "hit")
+		} else {
+			h.recordCarousel("cache", "miss")
+		}
+	}
 }
 
 func diiReturnToEntry(privateData []byte) *bool {
@@ -335,62 +399,72 @@ func diiReturnToEntry(privateData []byte) *bool {
 	return nil
 }
 
-func (h *Hub) observeDDB(section ts.PIDSection) {
+func (h *Hub) observeDDB(ctx context.Context, section ts.PIDSection) {
 	ddb, err := ts.ParseDSMCCDDB(section.Section)
 	if err != nil {
 		h.recordCarousel("ddb", "invalid")
 		return
 	}
 	h.mu.Lock()
-	refs := h.carouselsByPIDLocked(section.PID)
-	if len(refs) == 0 {
-		h.mu.Unlock()
+	groups := groupCarousels(h.carouselsByPIDLocked(section.PID))
+	h.mu.Unlock()
+	if len(groups) == 0 {
 		h.recordCarousel("ddb", "unmapped")
 		return
 	}
-	type ddbOutcome struct {
-		result  string
-		started time.Time
-		timed   bool
-	}
-	outcomes := make([]ddbOutcome, 0, len(refs))
-	for _, ref := range refs {
-		result, started, timed := h.observeDDBForServiceLocked(ref, ddb)
-		outcomes = append(outcomes, ddbOutcome{result: result, started: started, timed: timed})
-	}
-	h.mu.Unlock()
-	for _, outcome := range outcomes {
-		h.recordCarousel("ddb", outcome.result)
-		if outcome.timed {
-			observability.RecordDataBroadcastModuleDuration(context.Background(), h.channelType, h.channelID, time.Since(outcome.started).Milliseconds())
-		}
+	for _, group := range groups {
+		h.completeBlock(ctx, group, ddb)
 	}
 }
 
-// observeDDBForServiceLocked applies one parsed DDB block to a single
-// service's carousel, persisting and broadcasting a completed module for that
-// service. It returns the metric result plus the module's assembly start time
-// when completion was timed.
-func (h *Hub) observeDDBForServiceLocked(ref dataBroadcastCarouselRef, ddb *ts.DSMCCDDB) (string, time.Time, bool) {
-	serviceID, componentTag, carousel := ref.serviceID, ref.componentTag, ref.carousel
+func (h *Hub) completeBlock(ctx context.Context, group []dataBroadcastCarouselRef, ddb *ts.DSMCCDDB) {
+	carousel := group[0].carousel
+	h.mu.Lock()
 	module, complete, result, err := carousel.ObserveDDBWithResult(ddb)
-	if err != nil {
-		return "error", time.Time{}, false
-	}
 	if !complete {
-		return string(result), time.Time{}, false
+		h.mu.Unlock()
+		if err != nil {
+			result = "error"
+		}
+		h.recordCarousel("ddb", string(result))
+		return
 	}
-	key := dataBroadcastModuleKey{componentTag: componentTag, downloadID: module.DownloadID, moduleID: module.ModuleID, version: module.Version}
-	started, timed := h.services[serviceID].moduleStarts[key]
-	delete(h.services[serviceID].moduleStarts, key)
-	event := Event{Type: "moduleUpdated", Module: ptr(apiModule(componentTag, *module, false))}
-	if h.moduleStore != nil && h.moduleStore.Put(h.moduleCacheKey(serviceID, componentTag, module.DownloadID, module.ModuleID, module.Version, module.Size), *module) {
-		if _, persistent := h.moduleStore.(PersistentModuleStore); persistent {
-			carousel.ReleaseCompletedPayload(module.ModuleID)
+	keys := make([]ModuleCacheKey, 0, len(group))
+	for _, ref := range group {
+		serviceID, componentTag := ref.serviceID, ref.componentTag
+		key := dataBroadcastModuleKey{componentTag: componentTag, downloadID: module.DownloadID, moduleID: module.ModuleID, version: module.Version}
+		service := h.services[serviceID]
+		if started, ok := service.moduleStarts[key]; ok {
+			observability.RecordDataBroadcastModuleDuration(ctx, h.channelType, h.channelID, time.Since(started).Milliseconds())
+		}
+		delete(service.moduleStarts, key)
+		h.broadcastLocked(serviceID, Event{Type: "moduleUpdated", Module: ptr(apiModule(componentTag, *module, false))})
+		keys = append(keys, h.moduleCacheKey(serviceID, componentTag, module.DownloadID, module.ModuleID, module.Version, module.Size))
+	}
+	h.mu.Unlock()
+	h.recordCarousel("ddb", string(result))
+
+	if h.moduleStore == nil || ctx.Err() != nil {
+		return
+	}
+	var saved bool
+	if store, ok := h.moduleStore.(ContextModuleStore); ok {
+		saved = store.PutModules(ctx, keys, *module)
+	} else {
+		saved = true
+		for _, key := range keys {
+			if ctx.Err() != nil || !h.moduleStore.Put(key, *module) {
+				saved = false
+			}
 		}
 	}
-	h.broadcastLocked(serviceID, event)
-	return "completed", started, timed
+	if _, persistent := h.moduleStore.(PersistentModuleStore); persistent && saved {
+		// Section observations are serialized, and HTTP can only invalidate
+		// released modules, so this completion is still the same generation.
+		h.mu.Lock()
+		carousel.ReleaseCompletedPayload(module.ModuleID)
+		h.mu.Unlock()
+	}
 }
 
 func (h *Hub) observeEIT(section ts.Section) {
