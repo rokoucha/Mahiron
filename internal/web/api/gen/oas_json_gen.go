@@ -3931,6 +3931,7 @@ func (s *DataBroadcastProgramInfo) Decode(d *jx.Decoder) error {
 			if err := func() error {
 				switch tt := d.Next(); tt {
 				case jx.Null:
+					s.EventIds = nil
 					if err := d.Skip(); err != nil {
 						return err
 					}
