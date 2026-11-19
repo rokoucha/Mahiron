@@ -1,6 +1,7 @@
 package bml
 
 import (
+	"context"
 	"github.com/21S1298001/mahiron/ts"
 )
 
@@ -42,6 +43,12 @@ type ModuleStore interface {
 	Get(ModuleCacheKey) (ts.DSMCCModule, bool)
 	GetVersion(ModuleVersionKey) (ts.DSMCCModule, bool)
 	Put(ModuleCacheKey, ts.DSMCCModule) bool
+}
+
+// ContextModuleStore can cancel cache I/O when a receiver stops.
+type ContextModuleStore interface {
+	GetContext(context.Context, ModuleCacheKey) (ts.DSMCCModule, bool)
+	PutModules(context.Context, []ModuleCacheKey, ts.DSMCCModule) bool
 }
 
 // PersistentModuleStore keeps successfully written modules independently of
@@ -92,6 +99,10 @@ type PersistedService struct {
 type SnapshotStore interface {
 	PutSnapshot(channelType, channelID string, service PersistedService) error
 	GetSnapshot(channelType, channelID string, serviceID uint16) (PersistedService, bool)
+}
+
+type ContextSnapshotStore interface {
+	PutSnapshotContext(context.Context, string, string, PersistedService) error
 }
 
 // RestoreSnapshot rebuilds a provisional snapshot from persisted PMT/DII

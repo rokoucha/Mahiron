@@ -189,14 +189,15 @@ func buildRuntime(cfg *config.Config, database *db.DB, obs observability.SetupRe
 	dataBroadcastEnabled := config.IsDataBroadcastEnabled(*cfg.System)
 	dataBroadcastStore, moduleStore, snapshotStore := openDataBroadcastStores(cfg.System)
 	streams := stream.NewManager(stream.ManagerConfig{
-		Channels:       cfg.Channels,
-		Remotes:        cfg.Remotes,
-		EITUpdater:     programs,
-		SnapshotStore:  snapshotStore,
-		LogoUpdater:    services,
-		ProgramUpdater: epggather.NewKnownServiceProgramUpdater(programs, services),
-		TunerManager:   tuners,
-		ModuleStore:    moduleStore,
+		DataBroadcastDisabled: !dataBroadcastEnabled,
+		Channels:              cfg.Channels,
+		Remotes:               cfg.Remotes,
+		EITUpdater:            programs,
+		SnapshotStore:         snapshotStore,
+		LogoUpdater:           services,
+		ProgramUpdater:        epggather.NewKnownServiceProgramUpdater(programs, services),
+		TunerManager:          tuners,
+		ModuleStore:           moduleStore,
 	})
 	scanAdapter := stream.NewServiceScanAdapter(streams)
 	logoGatherer := logogather.NewGatherer(services, stream.NewLogoGatherAdapter(streams), cfg.System.LogoGatherTimeoutDuration())
@@ -550,9 +551,7 @@ func openDataBroadcastStores(system *config.SystemConfig) (*cache.SQLiteModuleSt
 	var snapshotStore bml.SnapshotStore
 	dataBroadcastEnabled := config.IsDataBroadcastEnabled(*system)
 	if dataBroadcastEnabled {
-		// Opening the cache migrates and prunes it, the only startup step whose
-		// cost grows with stored data. Report how long it took so a slow start is
-		// attributable from the log alone.
+		// Schema migrations can take longer on a large existing cache.
 		cachePath := system.DataBroadcastCachePath
 		slog.Info("opening data broadcast cache", "path", cachePath)
 		cacheOpenedAt := time.Now()
@@ -572,7 +571,7 @@ func openDataBroadcastStores(system *config.SystemConfig) (*cache.SQLiteModuleSt
 			}
 		}
 	} else {
-		slog.Info("data broadcast API disabled")
+		slog.Info("data broadcast disabled")
 	}
 	if moduleStore == nil {
 		// Keep one shared fallback for streams and the enabled BML API.

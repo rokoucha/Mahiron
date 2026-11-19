@@ -4,6 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
+	"log/slog"
+	"maps"
 	"math"
 	"os"
 	"strings"
@@ -15,6 +18,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/bml/resource"
 	mahirondb "github.com/21S1298001/mahiron/internal/db"
 	"github.com/21S1298001/mahiron/ts"
+	"golang.org/x/sync/semaphore"
 )
 
 // Aliases to the canonical BML store types. The interfaces and keys are
@@ -34,21 +38,21 @@ type (
 )
 
 const (
-	DefaultModuleCacheBytes  = 128 * 1024 * 1024
-	maxModuleCacheTombstones = 4096
-	moduleCacheTouchInterval = time.Minute
+	DefaultModuleCacheBytes   = 128 * 1024 * 1024
+	maxModuleCacheTombstones  = 4096
+	moduleCacheTouchInterval  = time.Minute
+	moduleCacheTouchQueueSize = 256
 
-	// The eviction pass is O(cache size). Evicting only back to the budget
-	// puts the cache one module over it again on the very next Put, so a full
-	// cache paid that pass for every module it stored. Freeing down to a low
-	// water mark instead amortizes one pass over the modules that fit in the
-	// gap.
+	// Free down to a low water mark so a full cache does not evict on every Put.
 	moduleCacheEvictTargetPercent = 90
 
 	// A cache under budget can still hold age-expired modules. Checking for
 	// them is an index seek rather than a scan, but there is no reason to pay
 	// it per module either.
 	moduleCacheExpiryCheckInterval = time.Minute
+	moduleCachePruneBatchSize      = 64
+	moduleCachePruneBatchBytes     = 16 << 20
+	moduleCachePruneRetryDelay     = 5 * time.Second
 )
 
 // DecodedModuleStore optionally retains expanded MIME resources alongside raw
@@ -198,15 +202,18 @@ type SQLiteModuleStore struct {
 	snapshotMaxAge time.Duration
 	touchMu        sync.Mutex
 	touched        map[ModuleCacheKey]time.Time
+	touchQueue     chan ModuleCacheKey
+	touchDone      chan struct{}
 
-	// storedBytes tracks the cache size between eviction passes so Put can
-	// decide whether a pass is needed without summing the cache first. It is
-	// reset from the database whenever a pass runs, so a drifted count is
-	// corrected rather than accumulated.
-	bytesMu         sync.Mutex
-	storedBytes     int64
-	bytesValid      bool
-	lastExpiryCheck time.Time
+	// Serialize module commits with their byte accounting. A prune releases
+	// this lock after every batch, allowing module writers to make progress.
+	bytesLock         *semaphore.Weighted
+	storedBytes       int64
+	bytesValid        bool
+	pruningToLowWater bool
+	pruneWake         chan struct{}
+	pruneCancel       context.CancelFunc
+	pruneDone         chan struct{}
 }
 
 func NewSQLiteModuleStore(path string, maxBytes uint64) (*SQLiteModuleStore, error) {
@@ -251,12 +258,20 @@ func openSQLiteModuleStore(path string, maxBytes uint64, maxAge, snapshotMaxAge 
 		return nil, err
 	}
 	db := handle.Read
-	store := &SQLiteModuleStore{handle: handle, db: db, write: handle.Write, queries: cachedb.New(db), wq: cachedb.New(handle.Write), maxBytes: maxBytes, maxAge: maxAge, snapshotMaxAge: snapshotMaxAge, touched: map[ModuleCacheKey]time.Time{}}
+	store := &SQLiteModuleStore{handle: handle, db: db, write: handle.Write, queries: cachedb.New(db), wq: cachedb.New(handle.Write), maxBytes: maxBytes, maxAge: maxAge, snapshotMaxAge: snapshotMaxAge, touched: map[ModuleCacheKey]time.Time{}, bytesLock: semaphore.NewWeighted(1)}
 	if err := cachedb.Migrate(context.Background(), handle.Write); err != nil {
 		_ = handle.Close()
 		return nil, err
 	}
-	store.prune()
+	ctx, cancel := context.WithCancel(context.Background())
+	store.pruneWake = make(chan struct{}, 1)
+	store.pruneCancel = cancel
+	store.pruneDone = make(chan struct{})
+	store.pruneWake <- struct{}{}
+	store.touchQueue = make(chan ModuleCacheKey, moduleCacheTouchQueueSize)
+	store.touchDone = make(chan struct{})
+	go store.runTouches(ctx)
+	go store.runPrune(ctx)
 	store.pruneSnapshots()
 	return store, nil
 }
@@ -279,10 +294,14 @@ func removeSQLiteCacheFiles(path string) error {
 }
 
 func (s *SQLiteModuleStore) Get(key ModuleCacheKey) (ts.DSMCCModule, bool) {
+	return s.GetContext(context.Background(), key)
+}
+
+func (s *SQLiteModuleStore) GetContext(ctx context.Context, key ModuleCacheKey) (ts.DSMCCModule, bool) {
 	if s == nil || s.db == nil {
 		return ts.DSMCCModule{}, false
 	}
-	row, err := s.queries.GetModule(context.Background(), cachedb.GetModuleParams{ChannelType: key.ChannelType, ChannelID: key.ChannelID, ServiceID: int64(key.ServiceID), ComponentTag: int64(key.ComponentTag), DownloadID: int64(key.DownloadID), ModuleID: int64(key.ModuleID), Version: int64(key.Version), Size: int64(key.Size)})
+	row, err := s.queries.GetModule(ctx, cachedb.GetModuleParams{ChannelType: key.ChannelType, ChannelID: key.ChannelID, ServiceID: int64(key.ServiceID), ComponentTag: int64(key.ComponentTag), DownloadID: int64(key.DownloadID), ModuleID: int64(key.ModuleID), Version: int64(key.Version), Size: int64(key.Size)})
 	if err != nil {
 		return ts.DSMCCModule{}, false
 	}
@@ -321,26 +340,61 @@ func (s *SQLiteModuleStore) GetVersion(key ModuleVersionKey) (ts.DSMCCModule, bo
 	return module, true
 }
 
+// touch coalesces best-effort recency writes without making readers wait for
+// the SQLite writer. When full, the next read can try to queue the key again.
 func (s *SQLiteModuleStore) touch(key ModuleCacheKey) {
-	if s == nil || s.db == nil {
-		return
-	}
 	now := time.Now()
 	s.touchMu.Lock()
+	defer s.touchMu.Unlock()
 	if previous, ok := s.touched[key]; ok && now.Sub(previous) < moduleCacheTouchInterval {
-		s.touchMu.Unlock()
 		return
 	}
-	s.touched[key] = now
-	s.touchMu.Unlock()
-	_ = s.wq.TouchModule(context.Background(), cachedb.TouchModuleParams{LastAccessed: now.Unix(), ChannelType: key.ChannelType, ChannelID: key.ChannelID, ServiceID: int64(key.ServiceID), ComponentTag: int64(key.ComponentTag), DownloadID: int64(key.DownloadID), ModuleID: int64(key.ModuleID), Version: int64(key.Version), Size: int64(key.Size)})
+	select {
+	case s.touchQueue <- key:
+		s.touched[key] = now
+	default:
+	}
+}
+
+func (s *SQLiteModuleStore) runTouches(ctx context.Context) {
+	defer close(s.touchDone)
+	for ctx.Err() == nil {
+		select {
+		case <-ctx.Done():
+			return
+		case key := <-s.touchQueue:
+			err := s.writeTouch(ctx, key)
+			if err != nil {
+				s.touchMu.Lock()
+				delete(s.touched, key)
+				s.touchMu.Unlock()
+			}
+		}
+	}
+}
+
+func (s *SQLiteModuleStore) writeTouch(ctx context.Context, key ModuleCacheKey) error {
+	conn, err := s.write.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = conn.Close() }()
+	// Stamp after acquiring the writer so a delayed update cannot move
+	// the timestamp backwards after a newer Put of this key.
+	return cachedb.New(conn).TouchModule(ctx, cachedb.TouchModuleParams{LastAccessed: time.Now().Unix(), ChannelType: key.ChannelType, ChannelID: key.ChannelID, ServiceID: int64(key.ServiceID), ComponentTag: int64(key.ComponentTag), DownloadID: int64(key.DownloadID), ModuleID: int64(key.ModuleID), Version: int64(key.Version), Size: int64(key.Size)})
 }
 
 func (s *SQLiteModuleStore) Put(key ModuleCacheKey, module ts.DSMCCModule) bool {
-	if s == nil || s.db == nil || uint64(len(module.Data)) > s.maxBytes {
+	return s.PutModules(context.Background(), []ModuleCacheKey{key}, module)
+}
+
+// PutModules decodes the common payload once and writes all service keys in
+// one transaction. Every service keeps its own immutable cache URL.
+func (s *SQLiteModuleStore) PutModules(ctx context.Context, keys []ModuleCacheKey, module ts.DSMCCModule) bool {
+	if s == nil || s.db == nil || len(keys) == 0 || ctx.Err() != nil || uint64(len(module.Data)) > s.maxBytes {
 		return false
 	}
-	resources, _ := resource.DecodeModuleResources(bml.CompletedModule(key.ComponentTag, module))
+	resources, _ := resource.DecodeModuleResources(bml.Module{Info: module.Info, Data: module.Data})
 	storedBytes := uint64(len(module.Data))
 	for _, resource := range resources {
 		storedBytes += uint64(len(resource.Data))
@@ -348,20 +402,54 @@ func (s *SQLiteModuleStore) Put(key ModuleCacheKey, module ts.DSMCCModule) bool 
 	if storedBytes > s.maxBytes || storedBytes > uint64(^uint64(0)>>1) {
 		return false
 	}
-	tx, err := s.write.Begin()
+	if err := s.bytesLock.Acquire(ctx, 1); err != nil {
+		return false
+	}
+	defer s.bytesLock.Release(1)
+	if !s.bytesValid {
+		if err := s.refreshStoredBytes(ctx); err != nil {
+			return false
+		}
+	}
+	tx, err := s.write.BeginTx(ctx, nil)
 	if err != nil {
 		return false
 	}
 	defer func() { _ = tx.Rollback() }()
 	queries := s.wq.WithTx(tx)
-	ctx := context.Background()
+	var delta int64
+	for _, key := range keys {
+		previous, err := putModuleRows(ctx, queries, key, module, resources, int64(storedBytes))
+		if err != nil {
+			return false
+		}
+		delta += int64(storedBytes) - previous
+	}
+	if err := tx.Commit(); err != nil {
+		s.bytesValid = false
+		return false
+	}
+	s.storedBytes += delta
+	if s.storedBytes > s.cappedMaxBytes() || s.pruningToLowWater {
+		select {
+		case s.pruneWake <- struct{}{}:
+		default:
+		}
+		// The row is committed, but this pass may evict it. Keep the live
+		// carousel payload until the cache can be relied on to retain it.
+		return false
+	}
+	return true
+}
+
+func putModuleRows(ctx context.Context, queries *cachedb.Queries, key ModuleCacheKey, module ts.DSMCCModule, resources []ModuleResource, storedBytes int64) (int64, error) {
 	// A Put may replace an existing module, so only the difference counts
 	// towards the budget. This is a primary key lookup, unlike the cache-wide
 	// sum it replaces.
 	previousBytes, err := queries.GetStoredBytes(ctx, cachedb.GetStoredBytesParams{ChannelType: key.ChannelType, ChannelID: key.ChannelID, ServiceID: int64(key.ServiceID), ComponentTag: int64(key.ComponentTag), DownloadID: int64(key.DownloadID), ModuleID: int64(key.ModuleID), Version: int64(key.Version), Size: int64(key.Size)})
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
-			return false
+			return 0, err
 		}
 		previousBytes = 0
 	}
@@ -372,11 +460,11 @@ func (s *SQLiteModuleStore) Put(key ModuleCacheKey, module ts.DSMCCModule) bool 
 		info = []byte{}
 	}
 	now := time.Now().Unix()
-	if err := queries.UpsertModule(ctx, cachedb.UpsertModuleParams{ChannelType: key.ChannelType, ChannelID: key.ChannelID, ServiceID: int64(key.ServiceID), ComponentTag: int64(key.ComponentTag), DownloadID: int64(key.DownloadID), ModuleID: int64(key.ModuleID), Version: int64(key.Version), Size: int64(key.Size), Info: info, Data: module.Data, LastAccessed: now, StoredBytes: int64(storedBytes)}); err != nil {
-		return false
+	if err := queries.UpsertModule(ctx, cachedb.UpsertModuleParams{ChannelType: key.ChannelType, ChannelID: key.ChannelID, ServiceID: int64(key.ServiceID), ComponentTag: int64(key.ComponentTag), DownloadID: int64(key.DownloadID), ModuleID: int64(key.ModuleID), Version: int64(key.Version), Size: int64(key.Size), Info: info, Data: module.Data, LastAccessed: now, StoredBytes: storedBytes}); err != nil {
+		return 0, err
 	}
 	if err := queries.DeleteResources(ctx, deleteResourcesParams(key)); err != nil {
-		return false
+		return 0, err
 	}
 	for _, resource := range resources {
 		data := resource.Data
@@ -388,19 +476,13 @@ func (s *SQLiteModuleStore) Put(key ModuleCacheKey, module ts.DSMCCModule) bool 
 			contentLocation = sql.NullString{String: *resource.ContentLocation, Valid: true}
 		}
 		if err := queries.InsertResource(ctx, cachedb.InsertResourceParams{ChannelType: key.ChannelType, ChannelID: key.ChannelID, ServiceID: int64(key.ServiceID), ComponentTag: int64(key.ComponentTag), DownloadID: int64(key.DownloadID), ModuleID: int64(key.ModuleID), Version: int64(key.Version), Size: int64(key.Size), ResourceID: resource.ID, ContentLocation: contentLocation, ContentType: resource.ContentType, Data: data}); err != nil {
-			return false
+			return 0, err
 		}
 	}
 	if err := queries.DeleteTombstone(ctx, cachedb.DeleteTombstoneParams{ChannelType: key.ChannelType, ChannelID: key.ChannelID, ServiceID: int64(key.ServiceID), ComponentTag: int64(key.ComponentTag), DownloadID: int64(key.DownloadID), ModuleID: int64(key.ModuleID), Version: int64(key.Version)}); err != nil {
-		return false
+		return 0, err
 	}
-	if err := tx.Commit(); err != nil {
-		return false
-	}
-	s.noteStoredBytes(int64(storedBytes) - previousBytes)
-	s.maybePrune()
-	_, err = s.queries.ModuleExists(ctx, cachedb.ModuleExistsParams{ChannelType: key.ChannelType, ChannelID: key.ChannelID, ServiceID: int64(key.ServiceID), ComponentTag: int64(key.ComponentTag), DownloadID: int64(key.DownloadID), ModuleID: int64(key.ModuleID), Version: int64(key.Version), Size: int64(key.Size)})
-	return err == nil
+	return previousBytes, nil
 }
 
 func (*SQLiteModuleStore) PersistsCompletedModules() {}
@@ -454,45 +536,37 @@ func (s *SQLiteModuleStore) WasEvicted(key ModuleVersionKey) bool {
 const (
 	pruneStoredBytesQuery = `SELECT CAST(COALESCE(SUM(stored_bytes), 0) AS INTEGER) FROM data_broadcast_modules`
 
-	pruneHasExpiredQuery = `SELECT EXISTS(SELECT 1 FROM data_broadcast_modules WHERE last_accessed < ?)`
-
 	pruneCreateCandidates = `CREATE TEMP TABLE IF NOT EXISTS data_broadcast_prune_candidates (
 		channel_type TEXT NOT NULL, channel_id TEXT NOT NULL, service_id INTEGER NOT NULL,
 		component_tag INTEGER NOT NULL, download_id INTEGER NOT NULL, module_id INTEGER NOT NULL,
-		version INTEGER NOT NULL, size INTEGER NOT NULL,
+		version INTEGER NOT NULL, size INTEGER NOT NULL, stored_bytes INTEGER NOT NULL,
 		PRIMARY KEY (channel_type, channel_id, service_id, component_tag, download_id, module_id, version, size)
 	)`
 
 	pruneClearCandidates = `DELETE FROM data_broadcast_prune_candidates`
 
-	pruneCollectExpired = `
-		INSERT OR IGNORE INTO data_broadcast_prune_candidates
-		SELECT channel_type, channel_id, service_id, component_tag, download_id, module_id, version, size
-		FROM data_broadcast_modules WHERE last_accessed < ?`
-
-	// Retain as many of the newest modules as fit. Everything beyond the byte
-	// budget joins the same eviction set as age-expired modules. The window
-	// ordering matches the index, so no sort of the whole cache is needed.
-	pruneCollectOverBudget = `
-		WITH retained AS (
-			SELECT m.channel_type, m.channel_id, m.service_id, m.component_tag, m.download_id,
-				m.module_id, m.version, m.size, m.last_accessed, m.stored_bytes
-			FROM data_broadcast_modules m
-			WHERE NOT EXISTS (
-				SELECT 1 FROM data_broadcast_prune_candidates c
-				WHERE c.channel_type=m.channel_type AND c.channel_id=m.channel_id AND c.service_id=m.service_id
-				AND c.component_tag=m.component_tag AND c.download_id=m.download_id AND c.module_id=m.module_id
-				AND c.version=m.version AND c.size=m.size
-			)
+	// Scan the oldest entries through the covering index. The window runs
+	// over at most one batch and excludes the current row so the final
+	// selected module can take the cache below the byte target.
+	pruneCollectBatch = `
+		WITH oldest AS (
+			SELECT channel_type, channel_id, service_id, component_tag, download_id,
+				module_id, version, size, last_accessed, stored_bytes
+			FROM data_broadcast_modules
+			ORDER BY last_accessed, channel_type, channel_id, service_id, component_tag,
+				download_id, module_id, version, size LIMIT ?
 		), ranked AS (
-			SELECT channel_type, channel_id, service_id, component_tag, download_id, module_id, version, size,
-				SUM(stored_bytes) OVER (ORDER BY last_accessed DESC, channel_type DESC, channel_id DESC, service_id DESC,
-					component_tag DESC, download_id DESC, module_id DESC, version DESC, size DESC) AS retained_bytes
-			FROM retained
+			SELECT *, SUM(stored_bytes) OVER (
+				ORDER BY last_accessed, channel_type, channel_id, service_id, component_tag,
+					download_id, module_id, version, size
+				ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+			) AS older_bytes FROM oldest
 		)
-		INSERT OR IGNORE INTO data_broadcast_prune_candidates
-		SELECT channel_type, channel_id, service_id, component_tag, download_id, module_id, version, size
-		FROM ranked WHERE retained_bytes > ?`
+		INSERT INTO data_broadcast_prune_candidates
+		SELECT channel_type, channel_id, service_id, component_tag, download_id,
+			module_id, version, size, stored_bytes
+		FROM ranked WHERE COALESCE(older_bytes, 0) < ?
+			AND (last_accessed < ? OR COALESCE(older_bytes, 0) < ?)`
 
 	pruneInsertTombstones = `INSERT OR REPLACE INTO data_broadcast_module_tombstones
 		SELECT channel_type, channel_id, service_id, component_tag, download_id, module_id, version, ?
@@ -533,116 +607,148 @@ func (s *SQLiteModuleStore) cappedMaxBytes() int64 {
 	return int64(s.maxBytes)
 }
 
-// noteStoredBytes applies a Put's net change to the tracked cache size. It is a
-// no-op while the count is unknown, so a failed refresh degrades into running
-// the eviction pass rather than into an incorrect size.
-func (s *SQLiteModuleStore) noteStoredBytes(delta int64) {
-	s.bytesMu.Lock()
-	defer s.bytesMu.Unlock()
-	if !s.bytesValid {
-		return
-	}
-	s.storedBytes += delta
-	if s.storedBytes < 0 {
-		s.storedBytes = 0
+// runPrune coalesces Put notifications and periodically checks expiry even
+// when no new modules arrive. Failures retry after a short backoff.
+func (s *SQLiteModuleStore) runPrune(ctx context.Context) {
+	defer close(s.pruneDone)
+	ticker := time.NewTicker(moduleCacheExpiryCheckInterval)
+	defer ticker.Stop()
+	var retry <-chan time.Time
+	initial := true
+	for {
+		checkExpiry := initial
+		select {
+		case <-ctx.Done():
+			return
+		case now := <-ticker.C:
+			s.pruneSnapshotsContext(ctx)
+			s.touchMu.Lock()
+			maps.DeleteFunc(s.touched, func(_ ModuleCacheKey, last time.Time) bool {
+				return now.Sub(last) >= moduleCacheTouchInterval
+			})
+			s.touchMu.Unlock()
+			if retry != nil {
+				continue
+			}
+			checkExpiry = true
+		case <-retry:
+			retry = nil
+			checkExpiry = true
+		case <-s.pruneWake:
+			if retry != nil {
+				continue
+			}
+		}
+		initial = false
+		if err := s.prune(ctx, checkExpiry); err != nil && ctx.Err() == nil {
+			slog.Warn("failed to prune data broadcast cache", "err", err)
+			retry = time.After(moduleCachePruneRetryDelay)
+		}
 	}
 }
 
-// maybePrune runs the eviction pass only when it can do useful work: the cache
-// is over budget, the age check is due, or the size is unknown. Running the
-// pass unconditionally made every Put cost a walk of the whole cache.
-func (s *SQLiteModuleStore) maybePrune() {
-	s.bytesMu.Lock()
-	valid, stored := s.bytesValid, s.storedBytes
-	expiryDue := s.maxAge > 0 && time.Since(s.lastExpiryCheck) >= moduleCacheExpiryCheckInterval
-	if expiryDue {
-		s.lastExpiryCheck = time.Now()
-	}
-	s.bytesMu.Unlock()
-
-	if valid && stored <= s.cappedMaxBytes() && !expiryDue {
-		return
-	}
-	s.prune()
+// refreshStoredBytes reconciles the counter while bytesLock excludes writes
+// from this store. The covering index keeps module payloads out of the scan.
+func (s *SQLiteModuleStore) refreshStoredBytes(ctx context.Context) error {
+	err := s.db.QueryRowContext(ctx, pruneStoredBytesQuery).Scan(&s.storedBytes)
+	s.bytesValid = err == nil
+	return err
 }
 
-func (s *SQLiteModuleStore) prune() {
-	ctx := context.Background()
+func (s *SQLiteModuleStore) prune(ctx context.Context, checkExpiry bool) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := s.bytesLock.Acquire(ctx, 1); err != nil {
+		return err
+	}
+	if !s.bytesValid || checkExpiry {
+		if err := s.refreshStoredBytes(ctx); err != nil {
+			s.bytesLock.Release(1)
+			return fmt.Errorf("count stored bytes: %w", err)
+		}
+	}
+	maxBytes := s.cappedMaxBytes()
+	lowWater := evictTargetBytes(maxBytes)
+	s.pruningToLowWater = s.storedBytes > maxBytes || (s.pruningToLowWater && s.storedBytes > lowWater)
+	evict := s.pruningToLowWater
+	s.bytesLock.Release(1)
+	if !evict && (!checkExpiry || s.maxAge <= 0) {
+		return nil
+	}
+
+	target := maxBytes
+	if evict {
+		target = lowWater
+	}
+	expiredBefore := int64(math.MinInt64)
+	if checkExpiry && s.maxAge > 0 {
+		expiredBefore = time.Now().Add(-s.maxAge).Unix()
+	}
+	for {
+		more, err := s.pruneBatch(ctx, target, expiredBefore)
+		if err != nil || !more {
+			return err
+		}
+	}
+}
+
+func (s *SQLiteModuleStore) pruneBatch(ctx context.Context, target, expiredBefore int64) (bool, error) {
+	if err := s.bytesLock.Acquire(ctx, 1); err != nil {
+		return false, err
+	}
+	defer s.bytesLock.Release(1)
 	tx, err := s.write.BeginTx(ctx, nil)
 	if err != nil {
-		return
+		return false, fmt.Errorf("begin batch: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	maxBytes := s.cappedMaxBytes()
-	var storedBytes int64
-	if err := tx.QueryRowContext(ctx, pruneStoredBytesQuery).Scan(&storedBytes); err != nil {
-		return
-	}
-	s.bytesMu.Lock()
-	s.storedBytes, s.bytesValid = storedBytes, true
-	s.lastExpiryCheck = time.Now()
-	s.bytesMu.Unlock()
-	expiredBefore := time.Now().Add(-s.maxAge).Unix()
-	hasExpired := false
-	if s.maxAge > 0 {
-		if err := tx.QueryRowContext(ctx, pruneHasExpiredQuery, expiredBefore).Scan(&hasExpired); err != nil {
-			return
-		}
-	}
-	if !hasExpired && storedBytes >= 0 && storedBytes <= maxBytes {
-		_ = tx.Commit()
-		return
-	}
-
-	// Materialize the eviction set once. The old implementation selected and
-	// deleted one module at a time, causing several SQLite commits per module
-	// during startup. Besides being slow, repeatedly calculating SUM over the
-	// remaining cache made large caches increasingly expensive to prune.
-	if _, err := tx.ExecContext(ctx, pruneCreateCandidates); err != nil {
-		return
-	}
-	if _, err := tx.ExecContext(ctx, pruneClearCandidates); err != nil {
-		return
-	}
-	if s.maxAge > 0 {
-		if _, err := tx.ExecContext(ctx, pruneCollectExpired, expiredBefore); err != nil {
-			return
-		}
-	}
-	// Free down to the low water mark, not merely back to the budget, so the
-	// next pass is due only after the freed gap has been refilled.
-	if _, err := tx.ExecContext(ctx, pruneCollectOverBudget, evictTargetBytes(maxBytes)); err != nil {
-		return
-	}
-
-	now := time.Now().Unix()
-	statements := []struct {
-		query string
-		args  []any
+	for _, step := range []struct {
+		name, query string
+		args        []any
 	}{
-		{pruneInsertTombstones, []any{now}},
-		{pruneDeleteResources, nil},
-		{pruneDeleteModules, nil},
+		{"create candidates", pruneCreateCandidates, nil},
+		{"clear candidates", pruneClearCandidates, nil},
+		{"collect candidates", pruneCollectBatch, []any{moduleCachePruneBatchSize, moduleCachePruneBatchBytes, expiredBefore, s.storedBytes - target}},
+	} {
+		if _, err := tx.ExecContext(ctx, step.query, step.args...); err != nil {
+			return false, fmt.Errorf("%s: %w", step.name, err)
+		}
 	}
-	for _, statement := range statements {
-		if _, err := tx.ExecContext(ctx, statement.query, statement.args...); err != nil {
-			return
+
+	var count int
+	var removedBytes int64
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(SUM(stored_bytes), 0) FROM data_broadcast_prune_candidates`).Scan(&count, &removedBytes); err != nil {
+		return false, fmt.Errorf("count candidates: %w", err)
+	}
+	if count == 0 {
+		return false, nil
+	}
+	for _, step := range []struct {
+		name, query string
+		args        []any
+	}{
+		{"insert tombstones", pruneInsertTombstones, []any{time.Now().Unix()}},
+		{"delete resources", pruneDeleteResources, nil},
+		{"delete modules", pruneDeleteModules, nil},
+	} {
+		if _, err := tx.ExecContext(ctx, step.query, step.args...); err != nil {
+			return false, fmt.Errorf("%s: %w", step.name, err)
 		}
 	}
 	if err := s.wq.WithTx(tx).TrimTombstones(ctx, maxModuleCacheTombstones); err != nil {
-		return
-	}
-	var remaining int64
-	if err := tx.QueryRowContext(ctx, pruneStoredBytesQuery).Scan(&remaining); err != nil {
-		return
+		return false, fmt.Errorf("trim tombstones: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
-		return
+		s.bytesValid = false
+		return false, fmt.Errorf("commit batch: %w", err)
 	}
-	s.bytesMu.Lock()
-	s.storedBytes, s.bytesValid = remaining, true
-	s.bytesMu.Unlock()
+	s.storedBytes -= removedBytes
+	if s.storedBytes <= evictTargetBytes(s.cappedMaxBytes()) {
+		s.pruningToLowWater = false
+	}
+	return count == moduleCachePruneBatchSize || removedBytes >= moduleCachePruneBatchBytes, nil
 }
 
 func deleteResourcesParams(key ModuleCacheKey) cachedb.DeleteResourcesParams {
@@ -654,16 +760,19 @@ func deleteResourcesParams(key ModuleCacheKey) cachedb.DeleteResourcesParams {
 // PMT are removed so a stale carousel cannot outlive the component it
 // belonged to.
 func (s *SQLiteModuleStore) PutSnapshot(channelType, channelID string, service PersistedService) error {
+	return s.PutSnapshotContext(context.Background(), channelType, channelID, service)
+}
+
+func (s *SQLiteModuleStore) PutSnapshotContext(ctx context.Context, channelType, channelID string, service PersistedService) error {
 	if s == nil || s.db == nil {
 		return nil
 	}
-	tx, err := s.write.Begin()
+	tx, err := s.write.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
 	queries := s.wq.WithTx(tx)
-	ctx := context.Background()
 	now := time.Now().Unix()
 	// SQLite maps a nil slice to NULL, while the cache schema requires BLOB
 	// values (see the same normalization for module Info in Put).
@@ -700,7 +809,6 @@ func (s *SQLiteModuleStore) PutSnapshot(channelType, channelID string, service P
 	if err := tx.Commit(); err != nil {
 		return err
 	}
-	s.pruneSnapshots()
 	return nil
 }
 
@@ -729,11 +837,14 @@ func (s *SQLiteModuleStore) GetSnapshot(channelType, channelID string, serviceID
 }
 
 func (s *SQLiteModuleStore) pruneSnapshots() {
+	s.pruneSnapshotsContext(context.Background())
+}
+
+func (s *SQLiteModuleStore) pruneSnapshotsContext(ctx context.Context) {
 	if s == nil || s.db == nil || s.snapshotMaxAge <= 0 {
 		return
 	}
 	cutoff := time.Now().Add(-s.snapshotMaxAge).Unix()
-	ctx := context.Background()
 	_ = s.wq.DeleteExpiredSnapshots(ctx, cutoff)
 	_ = s.wq.DeleteExpiredSnapshotCarousels(ctx, cutoff)
 }
@@ -742,5 +853,8 @@ func (s *SQLiteModuleStore) Close() error {
 	if s == nil || s.handle == nil {
 		return nil
 	}
+	s.pruneCancel()
+	<-s.pruneDone
+	<-s.touchDone
 	return s.handle.Close()
 }

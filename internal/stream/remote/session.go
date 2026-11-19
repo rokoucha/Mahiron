@@ -16,8 +16,9 @@ import (
 )
 
 type SessionConfig struct {
-	Client *Client
-	Handle source.InputHandle
+	DataBroadcastDisabled bool
+	Client                *Client
+	Handle                source.InputHandle
 	// ModuleStore shares retained modules across sessions. Nil disables shared caching.
 	ModuleStore bml.ModuleStore
 }
@@ -34,11 +35,17 @@ type Session struct {
 func NewSession(config SessionConfig) *Session {
 	metadata := config.Handle.Metadata()
 	return &Session{
-		ChannelSession: channel.NewChannelSession(channel.Config{Channel: metadata.PublicChannel.Channel, Handle: config.Handle, Type: metadata.PublicChannel.Type, ModuleStore: config.ModuleStore}),
-		client:         config.Client,
-		input:          config.Handle.Input(),
-		remote:         metadata.Remote,
-		routeChannel:   metadata.RouteChannel,
+		ChannelSession: channel.NewChannelSession(channel.Config{
+			Channel:               metadata.PublicChannel.Channel,
+			Handle:                config.Handle,
+			Type:                  metadata.PublicChannel.Type,
+			ModuleStore:           config.ModuleStore,
+			DataBroadcastDisabled: config.DataBroadcastDisabled,
+		}),
+		client:       config.Client,
+		input:        config.Handle.Input(),
+		remote:       metadata.Remote,
+		routeChannel: metadata.RouteChannel,
 	}
 }
 

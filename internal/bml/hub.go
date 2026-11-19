@@ -2,9 +2,7 @@ package bml
 
 import (
 	"context"
-	"path"
 	"slices"
-	"strings"
 	"sync"
 	"time"
 
@@ -15,6 +13,7 @@ import (
 const dataBroadcastSubscriberBuffer = 64
 
 type Hub struct {
+	observeMu   sync.Mutex
 	mu          sync.Mutex
 	services    map[uint16]*dataBroadcastService
 	subs        map[uint16]map[chan Event]*dataBroadcastSubscriber
@@ -146,65 +145,49 @@ func (h *Hub) Snapshot(serviceID uint16) Snapshot {
 // an in-flight fetch for an already replaced generation remains valid.
 func (h *Hub) ModuleVersion(serviceID uint16, componentTag byte, downloadID uint32, moduleID uint16, version byte) (Module, bool) {
 	h.mu.Lock()
-	defer h.mu.Unlock()
 	service := h.services[serviceID]
-	if service == nil {
-		return Module{}, false
+	var carousel *ts.DSMCCCarousel
+	if service != nil {
+		carousel = service.carousels[componentTag]
 	}
-	carousel := service.carousels[componentTag]
 	if carousel == nil {
+		h.mu.Unlock()
 		return Module{}, false
 	}
 	module, ok := carousel.Module(moduleID)
+	generation, released := carousel.ReleasedGeneration(moduleID, downloadID, version)
+	h.mu.Unlock()
+
 	if ok && module.DownloadID == downloadID && module.Version == version {
 		return apiModule(componentTag, module, true), true
 	}
 	if h.moduleStore == nil {
 		return Module{}, false
 	}
-	cached, ok := h.moduleStore.GetVersion(h.moduleCacheKey(serviceID, componentTag, downloadID, moduleID, version, 0).VersionKey())
+	key := h.moduleCacheKey(serviceID, componentTag, downloadID, moduleID, version, 0).VersionKey()
+	cached, ok := h.moduleStore.GetVersion(key)
 	if ok {
 		return apiModule(componentTag, cached, true), true
 	}
-	// This generation is still what the carousel announces as complete, but
-	// its payload was released after a persistent Put and then evicted from
-	// the store before this fetch. Reset assembly so the DDB blocks the
-	// broadcaster keeps retransmitting rebuild it instead of leaving the
-	// module permanently unfetchable.
-	if carousel.Invalidate(moduleID, downloadID, version) {
-		h.recordCarousel("module", "invalidated")
-	}
-	return Module{}, false
-}
 
-// DDBPriority returns the cache priority announced by DII and whether the
-// block belongs to the BML entry document. It is intentionally read-only and
-// used by the channel session before placing DDB work on a bounded queue.
-func (h *Hub) DDBPriority(section ts.PIDSection) (priority byte, entryDocument bool) {
-	ddb, err := ts.ParseDSMCCDDB(section.Section)
-	if err != nil {
-		return 0, false
-	}
+	// A cache miss obtained during a write must not invalidate a newer
+	// completion or a carousel that has since changed PIDs.
 	h.mu.Lock()
-	defer h.mu.Unlock()
-	for _, ref := range h.carouselsByPIDLocked(section.PID) {
-		info, ok := ref.carousel.ModuleInfo(ddb.ModuleID)
-		if !ok || info.Version != ddb.ModuleVersion {
-			continue
+	if service.carousels[componentTag] == carousel {
+		module, ok = carousel.Module(moduleID)
+		if ok && module.DownloadID == downloadID && module.Version == version {
+			h.mu.Unlock()
+			return apiModule(componentTag, module, true), true
 		}
-		metadata, ok := info.Metadata()
-		if !ok {
-			continue
-		}
-		if metadata.CachingPriority != nil && *metadata.CachingPriority > priority {
-			priority = *metadata.CachingPriority
-		}
-		name := strings.ToLower(path.Base(metadata.Name))
-		if name == "index.bml" || name == "index.xhtml" {
-			entryDocument = true
+		if current, stillReleased := carousel.ReleasedGeneration(moduleID, downloadID, version); released && stillReleased && generation == current {
+			carousel.Invalidate(moduleID, downloadID, version)
+			h.mu.Unlock()
+			h.recordCarousel("module", "invalidated")
+			return Module{}, false
 		}
 	}
-	return priority, entryDocument
+	h.mu.Unlock()
+	return Module{}, false
 }
 
 // PersistableState returns the raw PMT and per-component DII sections needed
@@ -263,12 +246,8 @@ type dataBroadcastCarouselRef struct {
 	carousel     *ts.DSMCCCarousel
 }
 
-// carouselsByPIDLocked returns every service that maps pid to a data
-// component. ISDB muxes routinely share one data-carousel ES between sibling
-// services (e.g. TOKYO MX1/MX2 both carry component 0x60 on the same PID), so
-// a section must be delivered to every referencing service: handing it to just
-// one leaves the other services' carousels permanently missing that block.
-// Results are ordered by serviceID so delivery is deterministic.
+// carouselsByPIDLocked returns the services referencing a data ES, including
+// sibling services that share assembly. Results are ordered by service ID.
 func (h *Hub) carouselsByPIDLocked(pid uint16) []dataBroadcastCarouselRef {
 	refs := make([]dataBroadcastCarouselRef, 0, 2)
 	for serviceID, service := range h.services {
@@ -285,6 +264,30 @@ func (h *Hub) carouselsByPIDLocked(pid uint16) []dataBroadcastCarouselRef {
 	}
 	slices.SortFunc(refs, func(a, b dataBroadcastCarouselRef) int { return int(a.serviceID) - int(b.serviceID) })
 	return refs
+}
+
+// groupCarousels preserves service ID order and coalesces refs sharing assembly.
+func groupCarousels(refs []dataBroadcastCarouselRef) [][]dataBroadcastCarouselRef {
+	if len(refs) == 0 {
+		return nil
+	}
+	if !slices.ContainsFunc(refs[1:], func(ref dataBroadcastCarouselRef) bool {
+		return ref.carousel != refs[0].carousel
+	}) {
+		return [][]dataBroadcastCarouselRef{refs}
+	}
+	var groups [][]dataBroadcastCarouselRef
+	index := make(map[*ts.DSMCCCarousel]int)
+	for _, ref := range refs {
+		i, ok := index[ref.carousel]
+		if !ok {
+			i = len(groups)
+			index[ref.carousel] = i
+			groups = append(groups, nil)
+		}
+		groups[i] = append(groups[i], ref)
+	}
+	return groups
 }
 
 func (h *Hub) broadcastLocked(serviceID uint16, event Event) {

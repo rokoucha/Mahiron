@@ -48,14 +48,15 @@ type Session struct {
 type ChannelSession = Session
 
 type Config struct {
-	Channel     string
-	Broadcast   *source.Broadcast
-	Handle      source.InputHandle
-	Descrambler source.Descrambler
-	EITUpdater  EventUpdater
-	LogoUpdater LogoUpdater
-	OnStop      func()
-	Type        string
+	DataBroadcastDisabled bool
+	Channel               string
+	Broadcast             *source.Broadcast
+	Handle                source.InputHandle
+	Descrambler           source.Descrambler
+	EITUpdater            EventUpdater
+	LogoUpdater           LogoUpdater
+	OnStop                func()
+	Type                  string
 	// ModuleStore shares retained modules across sessions. Nil disables shared caching.
 	ModuleStore bml.ModuleStore
 	// SnapshotStore persists raw PMT/DII sections so a provisional snapshot
@@ -72,7 +73,6 @@ func NewSession(config Config) *Session {
 	} else if config.Broadcast != nil {
 		input = localBroadcastInput{config.Broadcast}
 	}
-	hub := bml.NewHub().WithMetricLabels(config.Type, config.Channel).WithModuleStore(config.ModuleStore)
 	session := &Session{
 		input:        input,
 		handle:       config.Handle,
@@ -82,7 +82,10 @@ func NewSession(config Config) *Session {
 		eitUpdater:   config.EITUpdater,
 		logoUpdater:  config.LogoUpdater,
 		logoCarousel: ts.NewDSMCCLogoCarousel(),
-		bml:          newBMLWorker(config.Type, config.Channel, hub, config.SnapshotStore),
+	}
+	if !config.DataBroadcastDisabled {
+		hub := bml.NewHub().WithMetricLabels(config.Type, config.Channel).WithModuleStore(config.ModuleStore)
+		session.bml = newBMLWorker(config.Type, config.Channel, hub, config.SnapshotStore)
 	}
 	session.sectionQueue = make(chan ts.Section, sectionQueueSize)
 	session.carouselQueue = make(chan ts.Section, carouselQueueSize)
@@ -91,12 +94,12 @@ func NewSession(config Config) *Session {
 		// A remote decoded stream can outlive the raw SSE subscriber. Keep its
 		// update workers ready for the next raw demuxer on the same session.
 		if _, restartable := input.(interface{ SupportsDecodedInput() bool }); !restartable {
-			session.stopSectionUpdates()
+			_ = session.stopSectionUpdates(context.Background())
 		}
 		if config.OnStop != nil {
 			config.OnStop()
 		}
-	}, session.observeSection).WithPIDSections(session.observePIDSection).WithPackets(hub.ObservePacket).WithMetricLabels(config.Type, config.Channel)
+	}, session.observeSection).WithPIDSections(session.observePIDSection).WithPackets(session.observePacket).WithMetricLabels(config.Type, config.Channel)
 	session.decodedDemuxer = demux.New(session.subscribeDecodedMux, nil).WithMetricLabels(config.Type, config.Channel)
 	return session
 }
@@ -261,7 +264,7 @@ func (s *Session) ObserveDataBroadcast(ctx context.Context, serviceID uint16, de
 				<-done //nolint:errcheck // Only wait for the canceled keepalive to release its source.
 				return nil
 			case err := <-done:
-				s.bml.wg.Wait()
+				s.bml.waitForUpdates(ctx)
 				// PID-section observers may have queued the final carousel event
 				// immediately before the finite/disconnected input completed. Drain
 				// those events so a completed module notification is not lost.
@@ -325,7 +328,6 @@ func (s *Session) Stop(ctx context.Context) error {
 	handle := s.handle
 	rawDemuxer := s.rawDemuxer
 	decodedDemuxer := s.decodedDemuxer
-	sectionCancel := s.sectionCancel
 	s.mu.Unlock()
 
 	if decodedDemuxer != nil {
@@ -334,33 +336,34 @@ func (s *Session) Stop(ctx context.Context) error {
 	if rawDemuxer != nil {
 		rawDemuxer.Stop()
 	}
-	if sectionCancel != nil {
-		s.stopSectionUpdates()
-	}
-
-	var result error
+	result := s.stopSectionUpdates(ctx)
 	if handle != nil {
 		result = errors.Join(result, handle.Release(ctx))
 	}
 	return result
 }
 
-func (s *Session) stopSectionUpdates() {
+func (s *Session) stopSectionUpdates(ctx context.Context) error {
 	s.mu.Lock()
 	cancel := s.sectionCancel
 	done := s.sectionDone
 	worker := s.bml
-	s.sectionCancel = nil
 	s.mu.Unlock()
 	if cancel != nil {
 		cancel()
 	}
-	if done != nil {
-		<-done //nolint:errcheck // Only wait for the canceled keepalive to release its source.
-	}
+	var err error
 	if worker != nil {
-		worker.stop()
+		err = worker.stop(ctx)
 	}
+	if done != nil {
+		select {
+		case <-done:
+		case <-ctx.Done():
+			return errors.Join(err, ctx.Err())
+		}
+	}
+	return err
 }
 
 func (s *Session) startUpdateWorkersLocked() {
