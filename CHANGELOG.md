@@ -1,5 +1,10 @@
 # Changelog
 
+## [v5.3.4](https://github.com/rokoucha/Mahiron/compare/v5.3.3...v5.3.4) - 2026-11-20
+
+- Update dependency eslint to v10.15.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/300
+- Update actions/setup-go action to v7.1.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/299
+
 ## [v5.3.3](https://github.com/rokoucha/Mahiron/compare/v5.3.2...v5.3.3) - 2026-11-19
 
 - Update dependency vite to v8.3.6 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/274
