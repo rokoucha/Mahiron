@@ -1,9 +1,9 @@
 module github.com/21S1298001/mahiron
 
-go 1.26.4
+go 1.26.10
 
 require (
-	ariga.io/atlas v1.3.0
+	ariga.io/atlas v1.4.0
 	github.com/go-co-op/gocron/v2 v2.23.2
 	github.com/go-faster/errors v0.8.0
 	github.com/go-faster/jx v1.2.0
