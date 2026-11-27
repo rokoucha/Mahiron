@@ -188,6 +188,7 @@ func buildRuntime(cfg *config.Config, database *db.DB, obs observability.SetupRe
 
 	dataBroadcastEnabled := config.IsDataBroadcastEnabled(*cfg.System)
 	dataBroadcastStore, moduleStore, snapshotStore := openDataBroadcastStores(cfg.System)
+	remotePrograms := epggather.NewRemoteProgramFilter(programs, services, cfg.Channels)
 	streams := stream.NewManager(stream.ManagerConfig{
 		DataBroadcastDisabled: !dataBroadcastEnabled,
 		Channels:              cfg.Channels,
@@ -195,7 +196,7 @@ func buildRuntime(cfg *config.Config, database *db.DB, obs observability.SetupRe
 		EITUpdater:            programs,
 		SnapshotStore:         snapshotStore,
 		LogoUpdater:           services,
-		ProgramUpdater:        epggather.NewKnownServiceProgramUpdater(programs, services),
+		ProgramUpdater:        func(remote string) stream.ProgramUpdater { return remotePrograms.ForRemote(remote) },
 		TunerManager:          tuners,
 		ModuleStore:           moduleStore,
 	})

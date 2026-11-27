@@ -5,7 +5,6 @@ import (
 	"errors"
 	"io"
 	"log/slog"
-	"sort"
 	"sync"
 	"time"
 
@@ -59,7 +58,7 @@ func (p *Pool) ScanRemoteServices(ctx context.Context, channelType, channel stri
 		return nil, true, ErrChannelNotFound
 	}
 	var lastErr error
-	for _, route := range enabledRoutes(channelConfig.RoutesOrDefault()) {
+	for _, route := range channelConfig.EnabledRoutes() {
 		if route.Remote == "" {
 			return nil, false, nil
 		}
@@ -162,7 +161,7 @@ func (p *Pool) CheckAvailable(ctx context.Context, channelType, channel string) 
 		return ErrChannelNotFound
 	}
 	var lastErr error
-	for _, route := range enabledRoutes(channelConfig.RoutesOrDefault()) {
+	for _, route := range channelConfig.EnabledRoutes() {
 		if route.Remote != "" {
 			client := p.remotes[route.Remote]
 			if client == nil {
@@ -237,19 +236,7 @@ func (p *Pool) IsTLVChannel(channelType, channel string) bool {
 // must still collect each stream's schedule.
 func (p *Pool) StoredEPG(channelType, channel string) bool {
 	ch := p.findChannel(channelType, channel)
-	if ch == nil || config.IsChannelDisabled(*ch) || config.IsTLVTransport(*ch) {
-		return false
-	}
-	routes := enabledRoutes(ch.RoutesOrDefault())
-	if len(routes) == 0 {
-		return false
-	}
-	for _, route := range routes {
-		if route.Remote == "" {
-			return false
-		}
-	}
-	return true
+	return ch != nil && ch.StoredEPGRemote() != ""
 }
 
 func (p *Pool) localLease(channelType, channel string, selected routeSelection) InputHandle {
@@ -327,7 +314,7 @@ func (p *Pool) selectRoute(ctx context.Context, channel *config.ChannelConfig, w
 	)
 	defer func() { observability.EndSpan(span, err) }()
 
-	routes := enabledRoutes(channel.RoutesOrDefault())
+	routes := channel.EnabledRoutes()
 	for {
 		var lastErr error
 		unavailable := false
@@ -466,27 +453,6 @@ func waitForRouteRetry(ctx context.Context, channel *config.ChannelConfig) error
 	}
 }
 
-func enabledRoutes(routes []config.ChannelRouteConfig) []config.ChannelRouteConfig {
-	enabled := make([]config.ChannelRouteConfig, 0, len(routes))
-	for _, route := range routes {
-		if route.IsDisabled != nil && *route.IsDisabled {
-			continue
-		}
-		enabled = append(enabled, route)
-	}
-	sort.SliceStable(enabled, func(i, j int) bool {
-		left, right := 0, 0
-		if enabled[i].Priority != nil {
-			left = *enabled[i].Priority
-		}
-		if enabled[j].Priority != nil {
-			right = *enabled[j].Priority
-		}
-		return left < right
-	})
-	return enabled
-}
-
 type tunerUserDevice interface {
 	AddUser(tuner.User)
 	RemoveUser(string)
@@ -557,7 +523,7 @@ func (p *Pool) ListStoredPrograms(ctx context.Context, channelType, channel stri
 		return nil, ErrChannelNotFound
 	}
 	var result error
-	for _, route := range enabledRoutes(config.RoutesOrDefault()) {
+	for _, route := range config.EnabledRoutes() {
 		client, ok := p.remotes[route.Remote].(interface {
 			ListServicePrograms(context.Context, uint16, uint16) ([]model.Event, error)
 		})

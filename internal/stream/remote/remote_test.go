@@ -792,7 +792,7 @@ func TestReadRemoteEventsFlushesProgramsOnInterval(t *testing.T) {
 	}
 }
 
-func TestReadRemoteProgramEventsUpsertsProgramUpdates(t *testing.T) {
+func TestReadRemoteEventsProgramUpsertsProgramUpdates(t *testing.T) {
 	src := strings.NewReader(`[
 {"resource":"program","type":"update","data":{"id":401010001,"eventId":1,"serviceId":101,"networkId":4,"startAt":1000,"duration":1800000,"isFree":true,"name":"updated"}}
 ,
@@ -800,7 +800,7 @@ func TestReadRemoteProgramEventsUpsertsProgramUpdates(t *testing.T) {
 `)
 	updater := &recordingProgramUpdater{}
 
-	if err := readRemoteProgramEvents(context.Background(), src, updater); err != nil {
+	if err := readRemoteEvents(context.Background(), src, updater, nil); err != nil {
 		t.Fatal(err)
 	}
 	if got, want := len(updater.programs), 2; got != want {
@@ -811,7 +811,7 @@ func TestReadRemoteProgramEventsUpsertsProgramUpdates(t *testing.T) {
 	}
 }
 
-func TestReadRemoteProgramEventsHandlesRemovalAndIgnoresMalformedEvents(t *testing.T) {
+func TestReadRemoteEventsProgramHandlesRemovalAndIgnoresMalformedEvents(t *testing.T) {
 	src := strings.NewReader(`[
 not-json
 {"resource":"service","type":"update","data":{"id":1}}
@@ -821,7 +821,7 @@ not-json
 `)
 	updater := &recordingProgramUpdater{}
 
-	if err := readRemoteProgramEvents(context.Background(), src, updater); err != nil {
+	if err := readRemoteEvents(context.Background(), src, updater, nil); err != nil {
 		t.Fatal(err)
 	}
 	if len(updater.removed) != 1 || updater.removed[0] != 401010001 {
@@ -835,12 +835,12 @@ not-json
 	}
 }
 
-func TestReadRemoteProgramEventsStopsCleanlyOnCanceledContextAndEOF(t *testing.T) {
+func TestReadRemoteEventsProgramStopsCleanlyOnCanceledContextAndEOF(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	updater := &recordingProgramUpdater{}
 
-	err := readRemoteProgramEvents(ctx, strings.NewReader(`{"resource":"program","type":"update","data":{"id":1}}`), updater)
+	err := readRemoteEvents(ctx, strings.NewReader(`{"resource":"program","type":"update","data":{"id":1}}`), updater, nil)
 	if err != nil {
 		t.Fatalf("canceled read error = %v, want nil", err)
 	}
@@ -848,7 +848,7 @@ func TestReadRemoteProgramEventsStopsCleanlyOnCanceledContextAndEOF(t *testing.T
 		t.Fatalf("upserted after cancellation = %#v", updater.programs)
 	}
 
-	if err := readRemoteProgramEvents(context.Background(), strings.NewReader("[\n"), updater); err != nil {
+	if err := readRemoteEvents(context.Background(), strings.NewReader("[\n"), updater, nil); err != nil {
 		t.Fatalf("EOF read error = %v, want nil", err)
 	}
 }

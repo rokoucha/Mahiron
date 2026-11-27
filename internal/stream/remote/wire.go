@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"log/slog"
 	"time"
 
 	"github.com/21S1298001/mahiron/internal/mirakurun"
@@ -56,55 +55,6 @@ type remoteEvent struct {
 	Resource string          `json:"resource"`
 	Type     string          `json:"type"`
 	Data     json.RawMessage `json:"data"`
-}
-
-func readRemoteProgramEvents(ctx context.Context, src io.Reader, updater ProgramUpdater) error {
-	scanner := bufio.NewScanner(src)
-	scanner.Buffer(make([]byte, 64*1024), 4*1024*1024)
-	for scanner.Scan() {
-		select {
-		case <-ctx.Done():
-			return nil
-		default:
-		}
-		line := bytes.TrimSpace(scanner.Bytes())
-		if len(line) == 0 || bytes.Equal(line, []byte("[")) || bytes.Equal(line, []byte(",")) || bytes.Equal(line, []byte("]")) {
-			continue
-		}
-		line = bytes.TrimSuffix(line, []byte(","))
-		if len(bytes.TrimSpace(line)) == 0 {
-			continue
-		}
-		var event remoteEvent
-		if err := json.Unmarshal(line, &event); err != nil {
-			slog.Debug("failed to decode remote program event", "err", err)
-			continue
-		}
-		if event.Resource == "program" && event.Type == "remove" {
-			if err := removeRemoteProgram(ctx, updater, event.Data); err != nil {
-				return err
-			}
-			continue
-		}
-		if event.Resource != "program" || event.Type != "update" && event.Type != "create" {
-			continue
-		}
-		remote, err := decodeRemoteProgram(event.Data)
-		if err != nil {
-			slog.Debug("failed to decode remote program event data", "err", err)
-			continue
-		}
-		if err := updater.UpsertEvents(ctx, []model.Event{remote}); err != nil {
-			return err
-		}
-	}
-	if err := scanner.Err(); err != nil {
-		if errors.Is(err, context.Canceled) {
-			return nil
-		}
-		return err
-	}
-	return nil
 }
 
 func readRemoteEvents(ctx context.Context, src io.Reader, updater ProgramUpdater, updateTuner func(string, tuner.Status)) error {
