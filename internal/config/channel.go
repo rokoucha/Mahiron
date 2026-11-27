@@ -1,8 +1,10 @@
 package config
 
 import (
+	"cmp"
 	"errors"
 	"os"
+	"slices"
 
 	"sigs.k8s.io/yaml"
 )
@@ -210,4 +212,44 @@ func (c ChannelConfig) RoutesOrDefault() []ChannelRouteConfig {
 			IsDisabled:  c.IsDisabled,
 		},
 	}
+}
+
+// EnabledRoutes returns the enabled routes in the order they are tried:
+// ascending priority, keeping the configured order for equal priorities.
+func (c ChannelConfig) EnabledRoutes() []ChannelRouteConfig {
+	routes := c.RoutesOrDefault()
+	enabled := make([]ChannelRouteConfig, 0, len(routes))
+	for _, route := range routes {
+		if route.IsDisabled != nil && *route.IsDisabled {
+			continue
+		}
+		enabled = append(enabled, route)
+	}
+	slices.SortStableFunc(enabled, func(a, b ChannelRouteConfig) int {
+		return cmp.Compare(ptrOrZero(a.Priority), ptrOrZero(b.Priority))
+	})
+	return enabled
+}
+
+// StoredEPGRemote returns the remote whose stored programs are the EPG of
+// the channel, or "" when the channel collects EIT itself. That is the case
+// for disabled and TLV channels and whenever a local route may serve the
+// channel. With several remote routes the first route tried wins.
+func (c ChannelConfig) StoredEPGRemote() string {
+	if IsChannelDisabled(c) || IsTLVTransport(c) {
+		return ""
+	}
+	routes := c.EnabledRoutes()
+	if len(routes) == 0 || slices.ContainsFunc(routes, func(route ChannelRouteConfig) bool { return route.Remote == "" }) {
+		return ""
+	}
+	return routes[0].Remote
+}
+
+func ptrOrZero[T any](p *T) T {
+	if p == nil {
+		var zero T
+		return zero
+	}
+	return *p
 }

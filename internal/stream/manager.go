@@ -27,7 +27,7 @@ import (
 type Manager struct {
 	eitUpdater            channel.EventUpdater
 	logoUpdater           channel.LogoUpdater
-	programUpdater        ProgramUpdater
+	programUpdater        func(remote string) ProgramUpdater
 	remoteEventSyncCancel context.CancelFunc
 	remoteEventSyncOnce   sync.Once
 	remoteEventSyncWG     sync.WaitGroup
@@ -56,8 +56,10 @@ type ManagerConfig struct {
 	EITUpdater            channel.EventUpdater
 	Remotes               config.RemotesConfig
 	LogoUpdater           channel.LogoUpdater
-	ProgramUpdater        ProgramUpdater
-	TunerManager          source.TunerManager
+	// ProgramUpdater returns the writer for the program events of a remote.
+	// Nil ignores remote program events.
+	ProgramUpdater func(remote string) ProgramUpdater
+	TunerManager   source.TunerManager
 	// ModuleStore shares retained modules across sessions. Nil disables shared caching.
 	ModuleStore bml.ModuleStore
 	// SnapshotStore persists raw PMT/DII sections for provisional /state
@@ -145,9 +147,11 @@ func (m *Manager) StartRemoteProgramEventSync(ctx context.Context) {
 	m.remoteEventSyncOnce.Do(func() {
 		syncCtx, cancel := context.WithCancel(ctx)
 		m.remoteEventSyncCancel = cancel
-		updater := m.programUpdater
 		for name, client := range m.remotes {
-			name, client := name, client
+			var updater ProgramUpdater
+			if m.programUpdater != nil {
+				updater = m.programUpdater(name)
+			}
 			m.remoteEventSyncWG.Add(1)
 			go func() {
 				defer m.remoteEventSyncWG.Done()

@@ -799,7 +799,7 @@ func TestManagerStartsRemoteProgramEventSyncOutsideSessionLifecycle(t *testing.T
 				{Id: "remote", Remote: "living", Type: "GR", Channel: "27", IsDisabled: &no},
 			},
 		}},
-		ProgramUpdater: &streamtest.RecordingProgramUpdater{},
+		ProgramUpdater: func(string) ProgramUpdater { return &streamtest.RecordingProgramUpdater{} },
 		Remotes:        config.RemotesConfig{{Name: "living", URL: "http://remote.local/api"}},
 	})
 

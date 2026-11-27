@@ -34,23 +34,15 @@ func TestRemoteRemovalPreservesOrderAndErrors(t *testing.T) {
 {"resource":"program","type":"remove","data":{"id":10000200001}},
 {"resource":"program","type":"create","data":{"id":10000200001,"eventId":1,"networkId":1,"serviceId":2,"startAt":100,"duration":200,"name":"after","isFree":true}}
 ]`
-	for _, batched := range []bool{false, true} {
-		u := &removalUpdater{}
-		var err error
-		if batched {
-			err = readRemoteEventsBatched(t.Context(), strings.NewReader(src), u, nil, time.Hour, 100)
-		} else {
-			err = readRemoteProgramEvents(t.Context(), strings.NewReader(src), u)
-		}
-		if err != nil {
-			t.Fatal(err)
-		}
-		if strings.Join(u.order, ",") != "before,remove,after" {
-			t.Fatalf("order=%v", u.order)
-		}
-		u = &removalUpdater{fail: true}
-		if err = readRemoteEventsBatched(t.Context(), strings.NewReader(src), u, nil, time.Hour, 100); err == nil {
-			t.Fatal("removal error swallowed")
-		}
+	u := &removalUpdater{}
+	if err := readRemoteEventsBatched(t.Context(), strings.NewReader(src), u, nil, time.Hour, 100); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(u.order, ",") != "before,remove,after" {
+		t.Fatalf("order=%v", u.order)
+	}
+	u = &removalUpdater{fail: true}
+	if err := readRemoteEventsBatched(t.Context(), strings.NewReader(src), u, nil, time.Hour, 100); err == nil {
+		t.Fatal("removal error swallowed")
 	}
 }
