@@ -1,5 +1,20 @@
 # Changelog
 
+## [v5.3.4](https://github.com/rokoucha/Mahiron/compare/v5.3.3...v5.3.4) - 2026-11-28
+
+- Update dependency eslint to v10.15.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/300
+- Update actions/setup-go action to v7.1.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/299
+- Update module github.com/go-co-op/gocron/v2 to v2.23.2 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/303
+- Update dependency vitest to v5.1.1 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/302
+- Update dependency typescript-eslint to v8.73.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/305
+- Update module ariga.io/atlas to v1.4.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/306
+- Update module golang.org/x/net to v0.63.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/307
+- Update dependency typescript-eslint to v8.74.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/308
+- Update module modernc.org/sqlite to v1.63.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/309
+- Accept remote program events only from the channel's EPG remote by @rokoucha in https://github.com/rokoucha/Mahiron/pull/310
+- Update dependency @types/node to v26.6.11 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/311
+- Update dependency @types/react to v19.3.3 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/312
+
 ## [v5.3.3](https://github.com/rokoucha/Mahiron/compare/v5.3.2...v5.3.3) - 2026-11-19
 
 - Update dependency vite to v8.3.6 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/274
